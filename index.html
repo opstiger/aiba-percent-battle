@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>aiBA·百分大战 v1.16</title>
+<title>aiBA·百分大战 v1.17</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overflow:hidden;background:#04050a;touch-action:none;user-select:none;-webkit-user-select:none;
@@ -285,7 +285,7 @@ const rnd=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 /* ---------------- constants ---------------- */
-const GAME_VERSION="v1.16";
+const GAME_VERSION="v1.17";
 const GAME_NAME="aiBA·百分大战";
 const HOOP=V3(0,3.05,-8);            // rim center
 const EYE=1.78;
@@ -423,7 +423,10 @@ function playClip(t){
 }
 const rnd2=(a,b)=>a+Math.random()*(b-a);
 function audioInit(){
-  if(AC)return;
+  if(AC){
+    try{if(AC.state==="suspended")AC.resume();}catch(e){}
+    return;
+  }
   try{
     AC=new (window.AudioContext||window.webkitAudioContext)();
     // 总线: master → 压缩器(粘合) → 输出
@@ -469,7 +472,21 @@ function audioInit(){
       else if(r<0.74)shout(rnd2(0.06,0.12));
     },4600);
     initVoice();
+    try{if(AC.state==="suspended")AC.resume();}catch(e){}
   }catch(e){}
+}
+function ensureAudio(menuMusic){
+  audioInit();
+  if(!AC)return false;
+  const startMenu=()=>{if(menuMusic&&!musicTimer&&(G.state==="menu"||G.state==="diff"))music(true,false);};
+  try{
+    if(AC.state==="suspended"){
+      const r=AC.resume();
+      if(r&&r.then)r.then(startMenu).catch(()=>{});
+      else startMenu();
+    }else startMenu();
+  }catch(e){startMenu();}
+  return true;
 }
 function mkNoiseBuf(sec){
   const len=AC.sampleRate*sec,b=AC.createBuffer(1,len,AC.sampleRate),d=b.getChannelData(0);
@@ -693,6 +710,7 @@ function arenaMusic(on,intensity){
   },185);
 }
 function enterArenaAudio(intensity){
+  ensureAudio(false);
   if(!AC)return;
   music(false);
   arenaMusic(true,intensity||0.8);
@@ -892,6 +910,7 @@ function toggleMute(){
   MUTED=!MUTED;
   $("muteBtn").textContent=MUTED?"🔇":"🔊";
   try{
+    if(!MUTED)ensureAudio(G.state==="menu"||G.state==="diff");
     if(AC)MUTED?AC.suspend():AC.resume();
     if(window.speechSynthesis&&MUTED)speechSynthesis.cancel();
     if(MUTED){extStop("bgm");extStop("crowd");}
@@ -2248,6 +2267,7 @@ function battleScoreCallout(prevMe,prevOpp){
   }
 }
 function startPractice(){
+  ensureAudio(false);
   hidePanel();music(false);
   G.practice=true;G.moneyRack=(Math.random()*5)|0;
   G.seq=[0,1,2].map(b=>({rack:2,ball:b,val:1,money:false,deep:null}));
@@ -2755,7 +2775,7 @@ function stars(r){const n=Math.round((r-82)/3);return "★".repeat(clamp(n,2,5))
 
 /* ---------------- screens / flow ---------------- */
 function showMenu(){
-  G.state="menu";music(true,false);
+  G.state="menu";if(AC)ensureAudio(true);
   const cover=COVER_STARS[(Math.random()*COVER_STARS.length)|0];
   showCoverPanel(`
     <div class="coverHero" style="background-image:url('${cover.cover}')">
@@ -2795,7 +2815,7 @@ function showModeInfo(mode){
     <button class="btn sm" onclick="showMenu()">返回封面</button>`);
 }
 function goDiff(mode){
-  audioInit();G.mode=mode||"contest";G.state="diff";
+  G.mode=mode||"contest";G.state="diff";ensureAudio(true);
   airhorn();
   paSay("欢迎来到 aiBA 霓虹球场。灯光就位,比赛开始倒计时。",true);
   let h='<h1 class="title" style="font-size:24px">选择难度</h1>';
@@ -2883,6 +2903,7 @@ function resetBattleState(){
   resetRackBalls();
 }
 function startBattle(){
+  ensureAudio(false);
   hidePanel();music(false);benchSetup();benchVis();resetBattleState();
   CAM.mode=1;$("camBtn").textContent="📷 "+CAM.names[1];G._preSuperCam=null; // 百分大战默认第三人称开场
   camSnap=true;
@@ -2918,6 +2939,7 @@ function countdownBattle(n){
   setTimeout(()=>countdownBattle(n-1),750);
 }
 function beginStage(){
+  ensureAudio(false);
   music(false);
   const names=G.stage==="final"?["YOU",G.finalist]:["YOU",...G.opponents];
   for(let i=names.length-1;i>0;i--){const j=(seededRandom()*(i+1))|0;[names[i],names[j]]=[names[j],names[i]];}
@@ -3318,7 +3340,35 @@ function mirrorSpot(p){
   if(Math.abs(p.x)<0.6)return V3(p.x+1.9,p.y,p.z);
   return V3(-p.x,p.y,p.z);
 }
-function oppSpotPos(i){return mirrorSpot(BATTLE_SPOTS[i].p);}
+const OPP_MIN_SEP=1.58;
+function battlePlayerPos(){
+  if(G.mode==="battle"&&P&&P.pos)return P.pos;
+  const sp=BATTLE_SPOTS[G.battleSpot||0];
+  return sp?sp.p:null;
+}
+function avoidPlayerOverlap(pos,i){
+  const pp=battlePlayerPos();if(!pp)return pos;
+  const dx=pos.x-pp.x,dz=pos.z-pp.z,d=Math.hypot(dx,dz);
+  if(d>=OPP_MIN_SEP)return pos;
+  const toHoop=HOOP.clone().sub(pos);toHoop.y=0;
+  if(toHoop.lengthSq()<0.0001)toHoop.set(0,0,-1);
+  toHoop.normalize();
+  const side=V3(toHoop.z,0,-toHoop.x);
+  if(side.lengthSq()<0.0001)side.set(1,0,0);
+  side.normalize();
+  const away=V3(dx,0,dz);
+  if(away.lengthSq()<0.0001)away.copy(side).multiplyScalar(pos.x>=0?1:-1);
+  else away.normalize();
+  const sideSign=pos.x>=0?1:-1;
+  const push=Math.max(OPP_MIN_SEP-d,0.78);
+  pos.addScaledVector(away,push);
+  pos.addScaledVector(side,sideSign*0.44);
+  if(BATTLE_SPOTS[i]&&BATTLE_SPOTS[i].super)pos.z+=0.55;
+  return pos;
+}
+function oppSpotPos(i){
+  const sp=BATTLE_SPOTS[i];return sp?avoidPlayerOverlap(mirrorSpot(sp.p),i):V3(0,0,0);
+}
 function oppSpotQuota(i){
   const sp=BATTLE_SPOTS[i];
   if(sp.super)return 1;
@@ -3384,7 +3434,7 @@ function oppPickSpot(){
 }
 function oppFireBall(){
   const sp=BATTLE_SPOTS[OPP.spotIdx];
-  const base=oppSpotPos(OPP.spotIdx);
+  const base=(OPP.pos||oppSpotPos(OPP.spotIdx)).clone();
   const o=OPP.o;
   const aip=aiProb(o.r);
   const p=sp.super?clamp(aip*0.22+0.03,0.08,0.22):clamp(aip*0.58+0.1,0.28,0.6);
@@ -3925,6 +3975,10 @@ function fallbackSave(blob){
 }
 
 /* ---------------- input ---------------- */
+function audioGestureUnlock(){
+  const menuLike=G.state==="menu"||G.state==="diff";
+  if(!AC||AC.state==="suspended"||(menuLike&&!musicTimer))ensureAudio(menuLike);
+}
 function onDown(e){
   if(e.target&&e.target.id==="camBtn")return;
   if(e.target&&e.target.closest&&e.target.closest("#battleControls"))return;
@@ -3937,9 +3991,11 @@ function onUp(e){
   if(e.target&&e.target.closest&&e.target.closest("#spotDots"))return;
   if(G.state==="round"||G.state==="tiebreak"||G.state==="battle"){doRelease();}
 }
+addEventListener("pointerdown",audioGestureUnlock,{passive:true,capture:true});
 addEventListener("pointerdown",onDown,{passive:false});
 addEventListener("pointerup",onUp);
 addEventListener("keydown",e=>{
+  if(!e.repeat)audioGestureUnlock();
   if(e.code==="Space"&&!e.repeat)startCharge();
   if(e.code==="KeyC"&&(G.state==="round"||G.state==="tiebreak"||G.state==="battle"))cycleCam();
   if(G.state==="battle"&&(e.code==="ArrowLeft"||e.code==="KeyA"))battlePrevSpot();
