@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>aiBA·百分大战 v1.17</title>
+<title>aiBA·百分大战 v1.18</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overflow:hidden;background:#04050a;touch-action:none;user-select:none;-webkit-user-select:none;
@@ -99,6 +99,8 @@ html,body{height:100%;overflow:hidden;background:#04050a;touch-action:none;user-
   color:#ffd23f;text-shadow:2px 2px 0 #000;display:none;animation:blink 1s steps(2) infinite;white-space:nowrap}
 #muteBtn{position:fixed;top:max(98px,calc(env(safe-area-inset-top) + 88px));right:12px;z-index:48;font-size:18px;
   background:rgba(0,0,0,.5);border:2px solid #333;padding:6px 9px;cursor:pointer;pointer-events:auto}
+#muteBtn.needsAudio{border-color:#ffd23f;animation:soundPulse 1s steps(2) infinite}
+@keyframes soundPulse{50%{filter:brightness(1.8);transform:scale(1.06)}}
 #hudTarget{position:absolute;top:max(86px,calc(env(safe-area-inset-top) + 76px));left:14px;font-size:11px;
   font-weight:bold;text-shadow:1px 1px 0 #000;color:#ffd23f}
 #vsBanner{position:absolute;top:24vh;left:50%;transform:translateX(-50%);text-align:center;
@@ -219,7 +221,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
   <div id="edgeArrows"></div>
   <div id="spotDots"></div>
   <div id="camBtn" onclick="cycleCam()">📷 第一人称</div>
-  <div id="muteBtn" onclick="toggleMute()">🔊</div>
+  <div id="muteBtn" class="needsAudio" onclick="toggleMute()">🔈</div>
   <div id="heroTag">🎬 英雄时刻 HERO BALL</div>
   <div id="hudTarget"></div>
   <div id="vsBanner"></div>
@@ -255,7 +257,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <script>typeof THREE==="undefined"&&document.write('<script src="https://lib.baomitu.com/three.js/r128/three.min.js"><\/script>')</script>
 <script>
 /* =====================================================
-   aiBA·百分大战 v1.16
+   aiBA·百分大战 v1.18
    Minecraft-style NBA 3-Point Contest · 单文件实现
    ===================================================== */
 "use strict";
@@ -285,7 +287,7 @@ const rnd=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 /* ---------------- constants ---------------- */
-const GAME_VERSION="v1.17";
+const GAME_VERSION="v1.18";
 const GAME_NAME="aiBA·百分大战";
 const HOOP=V3(0,3.05,-8);            // rim center
 const EYE=1.78;
@@ -395,7 +397,24 @@ let AC=null,master=null,crowdBus=null,crowdGain=null,musicBus=null,arenaBus=null
 let musicTimer=null,arenaTimer=null,ambTimer=null,duckTimer=null;
 const CROWD_BASE=0.16;
 let MUTED=false;
+let AUDIO_READY=false,AUDIO_PRIMED=false;
 const extA={};
+function syncAudioDebug(){
+  try{
+    const s=audioState(),r=document.documentElement;
+    r.dataset.audioContext=s.state;
+    r.dataset.audioReady=s.ready?"1":"0";
+    r.dataset.audioPrimed=s.primed?"1":"0";
+    r.dataset.audioMuted=s.muted?"1":"0";
+    r.dataset.audioMenu=s.menuMusic?"1":"0";
+    r.dataset.audioArena=s.arenaMusic?"1":"0";
+    const b=$("muteBtn");
+    if(b){
+      b.textContent=s.muted?"🔇":(s.ready?"🔊":"🔈");
+      b.classList.toggle("needsAudio",!s.muted&&!s.ready);
+    }
+  }catch(e){}
+}
 function extInit(){
   for(const k in EXT_AUDIO){
     const u=EXT_AUDIO[k];if(!u)continue;
@@ -425,10 +444,12 @@ const rnd2=(a,b)=>a+Math.random()*(b-a);
 function audioInit(){
   if(AC){
     try{if(AC.state==="suspended")AC.resume();}catch(e){}
+    AUDIO_READY=AC.state==="running";syncAudioDebug();
     return;
   }
   try{
     AC=new (window.AudioContext||window.webkitAudioContext)();
+    AC.onstatechange=()=>{AUDIO_READY=AC&&AC.state==="running";syncAudioDebug();};
     // 总线: master → 压缩器(粘合) → 输出
     const comp=AC.createDynamicsCompressor();
     comp.threshold.value=-14;comp.ratio.value=3.5;comp.attack.value=0.004;comp.release.value=0.22;
@@ -439,6 +460,9 @@ function audioInit(){
     broadcastBus=AC.createGain();broadcastBus.gain.value=0.95;broadcastBus.connect(master);
     playerBus=AC.createGain();playerBus.gain.value=0.68;playerBus.connect(master);
     sfxBus=AC.createGain();sfxBus.gain.value=0.95;sfxBus.connect(master);
+    AUDIO_READY=AC.state==="running";syncAudioDebug();
+    primeAudio(true);
+    try{if(AC.state==="suspended")AC.resume();}catch(e){}
     // ---- 观众环境床:三层共振峰人声噪声(远/中/近) + 低频轰鸣 ----
     crowdBus=AC.createGain();crowdGain=crowdBus; // 兼容旧名
     crowdBus.gain.value=CROWD_BASE;crowdBus.connect(arenaBus);
@@ -473,13 +497,41 @@ function audioInit(){
     },4600);
     initVoice();
     try{if(AC.state==="suspended")AC.resume();}catch(e){}
+    AUDIO_READY=AC.state==="running";syncAudioDebug();
   }catch(e){}
 }
-function ensureAudio(menuMusic){
+function primeAudio(force){
+  if(!AC||MUTED)return;
+  if(AUDIO_PRIMED&&!force)return;
+  AUDIO_PRIMED=true;
+  try{
+    const t=AC.currentTime;
+    const o=AC.createOscillator();
+    const g=AC.createGain();
+    o.type="sine";o.frequency.value=880;
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.exponentialRampToValueAtTime(0.00001,t+0.04);
+    o.connect(g);g.connect(master||AC.destination);
+    o.start(t);o.stop(t+0.05);
+  }catch(e){}
+}
+function audioState(){
+  return {hasContext:!!AC,state:AC?AC.state:"none",ready:AUDIO_READY,primed:AUDIO_PRIMED,muted:MUTED,
+    menuMusic:!!musicTimer,arenaMusic:!!arenaTimer,crowd:!!crowdBus};
+}
+try{window.__aibaAudioState=audioState;}catch(e){}
+function ensureAudio(menuMusic,forcePrime){
+  if(MUTED)return false;
   audioInit();
   if(!AC)return false;
-  const startMenu=()=>{if(menuMusic&&!musicTimer&&(G.state==="menu"||G.state==="diff"))music(true,false);};
+  primeAudio(!!forcePrime);
+  const startMenu=()=>{
+    AUDIO_READY=AC&&AC.state==="running";
+    if(menuMusic&&!musicTimer&&(G.state==="menu"||G.state==="diff"))music(true,false);
+    syncAudioDebug();
+  };
   try{
+    startMenu();
     if(AC.state==="suspended"){
       const r=AC.resume();
       if(r&&r.then)r.then(startMenu).catch(()=>{});
@@ -696,10 +748,10 @@ function broadcastSting(kind){
 }
 function arenaMusic(on,intensity){
   if(arenaTimer){clearInterval(arenaTimer);arenaTimer=null;}
-  if(!on||!AC)return;
+  if(!on||!AC){syncAudioDebug();return;}
   intensity=intensity||0.75;
   let i=0;
-  arenaTimer=setInterval(()=>{
+  const beat=()=>{
     if(MUTED)return;
     const bus=musicBus||master;
     if(i%4===0)blipBus(bus,55,0.16,"triangle",0.08*intensity,38);
@@ -707,7 +759,10 @@ function arenaMusic(on,intensity){
     if(i%2===0)noiseBus(bus,0.018,0.018*intensity,6500,11000);
     if(i%16===0)[147,220,294].forEach(f=>blipBus(bus,f,0.55,"triangle",0.012*intensity));
     i++;
-  },185);
+  };
+  beat();
+  arenaTimer=setInterval(beat,185);
+  syncAudioDebug();
 }
 function enterArenaAudio(intensity){
   ensureAudio(false);
@@ -718,6 +773,7 @@ function enterArenaAudio(intensity){
 }
 function leaveArenaAudio(){
   arenaMusic(false);
+  syncAudioDebug();
 }
 function shoeSqueak(strong){
   if(!AC||MUTED)return;
@@ -837,12 +893,12 @@ function music(on,fast){
   if(musicTimer){clearInterval(musicTimer);musicTimer=null;}
   arenaMusic(false);
   if(extA.bgm){on?extPlay("bgm"):extStop("bgm");if(extA.bgm)return;}
-  if(!on||!AC)return;
+  if(!on||!AC){syncAudioDebug();return;}
   const bass=[82,82,110,82,98,82,110,123];
   const mel=[330,392,440,523,440,392,659,523];
   const chord=[[165,196,247],[165,196,247],[147,196,220],[131,165,196]];
   let i=0;
-  musicTimer=setInterval(()=>{
+  const beat=()=>{
     if(MUTED)return;
     blipBus(musicBus||master,bass[i%8],0.18,"triangle",0.11);
     if(i%4===0){const t=AC.currentTime;          // 底鼓
@@ -855,7 +911,10 @@ function music(on,fast){
     if(i%2===0)blipBus(musicBus||master,mel[(i/2)%8]*(fast?1.5:1),0.13,"square",0.05);
     if(i%8===0)chord[(i/8)%4].forEach(f=>blipBus(musicBus||master,f*(fast?1.5:1),0.5,"triangle",0.018));
     i++;
-  },fast?150:210);
+  };
+  beat();
+  musicTimer=setInterval(beat,fast?150:210);
+  syncAudioDebug();
 }
 /* ---- 语音:情绪化播报 ---- */
 const SPK={voice:null,last:0};
@@ -907,14 +966,23 @@ function rivalSay(o,t,emo){
   say(t,{emo:emo||"taunt",pitch:(EMO[emo||"taunt"].pitch)*(0.85+((o.num||7)%5)*0.09)});
 }
 function toggleMute(){
-  MUTED=!MUTED;
-  $("muteBtn").textContent=MUTED?"🔇":"🔊";
+  const menuLike=G.state==="menu"||G.state==="diff";
+  const arenaLike=G.state==="cinematic"||G.state==="round"||G.state==="tiebreak"||G.state==="battle";
   try{
-    if(!MUTED)ensureAudio(G.state==="menu"||G.state==="diff");
-    if(AC)MUTED?AC.suspend():AC.resume();
+    const needsStart=MUTED||!AC||AC.state==="suspended"||(menuLike&&!musicTimer)||(arenaLike&&!arenaTimer);
+    if(needsStart){
+      MUTED=false;$("muteBtn").textContent="🔊";
+      ensureAudio(menuLike,true);
+      if(arenaLike&&!arenaTimer)enterArenaAudio(0.85);
+      if(extA.crowd)extPlay("crowd");
+      syncAudioDebug();
+      return;
+    }
+    MUTED=true;$("muteBtn").textContent="🔇";
+    if(AC)AC.suspend();
     if(window.speechSynthesis&&MUTED)speechSynthesis.cancel();
     if(MUTED){extStop("bgm");extStop("crowd");}
-    else if(extA.crowd)extPlay("crowd");
+    syncAudioDebug();
   }catch(e){}
 }
 
@@ -2787,11 +2855,11 @@ function showMenu(){
         <div class="coverActions">
           <div class="modeTile primary">
             <div class="modeCopy"><div class="modeEyebrow">主宰赛场</div><div class="modeName">百分大战 <em>100</em></div><div class="modeDesc">双人同场竞技，先投中 100 分者获胜。</div></div>
-            <div class="modeBtns"><button class="modeInfo" onclick="showModeInfo('battle')">i</button><button class="modePlay" onclick="goDiff('battle')"><small>START GAME</small>开始游戏 »</button></div>
+            <div class="modeBtns"><button class="modeInfo" onclick="ensureAudio(true,true);showModeInfo('battle')">i</button><button class="modePlay" onclick="ensureAudio(true,true);goDiff('battle')"><small>START GAME</small>开始游戏 »</button></div>
           </div>
           <div class="modeTile">
             <div class="modeCopy"><div class="modeEyebrow">单人挑战</div><div class="modeName">三分挑战</div><div class="modeDesc">限时 70 秒，尽可能多地投进三分球。</div></div>
-            <div class="modeBtns"><button class="modeInfo" onclick="showModeInfo('contest')">i</button><button class="modePlay" onclick="goDiff('contest')"><small>CHALLENGE</small>开始挑战 »</button></div>
+            <div class="modeBtns"><button class="modeInfo" onclick="ensureAudio(true,true);showModeInfo('contest')">i</button><button class="modePlay" onclick="ensureAudio(true,true);goDiff('contest')"><small>CHALLENGE</small>开始挑战 »</button></div>
           </div>
         </div>
       </div></div>
@@ -2804,14 +2872,14 @@ function showModeInfo(mode){
     showPanel(`<h1 class="title" style="font-size:22px">百分大战 100</h1>
       <div class="card">两人同时开投,先到 <b>100</b> 分获胜。普通点有库存,彩球点会冷却,中场 10 分只在比分跨过 10/20/30... 时出现。</div>
       <div class="card">前 <b>${BATTLE_BAR_VISIBLE_SHOTS}</b> 球显示蓄力条,之后隐藏。按住蓄力,松开出手;手机保持水平,倾斜会带歪球路。</div>
-      <button class="btn green" onclick="goDiff('battle')">开始百分大战</button>
+      <button class="btn green" onclick="ensureAudio(true,true);goDiff('battle')">开始百分大战</button>
       <button class="btn sm" onclick="showMenu()">返回封面</button>`);
     return;
   }
   showPanel(`<h1 class="title" style="font-size:22px">三分挑战</h1>
     <div class="card">经典三分赛规则: <b>70 秒</b>, 5 个普通球架,外加 2 个深远点。花球和深远球更值钱。</div>
     <div class="card">按住蓄力,松开出手。高难度会隐藏投篮条,更考验出手节奏。</div>
-    <button class="btn gold" onclick="goDiff('contest')">开始三分挑战</button>
+    <button class="btn gold" onclick="ensureAudio(true,true);goDiff('contest')">开始三分挑战</button>
     <button class="btn sm" onclick="showMenu()">返回封面</button>`);
 }
 function goDiff(mode){
@@ -2885,7 +2953,7 @@ function showBattleIntro(){
       6. 普通点每点 5 球,用完 10 秒恢复;两个彩球点各自 10 秒恢复。<br>
       7. 中场 10 分只在任意一方跨过 10/20/30... 分时出现一次。<br>
       8. 对手与你同场竞投,球在空中可能<b style="color:#ff8d7a">相撞改变结果</b>!</div>
-    <button class="btn gold" onclick="startBattle()">开战!</button>`);
+    <button class="btn gold" onclick="ensureAudio(false,true);startBattle()">开战!</button>`);
 }
 function resetBattleState(){
   G.seq=[];G.shotIdx=0;G.score=0;G.streak=0;G.timer=0;G.buzzed=false;G.running=false;
@@ -3975,9 +4043,10 @@ function fallbackSave(blob){
 }
 
 /* ---------------- input ---------------- */
-function audioGestureUnlock(){
+function audioGestureUnlock(e){
+  if(e&&e.target&&e.target.id==="muteBtn")return;
   const menuLike=G.state==="menu"||G.state==="diff";
-  if(!AC||AC.state==="suspended"||(menuLike&&!musicTimer))ensureAudio(menuLike);
+  if(!AC||AC.state==="suspended"||(menuLike&&!musicTimer))ensureAudio(menuLike,true);
 }
 function onDown(e){
   if(e.target&&e.target.id==="camBtn")return;
@@ -3991,7 +4060,9 @@ function onUp(e){
   if(e.target&&e.target.closest&&e.target.closest("#spotDots"))return;
   if(G.state==="round"||G.state==="tiebreak"||G.state==="battle"){doRelease();}
 }
-addEventListener("pointerdown",audioGestureUnlock,{passive:true,capture:true});
+["pointerdown","touchstart","touchend","mousedown","click"].forEach(type=>{
+  addEventListener(type,audioGestureUnlock,{passive:true,capture:true});
+});
 addEventListener("pointerdown",onDown,{passive:false});
 addEventListener("pointerup",onUp);
 addEventListener("keydown",e=>{
