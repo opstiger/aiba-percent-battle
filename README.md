@@ -1,5 +1,7 @@
 # aiBA Percent Battle / aiBA·百分大战
 
+![aiBA Percent Battle screenshot](assets/readme-screenshot.jpg)
+
 一个浏览器里的 3D 篮球投篮小游戏。个人作品，持续迭代中。
 
 在线试玩：
