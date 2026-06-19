@@ -1,3 +1,6 @@
+*.DS_Store
+.DS_Store
+assets/aiba-covers/*.MOV
 block-3pt-king-promo.mp4
 block-3pt-kingv*.backup-*.html
 block-3pt-kingv*.imported-*.html

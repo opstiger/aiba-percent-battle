@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>aiBA·百分大战 v1.20</title>
+<title>aiBA·百分大战 v1.19</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overflow:hidden;background:#04050a;touch-action:none;user-select:none;-webkit-user-select:none;
@@ -261,7 +261,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <script>typeof THREE==="undefined"&&document.write('<script src="https://lib.baomitu.com/three.js/r128/three.min.js"><\/script>')</script>
 <script>
 /* =====================================================
-   aiBA·百分大战 v1.20
+   aiBA·百分大战 v1.19
    Minecraft-style NBA 3-Point Contest · 单文件实现
    ===================================================== */
 "use strict";
@@ -291,18 +291,9 @@ const rnd=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 /* ---------------- constants ---------------- */
-const GAME_VERSION="v1.20";
+const GAME_VERSION="v1.19";
 const GAME_NAME="aiBA·百分大战";
-// NBA 标准全场坐标：保留原篮筐/三分点，只向远端延长球场。
-const COURT={
-  width:15.24,length:28.65,halfWidth:7.62,
-  nearBaseline:-9.58,farBaseline:19.07,midZ:4.745,
-  nearHoopZ:-8,farHoopZ:17.49,
-  floorMinZ:-13,floorMaxZ:23,
-  playMaxZ:4.245
-};
-const COURT_ATTACK_DIR=V3(0,0,-1);
-const HOOP=V3(0,3.05,COURT.nearHoopZ); // rim center
+const HOOP=V3(0,3.05,-8);            // rim center
 const EYE=1.78;
 const RACKS=[
   {p:V3(-6.7,0,-6.3), n:"左底角"},
@@ -311,7 +302,7 @@ const RACKS=[
   {p:V3(5.23,0,-2.77),n:"右侧 45°"},
   {p:V3(6.7,0,-6.3),  n:"右底角"}];
 const DEEPS=[{p:V3(-3.55,0,0.55)},{p:V3(3.55,0,0.55)}];
-const HALFCOURT={p:V3(0,0,COURT.playMaxZ),n:"中场 LOGO 超远",val:10};
+const HALFCOURT={p:V3(0,0,5.05),n:"中场 LOGO 超远",val:10};
 const DIFFS={
   easy:{n:"新秀",zone:11,fill:80,ai:-0.085,hideBar:99,latK:0.012,d:"甜区超大 · 投篮条全程可见"},
   normal:{n:"全明星",zone:5.5,fill:95,ai:0,hideBar:1,latK:0.02,d:"甜区收窄 · 第2个球架起隐藏投篮条"},
@@ -1084,9 +1075,9 @@ const ballGeo=new THREE.SphereGeometry(0.16,12,10);
 
 /* ---------------- arena ---------------- */
 function buildCourt(){
-  const PXM=32,W=32,D=COURT.floorMaxZ-COURT.floorMinZ;
+  const PXM=32, W=32, D=26; // meters
   const tex=pixTex(W*PXM,D*PXM,(g)=>{
-    const u=x=>(x+W/2)*PXM,v=z=>(z-COURT.floorMinZ)*PXM;
+    const u=x=>(x+16)*PXM, v=z=>(z+16)*PXM; // z -16..10
     // parquet 1m blocks
     for(let x=0;x<W;x++)for(let z=0;z<D;z++){
       const odd=(x+z)%2===0;
@@ -1099,30 +1090,27 @@ function buildCourt(){
     // out of bounds apron
     g.fillStyle="rgba(30,55,110,.55)";
     g.fillRect(0,0,u(-7.9),D*PXM); g.fillRect(u(7.9),0,W*PXM,D*PXM);
-    g.fillRect(0,0,W*PXM,v(COURT.nearBaseline-.32));
-    g.fillRect(0,v(COURT.farBaseline+.32),W*PXM,D*PXM-v(COURT.farBaseline+.32));
+    g.fillRect(0,0,W*PXM,v(-9.9)); g.fillRect(0,v(9.58),W*PXM,D*PXM);
     g.lineWidth=6;g.strokeStyle="#f2f2f2";
     // boundary
-    g.strokeRect(u(-COURT.halfWidth),v(COURT.nearBaseline),COURT.width*PXM,COURT.length*PXM);
+    g.strokeRect(u(-7.62),v(-9.58),(15.24)*PXM,(19.16)*PXM);
     // full-court center line and circle
     g.strokeStyle="rgba(242,242,242,.8)";g.lineWidth=5;g.lineCap="round";
-    g.beginPath();g.moveTo(u(-COURT.halfWidth),v(COURT.midZ));g.lineTo(u(COURT.halfWidth),v(COURT.midZ));g.stroke();
-    g.beginPath();g.arc(u(0),v(COURT.midZ),1.8*PXM,0,Math.PI*2);g.stroke();
+    g.beginPath();g.moveTo(u(-7.62),v(0));g.lineTo(u(7.62),v(0));g.stroke();
+    g.beginPath();g.arc(u(0),v(0),1.8*PXM,0,Math.PI*2);g.stroke();
     // key
-    const nearFreeThrowZ=COURT.nearBaseline+5.79;
-    const farFreeThrowZ=COURT.farBaseline-5.79;
-    g.strokeRect(u(-2.45),v(COURT.nearBaseline),4.9*PXM,5.79*PXM);
-    g.beginPath();g.arc(u(0),v(nearFreeThrowZ),1.8*PXM,0,Math.PI*2);g.stroke();
+    g.strokeRect(u(-2.45),v(-9.58),4.9*PXM,5.79*PXM);
+    g.beginPath();g.arc(u(0),v(-3.79),1.8*PXM,0,Math.PI*2);g.stroke();
     // 3pt line (暗白色,完整弧线)
     g.strokeStyle="#d8dde2";g.lineWidth=7;g.lineCap="round";
-    const arcR=7.24,cx=0,cz=HOOP.z;
+    const arcR=7.24, cx=0, cz=-8;
     // 弧线与底线两侧直线相切:直线在 x=±6.71,延伸到弧线
     const sideX=6.71;
     // 求弧线在 x=±sideX 处的 z(取靠近shooter的解): z = cz + sqrt(r²-sideX²)
     const zJoin=cz+Math.sqrt(arcR*arcR-sideX*sideX);
-    // 左右直线段:近端底线到 zJoin
-    g.beginPath();g.moveTo(u(-sideX),v(COURT.nearBaseline));g.lineTo(u(-sideX),v(zJoin));g.stroke();
-    g.beginPath();g.moveTo(u(sideX),v(COURT.nearBaseline));g.lineTo(u(sideX),v(zJoin));g.stroke();
+    // 左右直线段:底线(-9.58) 到 zJoin
+    g.beginPath();g.moveTo(u(-sideX),v(-9.58));g.lineTo(u(-sideX),v(zJoin));g.stroke();
+    g.beginPath();g.moveTo(u(sideX),v(-9.58));g.lineTo(u(sideX),v(zJoin));g.stroke();
     // 顶弧:用线段拼,从左切点扫到右切点(经过shooter侧最高点 z=cz+r)
     const aL=Math.atan2(zJoin-cz,-sideX), aR=Math.atan2(zJoin-cz,sideX);
     g.beginPath();
@@ -1133,13 +1121,13 @@ function buildCourt(){
       if(i===0)g.moveTo(u(px),v(pz));else g.lineTo(u(px),v(pz));
     }
     g.stroke();
-    // 远端半场按真实全场比例绘制，仅用于氛围展示。
+    // far half markings, kept non-playable but visible so the venue reads as a full court
     g.strokeStyle="rgba(216,221,226,.62)";g.lineWidth=5;g.lineCap="round";
-    g.strokeRect(u(-2.45),v(farFreeThrowZ),4.9*PXM,5.79*PXM);
-    g.beginPath();g.arc(u(0),v(farFreeThrowZ),1.8*PXM,0,Math.PI*2);g.stroke();
-    const farCz=COURT.farHoopZ,farJoin=farCz-Math.sqrt(arcR*arcR-sideX*sideX);
-    g.beginPath();g.moveTo(u(-sideX),v(COURT.farBaseline));g.lineTo(u(-sideX),v(farJoin));g.stroke();
-    g.beginPath();g.moveTo(u(sideX),v(COURT.farBaseline));g.lineTo(u(sideX),v(farJoin));g.stroke();
+    g.strokeRect(u(-2.45),v(3.79),4.9*PXM,5.79*PXM);
+    g.beginPath();g.arc(u(0),v(3.79),1.8*PXM,0,Math.PI*2);g.stroke();
+    const farCz=8, farJoin=farCz-Math.sqrt(arcR*arcR-sideX*sideX);
+    g.beginPath();g.moveTo(u(-sideX),v(9.58));g.lineTo(u(-sideX),v(farJoin));g.stroke();
+    g.beginPath();g.moveTo(u(sideX),v(9.58));g.lineTo(u(sideX),v(farJoin));g.stroke();
     const faL=Math.atan2(farJoin-farCz,-sideX), faR=Math.atan2(farJoin-farCz,sideX);
     g.beginPath();
     for(let i=0;i<=N;i++){
@@ -1148,11 +1136,6 @@ function buildCourt(){
       if(i===0)g.moveTo(u(px),v(pz));else g.lineTo(u(px),v(pz));
     }
     g.stroke();
-    // center logo
-    g.fillStyle="#1d428a";g.beginPath();g.arc(u(0),v(COURT.midZ),2.1*PXM,0,7);g.fill();
-    g.fillStyle="#ffd23f";g.font="bold 40px monospace";g.textAlign="center";
-    g.fillText("aiBA",u(0),v(COURT.midZ-.15));
-    g.font="bold 24px monospace";g.fillText("★ RACE 100 ★",u(0),v(COURT.midZ+.8));
     // ---- 投篮点位:统一风格的地面小标记,低饱和、融入木地板 ----
     function spotDecal(x,z,r,fill,line,lw,txt,txtCol,fs){
       g.fillStyle=fill;g.beginPath();g.arc(u(x),v(z),r*PXM,0,7);g.fill();
@@ -1169,11 +1152,14 @@ function buildCourt(){
     }
     // 中场 10 分点:淡金环 + 小号 10
     spotDecal(HALFCOURT.p.x,HALFCOURT.p.z,0.58,"rgba(255,210,63,0.08)","rgba(255,210,63,0.5)",3,"10","rgba(255,225,130,0.7)",18);
+    // center logo
+    g.fillStyle="#1d428a";g.beginPath();g.arc(u(0),v(0),2.1*PXM,0,7);g.fill();
+    g.fillStyle="#ffd23f";g.font="bold 40px monospace";g.textAlign="center";
+    g.fillText("aiBA",u(0),v(-0.15));
+    g.font="bold 24px monospace";g.fillText("★ RACE 100 ★",u(0),v(0.8));
   });
   const floor=new THREE.Mesh(new THREE.PlaneGeometry(W,D),new THREE.MeshLambertMaterial({map:tex}));
-  floor.rotation.x=-Math.PI/2;
-  floor.position.set(0,0,(COURT.floorMinZ+COURT.floorMaxZ)/2);
-  scene.add(floor);
+  floor.rotation.x=-Math.PI/2; floor.position.set(0,0,-3); scene.add(floor);
   // 当前点位高亮:平铺在地板上的发光圆环(用圆形几何+画布贴图,兼容性最好),随站位移动并轻微脉动
   const ringTex=pixTex(128,128,(g)=>{
     g.clearRect(0,0,128,128);
@@ -1216,21 +1202,16 @@ function buildStands(){
       }
     }
   }
-  side(0,COURT.nearBaseline-2,26,"x",1,5);       // active basket end
-  side(0,COURT.farBaseline+2,26,"x",-1,4);       // far end
-  side(-13.4,COURT.midZ,COURT.length+4,"z",1,5); // left sideline
-  side(13.4,COURT.midZ,COURT.length+4,"z",-1,5); // right sideline
+  side(0,-11.6,26,"x",1,5);      // behind hoop
+  side(0, 7.0,26,"x",-1,4);      // behind shooter
+  side(-13.4,-3,17,"z",1,5);     // left
+  side(13.4,-3,17,"z",-1,5);     // right
   // banner walls
   const banners=[["aiBA PERCENT BATTLE","#13213f","#ffd23f"],["MINE-DEW 深远三分区","#0c3a14","#9dff8d"],["像素之夜 PIXEL NIGHT","#3a1240","#ff9df1"]];
-  const wallDefs=[
-    [0,3.6,COURT.nearBaseline-9.4,0,26],
-    [-19.5,3.6,COURT.midZ,Math.PI/2,38],
-    [19.5,3.6,COURT.midZ,-Math.PI/2,38],
-    [0,3.6,COURT.farBaseline+7.5,Math.PI,26]
-  ];
+  const wallDefs=[[0,3.6,-19,0],[ -19.5,3.6,-3,Math.PI/2],[19.5,3.6,-3,-Math.PI/2],[0,3.6,13.5,Math.PI]];
   wallDefs.forEach((w,i)=>{
     const b=banners[i%banners.length];
-    const m=new THREE.Mesh(new THREE.PlaneGeometry(w[4],4),
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(26,4),
       new THREE.MeshBasicMaterial({map:bannerTex(b[0],b[1],b[2])}));
     m.position.set(w[0],w[1]+4.5,w[2]);m.rotation.y=w[3];scene.add(m);
   });
@@ -1294,16 +1275,16 @@ function makeMascot(x,z){
   showCrew.push({type:"mascot",g,arms:[armL,armR],stripes,phase:Math.random()*7});
 }
 function buildBackcourtShow(){
-  makeAdBoard("N1KE AIR","#11131a","#f7f7f7",-8.05,COURT.midZ+4.2,Math.PI/2,2.6);
-  makeAdBoard("ADI-DASH","#f7f7f7","#11131a",-8.05,COURT.midZ+7.5,Math.PI/2,2.6);
-  makeAdBoard("PIXEL SPORT","#182f61","#ffd23f",8.05,COURT.midZ+4.2,-Math.PI/2,2.8);
-  makeAdBoard("BLOCKADE","#3b132f","#ffb7ec",8.05,COURT.midZ+7.5,-Math.PI/2,2.8);
-  makeAdBoard("MINE-DEW","#0c3a14","#9dff8d",-4.6,COURT.farBaseline-.2,Math.PI,3.0);
-  makeAdBoard("COURT CAM","#27212f","#9fd1ff",0,COURT.farBaseline-.2,Math.PI,3.0);
-  makeAdBoard("3PT KING","#5b1212","#ffd23f",4.6,COURT.farBaseline-.2,Math.PI,3.0);
-  const cheerPos=[[-5.8,COURT.midZ+6.1],[-4.7,COURT.midZ+7.4],[-3.6,COURT.midZ+6.3],[3.6,COURT.midZ+6.3],[4.7,COURT.midZ+7.4],[5.8,COURT.midZ+6.1]];
+  makeAdBoard("N1KE AIR","#11131a","#f7f7f7",-8.05,5.8,Math.PI/2,2.6);
+  makeAdBoard("ADI-DASH","#f7f7f7","#11131a",-8.05,7.6,Math.PI/2,2.6);
+  makeAdBoard("PIXEL SPORT","#182f61","#ffd23f",8.05,5.8,-Math.PI/2,2.8);
+  makeAdBoard("BLOCKADE","#3b132f","#ffb7ec",8.05,7.6,-Math.PI/2,2.8);
+  makeAdBoard("MINE-DEW","#0c3a14","#9dff8d",-4.6,9.35,Math.PI,3.0);
+  makeAdBoard("COURT CAM","#27212f","#9fd1ff",0,9.35,Math.PI,3.0);
+  makeAdBoard("3PT KING","#5b1212","#ffd23f",4.6,9.35,Math.PI,3.0);
+  const cheerPos=[[-5.8,7.3],[-4.7,8.35],[-3.6,7.45],[3.6,7.45],[4.7,8.35],[5.8,7.3]];
   cheerPos.forEach((p,i)=>makeCheerleader(p[0],p[1],i%2?0xffc72c:0x1d428a,i%2?0x7CFC6B:0xff4fd8));
-  makeMascot(6.35,COURT.midZ+8.2);
+  makeMascot(6.35,8.35);
 }
 function updBackcourtShow(t){
   showCrew.forEach((c,i)=>{
@@ -1392,36 +1373,13 @@ function buildHoop(){
     new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:0.75}));
   netMesh.position.set(HOOP.x,HOOP.y-0.26,HOOP.z);grp.add(netMesh);
   scene.add(grp);
-
-  // 远端装饰篮筐：让场馆在俯拍/回放里真正读成一块全场。
-  const farGrp=new THREE.Group();
-  const farPole=new THREE.Mesh(new THREE.BoxGeometry(0.3,3.4,0.3),polM);
-  farPole.position.set(0,1.7,COURT.farBaseline+.62);farGrp.add(farPole);
-  const farArm=new THREE.Mesh(new THREE.BoxGeometry(0.24,0.24,1.6),polM);
-  farArm.position.set(0,3.45,COURT.farBaseline-.18);farGrp.add(farArm);
-  const farBoard=new THREE.Mesh(new THREE.BoxGeometry(1.9,1.1,0.12),
-    new THREE.MeshLambertMaterial({map:bTex}));
-  farBoard.position.set(0,3.5,COURT.farBaseline-.96);farGrp.add(farBoard);
-  for(let i=0;i<8;i++){
-    const a=i/8*Math.PI*2;
-    const seg=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.07,0.09),rimM);
-    seg.position.set(Math.cos(a)*.3,HOOP.y,COURT.farHoopZ+Math.sin(a)*.3);
-    seg.rotation.y=-a+Math.PI/2;farGrp.add(seg);
-  }
-  const farConn=new THREE.Mesh(new THREE.BoxGeometry(.12,.07,.32),rimM);
-  farConn.position.set(0,HOOP.y,COURT.farHoopZ+.42);farGrp.add(farConn);
-  const farNet=new THREE.Mesh(
-    new THREE.CylinderGeometry(.28,.16,.45,8,3,true),
-    new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:.6}));
-  farNet.position.set(0,HOOP.y-.26,COURT.farHoopZ);farGrp.add(farNet);
-  scene.add(farGrp);
 }
 /* light cones + jumbotron */
 let jumboCv,jumboTex;
 function buildAtmos(){
   const coneM=new THREE.MeshBasicMaterial({color:0xaaccff,transparent:true,opacity:0.055,
     blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
-  [[-8,COURT.nearBaseline+.8],[8,COURT.nearBaseline+.8],[-8,COURT.midZ],[8,COURT.midZ],[-8,COURT.farBaseline-.8],[8,COURT.farBaseline-.8]].forEach(p=>{
+  [[-8,-9],[8,-9],[-8,3],[8,3]].forEach(p=>{
     const c=new THREE.Mesh(new THREE.ConeGeometry(3.4,12,6,1,true),coneM);
     c.position.set(p[0],6.5,p[1]);scene.add(c);
     const lamp=new THREE.Mesh(new THREE.BoxGeometry(0.8,0.4,0.8),
@@ -1434,9 +1392,9 @@ function buildAtmos(){
   const jm=new THREE.MeshBasicMaterial({map:jumboTex});
   const dark=new THREE.MeshLambertMaterial({color:0x15151f});
   const jumbo=new THREE.Mesh(new THREE.BoxGeometry(3.6,1.9,3.6),[jm,jm,dark,dark,jm,jm]);
-  jumbo.position.set(0,9.5,COURT.midZ);scene.add(jumbo);
+  jumbo.position.set(0,9.5,-3);scene.add(jumbo);
   const hang=new THREE.Mesh(new THREE.BoxGeometry(0.2,3,0.2),dark);
-  hang.position.set(0,12,COURT.midZ);scene.add(hang);
+  hang.position.set(0,12,-3);scene.add(hang);
   updJumbo();
 }
 function updJumbo(){
@@ -1832,8 +1790,7 @@ function updPlayCam(dt){
     camSnap=true;
   }else if(CAM.mode===1){
     if(isBattle){
-      // 取景方向锁定在球场纵轴，人物换点转身不再带着镜头绕场旋转。
-      autoFrameCam(camTarget,P.pos,P.jump,COURT_ATTACK_DIR,{marginX:1.48,marginY:1.36,minDist:5.8,maxDist:32});
+      autoFrameCam(camTarget, P.pos, P.jump, d,{marginX:1.48,marginY:1.36,minDist:5.8,maxDist:32});
       dampRig(dt,4.5);
     }else{
       camTarget.pos.set(P.pos.x-d.x*3.4,2.35+P.jump*0.4,P.pos.z-d.z*3.4);
@@ -1842,7 +1799,7 @@ function updPlayCam(dt){
     }
   }else{
     if(isBattle){
-      autoFrameCam(camTarget,P.pos,P.jump,COURT_ATTACK_DIR,{broadcast:true,marginX:1.58,marginY:1.42,minDist:6.2,maxDist:34,lookLift:0.18});
+      autoFrameCam(camTarget, P.pos, P.jump, d,{broadcast:true,marginX:1.58,marginY:1.42,minDist:6.2,maxDist:34,lookLift:0.18});
       dampRig(dt,4.5);
     }else{
       camTarget.pos.set(12.5,5.0,-2.5);
@@ -3041,7 +2998,8 @@ function startBattle(){
   rig.pos.set(0,11,7);rig.look.copy(HOOP);
   paSay("百分大战开始!先到一百分获胜!",true);
   // 开场即取第三人称取景,推进到位后开始倒计时
-  autoFrameCam(camTarget,P.pos,0,COURT_ATTACK_DIR,{marginX:1.48,marginY:1.36,minDist:5.8,maxDist:32});
+  const _fd=V3(Math.sin(P.face),0,Math.cos(P.face));
+  autoFrameCam(camTarget,P.pos,0,_fd,{marginX:1.48,marginY:1.36,minDist:5.8,maxDist:32});
   glideTo(camTarget.pos.clone(),camTarget.look.clone(),1.4,()=>countdownBattle(3));
 }
 function countdownBattle(n){
@@ -3469,11 +3427,7 @@ function battlePlayerPos(){
 function avoidPlayerOverlap(pos,i){
   const pp=battlePlayerPos();if(!pp)return pos;
   const dx=pos.x-pp.x,dz=pos.z-pp.z,d=Math.hypot(dx,dz);
-  if(d>=OPP_MIN_SEP){
-    pos.x=clamp(pos.x,-COURT.halfWidth+.55,COURT.halfWidth-.55);
-    pos.z=clamp(pos.z,COURT.nearBaseline+.55,COURT.playMaxZ);
-    return pos;
-  }
+  if(d>=OPP_MIN_SEP)return pos;
   const toHoop=HOOP.clone().sub(pos);toHoop.y=0;
   if(toHoop.lengthSq()<0.0001)toHoop.set(0,0,-1);
   toHoop.normalize();
@@ -3487,9 +3441,7 @@ function avoidPlayerOverlap(pos,i){
   const push=Math.max(OPP_MIN_SEP-d,0.78);
   pos.addScaledVector(away,push);
   pos.addScaledVector(side,sideSign*0.44);
-  // 对手的防重叠偏移也必须留在同一半场，不允许被推到中线外。
-  pos.x=clamp(pos.x,-COURT.halfWidth+.55,COURT.halfWidth-.55);
-  pos.z=clamp(pos.z,COURT.nearBaseline+.55,COURT.playMaxZ);
+  if(BATTLE_SPOTS[i]&&BATTLE_SPOTS[i].super)pos.z+=0.55;
   return pos;
 }
 function oppSpotPos(i){
@@ -4225,8 +4177,8 @@ function animate(){
   else if(G.state==="aishow")updShowCam();
   else if(["menu","diff","intro","roundend","sim","bracket","champion","runnerup","eliminated","battleend"].includes(G.state)){
     const a=G.tNow*0.1;
-    rig.pos.set(Math.cos(a)*18,8+Math.sin(G.tNow*0.3)*0.5,COURT.midZ+Math.sin(a)*20);
-    rig.look.set(0,2.2,COURT.midZ);
+    rig.pos.set(Math.cos(a)*13,6.5+Math.sin(G.tNow*0.3)*0.5,Math.sin(a)*11-3);
+    rig.look.set(0,2.5,-5);
   }
   else if((G.state==="round"||G.state==="tiebreak"||G.state==="battle")&&!G.glideCam)updPlayCam(dt);
   camera.position.copy(rig.pos);
