@@ -1,6 +1,9 @@
 *.DS_Store
 .DS_Store
 assets/aiba-covers/*.MOV
+assets/aiba-covers/MJ24.mp4
+assets/aiba-covers/tmac1.mp4
+assets/aiba-audio/*-source.mp3
 block-3pt-king-promo.mp4
 block-3pt-kingv*.backup-*.html
 block-3pt-kingv*.imported-*.html

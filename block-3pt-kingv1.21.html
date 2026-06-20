@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>aiBA·百分大战 v1.22</title>
+<title>aiBA·百分大战 v1.21</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html,body{height:100%;overflow:hidden;background:#04050a;touch-action:none;user-select:none;-webkit-user-select:none;
@@ -262,7 +262,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <script>typeof THREE==="undefined"&&document.write('<script src="https://lib.baomitu.com/three.js/r128/three.min.js"><\/script>')</script>
 <script>
 /* =====================================================
-   aiBA·百分大战 v1.22
+   aiBA·百分大战 v1.21
    Minecraft-style NBA 3-Point Contest · 单文件实现
    ===================================================== */
 "use strict";
@@ -292,7 +292,7 @@ const rnd=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 /* ---------------- constants ---------------- */
-const GAME_VERSION="v1.22";
+const GAME_VERSION="v1.21";
 const GAME_NAME="aiBA·百分大战";
 // NBA 标准全场坐标：保留原篮筐/三分点，只向远端延长球场。
 const COURT={
@@ -395,10 +395,10 @@ const G={
   battleStock:null,battleReadyAt:null,superStock:0,superSeenMe:0,superSeenOpp:0
 };
 
-/* ====== 外部音频:本地观众声仅在比赛中循环,其余留空时使用内置合成音 ======
-   后续素材可从 pixabay.com/sound-effects 搜索 "applause arena" "buzzer" "crowd boo"
-   loop类: bgm / crowd / crowdCheer   一次性: applause / boo / horn / buzzer / bounce / swish */
-const EXT_AUDIO={ bgm:"assets/aiba-audio/menu-basketball-dubstep.mp3", crowd:"assets/aiba-audio/crowd-basketball-game.mp3", crowdCheer:"assets/aiba-audio/crowd-cheer-stadium.mp3", applause:"", boo:"", horn:"", buzzer:"", bounce:"", swish:"" };
+/* ====== 外部音频(可选):把免费直链填进引号即可,留空则用内置高拟真合成音 ======
+   推荐: pixabay.com/sound-effects 搜索 "basketball crowd" "applause arena" "buzzer" "crowd boo"
+   loop类: bgm / crowd   一次性: applause / boo / horn / buzzer / bounce / swish */
+const EXT_AUDIO={ bgm:"", crowd:"", applause:"", boo:"", horn:"", buzzer:"", bounce:"", swish:"" };
 /* ====== 台词真人配音(可选): "台词原文" → mp3地址或dataURI ======
    免费有情绪的中文配音推荐 edge-tts 批量生成 (zh-CN-YunjianNeural 体育解说风):
    pip install edge-tts
@@ -422,11 +422,6 @@ function syncAudioDebug(){
     r.dataset.audioMuted=s.muted?"1":"0";
     r.dataset.audioMenu=s.menuMusic?"1":"0";
     r.dataset.audioArena=s.arenaMusic?"1":"0";
-    r.dataset.audioBgmExternal=s.bgmExternal?"1":"0";
-    r.dataset.audioBgmPlaying=s.bgmPlaying?"1":"0";
-    r.dataset.audioCrowdExternal=s.crowdExternal?"1":"0";
-    r.dataset.audioCrowdPlaying=s.crowdPlaying?"1":"0";
-    r.dataset.audioCrowdCheerPlaying=s.crowdCheerPlaying?"1":"0";
     const b=$("muteBtn");
     if(b){
       b.textContent=s.muted?"🔇":(s.ready?"🔊":"🔈");
@@ -439,9 +434,7 @@ function extInit(){
     const u=EXT_AUDIO[k];if(!u)continue;
     try{
       const a=new Audio(u);a.crossOrigin="anonymous";
-      const looped=k==="bgm"||k==="crowd"||k==="crowdCheer";
-      a.preload=looped?"auto":"metadata";a.loop=looped;
-      a.volume=k==="crowd"?0.25:(k==="crowdCheer"?0.23:(k==="bgm"?0.58:0.85));
+      a.loop=(k==="bgm"||k==="crowd");a.volume=k==="crowd"?0.55:0.85;
       a.onerror=()=>{delete extA[k];};
       extA[k]=a;
     }catch(e){}
@@ -450,9 +443,8 @@ function extInit(){
 function extPlay(k){
   const a=extA[k];if(!a||MUTED)return false;
   try{
-    const playSafe=x=>{const p=x.play();if(p&&p.then)p.then(()=>syncAudioDebug()).catch(()=>syncAudioDebug());};
-    if(a.loop){a.currentTime=0;playSafe(a);}
-    else{const c=a.cloneNode();c.volume=a.volume;playSafe(c);}
+    if(a.loop){a.currentTime=0;a.play();}
+    else{const c=a.cloneNode();c.volume=a.volume;c.play();}
   }catch(e){return false}
   return true;
 }
@@ -507,7 +499,7 @@ function audioInit(){
     const rg=AC.createGain();rg.gain.value=0.5;
     rum.connect(lpf);lpf.connect(rg);rg.connect(crowdBus);rum.start();
     extInit();
-    if(extA.crowd||extA.crowdCheer)crowdBus.gain.value=0.035;
+    if(extA.crowd){crowdBus.gain.value=0.04;extPlay("crowd");}
     // ---- 随机现场事件:人浪/零星掌声/口哨/远处喊叫 ----
     ambTimer=setInterval(()=>{
       if(!AC||MUTED)return;
@@ -539,9 +531,7 @@ function primeAudio(force){
 }
 function audioState(){
   return {hasContext:!!AC,state:AC?AC.state:"none",ready:AUDIO_READY,primed:AUDIO_PRIMED,muted:MUTED,
-    menuMusic:!!musicTimer||!!(extA.bgm&&!extA.bgm.paused),arenaMusic:!!arenaTimer,crowd:!!crowdBus,
-    bgmExternal:!!extA.bgm,bgmPlaying:!!(extA.bgm&&!extA.bgm.paused),crowdExternal:!!(extA.crowd||extA.crowdCheer),
-    crowdPlaying:!!(extA.crowd&&!extA.crowd.paused),crowdCheerPlaying:!!(extA.crowdCheer&&!extA.crowdCheer.paused)};
+    menuMusic:!!musicTimer,arenaMusic:!!arenaTimer,crowd:!!crowdBus};
 }
 try{window.__aibaAudioState=audioState;}catch(e){}
 function ensureAudio(menuMusic,forcePrime){
@@ -551,7 +541,7 @@ function ensureAudio(menuMusic,forcePrime){
   primeAudio(!!forcePrime);
   const startMenu=()=>{
     AUDIO_READY=AC&&AC.state==="running";
-    if(menuMusic&&!audioState().menuMusic&&(G.state==="menu"||G.state==="diff"))music(true,false);
+    if(menuMusic&&!musicTimer&&(G.state==="menu"||G.state==="diff"))music(true,false);
     syncAudioDebug();
   };
   try{
@@ -793,14 +783,10 @@ function enterArenaAudio(intensity){
   if(!AC)return;
   music(false);
   arenaMusic(true,intensity||0.8);
-  if(extA.crowd)extPlay("crowd");
-  if(extA.crowdCheer)extPlay("crowdCheer");
   crowdSwell(0.08,1.8);
 }
 function leaveArenaAudio(){
   arenaMusic(false);
-  extStop("crowd");
-  extStop("crowdCheer");
   syncAudioDebug();
 }
 function shoeSqueak(strong){
@@ -920,7 +906,7 @@ function cheerSound(big){
 function music(on,fast){
   if(musicTimer){clearInterval(musicTimer);musicTimer=null;}
   arenaMusic(false);
-  if(extA.bgm){on?extPlay("bgm"):extStop("bgm");syncAudioDebug();return;}
+  if(extA.bgm){on?extPlay("bgm"):extStop("bgm");if(extA.bgm)return;}
   if(!on||!AC){syncAudioDebug();return;}
   const bass=[82,82,110,82,98,82,110,123];
   const mel=[330,392,440,523,440,392,659,523];
@@ -997,22 +983,19 @@ function toggleMute(){
   const menuLike=G.state==="menu"||G.state==="diff";
   const arenaLike=G.state==="cinematic"||G.state==="round"||G.state==="tiebreak"||G.state==="battle";
   try{
-    const s=audioState();
-    const needsStart=MUTED||!AC||AC.state==="suspended"||(menuLike&&!s.menuMusic)||
-      (arenaLike&&(!arenaTimer||(extA.crowd&&extA.crowd.paused)||(extA.crowdCheer&&extA.crowdCheer.paused)));
+    const needsStart=MUTED||!AC||AC.state==="suspended"||(menuLike&&!musicTimer)||(arenaLike&&!arenaTimer);
     if(needsStart){
       MUTED=false;$("muteBtn").textContent="🔊";
       ensureAudio(menuLike,true);
       if(arenaLike&&!arenaTimer)enterArenaAudio(0.85);
-      if(extA.crowd&&arenaLike)extPlay("crowd");
-      if(extA.crowdCheer&&arenaLike)extPlay("crowdCheer");
+      if(extA.crowd)extPlay("crowd");
       syncAudioDebug();
       return;
     }
     MUTED=true;$("muteBtn").textContent="🔇";
     if(AC)AC.suspend();
     if(window.speechSynthesis&&MUTED)speechSynthesis.cancel();
-    if(MUTED){extStop("bgm");extStop("crowd");extStop("crowdCheer");}
+    if(MUTED){extStop("bgm");extStop("crowd");}
     syncAudioDebug();
   }catch(e){}
 }
@@ -4152,10 +4135,7 @@ function fallbackSave(blob){
 function audioGestureUnlock(e){
   if(e&&e.target&&e.target.id==="muteBtn")return;
   const menuLike=G.state==="menu"||G.state==="diff";
-  const arenaLike=G.state==="cinematic"||G.state==="round"||G.state==="tiebreak"||G.state==="battle";
-  if(!AC||AC.state==="suspended"||(menuLike&&!audioState().menuMusic))ensureAudio(menuLike,true);
-  if(arenaLike&&extA.crowd&&extA.crowd.paused)extPlay("crowd");
-  if(arenaLike&&extA.crowdCheer&&extA.crowdCheer.paused)extPlay("crowdCheer");
+  if(!AC||AC.state==="suspended"||(menuLike&&!musicTimer))ensureAudio(menuLike,true);
 }
 function onDown(e){
   if(e.target&&e.target.id==="camBtn")return;
