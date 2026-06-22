@@ -36,15 +36,18 @@ http://127.0.0.1:4174/
 ## 项目结构
 
 - `index.html`：当前可玩的入口文件。
-- `block-3pt-kingv*.html`：版本快照。
-- `assets/`：游戏图片资源。
+- `block-3pt-kingv1.30.html`：当前版本快照。
+- `assets/`：游戏图片、视频和音频资源。
 - `vendor/`：随项目带的第三方运行文件，目前主要是 Three.js。
+- `backup/`：本地历史版本归档，不参与发布。
+- `docs/`：本地需求与迭代文档，不参与发布。
 
 ## 说明
 
 项目还在快速迭代，所以 README 只保留稳定信息，不维护详细 changelog。具体版本变化以 Git 历史为准。
 
 Three.js 按其 MIT License 使用。项目生成的图片资源默认随本项目使用，除非后续另有说明。
+第三方音频的来源与独立许可见 [`assets/aiba-audio/SOURCE.md`](assets/aiba-audio/SOURCE.md)。
 
 ## License
 

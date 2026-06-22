@@ -1,5 +1,7 @@
 *.DS_Store
 .DS_Store
+backup/
+docs/
 assets/aiba-covers/*.MOV
 assets/aiba-covers/MJ24.mp4
 assets/aiba-covers/tmac1.mp4
