@@ -594,7 +594,7 @@ function visionPhaseLabel(step,sample){
 function drawVisionPose(lm,sample,phase){
   const cv=$("visionCanvas"),video=$("visionVideo");if(!cv||!video)return;
   const w=video.videoWidth||640,h=video.videoHeight||480;if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;}
-  const g=cv.getContext("2d");g.clearRect(0,0,w,h);if(!lm)return;
+  const g=cv.getContext("2d");g.clearRect(0,0,w,h);if(video.readyState>=2){g.filter='saturate(.72) contrast(1.08) brightness(.78)';g.drawImage(video,0,0,w,h);g.filter='none';}if(!lm)return;
   const color=phase==="charging"?"#7CFC6B":(phase==="hold"?"#ffd23f":"#70e8ff");
   g.lineWidth=Math.max(2,w/260);g.strokeStyle=color;g.fillStyle=color;g.globalAlpha=.92;
   for(const c of VISION.connections){const a=lm[c[0]],b=lm[c[1]];if(!a||!b||visionConfidence(a)<.35||visionConfidence(b)<.35)continue;g.beginPath();g.moveTo(a.x*w,a.y*h);g.lineTo(b.x*w,b.y*h);g.stroke();}
