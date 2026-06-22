@@ -37,7 +37,7 @@ http://127.0.0.1:4174/
 ## 项目结构
 
 - `index.html`：当前可玩的入口文件。
-- `block-3pt-kingv1.31-vision-alpha.html`：当前实验版本快照。
+- `block-3pt-kingv1.32-vision-alpha.html`：当前实验版本快照。
 - `assets/`：游戏图片、视频和音频资源。
 - `vendor/`：随项目带的第三方运行文件，包括 Three.js 与 MediaPipe Tasks Vision。
 - `backup/`：本地历史版本归档，不参与发布。
