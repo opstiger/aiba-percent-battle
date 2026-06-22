@@ -1,0 +1,4 @@
+vendor/mediapipe/vision_bundle.mjs binary
+vendor/mediapipe/wasm/*.js binary
+vendor/mediapipe/wasm/*.wasm binary
+assets/aiba-vision/*.task binary

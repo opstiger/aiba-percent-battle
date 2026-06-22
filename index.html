@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>aiBA·百分大战 v1.30</title>
+<title>aiBA·百分大战 v1.31 VISION ALPHA</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{--app-height:100dvh;height:100%;height:var(--app-height);background:#04050a}
@@ -112,6 +112,28 @@ html,body{width:100%;height:100%;height:var(--app-height);overflow:hidden;backgr
   background:rgba(0,0,0,.6);border:2px solid #333;padding:8px 12px;display:none;z-index:45;
   font-size:13px;color:#dde;white-space:nowrap;display:none}
 #showUI .btn{margin:0 0 0 8px;padding:5px 9px;font-size:11px}
+/* vision-shot experimental controller */
+#visionPreview{--vision-accent:#70e8ff;position:fixed;left:max(10px,env(safe-area-inset-left));top:50%;transform:translateY(-50%);
+  z-index:55;width:clamp(122px,22vw,172px);display:none;background:#050912;border:2px solid var(--vision-accent);
+  box-shadow:5px 5px 0 rgba(0,0,0,.72),0 0 14px color-mix(in srgb,var(--vision-accent) 28%,transparent);pointer-events:auto}
+#visionPreview[data-phase="hold"]{--vision-accent:#ffd23f}#visionPreview[data-phase="charging"]{--vision-accent:#7CFC6B}
+#visionPreview[data-phase="release"]{--vision-accent:#fff}#visionPreview[data-phase="error"]{--vision-accent:#ff5d4d}
+.visionHead{height:25px;display:flex;align-items:center;justify-content:space-between;padding-left:7px;border-bottom:1px solid rgba(255,255,255,.14);
+  background:#0a111d;color:#a9c5d6;font-size:8px;font-weight:bold;letter-spacing:1px}
+.visionHead b{color:var(--vision-accent);font-size:9px}.visionClose{width:25px;height:24px;border:0;border-left:1px solid rgba(255,255,255,.14);
+  background:#111925;color:#dbe8ef;font:18px/1 monospace;cursor:pointer}
+.visionStage{position:relative;width:100%;aspect-ratio:4/3;overflow:hidden;background:#090d12}
+#visionVideo,#visionCanvas{position:absolute;inset:0;width:100%;height:100%;object-fit:cover;transform:scaleX(-1)}
+#visionVideo{filter:saturate(.72) contrast(1.08) brightness(.78)}#visionCanvas{pointer-events:none}
+.visionScan{position:absolute;inset:0;pointer-events:none;background:repeating-linear-gradient(0deg,transparent 0 4px,rgba(0,0,0,.18) 4px 5px)}
+.visionFoot{height:31px;position:relative;padding:5px 7px;background:#080d16;border-top:1px solid rgba(255,255,255,.12)}
+#visionState{display:block;color:var(--vision-accent);font-size:9px;font-weight:bold;letter-spacing:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.visionTrack{position:absolute;left:7px;right:7px;bottom:4px;height:3px;background:#1e2b39}.visionTrack i{display:block;width:0;height:100%;background:var(--vision-accent);transition:width .08s linear}
+.visionMode{width:88%;margin:10px auto 4px;display:grid;grid-template-columns:minmax(0,1fr) repeat(2,minmax(82px,112px));align-items:stretch;
+  background:#0e141e;border:2px solid #354356;box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}
+.visionModeLabel{padding:9px 11px;text-align:left}.visionModeLabel small{display:block;color:#778fa4;font-size:8px;letter-spacing:2px}.visionModeLabel b{font-size:12px;color:#eef7ff}
+.visionMode button{border:0;border-left:1px solid #354356;background:#161f2b;color:#8ea3b8;font:10px "Courier New",monospace;font-weight:bold;cursor:pointer}
+.visionMode button.active{background:#123b42;color:#70e8ff;box-shadow:inset 0 -3px 0 #70e8ff}.visionMode button:disabled{opacity:.38;cursor:not-allowed}
 /* toasts & pops */
 #toast{position:fixed;top:24%;left:50%;transform:translateX(-50%);z-index:45;font-size:24px;font-weight:bold;
   text-shadow:3px 3px 0 #000;opacity:0;transition:opacity .15s;pointer-events:none;text-align:center}
@@ -248,6 +270,8 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 @media (max-width:820px) and (max-height:700px){.coverMenu{align-items:flex-end}.coverKicker{margin-bottom:6px}.coverTitle{font-size:40px}.coverSub{display:none}.coverActions{gap:8px;margin-top:14px}.modeTile{min-height:82px}.modeDesc{display:none}.modeName{font-size:25px}.modeCopy{padding-top:10px;padding-bottom:10px}}
 @media (max-width:600px){#bootLoad{padding:max(20px,env(safe-area-inset-top)) max(20px,env(safe-area-inset-right)) max(20px,env(safe-area-inset-bottom)) max(20px,env(safe-area-inset-left))}.bootFrame{padding:24px 20px 20px}.bootBrand{font-size:56px}.bootEdition{letter-spacing:3px}.bootStart b{font-size:14px}}
 @media (max-width:600px){#finalRun{gap:10px;padding-left:14px;padding-right:14px}#finalRun b{font-size:30px}#finalRun small{letter-spacing:2px}.sceneOption{grid-template-columns:72px minmax(0,1fr) auto;padding:9px 10px}.sceneOption .sceneSwatch{width:70px;height:46px}.sceneOption em{font-size:9px}}
+@media (max-width:600px){#visionPreview:not([data-context="setup"]){left:max(10px,env(safe-area-inset-left));right:auto;top:auto;bottom:max(122px,calc(env(safe-area-inset-bottom) + 112px));transform:none;width:116px}}
+@media (max-width:600px){#visionPreview[data-context="setup"]{left:max(10px,env(safe-area-inset-left));right:auto;top:auto;bottom:max(12px,env(safe-area-inset-bottom));transform:none;width:116px}.visionMode{grid-template-columns:minmax(0,1fr) repeat(2,minmax(72px,1fr))}}
 @media (max-height:560px){h1.title{font-size:26px}#ovBox{padding:12px}#ov.cover-menu #ovBox{padding:0}.coverMenu{align-items:center}.coverTitle{font-size:40px}.coverSub{display:none}.coverStar,.coverCredit{display:none}.modeTile{min-height:76px}.modeDesc{display:none}.modeName{font-size:24px}}
 @media (prefers-reduced-motion:reduce){.coverVideo{display:none}#bootLoad,.bootMeter i,.bootStart{transition:none}#finalRun.show{animation:none;opacity:1;transform:none}}
 </style>
@@ -259,7 +283,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <div id="bootLoad" role="dialog" aria-modal="true" aria-busy="true" aria-label="游戏资源加载" tabindex="0">
   <div class="bootFrame">
     <div class="bootBrand"><span>ai</span>BA</div>
-    <div class="bootEdition">PERCENT BATTLE / v1.30</div>
+    <div class="bootEdition">VISION SHOT / v1.31 ALPHA</div>
     <div class="bootRule"></div>
     <div id="bootStatus" class="bootStatus">正在展开赛场</div>
     <div class="bootMeter" aria-hidden="true"><i id="bootBar"></i></div>
@@ -296,6 +320,12 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
   <div id="hint">按住屏幕蓄力 · 松开出手 · 停在绿色甜区</div>
 </div>
 
+<aside id="visionPreview" data-phase="align" aria-label="视觉投篮摄像头预览">
+  <div class="visionHead"><span><b>●</b> LOCAL POSE</span><button class="visionClose" type="button" aria-label="关闭视觉投篮" onclick="disableVisionControl(event)">×</button></div>
+  <div class="visionStage"><video id="visionVideo" muted playsinline></video><canvas id="visionCanvas"></canvas><div class="visionScan"></div></div>
+  <div class="visionFoot"><span id="visionState">等待启动</span><div class="visionTrack"><i id="visionTrackFill"></i></div></div>
+</aside>
+
 <div id="toast" class="px"></div>
 <div id="pops"></div>
 <div id="countN"></div>
@@ -326,7 +356,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <script>typeof THREE==="undefined"&&document.write('<script src="https://lib.baomitu.com/three.js/r128/three.min.js"><\/script>')</script>
 <script>
 /* =====================================================
-   aiBA·百分大战 v1.30
+   aiBA·百分大战 v1.31 VISION ALPHA
    Minecraft-style NBA 3-Point Contest · 单文件实现
    ===================================================== */
 "use strict";
@@ -356,7 +386,7 @@ const rnd=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 /* ---------------- constants ---------------- */
-const GAME_VERSION="v1.30";
+const GAME_VERSION="v1.31-vision-alpha";
 const GAME_NAME="aiBA·百分大战";
 // NBA 标准全场坐标：保留原篮筐/三分点，只向远端延长球场。
 const COURT={
@@ -476,6 +506,184 @@ const G={
   battleSpot:2,battleOpp:null,battleOppScore:0,battleNext:1.2,battleOver:false,finalRun:false,
   battleStock:null,battleReadyAt:null,superStock:0,superSeenMe:0,superSeenOpp:0
 };
+
+/* ---------------- vision-shot experimental controller ---------------- */
+const VISION={
+  supported:!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia),desired:false,enabled:false,loading:false,liveControl:true,
+  stream:null,landmarker:null,lastDetect:0,lastVideoTime:-1,raf:0,ownsCharge:false,lastSample:null,
+  machine:{phase:"align",holdStart:0,chargeStart:0,lastSeen:0,cooldownUntil:0,releaseFlashUntil:0},
+  connections:[[11,12],[11,13],[13,15],[15,17],[15,19],[15,21],[12,14],[14,16],[16,18],[16,20],[16,22],[11,23],[12,24],[23,24]]
+};
+function visionGameActive(){return (G.state==="round"||G.state==="tiebreak"||G.state==="battle")&&G.canShoot&&!G.cutAway&&!G.battleCut;}
+function resetVisionGesture(sm){sm.phase="align";sm.holdStart=0;sm.chargeStart=0;sm.lastSeen=0;sm.cooldownUntil=0;sm.releaseFlashUntil=0;}
+function visionGestureStep(sm,sample,now){
+  const event={type:"none",phase:sm.phase,progress:0};
+  if(sample.valid)sm.lastSeen=now;
+  if(sm.phase==="cooldown"){
+    if(now<sm.releaseFlashUntil){event.phase="release";event.progress=1;return event;}
+    if(now>=sm.cooldownUntil&&!sample.ready){sm.phase="align";}
+    event.phase=sm.phase;return event;
+  }
+  if(!sample.valid){
+    if(sm.phase==="charging"&&now-sm.lastSeen>420){sm.phase="align";event.type="cancel";}
+    else if(sm.phase==="hold"){sm.phase="align";sm.holdStart=0;}
+    event.phase=sm.phase;return event;
+  }
+  if(sm.phase==="align"){
+    if(sample.ready){sm.phase="hold";sm.holdStart=now;}
+    event.phase=sm.phase;return event;
+  }
+  if(sm.phase==="hold"){
+    if(!sample.ready){sm.phase="align";sm.holdStart=0;event.phase=sm.phase;return event;}
+    event.progress=clamp((now-sm.holdStart)/500,0,1);
+    if(now-sm.holdStart>=500){sm.phase="charging";sm.chargeStart=now;event.type="charge";event.progress=0;}
+    event.phase=sm.phase;return event;
+  }
+  if(sm.phase==="charging"){
+    event.progress=clamp((now-sm.chargeStart)/900,0,1);
+    if(sample.release){sm.phase="cooldown";sm.cooldownUntil=now+760;sm.releaseFlashUntil=now+260;event.type="release";event.phase="release";event.progress=1;return event;}
+    if(now-sm.chargeStart>2300){sm.phase="align";event.type="cancel";event.phase=sm.phase;event.progress=0;}
+  }
+  return event;
+}
+function visionDist(a,b){return Math.hypot(a.x-b.x,a.y-b.y);}
+function visionMid(a,b){return{x:(a.x+b.x)*.5,y:(a.y+b.y)*.5};}
+function visionAngle(a,b,c){
+  const abx=a.x-b.x,aby=a.y-b.y,cbx=c.x-b.x,cby=c.y-b.y;
+  const denom=Math.hypot(abx,aby)*Math.hypot(cbx,cby);if(denom<1e-5)return 0;
+  return Math.acos(clamp((abx*cbx+aby*cby)/denom,-1,1))*180/Math.PI;
+}
+function visionConfidence(p){return p?(p.visibility==null?(p.presence==null?1:p.presence):p.visibility):0;}
+function visionLandmarkSample(lm,now){
+  const needed=[0,2,5,11,12,13,14,15,16,23,24];
+  if(!lm||needed.some(i=>!lm[i])||Math.min(...needed.map(i=>visionConfidence(lm[i])))<.48)return{valid:false,ready:false,release:false};
+  const shoulder=visionMid(lm[11],lm[12]),hip=visionMid(lm[23],lm[24]),rawWrist=visionMid(lm[15],lm[16]);
+  const wrist=VISION.lastSample?{x:VISION.lastSample.wrist.x*.58+rawWrist.x*.42,y:VISION.lastSample.wrist.y*.58+rawWrist.y*.42}:rawWrist;
+  const shoulderWidth=Math.max(.075,visionDist(lm[11],lm[12])),torso=Math.max(.12,visionDist(shoulder,hip));
+  const dt=VISION.lastSample?Math.max(.016,(now-VISION.lastSample.now)/1000):1/20;
+  const wristSpeed=VISION.lastSample?visionDist(wrist,VISION.lastSample.wrist)/shoulderWidth/dt:0;
+  const upSpeed=VISION.lastSample?(VISION.lastSample.wrist.y-wrist.y)/shoulderWidth/dt:0;
+  const leftAngle=visionAngle(lm[11],lm[13],lm[15]),rightAngle=visionAngle(lm[12],lm[14],lm[16]);
+  const hands=visionDist(lm[15],lm[16])/shoulderWidth;
+  const lower=wrist.y>shoulder.y+torso*.1&&wrist.y<hip.y+torso*.18;
+  const bent=leftAngle>38&&rightAngle>38&&leftAngle<154&&rightAngle<154;
+  const stable=wristSpeed<.48;
+  const ready=lower&&hands>.08&&hands<1.18&&bent&&stable;
+  const eyeY=(lm[2].y+lm[5].y)*.5,releaseLine=eyeY+torso*.1;
+  const extended=Math.max(leftAngle,rightAngle)>142;
+  const release=Math.min(lm[15].y,lm[16].y)<releaseLine&&wrist.y<shoulder.y-torso*.08&&upSpeed>.22&&extended;
+  const sample={valid:true,ready,release,wrist,shoulder,hip,shoulderWidth,torso,leftAngle,rightAngle,hands,wristSpeed,upSpeed,releaseLine,now};
+  VISION.lastSample=sample;return sample;
+}
+function visionSetUI(phase,label,progress){
+  const wrap=$("visionPreview"),state=$("visionState"),fill=$("visionTrackFill");if(!wrap)return;
+  wrap.dataset.phase=phase;wrap.dataset.context=(G.state==="menu"||G.state==="diff")?"setup":"game";
+  if(state)state.textContent=label;if(fill)fill.style.width=(clamp(progress||0,0,1)*100)+"%";
+}
+function visionPhaseLabel(step,sample){
+  if(step.phase==="hold")return"稳定姿势 "+Math.round(step.progress*100)+"%";
+  if(step.phase==="charging"){
+    const blind=VISION.liveControl&&typeof curShot==="function"&&barHiddenFor(curShot());
+    return blind?"向上移动至出手点":"向上出手 · "+Math.round((VISION.liveControl&&G.charging?G.power:step.progress*100))+"%";
+  }
+  if(step.phase==="release")return"出手捕捉";
+  if(step.phase==="cooldown")return"动作复位";
+  if(sample&&sample.valid&&!sample.ready)return"双手置于胸前";
+  return sample&&sample.ready?"姿势就绪":"进入识别区域";
+}
+function drawVisionPose(lm,sample,phase){
+  const cv=$("visionCanvas"),video=$("visionVideo");if(!cv||!video)return;
+  const w=video.videoWidth||640,h=video.videoHeight||480;if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;}
+  const g=cv.getContext("2d");g.clearRect(0,0,w,h);if(!lm)return;
+  const color=phase==="charging"?"#7CFC6B":(phase==="hold"?"#ffd23f":"#70e8ff");
+  g.lineWidth=Math.max(2,w/260);g.strokeStyle=color;g.fillStyle=color;g.globalAlpha=.92;
+  for(const c of VISION.connections){const a=lm[c[0]],b=lm[c[1]];if(!a||!b||visionConfidence(a)<.35||visionConfidence(b)<.35)continue;g.beginPath();g.moveTo(a.x*w,a.y*h);g.lineTo(b.x*w,b.y*h);g.stroke();}
+  for(const i of [0,11,12,13,14,15,16,17,18,19,20,21,22]){const p=lm[i];if(!p||visionConfidence(p)<.35)continue;g.beginPath();g.arc(p.x*w,p.y*h,i===15||i===16?5:3,0,Math.PI*2);g.fill();}
+  if(sample&&sample.valid){
+    g.globalAlpha=.56;g.setLineDash([8,7]);g.strokeStyle="#ffffff";g.beginPath();g.moveTo(0,sample.releaseLine*h);g.lineTo(w,sample.releaseLine*h);g.stroke();g.setLineDash([]);
+    g.globalAlpha=.22;g.fillStyle="#7CFC6B";g.fillRect(0,(sample.shoulder.y+sample.torso*.1)*h,w,(sample.hip.y+sample.torso*.18-sample.shoulder.y-sample.torso*.1)*h);
+  }
+  g.globalAlpha=1;
+}
+async function loadVisionModel(){
+  if(VISION.landmarker)return VISION.landmarker;
+  const mp=await import("./vendor/mediapipe/vision_bundle.mjs");
+  const files=await mp.FilesetResolver.forVisionTasks("./vendor/mediapipe/wasm");
+  const options={baseOptions:{modelAssetPath:"./assets/aiba-vision/pose_landmarker_lite.task",delegate:"GPU"},runningMode:"VIDEO",numPoses:1,
+    minPoseDetectionConfidence:.55,minPosePresenceConfidence:.55,minTrackingConfidence:.55,outputSegmentationMasks:false};
+  try{VISION.landmarker=await mp.PoseLandmarker.createFromOptions(files,options);}
+  catch(e){options.baseOptions.delegate="CPU";VISION.landmarker=await mp.PoseLandmarker.createFromOptions(files,options);}
+  return VISION.landmarker;
+}
+function cancelVisionOwnedCharge(){
+  if(!VISION.ownsCharge)return;VISION.ownsCharge=false;
+  if(G.charging){G.charging=false;G.power=0;const fill=$("pFill");if(fill)fill.style.height="0%";}
+}
+function handleVisionGesture(step){
+  if(!VISION.liveControl||!visionGameActive())return;
+  if(step.type==="charge"){
+    VISION.ownsCharge=!!startCharge();
+    if(!VISION.ownsCharge)resetVisionGesture(VISION.machine);
+  }else if(step.type==="release"&&VISION.ownsCharge){VISION.ownsCharge=false;doRelease();}
+  else if(step.type==="cancel")cancelVisionOwnedCharge();
+}
+function visionFrame(now){
+  if(!VISION.desired)return;VISION.raf=requestAnimationFrame(visionFrame);
+  if(!VISION.enabled||!VISION.landmarker||now-VISION.lastDetect<50)return;
+  const video=$("visionVideo");if(!video||video.readyState<2||video.currentTime===VISION.lastVideoTime)return;
+  VISION.lastDetect=now;VISION.lastVideoTime=video.currentTime;
+  let lm=null;
+  try{const result=VISION.landmarker.detectForVideo(video,now);lm=result&&result.landmarks&&result.landmarks[0]?result.landmarks[0]:null;}
+  catch(e){visionSetUI("error","识别暂时中断",0);return;}
+  const sample=visionLandmarkSample(lm,now);
+  const canAdvance=G.state==="diff"||G.state==="menu"||visionGameActive();
+  if(!canAdvance){resetVisionGesture(VISION.machine);cancelVisionOwnedCharge();}
+  const step=canAdvance?visionGestureStep(VISION.machine,sample,now):{type:"none",phase:"align",progress:0};
+  handleVisionGesture(step);drawVisionPose(lm,sample,step.phase);
+  const blindCharge=step.phase==="charging"&&VISION.liveControl&&typeof curShot==="function"&&barHiddenFor(curShot());
+  visionSetUI(step.phase,visionPhaseLabel(step,sample),blindCharge?0:step.progress);
+  if(visionGameActive()){
+    const hint=$("hint");
+    if(hint)hint.textContent=step.phase==="hold"?"保持投篮姿势":(step.phase==="charging"?"向上举球 · 触达出手点释放":(step.phase==="release"?"出手!":"双手在胸前稳定 0.5 秒"));
+  }
+  document.documentElement.dataset.visionPhase=step.phase;
+  document.documentElement.dataset.visionReady=sample.ready?"1":"0";
+}
+async function enableVisionControl(event){
+  if(event){event.stopPropagation();event.preventDefault();}
+  if(!VISION.supported){toast("此浏览器不支持摄像头控制","#ff8d7a");return;}
+  if(VISION.loading||VISION.enabled)return;
+  VISION.desired=true;VISION.loading=true;$("visionPreview").style.display="block";visionSetUI("align","正在启动本地识别",.08);
+  try{
+    const modelPromise=loadVisionModel();
+    const streamPromise=navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:"user",width:{ideal:640},height:{ideal:480},frameRate:{ideal:24,max:30}}});
+    const results=await Promise.all([modelPromise,streamPromise]);VISION.stream=results[1];
+    const video=$("visionVideo");video.srcObject=VISION.stream;await video.play();
+    VISION.enabled=true;VISION.lastSample=null;resetVisionGesture(VISION.machine);visionSetUI("align","进入识别区域",0);
+    cancelAnimationFrame(VISION.raf);VISION.raf=requestAnimationFrame(visionFrame);
+    document.documentElement.dataset.visionControl="ready";
+    if(G.state==="diff")goDiff(G.mode,true);
+  }catch(e){
+    VISION.desired=false;VISION.enabled=false;if(VISION.stream)VISION.stream.getTracks().forEach(t=>t.stop());VISION.stream=null;
+    $("visionPreview").style.display="block";visionSetUI("error",e&&e.name==="NotAllowedError"?"摄像头权限未开启":"视觉识别启动失败",0);
+    document.documentElement.dataset.visionControl="error";toast("视觉投篮未启动 · 已保留触屏控制","#ff8d7a");
+  }finally{VISION.loading=false;}
+}
+function disableVisionControl(event){
+  if(event){event.stopPropagation();event.preventDefault();}
+  VISION.desired=false;VISION.enabled=false;VISION.loading=false;cancelAnimationFrame(VISION.raf);cancelVisionOwnedCharge();
+  if(VISION.stream)VISION.stream.getTracks().forEach(t=>t.stop());VISION.stream=null;const video=$("visionVideo");if(video)video.srcObject=null;
+  resetVisionGesture(VISION.machine);VISION.lastSample=null;$("visionPreview").style.display="none";
+  document.documentElement.dataset.visionControl="off";delete document.documentElement.dataset.visionPhase;delete document.documentElement.dataset.visionReady;
+  if(G.state==="diff")goDiff(G.mode,true);
+}
+function visionModeMarkup(){
+  const active=VISION.desired||VISION.enabled;
+  return `<div class="visionMode"><span class="visionModeLabel"><small>SHOT CONTROL</small><b>投篮控制</b></span>
+    <button class="${active?"":"active"}" onclick="disableVisionControl(event)">触屏</button>
+    <button class="${active?"active":""}" onclick="enableVisionControl(event)" ${VISION.supported?"":"disabled"}>视觉实验</button></div>`;
+}
+addEventListener("pagehide",()=>{if(VISION.stream)VISION.stream.getTracks().forEach(t=>t.stop());});
 
 /* ====== 外部音频:本地观众声仅在比赛中循环,其余留空时使用内置合成音 ======
    后续素材可从 pixabay.com/sound-effects 搜索 "applause arena" "buzzer" "crowd boo"
@@ -3227,17 +3435,19 @@ function updDotsUI(){
   wrap.innerHTML=h;
 }
 function startCharge(){
-  if(!G.canShoot||G.charging||G.moving||G.cutAway||G.battleCut)return;
+  if(!G.canShoot||G.charging||G.moving||G.cutAway||G.battleCut)return false;
   if(G.mode==="battle"&&!battleSpotAvailable(G.battleSpot)){
     if(!battleAutoMoveIfNeeded())toast(battleSpotStatus(G.battleSpot).label,"#9fd1ff");
-    return;
+    return false;
   }
   G.charging=true;G.power=0;G.apexed=false;
   shoeSqueak(false);
   if(Math.random()<0.28)playerEffort("load");
+  return true;
 }
 function doRelease(){
-  if(!G.charging)return;
+  if(!G.charging){VISION.ownsCharge=false;return;}
+  VISION.ownsCharge=false;
   G.charging=false;
   if(poseK>0.6)landT=0.3;
   if(navigator.vibrate)navigator.vibrate(6);
@@ -3694,6 +3904,7 @@ function goDiff(mode,quiet){
   }
   let h='<h1 class="title" style="font-size:24px">选择难度</h1>';
   h+=sceneSelectMarkup();
+  h+=visionModeMarkup();
   if(G.mode==="battle")h+='<div class="note">百分大战中,难度会影响你的甜区宽度和对手命中节奏。</div>';
   for(const k in DIFFS){
     const d=DIFFS[k];
@@ -3703,7 +3914,7 @@ function goDiff(mode,quiet){
   showPanel(h);
 }
 function pickDiff(k){
-  G.diff=k;askTiltPerm();
+  G.diff=k;resetVisionGesture(VISION.machine);cancelVisionOwnedCharge();askTiltPerm();
   dressGuy(passer,0x6a727c,0x333a42,"");
   // 玩家从全部明星池随机抽取,保留经典三分明星并加入 5 个封面角色
   G.myStar=LEGENDS[(Math.random()*LEGENDS.length)|0];
@@ -4871,6 +5082,7 @@ function audioGestureUnlock(e){
 function onDown(e){
   if(BOOT_GATE_ACTIVE)return;
   if(e.target&&e.target.id==="camBtn")return;
+  if(e.target&&e.target.closest&&e.target.closest("#visionPreview"))return;
   if(e.target&&e.target.closest&&e.target.closest("#battleControls"))return;
   if(e.target&&e.target.closest&&e.target.closest("#spotDots"))return;
   if(G.state==="round"||G.state==="tiebreak"||G.state==="battle"){e.preventDefault();startCharge();}
@@ -4878,6 +5090,7 @@ function onDown(e){
 function onUp(e){
   if(BOOT_GATE_ACTIVE)return;
   if(e.target&&e.target.id==="camBtn")return;
+  if(e.target&&e.target.closest&&e.target.closest("#visionPreview"))return;
   if(e.target&&e.target.closest&&e.target.closest("#battleControls"))return;
   if(e.target&&e.target.closest&&e.target.closest("#spotDots"))return;
   if(G.state==="round"||G.state==="tiebreak"||G.state==="battle"){doRelease();}
