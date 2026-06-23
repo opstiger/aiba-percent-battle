@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>aiBA·百分大战 v1.34 VISION ALPHA</title>
+<title>aiBA·百分大战 v1.35 VISION ALPHA</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{--app-height:100dvh;height:100%;height:var(--app-height);background:#04050a}
@@ -283,7 +283,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <div id="bootLoad" role="dialog" aria-modal="true" aria-busy="true" aria-label="游戏资源加载" tabindex="0">
   <div class="bootFrame">
     <div class="bootBrand"><span>ai</span>BA</div>
-    <div class="bootEdition">VISION SHOT / v1.34 ALPHA</div>
+    <div class="bootEdition">VISION SHOT / v1.35 ALPHA</div>
     <div class="bootRule"></div>
     <div id="bootStatus" class="bootStatus">正在展开赛场</div>
     <div class="bootMeter" aria-hidden="true"><i id="bootBar"></i></div>
@@ -356,7 +356,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <script>typeof THREE==="undefined"&&document.write('<script src="https://lib.baomitu.com/three.js/r128/three.min.js"><\/script>')</script>
 <script>
 /* =====================================================
-   aiBA·百分大战 v1.34 VISION ALPHA
+   aiBA·百分大战 v1.35 VISION ALPHA
    Minecraft-style NBA 3-Point Contest · 单文件实现
    ===================================================== */
 "use strict";
@@ -386,7 +386,7 @@ const rnd=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 /* ---------------- constants ---------------- */
-const GAME_VERSION="v1.34-vision-alpha";
+const GAME_VERSION="v1.35-vision-alpha";
 const GAME_NAME="aiBA·百分大战";
 // NBA 标准全场坐标：保留原篮筐/三分点，只向远端延长球场。
 const COURT={
@@ -513,7 +513,7 @@ const G={
 /* ---------------- vision-shot experimental controller ---------------- */
 const VISION={
   supported:!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia),desired:false,enabled:false,loading:false,liveControl:true,
-  stream:null,landmarker:null,handLandmarker:null,lastPose:null,lastHands:[],detectTick:0,lastDetect:0,lastVideoTime:-1,raf:0,ownsCharge:false,lastSample:null,
+  stream:null,landmarker:null,handLandmarker:null,lastPose:null,lastHands:[],lastPoseAt:0,lastHandAt:0,lastDraw:0,lastVideoTime:-1,raf:0,ownsCharge:false,lastSample:null,inferAvg:0,
   machine:{phase:"align",holdStart:0,chargeStart:0,lastSeen:0,cooldownUntil:0,releaseFlashUntil:0},
   readyZone:{x:.5,y:.73,r:.18},releaseZone:{x:.5,y:.2,r:.15},
   connections:[[11,12],[11,13],[13,15],[15,17],[15,19],[15,21],[12,14],[14,16],[16,18],[16,20],[16,22],[11,23],[12,24],[23,24]],
@@ -558,8 +558,10 @@ function visionPalm(hand){
   return valid.reduce((p,v)=>({x:p.x+v.x/valid.length,y:p.y+v.y/valid.length}),{x:0,y:0});
 }
 function visionLandmarkSample(lm,handLandmarks,now){
-  const poseNeeded=[0,11,12,15,16],poseValid=!!lm&&!poseNeeded.some(i=>!lm[i])&&Math.min(...poseNeeded.map(i=>visionConfidence(lm[i])))>=.4;
-  const hands=(handLandmarks||[]).filter(hand=>hand&&hand.length>=21).slice(0,2);
+  const poseFresh=now-(VISION.lastPoseAt||0)<450;
+  const handFresh=now-(VISION.lastHandAt||0)<(VISION.machine.phase==="charging"?240:460);
+  const poseNeeded=[0,11,12,15,16],poseValid=poseFresh&&!!lm&&!poseNeeded.some(i=>!lm[i])&&Math.min(...poseNeeded.map(i=>visionConfidence(lm[i])))>=.4;
+  const hands=(handFresh?(handLandmarks||[]):[]).filter(hand=>hand&&hand.length>=21).slice(0,2);
   const palms=hands.map(visionPalm).filter(Boolean);
   const poseWrists=poseValid?[lm[15],lm[16]]:[];
   const readyPoints=palms.length>=2?palms:poseWrists;
@@ -640,23 +642,60 @@ function handleVisionGesture(step){
   }else if(step.type==="release"&&VISION.ownsCharge){VISION.ownsCharge=false;doRelease();}
   else if(step.type==="cancel")cancelVisionOwnedCharge();
 }
+function visionCadence(){
+  const phase=VISION.machine.phase,setup=G.state==="menu"||G.state==="diff",active=visionGameActive();
+  const penalty=VISION.inferAvg>34?1.5:(VISION.inferAvg>23?1.25:1);
+  let drawMs,poseMs,handMs,mode;
+  if(active&&(phase==="charging"||phase==="hold")){
+    drawMs=66;poseMs=phase==="charging"?150:105;handMs=phase==="charging"?66:85;mode="gesture";
+  }else if(active){
+    drawMs=82;poseMs=82;handMs=180;mode="ready";
+  }else if(setup){
+    drawMs=100;poseMs=125;handMs=200;mode="setup";
+  }else{
+    drawMs=125;poseMs=300;handMs=Infinity;mode="idle";
+  }
+  return {drawMs:drawMs*(penalty>1?1.15:1),poseMs:poseMs*penalty,handMs:Number.isFinite(handMs)?handMs*penalty:Infinity,mode};
+}
+function visionDetectTask(now,c){
+  const poseAge=now-(VISION.lastPoseAt||0),handAge=now-(VISION.lastHandAt||0);
+  const poseDue=poseAge>=c.poseMs,handDue=Number.isFinite(c.handMs)&&handAge>=c.handMs;
+  if(poseDue&&handDue){
+    const gesture=c.mode==="gesture";
+    if(gesture)return poseAge>=c.poseMs*1.35?"pose":"hand";
+    return handAge>=c.handMs*1.35?"hand":"pose";
+  }
+  return handDue?"hand":(poseDue?"pose":null);
+}
+function noteVisionInference(start){
+  const cost=performance.now()-start;
+  VISION.inferAvg=VISION.inferAvg?VISION.inferAvg*.82+cost*.18:cost;
+  document.documentElement.dataset.visionInferenceMs=VISION.inferAvg.toFixed(1);
+}
 function visionFrame(now){
   if(!VISION.desired)return;VISION.raf=requestAnimationFrame(visionFrame);
-  if(!VISION.enabled||!VISION.landmarker||now-VISION.lastDetect<50)return;
+  if(!VISION.enabled||!VISION.landmarker)return;
   const video=$("visionVideo");if(!video||video.readyState<2||video.currentTime===VISION.lastVideoTime)return;
-  VISION.lastDetect=now;VISION.lastVideoTime=video.currentTime;VISION.detectTick++;
+  const cadence=visionCadence();if(now-VISION.lastDraw<cadence.drawMs)return;
+  VISION.lastDraw=now;VISION.lastVideoTime=video.currentTime;
+  const task=visionDetectTask(now,cadence),started=performance.now();
   try{
-    if(VISION.detectTick===1||VISION.detectTick%2===0){const result=VISION.landmarker.detectForVideo(video,now);VISION.lastPose=result&&result.landmarks&&result.landmarks[0]?result.landmarks[0]:null;}
-    if(VISION.handLandmarker&&VISION.detectTick%2===1){
-      const handResult=VISION.handLandmarker.detectForVideo(video,now);VISION.lastHands=handResult&&handResult.landmarks?handResult.landmarks.slice(0,2):[];
+    if(task==="pose"){
+      const result=VISION.landmarker.detectForVideo(video,now);VISION.lastPose=result&&result.landmarks&&result.landmarks[0]?result.landmarks[0]:null;VISION.lastPoseAt=now;
+    }else if(task==="hand"&&VISION.handLandmarker){
+      const handResult=VISION.handLandmarker.detectForVideo(video,now);VISION.lastHands=handResult&&handResult.landmarks?handResult.landmarks.slice(0,2):[];VISION.lastHandAt=now;
     }
+    if(task)noteVisionInference(started);
   }
   catch(e){visionSetUI("error","识别暂时中断",0);return;}
   const sample=visionLandmarkSample(VISION.lastPose,VISION.lastHands,now);
   const canAdvance=G.state==="diff"||G.state==="menu"||visionGameActive();
   if(!canAdvance){resetVisionGesture(VISION.machine);cancelVisionOwnedCharge();}
   const step=canAdvance?visionGestureStep(VISION.machine,sample,now):{type:"none",phase:"align",progress:0};
-  handleVisionGesture(step);drawVisionPose(VISION.lastPose,VISION.lastHands,sample,step.phase);
+  handleVisionGesture(step);
+  const drawPose=now-(VISION.lastPoseAt||0)<500?VISION.lastPose:null;
+  const drawHands=now-(VISION.lastHandAt||0)<500?VISION.lastHands:[];
+  drawVisionPose(drawPose,drawHands,sample,step.phase);
   const blindCharge=step.phase==="charging"&&VISION.liveControl&&typeof curShot==="function"&&barHiddenFor(curShot());
   visionSetUI(step.phase,visionPhaseLabel(step,sample),blindCharge?0:step.progress);
   if(visionGameActive()){
@@ -666,6 +705,7 @@ function visionFrame(now){
   document.documentElement.dataset.visionPhase=step.phase;
   document.documentElement.dataset.visionReady=sample.ready?"1":"0";
   document.documentElement.dataset.visionHands=String(sample.handCount||0);
+  document.documentElement.dataset.visionCadence=cadence.mode;
 }
 async function enableVisionControl(event){
   if(event){event.stopPropagation();event.preventDefault();}
@@ -677,7 +717,7 @@ async function enableVisionControl(event){
     const streamPromise=navigator.mediaDevices.getUserMedia({audio:false,video:{facingMode:"user",width:{ideal:640},height:{ideal:480},frameRate:{ideal:24,max:30}}});
     const results=await Promise.all([modelPromise,streamPromise]);VISION.stream=results[1];
     const video=$("visionVideo");video.srcObject=VISION.stream;await video.play();
-    VISION.enabled=true;VISION.lastSample=null;VISION.lastPose=null;VISION.lastHands=[];VISION.detectTick=0;resetVisionGesture(VISION.machine);visionSetUI("align","双手放入下方圆圈",0);
+    VISION.enabled=true;VISION.lastSample=null;VISION.lastPose=null;VISION.lastHands=[];VISION.lastPoseAt=0;VISION.lastHandAt=0;VISION.lastDraw=0;VISION.inferAvg=0;resetVisionGesture(VISION.machine);visionSetUI("align","双手放入下方圆圈",0);
     cancelAnimationFrame(VISION.raf);VISION.raf=requestAnimationFrame(visionFrame);
     document.documentElement.dataset.visionControl="ready";
     if(G.state==="diff")goDiff(G.mode,true);
@@ -691,7 +731,7 @@ function disableVisionControl(event){
   if(event){event.stopPropagation();event.preventDefault();}
   VISION.desired=false;VISION.enabled=false;VISION.loading=false;cancelAnimationFrame(VISION.raf);cancelVisionOwnedCharge();
   if(VISION.stream)VISION.stream.getTracks().forEach(t=>t.stop());VISION.stream=null;const video=$("visionVideo");if(video)video.srcObject=null;
-  resetVisionGesture(VISION.machine);VISION.lastSample=null;VISION.lastPose=null;VISION.lastHands=[];VISION.detectTick=0;$("visionPreview").style.display="none";
+  resetVisionGesture(VISION.machine);VISION.lastSample=null;VISION.lastPose=null;VISION.lastHands=[];VISION.lastPoseAt=0;VISION.lastHandAt=0;VISION.lastDraw=0;VISION.inferAvg=0;$("visionPreview").style.display="none";
   document.documentElement.dataset.visionControl="off";delete document.documentElement.dataset.visionPhase;delete document.documentElement.dataset.visionReady;delete document.documentElement.dataset.visionHands;
   if(G.state==="diff")goDiff(G.mode,true);
 }
@@ -5207,7 +5247,7 @@ function askTiltPerm(){
 
 /* ---------------- main loop ---------------- */
 const clock=new THREE.Clock();
-let jumboAcc=0,lowBeep=0,menuFrameAcc=0;
+let jumboAcc=0,lowBeep=0,menuFrameAcc=0,visionAmbienceAcc=0;
 function animate(){
   requestAnimationFrame(animate);
   let dt=Math.min(0.05,clock.getDelta());
@@ -5228,8 +5268,12 @@ function animate(){
   updFire(dt);
   updConf(dt);
   G.cheer=Math.max(0,G.cheer-dt*0.5);
-  updCrowd(G.tNow);
-  updBackcourtShow(G.tNow);
+  if(VISION.enabled){
+    visionAmbienceAcc+=dt;
+    if(visionAmbienceAcc>=1/20){visionAmbienceAcc=0;updCrowd(G.tNow);updBackcourtShow(G.tNow);}
+  }else{
+    visionAmbienceAcc=0;updCrowd(G.tNow);updBackcourtShow(G.tNow);
+  }
   if(netPulse>0){netPulse-=dt*3;const s=1+netPulse*0.35;netMesh.scale.set(s,1+netPulse*0.5,s);}
   // 反超特写排队
   if(G.state==="round"&&!frozen)tryCutAway();
