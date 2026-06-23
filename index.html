@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>aiBA·百分大战 v1.32 VISION ALPHA</title>
+<title>aiBA·百分大战 v1.33 VISION ALPHA</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{--app-height:100dvh;height:100%;height:var(--app-height);background:#04050a}
@@ -283,7 +283,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <div id="bootLoad" role="dialog" aria-modal="true" aria-busy="true" aria-label="游戏资源加载" tabindex="0">
   <div class="bootFrame">
     <div class="bootBrand"><span>ai</span>BA</div>
-    <div class="bootEdition">VISION SHOT / v1.32 ALPHA</div>
+    <div class="bootEdition">VISION SHOT / v1.33 ALPHA</div>
     <div class="bootRule"></div>
     <div id="bootStatus" class="bootStatus">正在展开赛场</div>
     <div class="bootMeter" aria-hidden="true"><i id="bootBar"></i></div>
@@ -356,7 +356,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <script>typeof THREE==="undefined"&&document.write('<script src="https://lib.baomitu.com/three.js/r128/three.min.js"><\/script>')</script>
 <script>
 /* =====================================================
-   aiBA·百分大战 v1.32 VISION ALPHA
+   aiBA·百分大战 v1.33 VISION ALPHA
    Minecraft-style NBA 3-Point Contest · 单文件实现
    ===================================================== */
 "use strict";
@@ -386,7 +386,7 @@ const rnd=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 /* ---------------- constants ---------------- */
-const GAME_VERSION="v1.32-vision-alpha";
+const GAME_VERSION="v1.33-vision-alpha";
 const GAME_NAME="aiBA·百分大战";
 // NBA 标准全场坐标：保留原篮筐/三分点，只向远端延长球场。
 const COURT={
@@ -796,8 +796,19 @@ function updateSceneAudio(dt){
 }
 function playClip(t){
   const u=VOICE_CLIPS[t];if(!u||MUTED)return false;
-  try{const a=new Audio(u);a.volume=1;a.play();}catch(e){return false}
+  try{
+    if(!playClip.cache[u]){const a=new Audio(u);a.preload="auto";a.load();playClip.cache[u]=a;}
+    const base=playClip.cache[u],a=base.paused&&base.currentTime===0?base:base.cloneNode();
+    a.volume=1;a.currentTime=0;const p=a.play();if(p&&p.catch)p.catch(()=>{});
+  }catch(e){return false}
   return true;
+}
+playClip.cache=Object.create(null);
+function preloadVoiceClips(){
+  Object.values(VOICE_CLIPS).forEach(u=>{
+    if(!u||playClip.cache[u])return;
+    try{const a=new Audio(u);a.preload="auto";a.load();playClip.cache[u]=a;}catch(e){}
+  });
 }
 const rnd2=(a,b)=>a+Math.random()*(b-a);
 function audioInit(){
@@ -844,6 +855,7 @@ function audioInit(){
     const rg=AC.createGain();rg.gain.value=0.5;
     rum.connect(lpf);lpf.connect(rg);rg.connect(crowdBus);rum.start();
     extInit();
+    preloadVoiceClips();
     if(extA.crowd||extA.crowdCheer)crowdBus.gain.value=0.035;
     syncSceneAmbience();
     // ---- 随机现场事件:人浪/零星掌声/口哨/远处喊叫 ----
@@ -1069,11 +1081,17 @@ function blipBus(bus,freq,dur,type,vol,slide){
   g.gain.exponentialRampToValueAtTime(0.001,t+dur);
   o.connect(g);g.connect(bus||sfxBus||master);o.start(t);o.stop(t+dur+0.02);
 }
+const noiseBusCache=new Map();
+function noiseBusBuffer(dur){
+  const len=Math.max(1,Math.round(AC.sampleRate*dur)),key=AC.sampleRate+":"+len;
+  if(noiseBusCache.has(key))return noiseBusCache.get(key);
+  const b=AC.createBuffer(1,len,AC.sampleRate),d=b.getChannelData(0);
+  for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*(1-i/len);
+  noiseBusCache.set(key,b);return b;
+}
 function noiseBus(bus,dur,vol,hp,lp){
   if(!AC||MUTED)return;
-  const n=AC.createBufferSource(),len=AC.sampleRate*dur,b=AC.createBuffer(1,len,AC.sampleRate),d=b.getChannelData(0);
-  for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*(1-i/len);
-  n.buffer=b;
+  const n=AC.createBufferSource();n.buffer=noiseBusBuffer(dur);
   const hi=AC.createBiquadFilter();hi.type="highpass";hi.frequency.value=hp||1200;
   const lo=AC.createBiquadFilter();lo.type="lowpass";lo.frequency.value=lp||9000;
   const g=AC.createGain();g.gain.value=vol||0.1;
@@ -1288,7 +1306,7 @@ function music(on,fast){
   syncAudioDebug();
 }
 /* ---- 语音:情绪化播报 ---- */
-const SPK={voice:null,last:0};
+const SPK={voice:null,last:0,queue:[],timer:0,speaking:false};
 const EMO={
   pa:   {pitch:0.82,rate:1.02,jit:0.05,pre:[]},
   hype: {pitch:1.42,rate:1.28,jit:0.2, pre:["哇哦!!","好球——!!","不可思议!!"]},
@@ -1304,31 +1322,50 @@ function initVoice(){
   };
   pick();speechSynthesis.onvoiceschanged=pick;
 }
-function say(txt,opt){
+function speechLiveGame(){return G.state==="round"||G.state==="tiebreak"||G.state==="battle";}
+function speechInputCritical(){return speechLiveGame()&&(G.canShoot||G.charging||G.moving||VISION.machine.phase==="hold"||VISION.machine.phase==="charging");}
+function scheduleSpeechFlush(delay){
+  clearTimeout(SPK.timer);SPK.timer=setTimeout(flushSpeechQueue,delay==null?120:delay);
+}
+function speakQueued(item){
   try{
-    if(!window.speechSynthesis||MUTED)return;
-    opt=opt||{};
+    if(!window.speechSynthesis||MUTED){SPK.speaking=false;return;}
+    const txt=item.txt,opt=item.opt||{};
     const now=Date.now();
-    if(!opt.pri&&now-SPK.last<2600)return;
+    if(!opt.pri&&now-SPK.last<2600){scheduleSpeechFlush(120);return;}
     SPK.last=now;
-    if(opt.pri)speechSynthesis.cancel();
+    if(opt.pri&&!speechLiveGame())speechSynthesis.cancel();
     if(opt.pri||opt.emo==="pa"||opt.emo==="hype")duckBroadcast(opt.pri?2200:1400);
     const e=EMO[opt.emo]||{pitch:opt.pitch||1,rate:opt.rate||1.08,jit:0.06,pre:[]};
     let full=txt;
     if(e.pre.length&&Math.random()<0.65)full=e.pre[(Math.random()*e.pre.length)|0]+full;
-    // 按标点切段,每段音高微抖,模拟语气起伏
-    const parts=full.split(/(?<=[,。!?!?…—])/).filter(s=>s.trim());
-    parts.forEach((p,i)=>{
-      const u=new SpeechSynthesisUtterance(p);
-      if(SPK.voice)u.voice=SPK.voice;
-      u.lang="zh-CN";u.volume=1;
-      const basePitch=opt.pitch!=null?opt.pitch:e.pitch;
-      const baseRate=opt.rate!=null?opt.rate:e.rate;
-      u.pitch=Math.max(0.1,Math.min(2,basePitch+(Math.random()*2-1)*e.jit+(i===parts.length-1?-0.08:0.04)));
-      u.rate=Math.max(0.5,Math.min(2,baseRate*(p.includes("!")||p.includes("!")?1.08:1)));
-      speechSynthesis.speak(u);
-    });
-  }catch(e2){}
+    const u=new SpeechSynthesisUtterance(full);
+    if(SPK.voice)u.voice=SPK.voice;
+    u.lang="zh-CN";u.volume=1;
+    const basePitch=opt.pitch!=null?opt.pitch:e.pitch;
+    const baseRate=opt.rate!=null?opt.rate:e.rate;
+    u.pitch=Math.max(0.1,Math.min(2,basePitch+(Math.random()*2-1)*e.jit));
+    u.rate=Math.max(0.5,Math.min(2,baseRate*(full.includes("!")?1.08:1)));
+    SPK.speaking=true;
+    const done=()=>{SPK.speaking=false;scheduleSpeechFlush(90);};
+    u.onend=done;u.onerror=done;speechSynthesis.speak(u);
+  }catch(e2){SPK.speaking=false;scheduleSpeechFlush(120);}
+}
+function flushSpeechQueue(){
+  if(MUTED||!window.speechSynthesis){SPK.queue.length=0;SPK.speaking=false;return;}
+  if(SPK.speaking||!SPK.queue.length)return;
+  const item=SPK.queue[0];
+  if(speechInputCritical()&&Date.now()-item.at<5000){scheduleSpeechFlush(140);return;}
+  SPK.queue.shift();speakQueued(item);
+}
+function say(txt,opt){
+  if(!window.speechSynthesis||MUTED)return;
+  opt=opt||{};
+  if(!opt.pri&&SPK.queue.some(q=>q.txt===txt))return;
+  if(opt.pri)SPK.queue=SPK.queue.filter(q=>q.opt&&q.opt.pri);
+  SPK.queue.push({txt,opt,at:Date.now()});
+  if(SPK.queue.length>4)SPK.queue.splice(0,SPK.queue.length-4);
+  scheduleSpeechFlush(speechInputCritical()?140:20);
 }
 const paSay=(t,pri)=>{if(!playClip(t))say(t,{emo:"pa",pri});};
 const djSay=(t,pri)=>{if(!playClip(t))say(t,{emo:"hype",pri});};
@@ -1356,6 +1393,7 @@ function toggleMute(){
     MUTED=true;$("muteBtn").textContent="🔇";
     if(AC)AC.suspend();
     if(window.speechSynthesis&&MUTED)speechSynthesis.cancel();
+    if(MUTED){clearTimeout(SPK.timer);SPK.queue.length=0;SPK.speaking=false;}
     if(MUTED){extStop("bgm");extStop("crowd");extStop("crowdCheer");extStop("rain");extStop("ocean");extStop("gull");}
     syncAudioDebug();
   }catch(e){}
