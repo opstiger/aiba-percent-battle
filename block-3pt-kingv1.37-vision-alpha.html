@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>aiBA·百分大战 v1.36 VISION ALPHA</title>
+<title>aiBA·百分大战 v1.37 VISION ALPHA</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{--app-height:100dvh;height:100%;height:var(--app-height);background:#04050a}
@@ -79,6 +79,7 @@ html,body{width:100%;height:100%;height:var(--app-height);overflow:hidden;backgr
 #bsRace i{position:absolute;top:0;height:100%;left:0;border-radius:3px;transition:width .3s}
 #bsRaceMe{background:#7CFC6B;opacity:.9}
 #bsRaceOpp{background:#ff8d7a;opacity:.6}
+#bsTimer{font-size:10px;color:#ffd23f;line-height:1;font-weight:bold;text-shadow:1px 1px 0 #000}
 #midBtn{position:absolute;bottom:max(86px,calc(env(safe-area-inset-bottom) + 76px));left:50%;transform:translateX(-50%);
   display:none;z-index:25;background:linear-gradient(#ff8d3a,#e0531f);color:#fff;font-weight:bold;font-size:13px;
   border:2px solid #000;border-radius:18px;padding:8px 18px;box-shadow:0 3px 0 #000;cursor:pointer;pointer-events:auto;
@@ -283,7 +284,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <div id="bootLoad" role="dialog" aria-modal="true" aria-busy="true" aria-label="游戏资源加载" tabindex="0">
   <div class="bootFrame">
     <div class="bootBrand"><span>ai</span>BA</div>
-    <div class="bootEdition">VISION SHOT / v1.36 ALPHA</div>
+    <div class="bootEdition">VISION SHOT / v1.37 ALPHA</div>
     <div class="bootRule"></div>
     <div id="bootStatus" class="bootStatus">正在展开赛场</div>
     <div class="bootMeter" aria-hidden="true"><i id="bootBar"></i></div>
@@ -308,6 +309,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
     <span id="bsVS">VS</span>
     <span id="bsOpp"><span id="bsOppNum">0</span> <b id="bsOppName">对手</b></span>
     <div id="bsRace"><i id="bsRaceMe"></i><i id="bsRaceOpp"></i></div>
+    <small id="bsTimer">0:00.0</small>
   </div>
   <button id="midBtn" onpointerdown="event.stopPropagation();event.preventDefault();battleSetSpot(7)" onclick="event.stopPropagation();event.preventDefault()">🔥 中场10分</button>
   <div id="edgeArrows"></div>
@@ -356,7 +358,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <script>typeof THREE==="undefined"&&document.write('<script src="https://lib.baomitu.com/three.js/r128/three.min.js"><\/script>')</script>
 <script>
 /* =====================================================
-   aiBA·百分大战 v1.36 VISION ALPHA
+   aiBA·百分大战 v1.37 VISION ALPHA
    Minecraft-style NBA 3-Point Contest · 单文件实现
    ===================================================== */
 "use strict";
@@ -386,7 +388,7 @@ const rnd=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 /* ---------------- constants ---------------- */
-const GAME_VERSION="v1.36-vision-alpha";
+const GAME_VERSION="v1.37-vision-alpha";
 const GAME_NAME="aiBA·百分大战";
 // NBA 标准全场坐标：保留原篮筐/三分点，只向远端延长球场。
 const COURT={
@@ -3220,6 +3222,7 @@ function updTargetUI(){
 /* ---------------- 百分大战:反超特写 + 庆祝/沮丧慢动作 ---------------- */
 function battleCutaway(byMe,key){
   // byMe=true 你反超对手(庆祝你) / false 对手反超你(切对手张扬+对骂)
+  pauseBattleClock();
   G.battleCut={t:0,byMe,key};G.running=false;
   hands.visible=false;$("spotDots").style.display="none";$("edgeArrows").style.display="none";
   airhorn();if(key){setTimeout(airhorn,650);}
@@ -3277,7 +3280,7 @@ function updBattleCut(dt){
   if(c.t>=3){
     stopCelebrate(hero);
     G.battleCut=null;$("vsBanner").style.display="none";
-    G.running=true;applyCamMode();updBattleUI();
+    resumeBattleClock();G.running=true;applyCamMode();updBattleUI();
     toast(c.byMe?"继续!扩大领先":"别慌,追回来!",c.byMe?"#7CFC6B":"#ffd23f");
   }
 }
@@ -3361,7 +3364,7 @@ function startPractice(){
   balls.slice().forEach(b=>{scene.remove(b.mesh);scene.remove(b.blob);});balls.length=0;
   resetRackBalls();
   $("scoreNum").textContent="-";$("hudStreak").style.display="none";
-  $("hudTimer").textContent="热身";$("hudTimer").className="";
+  $("hudTimer").style.display="block";$("hudTimer").textContent="热身";$("hudTimer").className="";
   $("hudRound").innerHTML="练习模式<br><span style='color:#778'>无计时 · 无计分</span>";
   $("hudTarget").textContent="";
   $("hud").style.display="block";
@@ -4101,6 +4104,48 @@ function showBattleIntro(){
       8. 对手与你同场竞投,球在空中可能<b style="color:#ff8d7a">相撞改变结果</b>!</div>
     <button class="btn gold" onclick="ensureAudio(false,true);startBattle()">开战!</button>`);
 }
+const BATTLE_RUNS_KEY="aiba-battle-runs-v1";
+function startBattleClock(){G.battleClock={startedAt:performance.now(),pausedAt:0,pausedMs:0,finishedMs:null};}
+function pauseBattleClock(){
+  const c=G.battleClock;if(!c||c.pausedAt||c.finishedMs!=null)return;
+  c.pausedAt=performance.now();
+}
+function resumeBattleClock(){
+  const c=G.battleClock;if(!c||!c.pausedAt||c.finishedMs!=null)return;
+  c.pausedMs+=performance.now()-c.pausedAt;c.pausedAt=0;
+}
+function battleElapsedMs(){
+  const c=G.battleClock;if(!c)return 0;if(c.finishedMs!=null)return c.finishedMs;
+  const end=c.pausedAt||performance.now();return Math.max(0,end-c.startedAt-c.pausedMs);
+}
+function stopBattleClock(){
+  const c=G.battleClock;if(!c)return 0;
+  c.finishedMs=battleElapsedMs();c.pausedAt=0;return c.finishedMs;
+}
+function formatBattleTime(ms){
+  const tenths=Math.max(0,Math.floor((ms||0)/100)),minutes=Math.floor(tenths/600),seconds=Math.floor(tenths/10)%60,tenth=tenths%10;
+  return minutes+":"+String(seconds).padStart(2,"0")+"."+tenth;
+}
+function loadBattleRuns(){
+  try{const v=JSON.parse(localStorage.getItem(BATTLE_RUNS_KEY)||"[]");return Array.isArray(v)?v:[];}catch(e){return[];}
+}
+function makeBattleRecord(win,elapsedMs){
+  const profile=playerShotProfile();
+  return {schema:1,version:GAME_VERSION,mode:"percent-battle",target:BATTLE_TARGET,elapsedMs:Math.round(elapsedMs),won:!!win,
+    eligible:!!win&&G.score>=BATTLE_TARGET,score:Math.min(G.score,BATTLE_TARGET),opponentScore:Math.min(G.battleOppScore||0,BATTLE_TARGET),
+    playerId:G.myStar&&(G.myStar.id||G.myStar.n),playerName:G.myStar&&G.myStar.n,opponentId:G.battleOpp&&(G.battleOpp.id||G.battleOpp.n),opponentName:G.battleOpp&&G.battleOpp.n,
+    difficulty:G.diff,control:G.battleControl||"touch",scene:currentScenePreset,weather:currentWeather,seed:GAME_SEED,
+    shotSpeed:profile.speed,sweetWindow:profile.window,completedAt:new Date().toISOString()};
+}
+function saveBattleRecord(record){
+  try{const runs=loadBattleRuns();runs.unshift(record);localStorage.setItem(BATTLE_RUNS_KEY,JSON.stringify(runs.slice(0,50)));localStorage.setItem("aiba-battle-last-v1",JSON.stringify(record));}catch(e){}
+  try{window.__aibaLastBattleRecord=record;window.__aibaBattleRuns=loadBattleRuns;}catch(e){}
+  return record;
+}
+addEventListener("visibilitychange",()=>{
+  if(document.hidden)pauseBattleClock();
+  else if(G.state==="battle"&&!G.battleCut&&!G.battleOver)resumeBattleClock();
+});
 function resetBattleState(){
   resetFinalRun();
   G.seq=[];G.shotIdx=0;G.score=0;G.streak=0;G.timer=0;G.buzzed=false;G.running=false;
@@ -4111,6 +4156,7 @@ function resetBattleState(){
   G.battleReadyAt=Array(BATTLE_SPOTS.length).fill(0);
   G.superStock=0;G.superSeenMe=0;G.superSeenOpp=0;G._battleUiAcc=0;
   G.battleCalls={};G.battleScoreEvents=0;G.battleCutCount=0;G.battleLastCutAt=-1e9;G.battleLastCutEvent=-1e9;G.battleCutLockUntil=0;
+  G.battleClock=null;G.battleResultRecord=null;G.battleControl=VISION.enabled?"vision":"touch";
   G.stats={best:0,moneyM:0,moneyT:0,deepM:0,deepT:0};
   balls.slice().forEach(b=>{scene.remove(b.mesh);scene.remove(b.blob);});balls.length=0;
   OPP.on=false;OPP.fired=false;OPP.spotShots=0;OPP.coolUntil=null;OPP.forceMove=false;G.battleCut=null;
@@ -4124,8 +4170,8 @@ function startBattle(){
   camSnap=true;
   enterArenaAudio(1);
   $("scoreNum").textContent="0";$("hudStreak").style.display="none";
-  $("hudTimer").textContent="100";$("hudTimer").className="";
-  $("hudRound").innerHTML="百分大战<br><span style='color:#778'>"+DIFFS[G.diff].n+"</span>";
+  $("hudTimer").style.display="none";$("bsTimer").textContent="0:00.0";$("hudTimer").className="";
+  $("hudRound").innerHTML="百分大战<br><span style='color:#778'>"+DIFFS[G.diff].n+" · 净计时</span>";
   $("hud").style.display="block";$("battleControls").style.display="flex";
   updBattleUI();
   const s0=curShot(),b0=shotBase(s0);
@@ -4144,7 +4190,7 @@ function countdownBattle(n){
     el.textContent="GO!";el.style.display="flex";sGo();
     setTimeout(()=>el.style.display="none",500);
     calibrateTilt();
-    G.state="battle";G.running=true;applyCamMode();readyBall();
+    G.state="battle";G.running=true;startBattleClock();applyCamMode();readyBall();
     startOppShooter();
     toast("百分大战!先到100分","#ffd23f");
     return;
@@ -4206,7 +4252,7 @@ function startRound(){
   G.posted.forEach(p=>p.cut=false);
   balls.slice().forEach(b=>{scene.remove(b.mesh);scene.remove(b.blob);});balls.length=0;
   resetRackBalls();
-  $("scoreNum").textContent="0";$("hudStreak").style.display="none";
+  $("hudTimer").style.display="block";$("scoreNum").textContent="0";$("hudStreak").style.display="none";
   $("hudRound").innerHTML=(G.stage==="final"?"🏆 决 赛":"半决赛")+"<br><span style='color:#778'>"+DIFFS[G.diff].n+"</span>";
   updTargetUI();
   $("hud").style.display="block";
@@ -4446,6 +4492,7 @@ function updBattleUI(){
   const sp=BATTLE_SPOTS[G.battleSpot||0],opp=G.battleOpp;
   const st=battleSpotStatus(G.battleSpot||0);
   const me=Math.min(G.score,BATTLE_TARGET),op=Math.min(G.battleOppScore||0,BATTLE_TARGET);
+  $("bsTimer").textContent=formatBattleTime(battleElapsedMs());
   $("battleSpotName").innerHTML=(sp.super?"🔥 ":"")+"<span>"+sp.n+" · "+sp.val+"分</span><br><span id=\"battleOppScore\">"+st.label+"</span>";
   // 居中对抗比分条
   $("bsMeName").textContent="你";$("bsOppName").textContent=opp?opp.n:"对手";
@@ -4801,9 +4848,11 @@ function showBattleResult(win){
   else{paSay(G.battleOpp.n+"率先到达一百分!",true);boo(1.2);}
   const title=win?"百分大战胜利!":"百分大战惜败";
   const color=win?"#7CFC6B":"#ff8d7a";
+  const record=G.battleResultRecord||makeBattleRecord(win,battleElapsedMs());
   showPanel(`<h1 class="title" style="font-size:24px">${title}</h1>
     <div style="font-size:48px;color:${color};text-shadow:4px 4px 0 #000;font-weight:bold;margin:8px 0">${Math.min(G.score,BATTLE_TARGET)} : ${Math.min(G.battleOppScore,BATTLE_TARGET)}</div>
     <div class="card">对手:<b>${G.battleOpp.n}</b><br>
+      百分耗时 <b style="color:#ffd23f">${formatBattleTime(record.elapsedMs)}</b> · ${record.control==="vision"?"视觉手势":"触屏/键盘"}<br>
       最高连中 <b class="flame">x${G.stats.best}</b> · 中场10分 <b>${G.stats.deepM}/${G.stats.deepT}</b><br>
       难度:<b>${DIFFS[G.diff].n}</b></div>
     <button class="btn gold" onclick="startBattle()">再战一局</button>
@@ -4828,6 +4877,7 @@ function poseShock(o,k){
 function startWinCine(win,ball){
   const w=winCine;
   w.on=true;w.win=win;w.t=0;w.fxCrowd=false;
+  G.battleResultRecord=saveBattleRecord(makeBattleRecord(win,stopBattleClock()));
   G.battleOver=true;G.running=false;G.canShoot=false;G.charging=false;
   G.cutAway=null;G.battleCut=null;G.glideCam=false;G.state="wincine";
   endHero();
@@ -5051,7 +5101,7 @@ function doTiebreak(){
   G.seq=[{deep:Math.random()<0.5?0:1,val:3,money:false,rack:null}];
   G.shotIdx=0;G.shots=[];G.buzzed=false;G.running=false;
   deepBalls.forEach(m=>m.visible=true);
-  $("hud").style.display="block";$("hudTimer").textContent="决胜";
+  $("hud").style.display="block";$("hudTimer").style.display="block";$("hudTimer").textContent="决胜";
   G.state="tiebreak";
   const tb=DEEPS[G.seq[0].deep].p;
   P.pos.copy(tb);P.face=faceTo(tb,HOOP);P.walking=false;
