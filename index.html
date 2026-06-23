@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>aiBA·百分大战 v1.33 VISION ALPHA</title>
+<title>aiBA·百分大战 v1.34 VISION ALPHA</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{--app-height:100dvh;height:100%;height:var(--app-height);background:#04050a}
@@ -283,7 +283,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <div id="bootLoad" role="dialog" aria-modal="true" aria-busy="true" aria-label="游戏资源加载" tabindex="0">
   <div class="bootFrame">
     <div class="bootBrand"><span>ai</span>BA</div>
-    <div class="bootEdition">VISION SHOT / v1.33 ALPHA</div>
+    <div class="bootEdition">VISION SHOT / v1.34 ALPHA</div>
     <div class="bootRule"></div>
     <div id="bootStatus" class="bootStatus">正在展开赛场</div>
     <div class="bootMeter" aria-hidden="true"><i id="bootBar"></i></div>
@@ -356,7 +356,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <script>typeof THREE==="undefined"&&document.write('<script src="https://lib.baomitu.com/three.js/r128/three.min.js"><\/script>')</script>
 <script>
 /* =====================================================
-   aiBA·百分大战 v1.33 VISION ALPHA
+   aiBA·百分大战 v1.34 VISION ALPHA
    Minecraft-style NBA 3-Point Contest · 单文件实现
    ===================================================== */
 "use strict";
@@ -386,7 +386,7 @@ const rnd=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 /* ---------------- constants ---------------- */
-const GAME_VERSION="v1.33-vision-alpha";
+const GAME_VERSION="v1.34-vision-alpha";
 const GAME_NAME="aiBA·百分大战";
 // NBA 标准全场坐标：保留原篮筐/三分点，只向远端延长球场。
 const COURT={
@@ -414,6 +414,9 @@ const DIFFS={
 const IDEAL=74, IDEAL_DEEP=86, IDEAL_HALF=94;
 const BATTLE_TARGET=100;
 const CUTAWAY_MIN_SCORE=20;
+const BATTLE_CUT_COOLDOWN=18;
+const BATTLE_CUT_MIN_SCORE_EVENTS=3;
+const BATTLE_CUT_MAX=3;
 const BATTLE_BAR_VISIBLE_SHOTS=5;
 const OPP_SPOT_EMPTY_WAIT=0.38;
 const BATTLE_NORMAL_STOCK=5;
@@ -3218,18 +3221,24 @@ function updBattleCut(dt){
   }
 }
 function checkBattleOvertake(prevMe,prevOpp){
+  G.battleScoreEvents=(G.battleScoreEvents||0)+1;
   if(G.battleCut||G.battleOver)return;
-  if(Math.max(G.score,G.battleOppScore)<CUTAWAY_MIN_SCORE)return;
-  // 你反超:之前没领先(落后或平),现在领先
-  if(G.score>G.battleOppScore && prevMe<=prevOpp){
-    const key=G.score>=BATTLE_TARGET-15||(G.score-prevMe)>=10;
-    battleCutaway(true,key);
-  }
-  // 对手反超:之前没领先(你领先或平),现在他领先
-  else if(G.battleOppScore>G.score && prevOpp<=prevMe){
-    const key=G.battleOppScore>=BATTLE_TARGET-15||(G.battleOppScore-prevOpp)>=10;
-    battleCutaway(false,key);
-  }
+  const meLeads=G.score>G.battleOppScore,oppLeads=G.battleOppScore>G.score;
+  const fromTie=(meLeads&&prevMe===prevOpp)||(oppLeads&&prevOpp===prevMe);
+  const byMe=meLeads&&prevMe<prevOpp?true:(oppLeads&&prevOpp<prevMe?false:null);
+  const hint=()=>toast((meLeads?"你":"对手")+"取得领先 · "+G.score+" : "+G.battleOppScore,meLeads?"#7CFC6B":"#ffd23f");
+  if(fromTie){hint();return;}
+  if(byMe===null)return;
+  const top=Math.max(G.score,G.battleOppScore),margin=Math.abs(G.score-G.battleOppScore);
+  const elapsed=G.tNow-(G.battleLastCutAt==null?-1e9:G.battleLastCutAt);
+  const scoreGap=G.battleScoreEvents-(G.battleLastCutEvent==null?-1e9:G.battleLastCutEvent);
+  const cutCount=G.battleCutCount||0;
+  const locked=G.tNow<(G.battleCutLockUntil||0);
+  const reserveFinal=cutCount>=2&&top<90;
+  if(top<CUTAWAY_MIN_SCORE||margin<3||elapsed<BATTLE_CUT_COOLDOWN||scoreGap<BATTLE_CUT_MIN_SCORE_EVENTS||cutCount>=BATTLE_CUT_MAX||locked||reserveFinal){hint();return;}
+  G.battleCutCount=cutCount+1;G.battleLastCutAt=G.tNow;G.battleLastCutEvent=G.battleScoreEvents;
+  const key=top>=BATTLE_TARGET-15||(byMe?G.score-prevMe:G.battleOppScore-prevOpp)>=10;
+  battleCutaway(byMe,key);
 }
 function resetFinalRun(){
   G.finalRun=false;
@@ -3256,6 +3265,7 @@ function battleScoreCallout(prevMe,prevOpp){
   for(const m of marks){
     if(!G.battleCalls[m]&&prevMax<m&&nowMax>=m){
       G.battleCalls[m]=true;
+      G.battleCutLockUntil=G.tNow+4;
       if(m===90){
         triggerFinalRun(me,op);
         if(nowMax>=95&&!G.battleCalls.final5){
@@ -3274,6 +3284,7 @@ function battleScoreCallout(prevMe,prevOpp){
   }
   if(!G.battleCalls.final5&&prevMax<95&&nowMax>=95){
     G.battleCalls.final5=true;
+    G.battleCutLockUntil=G.tNow+4;
     broadcastSting("danger");
     paSay("最后五分决胜,"+me+"比"+op+"。一球都不能松。",true);
     toast("最后5分! "+me+" : "+op,"#ffd23f");
@@ -4035,7 +4046,7 @@ function resetBattleState(){
   G.battleStock=[5,5,5,5,5,1,1,0];
   G.battleReadyAt=Array(BATTLE_SPOTS.length).fill(0);
   G.superStock=0;G.superSeenMe=0;G.superSeenOpp=0;G._battleUiAcc=0;
-  G.battleCalls={};
+  G.battleCalls={};G.battleScoreEvents=0;G.battleCutCount=0;G.battleLastCutAt=-1e9;G.battleLastCutEvent=-1e9;G.battleCutLockUntil=0;
   G.stats={best:0,moneyM:0,moneyT:0,deepM:0,deepT:0};
   balls.slice().forEach(b=>{scene.remove(b.mesh);scene.remove(b.blob);});balls.length=0;
   OPP.on=false;OPP.fired=false;OPP.spotShots=0;OPP.coolUntil=null;OPP.forceMove=false;G.battleCut=null;
