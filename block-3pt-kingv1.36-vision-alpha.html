@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>aiBA·百分大战 v1.35 VISION ALPHA</title>
+<title>aiBA·百分大战 v1.36 VISION ALPHA</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{--app-height:100dvh;height:100%;height:var(--app-height);background:#04050a}
@@ -283,7 +283,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <div id="bootLoad" role="dialog" aria-modal="true" aria-busy="true" aria-label="游戏资源加载" tabindex="0">
   <div class="bootFrame">
     <div class="bootBrand"><span>ai</span>BA</div>
-    <div class="bootEdition">VISION SHOT / v1.35 ALPHA</div>
+    <div class="bootEdition">VISION SHOT / v1.36 ALPHA</div>
     <div class="bootRule"></div>
     <div id="bootStatus" class="bootStatus">正在展开赛场</div>
     <div class="bootMeter" aria-hidden="true"><i id="bootBar"></i></div>
@@ -356,7 +356,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <script>typeof THREE==="undefined"&&document.write('<script src="https://lib.baomitu.com/three.js/r128/three.min.js"><\/script>')</script>
 <script>
 /* =====================================================
-   aiBA·百分大战 v1.35 VISION ALPHA
+   aiBA·百分大战 v1.36 VISION ALPHA
    Minecraft-style NBA 3-Point Contest · 单文件实现
    ===================================================== */
 "use strict";
@@ -386,7 +386,7 @@ const rnd=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 /* ---------------- constants ---------------- */
-const GAME_VERSION="v1.35-vision-alpha";
+const GAME_VERSION="v1.36-vision-alpha";
 const GAME_NAME="aiBA·百分大战";
 // NBA 标准全场坐标：保留原篮筐/三分点，只向远端延长球场。
 const COURT={
@@ -484,6 +484,27 @@ const CLASSIC_LEGENDS=[
   {n:"科沃尔",t:"接球就有",r:86,col:[0xc8102e,0x26282a],num:26},
   {n:"佩贾",t:"三分大赛两连冠",r:87,col:[0x5a2d81,0x8a8d8f],num:16}];
 const LEGENDS=[...CLASSIC_LEGENDS,...COVER_STARS];
+const DEFAULT_SHOT_PROFILE=Object.freeze({speed:1,window:1,label:"标准出手"});
+const SHOT_PROFILES=Object.freeze({
+  "库里":{speed:1.13,window:1.1,label:"极速出手"},
+  "克莱·汤普森":{speed:1.09,window:1.08,label:"快速定点"},
+  "雷·阿伦":{speed:1.02,window:1.09,label:"标准快出手"},
+  "拉里·伯德":{speed:.88,window:1.1,label:"沉稳高出手"},
+  "雷吉·米勒":{speed:1,window:1.02,label:"标准出手"},
+  "利拉德":{speed:1.07,window:.98,label:"快速远射"},
+  "科沃尔":{speed:1.1,window:1.12,label:"极速接投"},
+  "佩贾":{speed:.94,window:1.07,label:"舒展出手"},
+  k24:{speed:.89,window:.97,label:"沉稳后仰"},
+  j23:{speed:.84,window:.94,label:"滞空出手"},
+  a03:{speed:1.04,window:.99,label:"快速拔起"},
+  v15:{speed:.87,window:.92,label:"高点出手"},
+  t01:{speed:.92,window:.97,label:"舒展远射"}
+});
+function shotProfileFor(star){return SHOT_PROFILES[star&&(star.id||star.n)]||DEFAULT_SHOT_PROFILE;}
+function playerShotProfile(){return shotProfileFor(G.myStar);}
+function playerSweetZone(){return DIFFS[G.diff].zone*playerShotProfile().window;}
+function playerChargeRate(){return DIFFS[G.diff].fill*playerShotProfile().speed;}
+function shotProfileText(star){const p=shotProfileFor(star);return p.label+" · 甜区 "+Math.round(p.window*100)+"%";}
 const TEAM_COLORS=[[0x552583,0xfdb927],[0xce1141,0x111111],[0x007a33,0xffffff],[0x1d428a,0xffc72c],
   [0x98002e,0xf9a01b],[0x006bb6,0xf58426],[0x00471b,0xeee1c6],[0x0e2240,0xfec524],
   [0xe56020,0x1d1160],[0x000000,0xc4ced4],[0x5a2d81,0x63727a],[0x00538c,0x002b5e]];
@@ -3504,7 +3525,7 @@ function updPowerUI(){
     }
     return;
   }
-  const ideal=weatherAdjustedIdeal(s,false), zone=DIFFS[G.diff].zone;
+  const ideal=weatherAdjustedIdeal(s,false), zone=playerSweetZone();
   const z=$("pZone"),sw=$("pSweet");
   z.style.bottom=(ideal-zone)+"%";z.style.height=(zone*2)+"%";
   sw.style.bottom=(ideal-zone*0.5)+"%";sw.style.height=zone+"%";
@@ -3565,7 +3586,7 @@ function releaseShot(power,shot){
   const isBattle=G.mode==="battle";
   const isDeep=shot.deep!=null||shot.super;
   const ideal=weatherAdjustedIdeal(shot,true);
-  const zone=DIFFS[G.diff].zone;
+  const zone=playerSweetZone();
   const err=power-ideal, a=Math.abs(err), r=Math.random();
   // lateral error = device tilt + hand noise
   const tl=tiltDeg()*DIFFS[G.diff].latK;
@@ -4054,7 +4075,8 @@ function pickDiff(k){
       <span style="color:#ff9d8d;font-size:11px">「${talk}」</span></div>`;
   });
   h+=`<div class="card" style="border-color:#3a6"><b style="color:#9dff8d">你 (YOU)</b> #${G.myNum} ${stars(G.myStar.r||88)}<br>
-    <span style="color:#9ab;font-size:11px">${G.myStar.n} · ${G.myStar.t||"街球场走出的方块新星"}</span></div>
+    <span style="color:#9ab;font-size:11px">${G.myStar.n} · ${G.myStar.t||"街球场走出的方块新星"}</span><br>
+    <span style="color:#9dff8d;font-size:11px">${shotProfileText(G.myStar)}</span></div>
     <button class="btn green" onclick="startPractice()">🏀 热身练习 (3球)</button>
     <button class="btn gold" onclick="hidePanel();beginStage()">⚡ 直接开赛 →</button>`;
   showPanel(h);
@@ -4062,9 +4084,11 @@ function pickDiff(k){
 function showBattleIntro(){
   const o=G.battleOpp;
   const talk=TALK_PRE[(Math.random()*TALK_PRE.length)|0];
+  const myShot=shotProfileText(G.myStar),oppShot=shotProfileText(o);
   showPanel(`<h1 class="title" style="font-size:22px">aiBA·百分大战</h1>
     <div class="card"><b style="color:#9dff8d">你 · ${G.myStar.n}</b> #${G.myNum}  VS  <b style="color:#ffd23f">${o.n}</b> #${o.num}<br>
       <span style="font-size:11px;color:#9ab">${o.t} · ${stars(o.r)}</span><br>
+      <span style="font-size:11px;color:#9dff8d">你: ${myShot}</span> · <span style="font-size:11px;color:#ffd23f">对手: ${oppShot}</span><br>
       <span style="color:#ff9d8d;font-size:11px">「${talk}」</span></div>
     <div class="card">规则:<br>
       1. 两人同时开始,先到 <b>${BATTLE_TARGET}</b> 分获胜。<br>
@@ -4595,7 +4619,7 @@ function oppBeginLoad(){
   g.ball.visible=true;g.ball.material=sp.super?matGold:(sp.deep!=null?matDeep:matBall);
   OPP.phase="load";OPP.t=0;OPP.fired=false;
   // 对手节奏:难度越高出手越快
-  OPP.shootDur=clamp(0.9-(OPP.o.r-85)*0.012-DIFFS[G.diff].ai*0.5,0.55,0.95);
+  OPP.shootDur=clamp((0.9-(OPP.o.r-85)*0.012-DIFFS[G.diff].ai*0.5)/shotProfileFor(OPP.o).speed,0.5,1.08);
 }
 function startOppShooter(){
   OPP.on=true;OPP.o=G.battleOpp;OPP.guy=rivals[0];OPP.guy.active=true;
@@ -5307,7 +5331,7 @@ function animate(){
     }
   }
   if(G.charging){
-    G.power=Math.min(100,G.power+DIFFS[G.diff].fill*dt);
+    G.power=Math.min(100,G.power+playerChargeRate()*dt);
     $("pFill").style.height=G.power+"%";
   }
   // cameras
