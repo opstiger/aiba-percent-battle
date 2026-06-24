@@ -565,7 +565,7 @@ const VISION={
   supported:!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia),desired:false,enabled:false,loading:false,liveControl:true,
   stream:null,landmarker:null,handLandmarker:null,lastPose:null,lastHands:[],lastPoseAt:0,lastHandAt:0,lastDraw:0,lastVideoTime:-1,raf:0,ownsCharge:false,lastSample:null,inferAvg:0,
   machine:{phase:"align",holdStart:0,chargeStart:0,lastSeen:0,cooldownUntil:0,releaseFlashUntil:0},
-  readyZone:{x:.5,y:.73,r:.18},releaseZone:{x:.5,y:.2,r:.15},
+  readyZone:{x:.5,y:.73,r:.18},releaseLineY:.32,
   connections:[[11,12],[11,13],[13,15],[15,17],[15,19],[15,21],[12,14],[14,16],[16,18],[16,20],[16,22],[11,23],[12,24],[23,24]],
   handConnections:[[0,1],[1,2],[2,3],[3,4],[0,5],[5,6],[6,7],[7,8],[5,9],[9,10],[10,11],[11,12],[9,13],[13,14],[14,15],[15,16],[13,17],[17,18],[18,19],[19,20],[0,17]]
 };
@@ -607,6 +607,10 @@ function visionPalm(hand){
   const ids=[0,5,9,13,17],valid=ids.map(i=>hand&&hand[i]).filter(Boolean);if(!valid.length)return null;
   return valid.reduce((p,v)=>({x:p.x+v.x/valid.length,y:p.y+v.y/valid.length}),{x:0,y:0});
 }
+function visionHandLead(hand){
+  const tips=[8,12,16,20,4].map(i=>hand&&hand[i]).filter(Boolean);
+  return tips.length?tips.reduce((top,p)=>p.y<top.y?p:top):visionPalm(hand);
+}
 function visionLandmarkSample(lm,handLandmarks,now){
   const poseFresh=now-(VISION.lastPoseAt||0)<450;
   const handFresh=now-(VISION.lastHandAt||0)<(VISION.machine.phase==="charging"?240:460);
@@ -615,10 +619,10 @@ function visionLandmarkSample(lm,handLandmarks,now){
   const palms=hands.map(visionPalm).filter(Boolean);
   const poseWrists=poseValid?[lm[15],lm[16]]:[];
   const readyPoints=palms.length>=2?palms:poseWrists;
-  const releasePoints=hands.length?hands.map(hand=>hand[8]||visionPalm(hand)).filter(Boolean):poseWrists;
+  const releasePoints=[...hands.map(visionHandLead).filter(Boolean),...poseWrists];
   const holdBoost=VISION.machine.phase==="hold"?.02:0;
   const ready=readyPoints.length>=2&&readyPoints.slice(0,2).every(p=>visionPointInZone(p,VISION.readyZone,holdBoost));
-  const release=releasePoints.some(p=>visionPointInZone(p,VISION.releaseZone,0));
+  const release=releasePoints.some(p=>p&&p.y<=VISION.releaseLineY);
   const sample={valid:poseValid||palms.length>0,ready,release,handCount:hands.length,palms,readyPoints,releasePoints,now};
   VISION.lastSample=sample;return sample;
 }
@@ -631,9 +635,9 @@ function visionPhaseLabel(step,sample){
   if(step.phase==="hold")return"双手锁定 "+Math.round(step.progress*100)+"%";
   if(step.phase==="charging"){
     const blind=VISION.liveControl&&typeof curShot==="function"&&barHiddenFor(curShot());
-    return blind?"任一手触达上方圆圈":"蓄力 · "+Math.round((VISION.liveControl&&G.charging?G.power:step.progress*100))+"%";
+    return blind?"任一手越过上方出手线":"蓄力 · "+Math.round((VISION.liveControl&&G.charging?G.power:step.progress*100))+"%";
   }
-  if(step.phase==="release")return"区域触发 · 出手";
+  if(step.phase==="release")return"越线触发 · 出手";
   if(step.phase==="cooldown")return"动作复位";
   if(sample&&sample.handCount>0)return"双手放入下方圆圈";
   return"双手放入下方圆圈";
@@ -643,11 +647,17 @@ function drawVisionZone(g,zone,w,h,color,active){
   g.save();g.globalAlpha=active?.22:.1;g.fillStyle=color;g.beginPath();g.arc(x,y,r,0,Math.PI*2);g.fill();
   g.globalAlpha=active?.95:.58;g.strokeStyle=color;g.lineWidth=Math.max(2,w/280);g.setLineDash(active?[]:[8,7]);g.beginPath();g.arc(x,y,r,0,Math.PI*2);g.stroke();g.restore();
 }
+function drawVisionReleaseLine(g,lineY,w,h,active){
+  const y=lineY*h;
+  g.save();g.fillStyle="#ffffff";g.globalAlpha=active?.14:.06;g.fillRect(0,0,w,y);
+  g.strokeStyle="#ffffff";g.globalAlpha=active?.96:.62;g.lineWidth=Math.max(2,w/260);g.setLineDash(active?[]:[10,8]);
+  g.beginPath();g.moveTo(0,y);g.lineTo(w,y);g.stroke();g.restore();
+}
 function drawVisionPose(lm,handLandmarks,sample,phase){
   const cv=$("visionCanvas"),video=$("visionVideo");if(!cv||!video)return;
   const w=video.videoWidth||640,h=video.videoHeight||480;if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;}
   const g=cv.getContext("2d");g.clearRect(0,0,w,h);if(video.readyState>=2){g.filter="saturate(.72) contrast(1.08) brightness(.78)";g.drawImage(video,0,0,w,h);g.filter="none";}
-  drawVisionZone(g,VISION.releaseZone,w,h,"#ffffff",phase==="charging"||phase==="release");
+  drawVisionReleaseLine(g,VISION.releaseLineY,w,h,phase==="charging"||phase==="release");
   drawVisionZone(g,VISION.readyZone,w,h,"#70e8ff",phase==="hold");
   const color=phase==="charging"?"#7CFC6B":(phase==="hold"?"#ffd23f":"#70e8ff");
   g.lineWidth=Math.max(2,w/260);g.strokeStyle=color;g.fillStyle=color;g.globalAlpha=.92;
@@ -750,7 +760,7 @@ function visionFrame(now){
   visionSetUI(step.phase,visionPhaseLabel(step,sample),blindCharge?0:step.progress);
   if(visionGameActive()){
     const hint=$("hint");
-    if(hint)hint.textContent=step.phase==="hold"?"双手保持在下方圆圈":(step.phase==="charging"?"任一只手触达上方圆圈":(step.phase==="release"?"出手!":"双手进入下方圆圈 0.3 秒"));
+    if(hint)hint.textContent=step.phase==="hold"?"双手保持在下方圆圈":(step.phase==="charging"?"任一只手越过上方出手线":(step.phase==="release"?"出手!":"双手进入下方圆圈 0.3 秒"));
   }
   document.documentElement.dataset.visionPhase=step.phase;
   document.documentElement.dataset.visionReady=sample.ready?"1":"0";
