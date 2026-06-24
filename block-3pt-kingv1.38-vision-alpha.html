@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>aiBA·百分大战 v1.37 VISION ALPHA</title>
+<title>aiBA·百分大战 v1.38 VISION ALPHA</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{--app-height:100dvh;height:100%;height:var(--app-height);background:#04050a}
@@ -284,7 +284,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <div id="bootLoad" role="dialog" aria-modal="true" aria-busy="true" aria-label="游戏资源加载" tabindex="0">
   <div class="bootFrame">
     <div class="bootBrand"><span>ai</span>BA</div>
-    <div class="bootEdition">VISION SHOT / v1.37 ALPHA</div>
+    <div class="bootEdition">VISION SHOT / v1.38 ALPHA</div>
     <div class="bootRule"></div>
     <div id="bootStatus" class="bootStatus">正在展开赛场</div>
     <div class="bootMeter" aria-hidden="true"><i id="bootBar"></i></div>
@@ -358,7 +358,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <script>typeof THREE==="undefined"&&document.write('<script src="https://lib.baomitu.com/three.js/r128/three.min.js"><\/script>')</script>
 <script>
 /* =====================================================
-   aiBA·百分大战 v1.37 VISION ALPHA
+   aiBA·百分大战 v1.38 VISION ALPHA
    Minecraft-style NBA 3-Point Contest · 单文件实现
    ===================================================== */
 "use strict";
@@ -388,7 +388,7 @@ const rnd=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 /* ---------------- constants ---------------- */
-const GAME_VERSION="v1.37-vision-alpha";
+const GAME_VERSION="v1.38-vision-alpha";
 const GAME_NAME="aiBA·百分大战";
 // NBA 标准全场坐标：保留原篮筐/三分点，只向远端延长球场。
 const COURT={
@@ -1482,7 +1482,7 @@ const rig={pos:V3(0,9,10),look:V3(0,2,-8)};
 const camTarget={pos:V3(0,9,10),look:V3(0,2,-8)};
 let camSnap=true;
 let curSpotRing=null; // 当前点位的地面高亮光圈(3D,融入地板)
-const RENDER_SCALE=0.82;
+const RENDER_SCALE=(()=>{const px=screen.width*screen.height*(devicePixelRatio||1);if(px>1800000)return 0.62;if(px>900000)return 0.72;return 0.82;})();
 function dampRig(dt,k){
   if(camSnap){rig.pos.copy(camTarget.pos);rig.look.copy(camTarget.look);camSnap=false;return;}
   const a=1-Math.exp(-(k||4.5)*dt); // 帧率无关阻尼
@@ -1498,8 +1498,9 @@ function resize(){
   renderer.domElement.style.width=w+"px";renderer.domElement.style.height=h+"px";
   camera.aspect=w/h;camera.updateProjectionMatrix();
 }
-addEventListener("resize",resize);
-if(window.visualViewport)visualViewport.addEventListener("resize",resize);
+let _resizeT=0;function debouncedResize(){clearTimeout(_resizeT);_resizeT=setTimeout(resize,120);}
+addEventListener("resize",debouncedResize);
+if(window.visualViewport)visualViewport.addEventListener("resize",debouncedResize);
 resize();
 
 /* lights */
@@ -3404,11 +3405,12 @@ function emitFire(p){
   fireLife[fireIdx]=0.5;fireIdx=(fireIdx+1)%fireN;
 }
 function updFire(dt){
+  let alive=false;
   for(let i=0;i<fireN;i++){
-    if(fireLife[i]>0){fireLife[i]-=dt;firePos[i*3+1]+=dt*0.7;
+    if(fireLife[i]>0){alive=true;fireLife[i]-=dt;firePos[i*3+1]+=dt*0.7;
       if(fireLife[i]<=0)firePos[i*3+1]=-99;}
   }
-  fireGeoB.attributes.position.needsUpdate=true;
+  if(alive)fireGeoB.attributes.position.needsUpdate=true;
 }
 const confN=260;
 const confPos=new Float32Array(confN*3),confVel=[];
@@ -3428,12 +3430,15 @@ function startConfetti(){
     confCol[i*3]=c[0];confCol[i*3+1]=c[1];confCol[i*3+2]=c[2];
   }
 }
+let _confAcc=0;
 function updConf(dt){
   if(!confPts.visible)return;
+  _confAcc+=dt;if(_confAcc<1/20)return;
+  const step=Math.min(.1,_confAcc);_confAcc=0;
   for(let i=0;i<confN;i++){
-    confPos[i*3]+=confVel[i].x*dt+Math.sin(G.tNow*3+i)*0.01;
-    confPos[i*3+1]+=confVel[i].y*dt;
-    confPos[i*3+2]+=confVel[i].z*dt;
+    confPos[i*3]+=confVel[i].x*step+Math.sin(G.tNow*3+i)*0.01;
+    confPos[i*3+1]+=confVel[i].y*step;
+    confPos[i*3+2]+=confVel[i].z*step;
     if(confPos[i*3+1]<0.05)confPos[i*3+1]=rnd(10,15);
   }
   confGeo.attributes.position.needsUpdate=true;
@@ -3858,10 +3863,13 @@ function toast(txt,col){
   const el=$("toast");el.textContent=txt;el.style.color=col||"#fff";el.style.opacity=1;
   clearTimeout(toastT);toastT=setTimeout(()=>el.style.opacity=0,900);
 }
+const _popPool=[];
 function popScore(txt,col){
-  const d=document.createElement("div");d.className="pop";d.textContent=txt;
-  d.style.color=col;d.style.left=(45+rnd(0,10))+"%";d.style.top="32%";
-  $("pops").appendChild(d);setTimeout(()=>d.remove(),1200);
+  let d=_popPool.pop();
+  if(!d){d=document.createElement("div");d.className="pop";$("pops").appendChild(d);}
+  d.textContent=txt;d.style.color=col;d.style.left=(45+rnd(0,10))+"%";d.style.top="32%";
+  d.style.display="block";d.style.animation="none";d.offsetHeight;d.style.animation="";
+  setTimeout(()=>{d.style.display="none";_popPool.push(d);},1200);
 }
 function showPanel(html){stopCoverVideo();$("ov").classList.remove("cover-menu");$("ovBox").innerHTML=html;$("ov").style.display="flex";}
 function showCoverPanel(html){stopCoverVideo();$("ov").classList.add("cover-menu");$("ovBox").innerHTML=html;$("ov").style.display="flex";}
@@ -5342,12 +5350,8 @@ function animate(){
   updFire(dt);
   updConf(dt);
   G.cheer=Math.max(0,G.cheer-dt*0.5);
-  if(VISION.enabled){
-    visionAmbienceAcc+=dt;
-    if(visionAmbienceAcc>=1/20){visionAmbienceAcc=0;updCrowd(G.tNow);updBackcourtShow(G.tNow);}
-  }else{
-    visionAmbienceAcc=0;updCrowd(G.tNow);updBackcourtShow(G.tNow);
-  }
+  visionAmbienceAcc+=dt;
+  if(visionAmbienceAcc>=1/12){visionAmbienceAcc=0;updCrowd(G.tNow);updBackcourtShow(G.tNow);}
   if(netPulse>0){netPulse-=dt*3;const s=1+netPulse*0.35;netMesh.scale.set(s,1+netPulse*0.5,s);}
   // 反超特写排队
   if(G.state==="round"&&!frozen)tryCutAway();
@@ -5361,9 +5365,9 @@ function animate(){
   if(G.state==="round"&&G.running&&!G.practice){
     G.timer-=dt;
     if(G.timer<35&&!G.organed){G.organed=true;organCharge();}
-    const tl=$("hudTimer");
-    tl.textContent=Math.max(0,G.timer).toFixed(1);
-    tl.className=G.timer<=10?"low":"";
+    const tl=$("hudTimer"),tv=Math.max(0,G.timer).toFixed(1);
+    if(tl.textContent!==tv)tl.textContent=tv;
+    const tc=G.timer<=10?"low":"";if(tl.className!==tc)tl.className=tc;
     if(G.timer<=5&&G.timer>0&&G.tNow-lowBeep>1){lowBeep=G.tNow;sBeep();}
     jumboAcc+=dt;if(jumboAcc>0.5){jumboAcc=0;updJumbo();}
     if(G.timer<=0&&!G.buzzed){
@@ -5382,7 +5386,7 @@ function animate(){
   }
   if(G.charging){
     G.power=Math.min(100,G.power+playerChargeRate()*dt);
-    $("pFill").style.height=G.power+"%";
+    const _ph=Math.round(G.power)+"%";if($("pFill").style.height!==_ph)$("pFill").style.height=_ph;
   }
   // cameras
   if(rep.on)updReplay(dt);

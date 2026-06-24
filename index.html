@@ -3,7 +3,7 @@
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1,user-scalable=no,viewport-fit=cover">
-<title>aiBA·百分大战 v1.37 VISION ALPHA</title>
+<title>aiBA·百分大战 v1.38 VISION ALPHA</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{--app-height:100dvh;height:100%;height:var(--app-height);background:#04050a}
@@ -284,7 +284,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <div id="bootLoad" role="dialog" aria-modal="true" aria-busy="true" aria-label="游戏资源加载" tabindex="0">
   <div class="bootFrame">
     <div class="bootBrand"><span>ai</span>BA</div>
-    <div class="bootEdition">VISION SHOT / v1.37 ALPHA</div>
+    <div class="bootEdition">VISION SHOT / v1.38 ALPHA</div>
     <div class="bootRule"></div>
     <div id="bootStatus" class="bootStatus">正在展开赛场</div>
     <div class="bootMeter" aria-hidden="true"><i id="bootBar"></i></div>
@@ -358,7 +358,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 <script>typeof THREE==="undefined"&&document.write('<script src="https://lib.baomitu.com/three.js/r128/three.min.js"><\/script>')</script>
 <script>
 /* =====================================================
-   aiBA·百分大战 v1.37 VISION ALPHA
+   aiBA·百分大战 v1.38 VISION ALPHA
    Minecraft-style NBA 3-Point Contest · 单文件实现
    ===================================================== */
 "use strict";
@@ -388,7 +388,7 @@ const rnd=(a,b)=>a+Math.random()*(b-a);
 const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
 
 /* ---------------- constants ---------------- */
-const GAME_VERSION="v1.37-vision-alpha";
+const GAME_VERSION="v1.38-vision-alpha";
 const GAME_NAME="aiBA·百分大战";
 // NBA 标准全场坐标：保留原篮筐/三分点，只向远端延长球场。
 const COURT={
@@ -3433,11 +3433,12 @@ function startConfetti(){
 let _confAcc=0;
 function updConf(dt){
   if(!confPts.visible)return;
-  _confAcc+=dt;if(_confAcc<1/20)return;_confAcc=0;
+  _confAcc+=dt;if(_confAcc<1/20)return;
+  const step=Math.min(.1,_confAcc);_confAcc=0;
   for(let i=0;i<confN;i++){
-    confPos[i*3]+=confVel[i].x*dt+Math.sin(G.tNow*3+i)*0.01;
-    confPos[i*3+1]+=confVel[i].y*dt;
-    confPos[i*3+2]+=confVel[i].z*dt;
+    confPos[i*3]+=confVel[i].x*step+Math.sin(G.tNow*3+i)*0.01;
+    confPos[i*3+1]+=confVel[i].y*step;
+    confPos[i*3+2]+=confVel[i].z*step;
     if(confPos[i*3+1]<0.05)confPos[i*3+1]=rnd(10,15);
   }
   confGeo.attributes.position.needsUpdate=true;
