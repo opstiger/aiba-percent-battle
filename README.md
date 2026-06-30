@@ -8,6 +8,8 @@
 
 https://opstiger.github.io/aiba-percent-battle/
 
+当前版本：`v1.42-hd-voxel-player`
+
 ## 模式
 
 - 百分大战：两人同时开投，先到 100 分获胜。
@@ -36,14 +38,35 @@ python3 -m http.server 4174
 http://127.0.0.1:4174/
 ```
 
+提交前可跑一次静态检查：
+
+```bash
+node scripts/check.js
+```
+
 ## 项目结构
 
 - `index.html`：当前可玩的入口文件。
-- `block-3pt-kingv1.40-rack-rush-alpha.html`：当前先锋版本快照。
+- `block-3pt-kingv1.42-hd-voxel-player.html`：当前版本快照，和 `index.html` 保持一致。
+- `styles.css`：游戏 HUD、首页、面板和移动端样式。
+- `src/assets-manifest.js`：封面角色、音频等资源清单。
+- `src/audio.js`：外部音频、合成音效、现场氛围和语音播报。
+- `src/vision.js`：摄像头、MediaPipe、视觉投篮识别与预览。
+- `scripts/check.js`：提交前静态验收脚本。
 - `assets/`：游戏图片、视频和音频资源。
 - `vendor/`：随项目带的第三方运行文件，包括 Three.js 与 MediaPipe Tasks Vision。
 - `backup/`：本地历史版本归档，不参与发布。
 - `docs/`：本地需求与迭代文档，不参与发布。
+
+## 开发方向
+
+项目仍然保持纯静态部署，但已经开始从单 HTML 拆分。后续如果继续扩大，建议继续拆成：
+
+- `src/rendering.js`：Three.js 场景、相机、角色、球场和特效。
+- `src/game.js`：主循环、状态机、投篮、比分和模式逻辑。
+- `src/modes/`：百分大战、三分挑战、RACK RUSH 的独立模式逻辑。
+
+拆分时优先保持纯静态项目，不急着引入框架；先让代码边界清楚，再考虑构建工具。
 
 ## 说明
 
