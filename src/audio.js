@@ -1,9 +1,70 @@
-/* ====== 台词真人配音(可选): "台词原文" → mp3地址或dataURI ======
-   免费有情绪的中文配音推荐 edge-tts 批量生成 (zh-CN-YunjianNeural 体育解说风):
-   pip install edge-tts
-   edge-tts --voice zh-CN-YunjianNeural --rate +15% --text "三分线外是我的地盘。" --write-media talk1.mp3
-   生成后填入: VOICE_CLIPS["三分线外是我的地盘。"]="talk1.mp3"  (或转 base64 dataURI 内嵌) */
-const VOICE_CLIPS={};
+/* ====== 真人配音: 固定台词优先播放英文 wav, 动态台词走英文合成兜底 ====== */
+const VOICE_BASE=(typeof EXT_AUDIO!=="undefined"&&EXT_AUDIO&&EXT_AUDIO.voiceBase)||"assets/aiba-audio/voices/";
+const voiceUrl=name=>VOICE_BASE+name;
+const VOICE_CLIPS=Object.freeze({
+  "三分线外是我的地盘。":voiceUrl("p_13_en.wav"),
+  "屈居亚军,虽败犹荣,观众把掌声送给你!":voiceUrl("p_08_en.wav"),
+  "屈居亚军，虽败犹荣，观众把掌声送给你！":voiceUrl("p_08_en.wav"),
+  "FINAL RUSH,最后冲刺!":voiceUrl("p_10_en.wav"),
+  "RACK RUSH完成!":voiceUrl("p_12_en.wav"),
+  "彩球点,五分命中!":voiceUrl("dj_02_en.wav"),
+  "彩球点，五分命中！":voiceUrl("dj_02_en.wav"),
+  "深远三分!":voiceUrl("dj_03_en.wav"),
+  "手感火热,挡不住了!":voiceUrl("dj_04_en.wav"),
+  "手感火热，挡不住了！":voiceUrl("dj_04_en.wav"),
+  "中场十分机会出现!":voiceUrl("dj_05_en.wav"),
+  "对手中场超远命中!":voiceUrl("dj_06_en.wav")
+});
+const VOICE_RULES=Object.freeze([
+  {re:/欢迎来到 aiBA/i,url:voiceUrl("p_09_en.wav")},
+  {re:/^FINAL RUSH,?最后冲刺!?$/i,url:voiceUrl("p_10_en.wav")},
+  {re:/^最后五分决胜!?$/,url:voiceUrl("p_11_en.wav")},
+  {re:/^RACK RUSH完成!?$/i,url:voiceUrl("p_12_en.wav")},
+  {re:/屈居亚军/,url:voiceUrl("p_08_en.wav")},
+  {re:/彩球点/,url:voiceUrl("dj_02_en.wav")},
+  {re:/深远三分/,url:voiceUrl("dj_03_en.wav")},
+  {re:/手感火热/,url:voiceUrl("dj_04_en.wav")},
+  {re:/中场十分机会出现/,url:voiceUrl("dj_05_en.wav")},
+  {re:/对手中场超远命中/,url:voiceUrl("dj_06_en.wav")},
+  {re:/中场超远.*十分到手/,url:voiceUrl("dj_01_en.wav")}
+]);
+const EN_SPEECH=Object.freeze({
+  "三分线外是我的地盘。":"The three point line is my territory.",
+  "今晚我让你两个花球。":"Tonight, I will spot you two money balls.",
+  "方块小子,回家再练十年。":"Block kid, go practice for ten more years.",
+  "我闭着眼都比你准。":"I shoot better with my eyes closed.",
+  "听到观众在喊谁的名字了吗?":"Hear whose name the crowd is chanting?",
+  "希望你的手别抖。":"Hope your hands do not shake.",
+  "运气球罢了…":"That was just luck.",
+  "风!刚才一定有风!":"Wind! There had to be wind.",
+  "裁判!他踩线了吧?!":"Ref, he stepped on the line, right?",
+  "别得意,还没结束。":"Do not celebrate yet. It is not over.",
+  "……他什么时候变这么准的?":"When did he get this accurate?",
+  "我热身还没做完而已。":"I am not even done warming up.",
+  "看到没!这就是差距!":"See that? That is the gap.",
+  "谁是三分王?!":"Who is the three point king?",
+  "太轻松了!":"Too easy.",
+  "跟我斗?还嫩点!":"Trying me? Not ready.",
+  "这分我拿定了!":"These points are mine.",
+  "感受方块的力量!":"Feel the block power.",
+  "快追啊!":"Catch up if you can.",
+  "就这点本事?":"Is that all you have?",
+  "我已经看到终点了!":"I can already see the finish line.",
+  "你还差得远呢!":"You are still far behind.",
+  "100分是我的!":"One hundred is mine.",
+  "看好了,这才叫投篮。":"Watch closely. This is shooting.",
+  "我会让你知道差距。":"I will show you the gap.",
+  "记好这个分数。":"Remember this score.",
+  "反超!比分易主!":"Lead change!",
+  "反超!你领先了!":"Lead change! You are in front.",
+  "时间到!":"Time is up!",
+  "最后十秒,每球加一分!":"Final ten seconds. Every make gets one extra point.",
+  "晋级决赛!":"You are going to the final.",
+  "平分!突然死亡加赛!":"Tie game. Sudden death.",
+  "新科三分王,诞生了!":"A new three point king is crowned.",
+  "百分大战,率先破百!":"Percent Battle! First to one hundred.",
+  "百分大战开始!先到一百分获胜!":"Percent Battle begins. First to one hundred wins!"
+});
 
 /* ---------------- 音频引擎 v3 (菜单BGM + 球馆现场 + DJ/转播 + 投篮手感) ---------------- */
 let AC=null,master=null,crowdBus=null,crowdGain=null,musicBus=null,arenaBus=null,broadcastBus=null,playerBus=null,sfxBus=null;
@@ -81,17 +142,25 @@ function updateSceneAudio(dt){
   if(sceneAudioTick<=0){sceneAudioTick=.55;syncSceneAmbience();}
 }
 function playClip(t){
-  const u=VOICE_CLIPS[t];if(!u||MUTED)return false;
+  const u=voiceClipFor(t);if(!u||MUTED)return false;
   try{
     if(!playClip.cache[u]){const a=new Audio(u);a.preload="auto";a.load();playClip.cache[u]=a;}
     const base=playClip.cache[u],a=base.paused&&base.currentTime===0?base:base.cloneNode();
     a.volume=1;a.currentTime=0;const p=a.play();if(p&&p.catch)p.catch(()=>{});
+    duckBroadcast(1800);
   }catch(e){return false}
   return true;
 }
 playClip.cache=Object.create(null);
+function voiceClipFor(t){
+  if(!t)return "";
+  if(VOICE_CLIPS[t])return VOICE_CLIPS[t];
+  for(const rule of VOICE_RULES){if(rule.re.test(t))return rule.url;}
+  return "";
+}
 function preloadVoiceClips(){
-  Object.values(VOICE_CLIPS).forEach(u=>{
+  const urls=Object.values(VOICE_CLIPS).concat(VOICE_RULES.map(r=>r.url));
+  urls.forEach(u=>{
     if(!u||playClip.cache[u])return;
     try{const a=new Audio(u);a.preload="auto";a.load();playClip.cache[u]=a;}catch(e){}
   });
@@ -595,18 +664,46 @@ function music(on,fast){
 const SPK={voice:null,last:0,queue:[],timer:0,speaking:false};
 const EMO={
   pa:   {pitch:0.82,rate:1.02,jit:0.05,pre:[]},
-  hype: {pitch:1.42,rate:1.28,jit:0.2, pre:["哇哦!!","好球——!!","不可思议!!"]},
-  taunt:{pitch:1.12,rate:1.2, jit:0.15,pre:["哈!","嘿~","切——"]},
-  angry:{pitch:0.72,rate:1.25,jit:0.12,pre:["喂!!","哼!"]},
-  sad:  {pitch:0.6, rate:0.82,jit:0.08,pre:["唉……","不……","怎么会……"]}
+  hype: {pitch:1.18,rate:1.12,jit:0.12,pre:["Wow! ","Big shot! ","Unbelievable! "]},
+  taunt:{pitch:1.05,rate:1.08,jit:0.1, pre:["Ha! ","Hey! "]},
+  angry:{pitch:0.82,rate:1.08,jit:0.08,pre:["Come on! "]},
+  sad:  {pitch:0.72,rate:0.88,jit:0.06,pre:["Oh no. ","No. "]}
 };
 function initVoice(){
   if(!window.speechSynthesis)return;
   const pick=()=>{
     const vs=speechSynthesis.getVoices();
-    SPK.voice=vs.find(v=>/zh[-_]CN/i.test(v.lang))||vs.find(v=>/zh/i.test(v.lang))||null;
+    SPK.voice=vs.find(v=>/en[-_]US/i.test(v.lang))||vs.find(v=>/^en/i.test(v.lang))||null;
   };
   pick();speechSynthesis.onvoiceschanged=pick;
+}
+function speechTextEn(txt){
+  let s=String(txt||"").replace(/，/g,",").replace(/。/g,".").replace(/！/g,"!").replace(/？/g,"?");
+  if(EN_SPEECH[s])return EN_SPEECH[s];
+  let m=s.match(/^有请,?(.+?)(?:,(\d+)号)?(?:!|$)/);
+  if(m)return "Now entering, "+m[1]+(m[2]?", number "+m[2]:"")+"!";
+  m=s.match(/^(.+),(\d+)分!$/);
+  if(m)return m[1]+", "+m[2]+" points!";
+  m=s.match(/现在(\d+)比(\d+)/);
+  if(m){
+    const lead=s.includes("双方打平")?"We are tied.":(s.includes("你暂时领先")?"You are in front.":(s.includes("暂时领先")?"Your opponent is in front.":""));
+    if(s.includes("最后五分决胜"))return "Final five points. Score is "+m[1]+" to "+m[2]+". Every shot matters.";
+    if(s.includes("九十分关口"))return "Ninety point checkpoint. Score is "+m[1]+" to "+m[2]+". "+lead;
+    if(s.includes("最后冲刺"))return "Final run. Score is "+m[1]+" to "+m[2]+". Every shot matters.";
+    return "Score update. It is "+m[1]+" to "+m[2]+". "+lead;
+  }
+  m=s.match(/^(.+)反超了!$/);
+  if(m)return m[1]+" takes the lead!";
+  m=s.match(/^(.+)率先到达一百分!$/);
+  if(m)return m[1]+" reaches one hundred first!";
+  m=s.match(/^第(\d+)关,(.+).目标(\d+)分.$/);
+  if(m)return "Level "+m[1]+", "+m[2]+". Target score, "+m[3]+".";
+  m=s.match(/^RACK RUSH完成,总分(\d+)分!$/);
+  if(m)return "Rack Rush complete. Total score, "+m[1]+"!";
+  m=s.match(/^本次挑战结束,总分(\d+)分.$/);
+  if(m)return "Challenge over. Total score, "+m[1]+".";
+  if(/[一-龥]/.test(s))return "The crowd is getting loud.";
+  return s;
 }
 function speechLiveGame(){return G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush";}
 function speechInputCritical(){return speechLiveGame()&&(G.canShoot||G.charging||G.moving||VISION.machine.phase==="hold"||VISION.machine.phase==="charging");}
@@ -623,11 +720,11 @@ function speakQueued(item){
     if(opt.pri&&!speechLiveGame())speechSynthesis.cancel();
     if(opt.pri||opt.emo==="pa"||opt.emo==="hype")duckBroadcast(opt.pri?2200:1400);
     const e=EMO[opt.emo]||{pitch:opt.pitch||1,rate:opt.rate||1.08,jit:0.06,pre:[]};
-    let full=txt;
+    let full=speechTextEn(txt);
     if(e.pre.length&&Math.random()<0.65)full=e.pre[(Math.random()*e.pre.length)|0]+full;
     const u=new SpeechSynthesisUtterance(full);
     if(SPK.voice)u.voice=SPK.voice;
-    u.lang="zh-CN";u.volume=1;
+    u.lang="en-US";u.volume=1;
     const basePitch=opt.pitch!=null?opt.pitch:e.pitch;
     const baseRate=opt.rate!=null?opt.rate:e.rate;
     u.pitch=Math.max(0.1,Math.min(2,basePitch+(Math.random()*2-1)*e.jit));

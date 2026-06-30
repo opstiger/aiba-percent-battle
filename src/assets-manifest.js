@@ -21,6 +21,7 @@
     rain:"assets/aiba-audio/rain-light-loop.mp3",
     ocean:"assets/aiba-audio/ocean-waves-loop.mp3",
     gull:"assets/aiba-audio/gull-call.mp3",
+    voiceBase:"assets/aiba-audio/voices/",
     applause:"",
     boo:"",
     horn:"",
