@@ -173,6 +173,8 @@ const BATTLE_NORMAL_STOCK=5;
 const BATTLE_NORMAL_RELOAD=10;
 const BATTLE_DEEP_RELOAD=10;
 const RACK_RUSH_RUNS_KEY="aiba-rack-rush-runs-v1";
+const RACK_RUSH_SPEED_RUNS_KEY="aiba-rack-rush-speed100-runs-v1";
+const RACK_RUSH_SPEED_TARGET=100;
 const RACK_RUSH_LEVELS=Object.freeze([
   {name:"热身启动",time:30,feed:1.35,targets:{easy:18,normal:20,hard:22},bar:"all"},
   {name:"节奏加速",time:35,feed:1.25,targets:{easy:26,normal:30,hard:34},bar:"all"},
@@ -224,7 +226,7 @@ const GAME_SEED=getSeed();
 let SHARED_RACK_RUSH=null;
 try{
   const q=new URLSearchParams(location.search),diff=q.get("diff");
-  if(q.get("mode")==="rackrush"&&DIFFS[diff])SHARED_RACK_RUSH={diff,star:q.get("star"),opened:false};
+  if(q.get("mode")==="rackrush"&&DIFFS[diff])SHARED_RACK_RUSH={diff,star:q.get("star"),submode:q.get("submode"),opened:false};
 }catch(e){}
 const seedRng=mulberry32(GAME_SEED);
 function seededRandom(){return seedRng();}
@@ -300,6 +302,11 @@ const G={
 const EXT_AUDIO=ASSETS.audio||{};
 </script>
 <script src="src/audio.js"></script>
+<script src="src/nba-dna/ScoreEngine.js?v=20260701-analysis4"></script>
+<script src="src/nba-dna/PoseAnalyzer.js?v=20260701-analysis4"></script>
+<script src="src/nba-dna/PoseVisualizer.js?v=20260701-analysis4"></script>
+<script src="src/nba-dna/ShareCard.js?v=20260701-analysis4"></script>
+<script src="src/nba-dna/NBADNA.js?v=20260701-analysis4"></script>
 <script>
 /* ---------------- three.js setup ---------------- */
 const renderer=new THREE.WebGLRenderer({canvas:$("c"),antialias:true,powerPreference:"high-performance"});
@@ -358,7 +365,7 @@ function updateRenderQuality(dt){
   if(q.locked||G.state==="menu"||G.state==="diff")return;
   const fps=1/Math.max(dt,0.001);
   q.fps=q.fps*0.92+fps*0.08;
-  const active=G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush";
+  const active=G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="pregame";
   if(!active)return;
   const target=renderQualityTarget();
   if(q.fps<43){q.low+=dt;q.high=0;}else if(q.fps>56){q.high+=dt;q.low=0;}else{q.low=Math.max(0,q.low-dt*.5);q.high=Math.max(0,q.high-dt*.5);}
@@ -1623,7 +1630,7 @@ function benchSetup(){
   benchVis();
 }
 function benchVis(){
-  const act=(G.state==="round"||G.state==="tiebreak"||G.state==="aishow"||G.state==="battle");
+  const act=(G.state==="round"||G.state==="tiebreak"||G.state==="aishow"||G.state==="battle"||G.state==="pregame");
   rivals.forEach(rv=>{rv.g.visible=act&&rv.active;});
 }
 
@@ -1637,7 +1644,7 @@ function cycleCam(){
   applyCamMode();blip(700,0.05,"square",0.06);
 }
 function applyCamMode(){
-  const inPlay=(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="rushintro"||G.state==="rushbetween");
+  const inPlay=(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="rushintro"||G.state==="rushbetween"||G.state==="pregame");
   hands.visible=CAM.mode===0&&inPlay;
   player.g.visible=CAM.mode!==0&&inPlay;
   passer.g.visible=inPlay;
@@ -1972,7 +1979,7 @@ function genAIRun(o){
 }
 const show={on:false,o:null,guy:null,q:[],idx:0,t:0,score:0,total:0,cb:null,c:shotCurves(0)};
 function startAIShow(o,cb){
-  G.state="aishow";music(false);
+  G.state="aishow";enterArenaAudio(0.86);
   const run=genAIRun(o);
   show.on=true;show.o=o;show.cb=cb;show.total=run.total;show.score=0;show.idx=0;show.t=0;
   show.guy=rivalFor(o);show.guy.active=true;benchVis();
@@ -2218,6 +2225,250 @@ function stopCelebrate(o){
   if(!o._celeb)return;o._celeb=null;
   o.arms.forEach(a=>a.rotation.x=-0.3);o.elbows.forEach(e=>e.rotation.x=-0.3);
   o.g.position.y=0;
+}
+const PREGAME={
+  on:false,t:0,idx:0,dur:0,shots:[],actors:[],snaps:[],prevState:null,cb:null
+};
+const PREGAME_ACTIONS=["shoot","stretch","dunk","chalk","hang","finger","huddle","wave","pump"];
+const PREGAME_CAMS=["orbit","push","low","overhead","freeze","follow","pan","pull"];
+const pregamePick=a=>a[(Math.random()*a.length)|0];
+const PREGAME_LABELS={
+  shoot:"投篮热身",stretch:"拉伸热身",dunk:"空切扣篮",chalk:"撒镁粉",hang:"挂框定格",
+  finger:"对镜头摇手指",huddle:"拥抱打气",wave:"向镜头致意",pump:"赛前加油"
+};
+function pregameBallFor(guy){
+  if(guy===player)return pBall;
+  if(guy===passer)return passerBall;
+  return guy&&guy.ball?guy.ball:null;
+}
+function pregameRotSnap(list){return list?list.map(x=>x.rotation.clone()):[];}
+function pregameRotRestore(list,rots){if(!list||!rots)return;list.forEach((x,i)=>{if(rots[i])x.rotation.copy(rots[i]);});}
+function pregameSnapGuy(guy){
+  const ball=pregameBallFor(guy);
+  return {guy,pos:guy.g.position.clone(),rot:guy.g.rotation.clone(),visible:guy.g.visible,
+    active:guy.active,celeb:guy._celeb||null,ballVisible:ball?ball.visible:false,
+    ballPos:ball?ball.position.clone():null,ballMat:ball?ball.material:null,
+    arms:pregameRotSnap(guy.arms),elbows:pregameRotSnap(guy.elbows),legs:pregameRotSnap(guy.legs),
+    knees:pregameRotSnap(guy.knees),ankles:pregameRotSnap(guy.ankles),shoes:pregameRotSnap(guy.shoes)};
+}
+function pregameRestoreGuy(s){
+  const guy=s.guy,ball=pregameBallFor(guy);
+  guy.g.position.copy(s.pos);guy.g.rotation.copy(s.rot);guy.g.visible=s.visible;guy._celeb=s.celeb;
+  if(s.active!==undefined)guy.active=s.active;
+  if(ball){ball.visible=s.ballVisible;if(s.ballPos)ball.position.copy(s.ballPos);if(s.ballMat)ball.material=s.ballMat;}
+  pregameRotRestore(guy.arms,s.arms);pregameRotRestore(guy.elbows,s.elbows);pregameRotRestore(guy.legs,s.legs);
+  pregameRotRestore(guy.knees,s.knees);pregameRotRestore(guy.ankles,s.ankles);pregameRotRestore(guy.shoes,s.shoes);
+}
+function pregameNeutral(guy){
+  guy.g.rotation.x=0;guy.g.position.y=0;
+  guy.arms.forEach(a=>a.rotation.set(-0.32,0,0));
+  guy.elbows.forEach(e=>e.rotation.set(-0.28,0,0));
+  guy.legs.forEach(l=>l.rotation.set(0,0,0));
+  guy.knees.forEach(k=>k.rotation.set(0,0,0));
+  guy.ankles.forEach(a=>a.rotation.set(0,0,0));
+  guy.shoes.forEach(s=>s.rotation.set(0,0,0));
+}
+function pregameClampPos(v){
+  v.x=clamp(v.x,-COURT.halfWidth+0.9,COURT.halfWidth-0.9);
+  v.z=clamp(v.z,COURT.nearBaseline+1.0,COURT.playMaxZ-0.7);
+  return v;
+}
+function pregameSideBase(heroPos,side){
+  const x=heroPos.x+(heroPos.x>0?-2.8:2.8)*(side||1);
+  const z=heroPos.z+1.15;
+  return pregameClampPos(V3(x,0,z));
+}
+function pregameBuildActors(opts){
+  const heroName=G.myStar&&G.myStar.n?G.myStar.n:"YOU";
+  const actors=[{guy:player,name:heroName,role:"hero",base:P.pos.clone(),face:P.face}];
+  let other=null;
+  if(opts.mode==="battle"&&G.battleOpp&&rivals[0]){
+    other={guy:rivals[0],name:G.battleOpp.n||"对手",role:"opponent"};
+  }else{
+    const rv=rivals.find(x=>x.active);
+    if(rv&&rv!==actors[0].guy)other={guy:rv,name:rv.o&&rv.o.n?rv.o.n:"挑战者",role:"opponent"};
+    else if(passer)other={guy:passer,name:"训练搭档",role:"teammate"};
+  }
+  if(other){
+    other.base=pregameSideBase(actors[0].base,1);
+    other.face=faceTo(other.base,HOOP);
+    if(other.guy.active!==undefined)other.guy.active=true;
+    actors.push(other);
+  }
+  actors.forEach(a=>{a.base=pregameClampPos(a.base.clone());a.face=faceTo(a.base,HOOP);});
+  return actors;
+}
+function pregameBuildShots(opts){
+  const shots=[],actors=PREGAME.actors;
+  const wanted=opts.mode==="battle"?5.8:(opts.mode==="rackrush"?5.0:5.2);
+  let t=0,i=0,lastAction="";
+  while(t<wanted){
+    const actor=actors[i%actors.length]||actors[0];
+    let action;
+    if(i===0)action=pregamePick(["shoot","stretch","chalk"]);
+    else if(i===1&&actors.length>1)action=pregamePick(["finger","shoot","pump","dunk"]);
+    else action=pregamePick(PREGAME_ACTIONS);
+    if(action===lastAction)action=pregamePick(PREGAME_ACTIONS);
+    if(action==="huddle"&&actors.length<2)action="pump";
+    if((action==="dunk"||action==="hang")&&opts.mode==="contest"&&Math.random()<0.45)action="shoot";
+    const dur=rnd(1.15,1.65),cam=pregamePick(PREGAME_CAMS);
+    shots.push({start:t,dur,actor,action,cam,side:Math.random()<0.5?-1:1,seed:rnd(0,Math.PI*2),group:action==="huddle"});
+    t+=dur;i++;lastAction=action;
+  }
+  return shots;
+}
+function pregameCaption(seg){
+  const el=$("vsBanner"),mode=G.mode==="battle"?"PERCENT BATTLE":(G.mode==="rackrush"?"RACK RUSH":"3PT CONTEST");
+  const name=seg.group?"TEAM":seg.actor.name;
+  el.innerHTML=`<span style="font-size:11px;color:#7feaff;letter-spacing:2px">${mode} / PREGAME</span><br>${name} · ${PREGAME_LABELS[seg.action]||"赛前热身"}`;
+  el.style.display="block";
+}
+function pregamePlace(actor,pos,face){
+  const guy=actor.guy;
+  guy.g.visible=true;guy.g.position.set(pos.x,0,pos.z);guy.g.rotation.set(0,face,0);
+}
+function pregameActionBase(actor,action,u){
+  const base=actor.base.clone();
+  if(action==="huddle"&&PREGAME.actors.length>1){
+    const other=PREGAME.actors.find(a=>a!==actor);
+    if(other){
+      const mid=actor.base.clone().lerp(other.base,0.5);
+      base.copy(mid);base.x+=(actor.role==="hero"?-0.42:0.42);
+    }
+  }
+  if(action==="dunk"||action==="hang"){
+    const rimSpot=V3(actor.role==="opponent"?0.75:-0.75,0,HOOP.z+0.95);
+    base.lerp(rimSpot,ease01(clamp(u*1.25,0,1)));
+  }
+  return pregameClampPos(base);
+}
+function pregameIdle(actor,t){
+  const guy=actor.guy,ball=pregameBallFor(guy);
+  pregamePlace(actor,actor.base,actor.face);pregameNeutral(guy);
+  guy.g.position.y=Math.abs(Math.sin(t*3.1+(actor.role==="hero"?0:1.4)))*0.025;
+  guy.arms[0].rotation.x=-0.48+Math.sin(t*2.5)*0.12;
+  guy.arms[1].rotation.x=-0.48-Math.sin(t*2.3)*0.12;
+  if(ball)ball.visible=false;
+}
+function pregameAnimate(actor,action,u,seg){
+  const guy=actor.guy,ball=pregameBallFor(guy),t=PREGAME.t+seg.seed;
+  const base=pregameActionBase(actor,action,u);
+  let face=faceTo(base,HOOP);
+  if(action==="finger"||action==="wave")face=faceTo(base,rig.pos);
+  if(action==="huddle"){
+    const other=PREGAME.actors.find(a=>a!==actor);
+    if(other)face=faceTo(base,other.guy.g.position);
+  }
+  pregamePlace(actor,base,face);pregameNeutral(guy);
+  if(ball)ball.visible=false;
+  if(action==="shoot"){
+    const ph=clamp(u*1.28,0,1.1),c=shotCurves(ph);
+    const y=poseGuy(guy,c,0)+Math.max(0,c.jmp*0.55-c.over*0.55);
+    guy.g.position.y=y;
+    if(ball){ball.visible=true;ball.material=actor.role==="hero"?shotMat(curShot()):matBall;poseBallPos(ball.position,c);}
+  }else if(action==="stretch"){
+    const sway=Math.sin(u*Math.PI*2);
+    guy.g.rotation.x=0.05+0.14*Math.max(0,sway);
+    guy.arms[0].rotation.x=-1.9;guy.arms[1].rotation.x=-2.45;
+    guy.arms[0].rotation.z=0.52*sway;guy.arms[1].rotation.z=-0.52*sway;
+    guy.elbows.forEach(e=>e.rotation.x=-0.18);
+    guy.legs.forEach(l=>l.rotation.x=-0.15);guy.knees.forEach(k=>k.rotation.x=0.44);
+  }else if(action==="dunk"||action==="hang"){
+    const take=ease01(clamp((u-0.08)/0.38,0,1)),land=1-ease01(clamp((u-0.72)/0.28,0,1));
+    const hang=action==="hang"?smoothRange(.18,.36,u)*(1-smoothRange(.86,1,u)):Math.sin(clamp(u,0,1)*Math.PI);
+    guy.g.position.y=0.18+Math.max(take*land,hang)*0.95;
+    guy.arms.forEach(a=>a.rotation.x=-2.75);guy.elbows.forEach(e=>e.rotation.x=action==="hang"?-0.25:-0.75);
+    guy.legs[0].rotation.x=-0.42;guy.legs[1].rotation.x=0.34;guy.knees.forEach(k=>k.rotation.x=0.72);
+    if(ball){ball.visible=action==="dunk"?u<0.64:false;ball.material=matBall;ball.position.set(-0.12,1.58,0.18);}
+  }else if(action==="chalk"){
+    const toss=smoothRange(.42,.72,u),rub=Math.sin(t*16)*(1-toss);
+    guy.arms[0].rotation.x=-0.9-toss*1.65+rub*0.08;guy.arms[1].rotation.x=-0.9-toss*1.65-rub*0.08;
+    guy.arms[0].rotation.z=-0.25-toss*0.45;guy.arms[1].rotation.z=0.25+toss*0.45;
+    guy.elbows.forEach(e=>e.rotation.x=-1.35+toss*0.8);
+    guy.g.position.y=Math.max(0,Math.sin(u*Math.PI))*0.08;
+  }else if(action==="finger"){
+    guy.arms[0].rotation.x=-2.15;guy.arms[0].rotation.z=-0.55;guy.elbows[0].rotation.x=-0.55;
+    guy.arms[1].rotation.x=-0.55;guy.elbows[1].rotation.x=-0.55;
+    guy.g.position.y=Math.sin(u*Math.PI)*0.05;
+  }else if(action==="huddle"){
+    const pump=Math.abs(Math.sin(t*6));
+    guy.arms.forEach(a=>a.rotation.x=-1.55-pump*0.55);guy.elbows.forEach(e=>e.rotation.x=-1.05);
+    guy.g.position.y=pump*0.06;
+  }else if(action==="wave"){
+    guy.arms[0].rotation.x=-2.25;guy.arms[0].rotation.z=-0.25+Math.sin(t*8)*0.38;guy.elbows[0].rotation.x=-0.35;
+    guy.arms[1].rotation.x=-0.5;guy.elbows[1].rotation.x=-0.45;
+  }else{
+    const pump=Math.abs(Math.sin(t*7));
+    guy.arms.forEach(a=>a.rotation.x=-1.9-pump*0.75);guy.elbows.forEach(e=>e.rotation.x=-0.75);
+    guy.g.position.y=pump*0.12;guy.knees.forEach(k=>k.rotation.x=0.25*pump);
+  }
+}
+function pregameFocus(seg){
+  const out=V3(0,0,0),list=seg.group?PREGAME.actors:[seg.actor];
+  list.forEach(a=>out.add(a.guy.g.position));out.multiplyScalar(1/Math.max(1,list.length));
+  out.y=1.18;return out;
+}
+function pregameUpdateCamera(seg,u,dt){
+  const focus=pregameFocus(seg),actor=seg.actor,guy=actor.guy;
+  const face=guy.g.rotation.y||faceTo(actor.base,HOOP);
+  const f=V3(Math.sin(face),0,Math.cos(face)),side=V3(f.z,0,-f.x).multiplyScalar(seg.side||1);
+  const dest=V3(),look=focus.clone();look.y+=seg.action==="dunk"||seg.action==="hang"?0.45:0.18;
+  if(seg.cam==="orbit"){
+    const a=seg.seed+u*1.35,r=2.65+Math.sin(u*Math.PI)*0.45;
+    dest.set(focus.x+Math.sin(a)*r,1.35+u*0.55,focus.z+Math.cos(a)*r);
+  }else if(seg.cam==="push"){
+    dest.copy(focus).addScaledVector(f,3.7-u*1.55).addScaledVector(side,0.85).setY(1.05+u*0.82);
+  }else if(seg.cam==="low"){
+    dest.copy(focus).addScaledVector(f,2.35).addScaledVector(side,0.9+u*0.3).setY(0.62+u*0.28);
+  }else if(seg.cam==="overhead"){
+    dest.copy(focus).addScaledVector(f,1.35).addScaledVector(side,1.65).setY(4.35-u*0.5);
+    look.y=1.05;
+  }else if(seg.cam==="follow"){
+    dest.copy(focus).addScaledVector(f,2.35+Math.sin(u*Math.PI)*0.55).addScaledVector(side,0.75).setY(1.45);
+  }else if(seg.cam==="pan"){
+    dest.copy(focus).addScaledVector(f,2.45).addScaledVector(side,-1.55+u*3.1).setY(1.28);
+  }else if(seg.cam==="pull"){
+    dest.copy(focus).addScaledVector(f,1.75+u*2.05).addScaledVector(side,0.75).setY(1.25+u*0.45);
+  }else{
+    dest.copy(focus).addScaledVector(f,2.15).addScaledVector(side,1.05).setY(1.22+Math.sin(u*Math.PI)*0.12);
+  }
+  if(PREGAME.t<0.08||seg._justStarted){rig.pos.copy(dest);rig.look.copy(look);seg._justStarted=false;return;}
+  rig.pos.lerp(dest,Math.min(1,dt*5.8));
+  rig.look.lerp(look,Math.min(1,dt*7.5));
+}
+function startPreGameShow(opts,done){
+  opts=opts||{};
+  PREGAME.prevState=G.state;PREGAME.cb=done;PREGAME.t=0;PREGAME.idx=0;PREGAME.on=true;
+  PREGAME.actors=pregameBuildActors(opts);
+  const seen=new Set();
+  PREGAME.snaps=PREGAME.actors.filter(a=>{if(seen.has(a.guy))return false;seen.add(a.guy);return true;}).map(a=>pregameSnapGuy(a.guy));
+  PREGAME.shots=pregameBuildShots(opts);PREGAME.dur=PREGAME.shots.reduce((m,s)=>Math.max(m,s.start+s.dur),0);
+  G.state="pregame";G.running=false;G.canShoot=false;G.charging=false;G.power=0;G.glideCam=false;G.moving=false;
+  if(passing){scene.remove(passing.mesh);passing=null;passerBall.visible=true;}
+  handBall.visible=false;pBall.visible=false;hands.visible=false;
+  applyCamMode();
+  player.g.visible=true;passer.g.visible=true;PREGAME.actors.forEach(a=>{a.guy.g.visible=true;if(a.guy.active!==undefined)a.guy.active=true;});
+  if(PREGAME.shots[0]){PREGAME.shots[0]._justStarted=true;pregameCaption(PREGAME.shots[0]);}
+}
+function finishPreGameShow(){
+  const cb=PREGAME.cb,prev=PREGAME.prevState;
+  PREGAME.snaps.forEach(pregameRestoreGuy);
+  PREGAME.on=false;PREGAME.t=0;PREGAME.idx=0;PREGAME.shots=[];PREGAME.actors=[];PREGAME.snaps=[];PREGAME.cb=null;
+  $("vsBanner").style.display="none";
+  P.jump=0;P.eyeDip=0;P.walking=false;G.state=prev;G.moving=false;G.glideCam=false;
+  if(cb)cb();
+}
+function updPreGameShow(dt){
+  if(!PREGAME.on)return;
+  PREGAME.t+=dt;
+  if(PREGAME.t>=PREGAME.dur){finishPreGameShow();return;}
+  while(PREGAME.idx<PREGAME.shots.length-1&&PREGAME.t>PREGAME.shots[PREGAME.idx].start+PREGAME.shots[PREGAME.idx].dur){
+    PREGAME.idx++;PREGAME.shots[PREGAME.idx]._justStarted=true;pregameCaption(PREGAME.shots[PREGAME.idx]);
+  }
+  const seg=PREGAME.shots[PREGAME.idx];if(!seg)return;
+  const u=clamp((PREGAME.t-seg.start)/seg.dur,0,1);
+  PREGAME.actors.forEach(a=>{if(seg.group||a===seg.actor)pregameAnimate(a,seg.action,u,seg);else pregameIdle(a,PREGAME.t);});
+  pregameUpdateCamera(seg,u,dt);
 }
 function updBattleCut(dt){
   const c=G.battleCut;if(!c)return;
@@ -2510,7 +2761,8 @@ function updDotsUI(){
   }
   if(G.mode==="rackrush"){
     const rush=G.rush,pos=(rush?rush.shotNo:0)%5,next=pos+1;
-    $("hudRackName").textContent=(next===5?"花球到位 · 命中3分":"连续供球 · 下一球2分")+(G.timer<=10?" + FINAL BONUS":"");
+    if(isRackRushSpeed(rush))$("hudRackName").textContent=next===5?"彩球到位 · 命中4分":"百分竞速 · 下一球3分";
+    else $("hudRackName").textContent=(next===5?"花球到位 · 命中3分":"连续供球 · 下一球2分")+(G.timer<=10?" + FINAL BONUS":"");
     let h="";for(let b=0;b<5;b++)h+='<i class="'+(b===4?"gold":"")+(b<pos?" used":"")+'"></i>';
     wrap.innerHTML=h;return;
   }
@@ -2623,7 +2875,9 @@ function releaseShot(power,shot){
     const rush=G.rush;if(!rush)return;
     rush.attempts++;rush.levelAttempts++;rush.shotNo++;G.shotIdx++;G.canShoot=false;
     const cfg=RACK_RUSH_LEVELS[rush.level],expectedCharge=shotIdeal(shot)/Math.max(1,playerChargeRate());
-    const delay=Math.max(60,(cfg.feed-expectedCharge-.27)*1000);
+    const speedFeed=G.diff==="easy"?1.16:(G.diff==="hard"?.96:1.06);
+    const feed=isRackRushSpeed(rush)?speedFeed:cfg.feed;
+    const delay=Math.max(60,(feed-expectedCharge-.27)*1000);
     setTimeout(()=>{if(G.state==="rackrush"&&G.running&&!G.buzzed)readyBall();},delay);
     return;
   }
@@ -2663,7 +2917,7 @@ function madeBall(b){
   }
   if(G.mode==="rackrush"){
     if(!G.rush||G.state!=="rackrush")return;
-    const rush=G.rush,cfg=RACK_RUSH_LEVELS[rush.level],target=rackRushTarget(rush.level);
+    const rush=G.rush,cfg=RACK_RUSH_LEVELS[rush.level],target=isRackRushSpeed(rush)?RACK_RUSH_SPEED_TARGET:rackRushTarget(rush.level);
     rush.levelScore+=b.val;rush.total+=b.val;rush.makes++;rush.levelMakes++;
     G.score=rush.total;G.streak++;G.missRun=0;rush.bestStreak=Math.max(rush.bestStreak,G.streak);
     bloomOnScore(b.val);netPulse=1;sSwish();
@@ -2674,6 +2928,7 @@ function madeBall(b){
     popScore(label,b.bonus?"#ff5d4d":(b.money?"#ffd23f":"#7CFC6B"));
     if(big)toast((b.money?"花球! ":"")+(b.bonus?"最后10秒加成 · ":"")+CHEERS[(Math.random()*CHEERS.length)|0],b.bonus?"#ff8d7a":"#ffd23f");
     if(G.streak>=3){$("hudStreak").style.display="block";$("hudStreak").textContent="🔥 x"+G.streak;}
+    if(isRackRushSpeed(rush)&&rush.total>=RACK_RUSH_SPEED_TARGET){updateRackRushHUD();updJumbo();finishRackRushSpeed();return;}
     if(!cfg.final&&!rush.levelCleared&&rush.levelScore>=target){rush.levelCleared=true;rackRushClearFlash();}
     updateRackRushHUD();updJumbo();return;
   }
@@ -2962,11 +3217,49 @@ function scheduleCoverVideo(){
 }
 function hidePanel(){stopCoverVideo();$("ov").style.display="none";}
 function stars(r){const n=Math.round((r-82)/3);return "★".repeat(clamp(n,2,5));}
+const COVER_QUOTES=[
+  {by:"Michael Jordan",line:"我可以接受失败,但不能接受从未尝试。"},
+  {by:"Kobe Bryant",line:"凌晨的努力,会在灯光亮起时回答一切。"},
+  {by:"LeBron James",line:"伟大不是等来的,是每天把标准再抬高一点。"},
+  {by:"Stephen Curry",line:"射程不是边界,信心才是起点。"},
+  {by:"Allen Iverson",line:"身高不会定义你,心气会。"},
+  {by:"Vince Carter",line:"起跳前先相信自己已经飞起来了。"},
+  {by:"Tracy McGrady",line:"手感会冷,但杀手本能不能冷。"},
+  {by:"Larry Bird",line:"当机会出现,别犹豫,让球说话。"},
+  {by:"Magic Johnson",line:"最好的传球,是让队友也相信奇迹。"},
+  {by:"Shaquille O'Neal",line:"统治力不是吼出来的,是每次对抗都赢下来。"},
+  {by:"Tim Duncan",line:"基本功不会上热搜,但会赢到最后。"},
+  {by:"Kevin Durant",line:"安静地得分,也是一种锋利。"},
+  {by:"Dirk Nowitzki",line:"把一个动作练到无解,世界就会为你让路。"},
+  {by:"Dwyane Wade",line:"关键时刻别躲,那正是你被记住的地方。"},
+  {by:"Reggie Miller",line:"只要还剩一秒,射手就还活着。"},
+  {by:"Ray Allen",line:"重复到极致,压力就会变成节奏。"},
+  {by:"Chris Paul",line:"控制节奏的人,控制比赛的呼吸。"},
+  {by:"Damian Lillard",line:"远距离不是炫技,是告诉对手时间到了。"},
+  {by:"Giannis Antetokounmpo",line:"别急着成为传奇,先每天变强一点。"},
+  {by:"Hakeem Olajuwon",line:"脚步是答案,耐心是钥匙。"},
+  {by:"Bill Russell",line:"胜利不是个人表演,是让身边的人一起变强。"},
+  {by:"Kareem Abdul-Jabbar",line:"真正的高度,来自长年累月的自律。"},
+  {by:"Julius Erving",line:"风格不是装饰,是你解决问题的方式。"},
+  {by:"Steve Nash",line:"看见别人看不见的空当,比赛就慢了下来。"},
+  {by:"Manu Ginobili",line:"创造力是冒险,但赢球需要勇敢冒险。"},
+  {by:"Dennis Rodman",line:"不是每个英雄都得分,有人负责把球权抢回来。"},
+  {by:"Isiah Thomas",line:"疼痛会说话,冠军会继续打。"},
+  {by:"Jerry West",line:"压力不是敌人,它只是提醒你这一球重要。"}
+];
+function coverQuote(){
+  return COVER_QUOTES[(Math.random()*COVER_QUOTES.length)|0];
+}
+function scoreQuoteMarkup(){
+  const q=coverQuote();
+  return `<blockquote class="scoreQuote"><span>${q.line}</span><cite>${q.by}</cite></blockquote>`;
+}
 
 /* ---------------- screens / flow ---------------- */
 function showMenu(){
   G.state="menu";resetFinalRun();if(AC)ensureAudio(true);
   const cover=BOOT_GATE_ACTIVE&&BOOT_COVER?BOOT_COVER:COVER_STARS[(Math.random()*COVER_STARS.length)|0];
+  const q=coverQuote();
   const coverVideo=cover.coverVideo?`<video class="coverVideo" muted loop playsinline preload="none" data-src="${cover.coverVideo}" aria-hidden="true" tabindex="-1"></video>`:"";
   showCoverPanel(`
     <div class="coverHero" style="background-image:url('${cover.cover}')">
@@ -2975,19 +3268,26 @@ function showMenu(){
       <div class="coverMenu"><div>
         <div class="coverKicker">CYBER COURT</div>
         <div class="coverTitle">aiBA<br><b>百分大战</b></div>
-        <div class="coverSub">霓虹球场，百分快攻。投到 100，或者被 100 终结。</div>
-        <div class="coverActions">
-          <div class="modeTile primary">
-            <div class="modeCopy"><div class="modeEyebrow">主宰赛场</div><div class="modeName">百分大战 <em>100</em></div><div class="modeDesc">双人同场竞技，先投中 100 分者获胜。</div></div>
-            <div class="modeBtns"><button class="modeInfo" onclick="ensureAudio(true,true);showModeInfo('battle')">i</button><button class="modePlay" onclick="ensureAudio(true,true);goDiff('battle')"><small>START GAME</small>开始游戏 »</button></div>
-          </div>
-          <div class="modeTile">
-            <div class="modeCopy"><div class="modeEyebrow">单人挑战</div><div class="modeName">三分挑战</div><div class="modeDesc">限时 70 秒，尽可能多地投进三分球。</div></div>
-            <div class="modeBtns"><button class="modeInfo" onclick="ensureAudio(true,true);showModeInfo('contest')">i</button><button class="modePlay" onclick="ensureAudio(true,true);goDiff('contest')"><small>CHALLENGE</small>开始挑战 »</button></div>
-          </div>
-          <div class="modeTile rush">
+        <div class="coverSub">霓虹球场，街机快攻。冲到 100，或者刷出最高分。</div>
+        <blockquote class="coverQuote"><span>${q.line}</span><cite>${q.by}</cite></blockquote>
+        <div class="coverActions schemeA">
+          <div class="modeTile rush featured">
             <div class="modeCopy"><div class="modeEyebrow">街机闯关</div><div class="modeName">投篮机挑战</div><div class="modeDesc">连续供球，逐关达标，冲击最高总分。</div></div>
             <div class="modeBtns"><button class="modeInfo" onclick="ensureAudio(true,true);showModeInfo('rackrush')">i</button><button class="modePlay" onclick="ensureAudio(true,true);goDiff('rackrush')"><small>RACK RUSH</small>开始闯关 »</button></div>
+          </div>
+          <div class="quickModes" aria-label="其他模式">
+            <div class="quickMode primary">
+              <button class="quickInfo" onclick="ensureAudio(true,true);showModeInfo('battle')" aria-label="百分大战说明">i</button>
+              <button class="quickPlay" onclick="ensureAudio(true,true);goDiff('battle')"><small>02 / PERCENT</small><b>百分大战</b><span>先到 100</span></button>
+            </div>
+            <div class="quickMode dna">
+              <button class="quickInfo" onclick="ensureAudio(true,true);showModeInfo('nbadna')" aria-label="NBA DNA 说明">i</button>
+              <button class="quickPlay" onclick="ensureAudio(true,true);startNBADNA()"><small>03 / DNA</small><b>NBA DNA</b><span>投篮像谁</span></button>
+            </div>
+            <div class="quickMode">
+              <button class="quickInfo" onclick="ensureAudio(true,true);showModeInfo('contest')" aria-label="三分挑战说明">i</button>
+              <button class="quickPlay" onclick="ensureAudio(true,true);goDiff('contest')"><small>04 / CLASSIC</small><b>三分大赛</b><span>70 秒挑战</span></button>
+            </div>
           </div>
         </div>
       </div></div>
@@ -3007,9 +3307,17 @@ function showModeInfo(mode){
   }
   if(mode==="rackrush"){
     showPanel(`<h1 class="title" style="font-size:22px">RACK RUSH · 投篮机挑战</h1>
-      <div class="card">固定弧顶连续接球，共 <b>5 关</b>。每关在倒计时结束前达到目标即可晋级，达标后仍可继续刷分。</div>
-      <div class="card">普通命中 <b>2 分</b>，每第 5 球为 <b>3 分花球</b>；最后 10 秒每次命中额外 <b>+1 分</b>。通过第 5 关进入无门槛的 FINAL RUSH。</div>
-      <button class="btn gold" onclick="ensureAudio(true,true);goDiff('rackrush')">开始投篮机挑战</button>
+      <div class="card">进入后先选难度，再选择子模式：<b>闯关挑战</b> 或 <b>百分竞速</b>。</div>
+      <div class="card">闯关挑战是逐关达标刷总分；百分竞速是普通球 <b>3 分</b>、彩球 <b>4 分</b>，达成 <b>${RACK_RUSH_SPEED_TARGET}</b> 分立刻停表，比谁更快。</div>
+      <button class="btn gold" onclick="ensureAudio(true,true);goDiff('rackrush')">选择投篮机玩法</button>
+      <button class="btn sm" onclick="showMenu()">返回封面</button>`);
+    return;
+  }
+  if(mode==="nbadna"){
+    showPanel(`<h1 class="title" style="font-size:22px">NBA DNA</h1>
+      <div class="card">上传一张投篮姿势照片，生成你的 <b>Kobe DNA</b> 球员卡。V1 只匹配 Kobe，后续可以继续加入 Curry、Jordan、Klay 等模板。</div>
+      <div class="card">照片只在浏览器本地处理；姿势模型不可用时，会退回娱乐化风格评分，保证流程不断。</div>
+      <button class="btn gold" onclick="ensureAudio(true,true);startNBADNA()">开始 NBA DNA</button>
       <button class="btn sm" onclick="showMenu()">返回封面</button>`);
     return;
   }
@@ -3128,6 +3436,11 @@ function showBattleIntro(){
 }
 
 /* ---------------- RACK RUSH: 投篮机闯关 ---------------- */
+function isRackRushSpeed(thing){
+  if(typeof thing==="string")return thing==="speed100";
+  return !!thing&&(thing.variant==="speed100"||thing.mode==="rack-rush-speed100");
+}
+function rackRushStorageKey(variant){return isRackRushSpeed(variant)?RACK_RUSH_SPEED_RUNS_KEY:RACK_RUSH_RUNS_KEY;}
 function rackRushTarget(level){
   const cfg=RACK_RUSH_LEVELS[level];
   return cfg&&cfg.targets?cfg.targets[G.diff]:null;
@@ -3141,19 +3454,26 @@ function showRackRushIntro(){
   showPanel(`<h1 class="title" style="font-size:22px">RACK RUSH</h1>
     <div class="sub">投篮机挑战 · ${DIFFS[G.diff].n}</div>
     <div class="card"><b>${G.myStar.n}</b> #${G.myNum}<br><span style="color:#9ab;font-size:11px">${shotProfileText(G.myStar)}</span></div>
-    <div class="card">固定弧顶连续供球。普通命中 <b>2 分</b>，每第 5 球花球 <b>3 分</b>，最后 10 秒每球再加 <b>1 分</b>。达标后继续投到时间结束。</div>
-    <div class="note">晋级线 · ${targets}<br>通过 L5 后进入 30 秒 FINAL RUSH</div>
-    <button class="btn gold" onclick="startRackRush()">开始闯关</button>
+    <div class="rushModeGrid">
+      <button class="rushModeCard" onclick="startRackRush('classic')">
+        <small>LEVEL RUN</small><b>闯关挑战</b><span>固定弧顶连续供球。普通 2 分，花球 3 分，逐关达标进入 FINAL RUSH。</span>
+      </button>
+      <button class="rushModeCard speed" onclick="startRackRush('speed100')">
+        <small>SPEED 100</small><b>百分竞速</b><span>普通命中 3 分，彩球 4 分。先冲到 100 分，停表排时间榜。</span>
+      </button>
+    </div>
+    <div class="note">闯关晋级线 · ${targets}<br>百分竞速排行榜按用时越短排名越高。</div>
     <button class="btn sm" onclick="goDiff('rackrush',true)">返回设置</button>`);
 }
-function resetRackRushState(){
+function resetRackRushState(variant){
+  variant=variant==="speed100"?"speed100":"classic";
   resetFinalRun();
   G.practice=false;G.battleCut=null;
   G.seq=[];G.shotIdx=0;G.score=0;G.streak=0;G.timer=0;G.running=false;G.buzzed=false;
   G.shots=[];G.canShoot=false;G.blindToasted=false;G.cutQ=[];G.cutAway=null;G.missRun=0;
   G.rush={level:0,total:0,levelScore:0,shotNo:0,attempts:0,makes:0,levelAttempts:0,levelMakes:0,
     bestStreak:0,elapsed:0,levels:[],levelCleared:false,finalTen:false,levelEnding:false,uiAcc:0,
-    control:VISION.enabled?"vision":"touch",completed:false};
+    control:VISION.enabled?"vision":"touch",completed:false,variant,target:variant==="speed100"?RACK_RUSH_SPEED_TARGET:null};
   G.rushResultRecord=null;
   balls.slice().forEach(b=>{scene.remove(b.mesh);scene.remove(b.blob);});balls.length=0;
   if(passing){scene.remove(passing.mesh);passing=null;}
@@ -3162,8 +3482,9 @@ function resetRackRushState(){
   rivals.forEach(rv=>{rv.active=false;rv.g.visible=false;});
   if(player._celeb)stopCelebrate(player);
 }
-function startRackRush(){
-  ensureAudio(false);hidePanel();music(false);resetRackRushState();
+function startRackRush(variant){
+  variant=variant==="speed100"?"speed100":"classic";
+  ensureAudio(false);hidePanel();music(false);resetRackRushState(variant);
   CAM.mode=1;$('camBtn').textContent="📷 "+CAM.names[1];camSnap=true;
   enterArenaAudio(.86);
   $("hud").style.display="block";$("battleControls").style.display="none";$("battleScore").style.display="none";
@@ -3175,7 +3496,20 @@ function startRackRush(){
   G.state="rushintro";applyCamMode();
   rig.pos.set(0,8,6);rig.look.copy(HOOP);
   autoFrameCam(camTarget,P.pos,0,COURT_ATTACK_DIR,{marginX:1.44,marginY:1.34,minDist:5.6,maxDist:18});
-  glideTo(camTarget.pos.clone(),camTarget.look.clone(),1.25,()=>startRackRushLevel(0));
+  glideTo(camTarget.pos.clone(),camTarget.look.clone(),1.25,()=>startPreGameShow({mode:"rackrush"},()=>variant==="speed100"?startRackRushSpeed():startRackRushLevel(0)));
+}
+function startRackRushSpeed(){
+  const rush=G.rush;if(!rush)return;
+  rush.level=0;rush.levelScore=0;rush.shotNo=0;rush.levelAttempts=0;rush.levelMakes=0;
+  rush.levelCleared=true;rush.finalTen=false;rush.levelEnding=false;rush.uiAcc=0;rush.target=RACK_RUSH_SPEED_TARGET;
+  G.timer=0;G.running=false;G.buzzed=false;G.canShoot=false;G.charging=false;G.power=0;G.blindToasted=false;
+  handBall.visible=false;pBall.visible=false;$("pFill").style.height="0%";
+  G.state="rushintro";applyCamMode();updateRackRushHUD();
+  const el=$("countN");
+  el.innerHTML=`<span style="font-size:30px;text-align:center;line-height:1.35">SPEED 100<br><small style="font-size:16px;color:#fff">百分竞速</small></span>`;
+  el.style.display="flex";broadcastSting("score");
+  paSay("百分竞速,先到一百分停止计时!",true);
+  setTimeout(()=>{if(G.rush===rush&&G.state==="rushintro")countdownRackRush(3);},900);
 }
 function startRackRushLevel(level){
   const rush=G.rush,cfg=RACK_RUSH_LEVELS[level];if(!rush||!cfg)return;
@@ -3197,19 +3531,29 @@ function countdownRackRush(n){
     el.textContent="GO!";el.style.display="flex";sGo();
     setTimeout(()=>el.style.display="none",450);
     calibrateTilt();G.state="rackrush";G.running=true;G.buzzed=false;applyCamMode();readyBall();
-    toast(RACK_RUSH_LEVELS[G.rush.level].final?"FINAL RUSH · 尽可能多拿分":"达标后不停表 · 继续刷总分","#ffd23f");
+    if(isRackRushSpeed(G.rush))toast("百分竞速 · 冲到 100 分停表","#ffd23f");
+    else toast(RACK_RUSH_LEVELS[G.rush.level].final?"FINAL RUSH · 尽可能多拿分":"达标后不停表 · 继续刷总分","#ffd23f");
     return;
   }
   el.textContent=n;el.style.display="flex";sBeep();setTimeout(()=>countdownRackRush(n-1),650);
 }
 function rackRushShot(){
   const rush=G.rush;if(!rush)return null;
-  const number=rush.shotNo+1,money=number%5===0,finalTen=G.timer<=10;
+  const number=rush.shotNo+1,money=number%5===0,finalTen=!isRackRushSpeed(rush)&&G.timer<=10;
+  if(isRackRushSpeed(rush)){
+    return {rack:2,ball:(number-1)%5,val:money?4:3,baseVal:money?4:3,
+      bonus:0,money,deep:null,p:RACKS[2].p,rush:true,number};
+  }
   return {rack:2,ball:(number-1)%5,val:(money?3:2)+(finalTen?1:0),baseVal:money?3:2,
     bonus:finalTen?1:0,money,deep:null,p:RACKS[2].p,rush:true,number};
 }
 function rackRushBarHidden(){
   const rush=G.rush,cfg=rush&&RACK_RUSH_LEVELS[rush.level];if(!rush||!cfg)return false;
+  if(isRackRushSpeed(rush)){
+    if(G.diff==="easy")return false;
+    if(G.diff==="normal")return rush.shotNo>=5;
+    return rush.shotNo>=3;
+  }
   if(cfg.bar==="all")return false;
   if(cfg.bar==="time10")return (cfg.time-G.timer)>=10;
   if(cfg.bar==="shots5")return rush.shotNo>=5;
@@ -3217,6 +3561,15 @@ function rackRushBarHidden(){
 }
 function updateRackRushHUD(){
   const rush=G.rush;if(!rush)return;
+  if(isRackRushSpeed(rush)){
+    $("hudRound").innerHTML="RACK RUSH · SPEED 100<br><span style='color:#778'>"+DIFFS[G.diff].n+" · 普通3分 / 彩球4分</span>";
+    $("hudTimer").textContent=formatRackRushClock(rush.elapsed);$("hudTimer").className="";
+    $("scoreNum").textContent=rush.total;
+    $("hudTarget").textContent="目标 "+Math.min(rush.total,RACK_RUSH_SPEED_TARGET)+" / "+RACK_RUSH_SPEED_TARGET+" · 用时越短排名越高";
+    $("hudStreak").style.display=G.streak>=3?"block":"none";
+    if(G.streak>=3)$("hudStreak").textContent="🔥 x"+G.streak;
+    updDotsUI();updPowerUI();return;
+  }
   const cfg=RACK_RUSH_LEVELS[rush.level],target=rackRushTarget(rush.level);
   $("hudRound").innerHTML=(cfg.final?"FINAL RUSH":("RACK RUSH · L"+(rush.level+1)))+"<br><span style='color:#778'>"+DIFFS[G.diff].n+" · "+cfg.name+"</span>";
   $("hudTimer").textContent=Math.max(0,G.timer).toFixed(1);$("hudTimer").className=G.timer<=10?"low":"";
@@ -3233,6 +3586,13 @@ function rackRushClearFlash(){
 }
 function updateRackRush(dt){
   const rush=G.rush;if(!rush||G.state!=="rackrush")return;
+  if(isRackRushSpeed(rush)){
+    if(G.running){
+      rush.elapsed+=dt;G.timer=rush.elapsed;rush.uiAcc+=dt;
+      if(rush.uiAcc>=.1){rush.uiAcc=0;updateRackRushHUD();}
+    }
+    return;
+  }
   if(G.running){
     rush.elapsed+=dt;G.timer=Math.max(0,G.timer-dt);rush.uiAcc+=dt;
     if(!rush.finalTen&&G.timer<=10){
@@ -3251,6 +3611,7 @@ function updateRackRush(dt){
 }
 function finishRackRushLevel(){
   const rush=G.rush;if(!rush||rush.levelEnding)return;
+  if(isRackRushSpeed(rush)){finishRackRushSpeed();return;}
   rush.levelEnding=true;G.running=false;G.canShoot=false;G.state="rushbetween";$("vsBanner").style.display="none";
   const cfg=RACK_RUSH_LEVELS[rush.level],target=rackRushTarget(rush.level);
   const passed=cfg.final||rush.levelScore>=target;
@@ -3261,23 +3622,42 @@ function finishRackRushLevel(){
   el.style.display="flex";cheerSound(true);
   setTimeout(()=>{el.style.display="none";startRackRushLevel(rush.level+1);},1450);
 }
-function loadRackRushRuns(){
-  try{const rows=JSON.parse(localStorage.getItem(RACK_RUSH_RUNS_KEY)||"[]");return Array.isArray(rows)?rows:[];}catch(e){return[];}
+function finishRackRushSpeed(){
+  const rush=G.rush;if(!rush||rush.levelEnding)return;
+  rush.levelEnding=true;rush.completed=true;G.running=false;G.canShoot=false;G.buzzed=true;G.state="rushbetween";$("vsBanner").style.display="none";
+  G.charging=false;handBall.visible=false;pBall.visible=false;if(passing){scene.remove(passing.mesh);passing=null;}
+  rush.levels=[{level:1,name:"百分竞速",score:rush.total,target:RACK_RUSH_SPEED_TARGET,attempts:rush.levelAttempts,makes:rush.levelMakes,passed:true}];
+  const el=$("countN");
+  el.innerHTML=`<span style="font-size:36px;text-align:center;line-height:1.35;color:#ffd23f">100!<br><small style="font-size:15px;color:#fff">用时 ${formatRackRushClock(rush.elapsed)}</small></span>`;
+  el.style.display="flex";startConfetti();cheerSound(true);airhorn();broadcastSting("score");
+  setTimeout(()=>{el.style.display="none";finishRackRushRun(true);},950);
+}
+function loadRackRushRuns(variant){
+  const key=rackRushStorageKey(variant);
+  try{const rows=JSON.parse(localStorage.getItem(key)||"[]");return Array.isArray(rows)?rows:[];}catch(e){return[];}
 }
 function rackRushAccuracy(record){return record.attempts?record.makes/record.attempts:0;}
+function formatRackRushClock(sec){
+  sec=Math.max(0,sec||0);
+  const min=Math.floor(sec/60),rest=sec-min*60;
+  return min?min+":"+String(Math.floor(rest)).padStart(2,"0")+"."+Math.floor((rest%1)*10):rest.toFixed(1);
+}
 function makeRackRushRecord(){
   const rush=G.rush,accuracy=rush.attempts?rush.makes/rush.attempts:0;
-  return {schema:1,version:GAME_VERSION,mode:"rack-rush",total:rush.total,highestLevel:rush.level+1,completed:!!rush.completed,
+  const speed=isRackRushSpeed(rush);
+  return {schema:1,version:GAME_VERSION,mode:speed?"rack-rush-speed100":"rack-rush",variant:speed?"speed100":"classic",
+    target:speed?RACK_RUSH_SPEED_TARGET:null,total:rush.total,highestLevel:speed?1:rush.level+1,completed:!!rush.completed,
     elapsedMs:Math.round(rush.elapsed*1000),attempts:rush.attempts,makes:rush.makes,accuracy,bestStreak:rush.bestStreak,
     levels:rush.levels.slice(),difficulty:G.diff,control:rush.control,playerId:G.myStar&&(G.myStar.id||G.myStar.n),
     playerName:G.myStar&&G.myStar.n,scene:currentScenePreset,weather:currentWeather,seed:GAME_SEED,completedAt:new Date().toISOString()};
 }
 function saveRackRushRecord(record){
-  try{const rows=loadRackRushRuns();rows.unshift(record);localStorage.setItem(RACK_RUSH_RUNS_KEY,JSON.stringify(rows.slice(0,50)));}catch(e){}
-  G.rushResultRecord=record;try{window.__aibaLastRackRushRecord=record;window.__aibaRackRushRuns=loadRackRushRuns;}catch(e){}
+  try{const rows=loadRackRushRuns(record.variant);rows.unshift(record);localStorage.setItem(rackRushStorageKey(record.variant),JSON.stringify(rows.slice(0,50)));}catch(e){}
+  G.rushResultRecord=record;try{window.__aibaLastRackRushRecord=record;window.__aibaRackRushRuns=()=>loadRackRushRuns(record.variant);}catch(e){}
   return record;
 }
 function sortRackRushRuns(rows){
+  if(rows.some(r=>isRackRushSpeed(r)))return rows.sort((a,b)=>(a.elapsedMs||999999999)-(b.elapsedMs||999999999)||b.total-a.total||rackRushAccuracy(b)-rackRushAccuracy(a)||a.attempts-b.attempts);
   return rows.sort((a,b)=>b.total-a.total||b.highestLevel-a.highestLevel||a.elapsedMs-b.elapsedMs||rackRushAccuracy(b)-rackRushAccuracy(a)||b.bestStreak-a.bestStreak);
 }
 function formatRackRushTime(ms){
@@ -3287,11 +3667,13 @@ function rackRushLevelRows(record){
   return record.levels.map(x=>`<tr><td>${x.level<=5?"L"+x.level:"FINAL"} · ${x.name}</td><td>${x.score}${x.target!=null?" / "+x.target:""}</td></tr>`).join("");
 }
 function showRackRushResult(record){
-  const accuracy=Math.round(rackRushAccuracy(record)*100),headline=record.completed?"FINAL RUSH 完成":"挑战结束";
-  showPanel(`<h1 class="title" style="font-size:22px">${headline}</h1><div class="rushResult">${record.total} 分</div>
-    <div class="rushMeta"><span>最高 ${record.completed?"FINAL":"L"+record.highestLevel}</span><span>命中 ${record.makes}/${record.attempts}</span><span>命中率 ${accuracy}%</span><span>连中 x${record.bestStreak}</span><span>${formatRackRushTime(record.elapsedMs)}</span></div>
+  const accuracy=Math.round(rackRushAccuracy(record)*100),speed=isRackRushSpeed(record);
+  const headline=speed?"百分竞速完成":(record.completed?"FINAL RUSH 完成":"挑战结束");
+  showPanel(`<h1 class="title" style="font-size:22px">${headline}</h1><div class="rushResult">${speed?formatRackRushClock(record.elapsedMs/1000):record.total+" 分"}</div>
+    <div class="rushMeta">${speed?`<span>${record.total} / ${RACK_RUSH_SPEED_TARGET} 分</span><span>命中 ${record.makes}/${record.attempts}</span><span>命中率 ${accuracy}%</span><span>连中 x${record.bestStreak}</span><span>${DIFFS[record.difficulty].n}</span>`:`<span>最高 ${record.completed?"FINAL":"L"+record.highestLevel}</span><span>命中 ${record.makes}/${record.attempts}</span><span>命中率 ${accuracy}%</span><span>连中 x${record.bestStreak}</span><span>${formatRackRushTime(record.elapsedMs)}</span>`}</div>
     <table class="std rushLevels">${rackRushLevelRows(record)}</table>
-    <button class="btn gold" onclick="startRackRush()">重新挑战</button>
+    ${scoreQuoteMarkup()}
+    <button class="btn gold" onclick="startRackRush('${speed?"speed100":"classic"}')">重新挑战</button>
     <button class="btn green" onclick="showRackRushLeaderboard()">本地排行榜</button>
     <button class="btn sm" onclick="shareRackRushResult()">分享成绩</button>
     <button class="btn sm" onclick="showMenu()">返回封面</button>`);
@@ -3300,23 +3682,29 @@ function finishRackRushRun(completed){
   const rush=G.rush;if(!rush)return;rush.completed=!!completed;
   G.running=false;G.canShoot=false;G.state="rushend";leaveArenaAudio();applyCamMode();$("hud").style.display="none";
   const record=saveRackRushRecord(makeRackRushRecord());
-  if(completed){airhorn();paSay("RACK RUSH完成,总分"+record.total+"分!",true);}
+  if(isRackRushSpeed(record)){paSay("百分竞速完成,用时"+formatRackRushClock(record.elapsedMs/1000)+"!",true);}
+  else if(completed){airhorn();paSay("RACK RUSH完成,总分"+record.total+"分!",true);}
   else paSay("本次挑战结束,总分"+record.total+"分。",true);
   showRackRushResult(record);
 }
 function showRackRushLeaderboard(){
-  const record=G.rushResultRecord,control=record?record.control:(VISION.enabled?"vision":"touch");
-  const rows=sortRackRushRuns(loadRackRushRuns().filter(r=>r.difficulty===G.diff&&r.control===control)).slice(0,10);
-  const body=rows.length?rows.map((r,i)=>`<tr class="${record&&r.completedAt===record.completedAt?"me":""}"><td>${i+1}</td><td>${r.total}</td><td>${r.completed?"FINAL":"L"+r.highestLevel}</td><td>${Math.round(rackRushAccuracy(r)*100)}%</td><td>${formatRackRushTime(r.elapsedMs)}</td></tr>`).join(""):'<tr><td colspan="5">暂无记录</td></tr>';
-  showPanel(`<h1 class="title" style="font-size:22px">RACK RUSH 排行榜</h1><div class="note">${DIFFS[G.diff].n} · ${control==="vision"?"视觉体感":"触屏 / 键盘"} · 本机记录</div>
-    <table class="std"><tr><td>#</td><td>总分</td><td>关卡</td><td>命中</td><td>耗时</td></tr>${body}</table>
+  const record=G.rushResultRecord,variant=record?record.variant:(G.rush&&G.rush.variant)||"classic",speed=isRackRushSpeed(variant);
+  const control=record?record.control:(VISION.enabled?"vision":"touch");
+  const rows=sortRackRushRuns(loadRackRushRuns(variant).filter(r=>r.difficulty===G.diff&&r.control===control)).slice(0,10);
+  const body=rows.length?rows.map((r,i)=>speed?
+    `<tr class="${record&&r.completedAt===record.completedAt?"me":""}"><td>${i+1}</td><td>${formatRackRushClock(r.elapsedMs/1000)}</td><td>${r.total}</td><td>${Math.round(rackRushAccuracy(r)*100)}%</td><td>${r.makes}/${r.attempts}</td></tr>`:
+    `<tr class="${record&&r.completedAt===record.completedAt?"me":""}"><td>${i+1}</td><td>${r.total}</td><td>${r.completed?"FINAL":"L"+r.highestLevel}</td><td>${Math.round(rackRushAccuracy(r)*100)}%</td><td>${formatRackRushTime(r.elapsedMs)}</td></tr>`).join(""):'<tr><td colspan="5">暂无记录</td></tr>';
+  showPanel(`<h1 class="title" style="font-size:22px">${speed?"百分竞速排行榜":"RACK RUSH 排行榜"}</h1><div class="note">${DIFFS[G.diff].n} · ${control==="vision"?"视觉体感":"触屏 / 键盘"} · 本机记录</div>
+    <table class="std"><tr>${speed?"<td>#</td><td>用时</td><td>分数</td><td>命中</td><td>出手</td>":"<td>#</td><td>总分</td><td>关卡</td><td>命中</td><td>耗时</td>"}</tr>${body}</table>
     <button class="btn sm" onclick="showRackRushResult(G.rushResultRecord)">返回成绩</button>`);
 }
 async function shareRackRushResult(){
   const r=G.rushResultRecord;if(!r)return;
-  const text=`aiBA RACK RUSH · ${DIFFS[r.difficulty].n}\n${r.total}分 · ${r.completed?"完成 FINAL RUSH":"最高 L"+r.highestLevel} · 命中率 ${Math.round(rackRushAccuracy(r)*100)}%`;
-  let url=location.href;try{const u=new URL(location.href);u.searchParams.set("mode","rackrush");u.searchParams.set("diff",r.difficulty);u.searchParams.set("seed",r.seed);u.searchParams.set("scene",r.scene);u.searchParams.set("star",r.playerId);url=u.toString();}catch(e){}
-  try{if(navigator.share){await navigator.share({title:"aiBA RACK RUSH",text,url});return;}}catch(e){if(e&&e.name==="AbortError")return;}
+  const speed=isRackRushSpeed(r);
+  const text=speed?`aiBA RACK RUSH · 百分竞速\n${formatRackRushClock(r.elapsedMs/1000)} 达成100分 · 命中率 ${Math.round(rackRushAccuracy(r)*100)}%`:
+    `aiBA RACK RUSH · ${DIFFS[r.difficulty].n}\n${r.total}分 · ${r.completed?"完成 FINAL RUSH":"最高 L"+r.highestLevel} · 命中率 ${Math.round(rackRushAccuracy(r)*100)}%`;
+  let url=location.href;try{const u=new URL(location.href);u.searchParams.set("mode","rackrush");u.searchParams.set("diff",r.difficulty);u.searchParams.set("seed",r.seed);u.searchParams.set("scene",r.scene);u.searchParams.set("star",r.playerId);if(speed)u.searchParams.set("submode","speed100");else u.searchParams.delete("submode");url=u.toString();}catch(e){}
+  try{if(navigator.share){await navigator.share({title:speed?"aiBA SPEED 100":"aiBA RACK RUSH",text,url});return;}}catch(e){if(e&&e.name==="AbortError")return;}
   try{await navigator.clipboard.writeText(text+"\n"+url);toast("成绩与挑战链接已复制","#7CFC6B");}catch(e){toast(text,"#ffd23f");}
 }
 const BATTLE_RUNS_KEY="aiba-battle-runs-v1";
@@ -3397,7 +3785,7 @@ function startBattle(){
   paSay("百分大战开始!先到一百分获胜!",true);
   // 开场即取第三人称取景,推进到位后开始倒计时
   autoFrameCam(camTarget,P.pos,0,COURT_ATTACK_DIR,{marginX:1.48,marginY:1.36,minDist:5.8,maxDist:32});
-  glideTo(camTarget.pos.clone(),camTarget.look.clone(),1.4,()=>countdownBattle(3));
+  glideTo(camTarget.pos.clone(),camTarget.look.clone(),1.4,()=>startPreGameShow({mode:"battle"},()=>countdownBattle(3)));
 }
 function countdownBattle(n){
   const el=$("countN");
@@ -3458,7 +3846,9 @@ function stageDone(){
 }
 function startRound(){
   G.moneyRack=(seededRandom()*5)|0;
-  enterArenaAudio(G.stage==="final"?0.92:0.78);
+  enterArenaAudio(G.stage==="final"?1.03:0.9);
+  broadcastSting(G.stage==="final"?"danger":"score");
+  crowdSwell(G.stage==="final"?0.16:0.1,2.0);
   paSay("有请,"+G.myStar.n+","+G.myNum+"号!全花球架,"+RACKS[G.moneyRack].n+"!",true);
   G.seq=buildSeq(G.moneyRack);G.shotIdx=0;
   G.score=0;G.streak=0;G.timer=70;G.buzzed=false;G.running=false;
@@ -3476,7 +3866,7 @@ function startRound(){
   G.state="cinematic";
   const eye=shotEye(G.seq[0]);
   rig.pos.set(0,11,7);rig.look.copy(HOOP);
-  glideTo(eye,HOOP.clone().add(V3(0,0.15,0)),2.2,()=>countdown(3));
+  glideTo(eye,HOOP.clone().add(V3(0,0.15,0)),2.2,()=>startPreGameShow({mode:"contest"},()=>countdown(3)));
 }
 function countdown(n){
   const el=$("countN");
@@ -3507,6 +3897,7 @@ function endRound(){
   showPanel(`<h1 class="title" style="font-size:22px">⏱ ${G.stage==="final"?"决赛":"半决赛"}结束</h1>
     <div style="font-size:54px;color:#7CFC6B;text-shadow:4px 4px 0 #000;font-weight:bold;margin:8px 0">${G.score} 分</div>
     <div class="card">命中 <b>${made}/${G.shots.length}</b> · 花球 <b>${G.stats.moneyM}</b> · 深远 <b>${G.stats.deepM}</b> · 最高连中 <b class="flame">x${G.stats.best}</b></div>
+    ${scoreQuoteMarkup()}
     ${hi.length?`<button class="btn gold" onclick="startReplay()">🎬 精彩回放 (${hi.length})</button>`:""}
     <button class="btn green" onclick="afterRound()">继续 →</button>`);
 }
@@ -4101,6 +4492,7 @@ function showBattleResult(win){
       百分耗时 <b style="color:#ffd23f">${formatBattleTime(record.elapsedMs)}</b> · ${record.control==="vision"?"视觉手势":"触屏/键盘"}<br>
       最高连中 <b class="flame">x${G.stats.best}</b> · 中场10分 <b>${G.stats.deepM}/${G.stats.deepT}</b><br>
       难度:<b>${DIFFS[G.diff].n}</b></div>
+    ${scoreQuoteMarkup()}
     <button class="btn gold" onclick="startBattle()">再战一局</button>
     <button class="btn green" onclick="location.reload()">回主菜单</button>`);
 }
@@ -4297,6 +4689,7 @@ function showBracket(){
     h+=`<tr class="${r.me?"me ":""}${i<2?"adv":""}"><td style="width:34px">${i+1}</td><td style="text-align:left">${r.n}${i<2?" · 晋级":""}</td><td style="width:70px">${r.s}分</td></tr>`;
   });
   h+="</table>";
+  h+=scoreQuoteMarkup();
   if(adv){
     G.finalist=rows.find((r,i)=>i<2&&!r.me).o;
     paSay("晋级决赛!",true);
@@ -4383,6 +4776,7 @@ function champion(tb,extra){
     <div class="card">决赛 <b>${G.finalScore}</b> : ${G.aiFinal} 击败 <b>${G.finalist.n}</b>${tb?" (决胜球)":""}<br>
       最高连中 <b class="flame">x${G.stats.best}</b> · 花球 <b>${G.stats.moneyM}/${G.stats.moneyT}</b> · 深远 <b>${G.stats.deepM}/${G.stats.deepT}</b><br>
       难度:<b>${DIFFS[G.diff].n}</b></div>
+    ${scoreQuoteMarkup()}
     <button class="btn gold" onclick="shareScore(true)">📤 生成战报海报</button>
     <button class="btn green" onclick="location.reload()">再来一届</button>`);
 }
@@ -4393,6 +4787,7 @@ function runnerUp(tb){
     <h1 class="title" style="font-size:24px">亚军 · 虽败犹荣</h1>
     <div class="card">决赛 <b>${G.finalScore}</b> : ${G.aiFinal} 不敌 <b>${G.finalist.n}</b>${tb?" (决胜球)":""}<br>
       最高连中 <b class="flame">x${G.stats.best}</b> · 全场为你起立鼓掌</div>
+    ${scoreQuoteMarkup()}
     <button class="btn red" onclick="location.reload()">复仇之战</button>
     <button class="btn sm" onclick="shareScore(false)">生成战报海报</button>`);
 }
@@ -4497,7 +4892,7 @@ function audioGestureUnlock(e){
   if(BOOT_GATE_ACTIVE)return;
   if(e&&e.target&&e.target.id==="muteBtn")return;
   const menuLike=G.state==="menu"||G.state==="diff";
-  const arenaLike=G.state==="cinematic"||G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="rushintro"||G.state==="rushbetween";
+  const arenaLike=G.state==="cinematic"||G.state==="pregame"||G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="rushintro"||G.state==="rushbetween";
   if(!AC||AC.state==="suspended"||(menuLike&&!audioState().menuMusic))ensureAudio(menuLike,true);
   if(arenaLike&&extA.crowd&&extA.crowd.paused)extPlay("crowd");
   if(arenaLike&&extA.crowdCheer&&extA.crowdCheer.paused)extPlay("crowdCheer");
@@ -4586,6 +4981,7 @@ function animate(){
   if(G.state==="aishow")updShow(dt);
   if(G.state==="battle"&&!G.battleCut)updBattle(dt);
   if(G.state==="rackrush")updateRackRush(dt);
+  if(G.state==="pregame")updPreGameShow(dt);
   updFire(dt);
   updConf(dt);
   G.cheer=Math.max(0,G.cheer-dt*0.5);
@@ -4633,6 +5029,7 @@ function animate(){
   else if(hero.on)updHero(dt);
   else if(G.cutAway){/* updCutAway 已控制镜头 */}
   else if(G.battleCut){/* updBattleCut 已控制镜头 */}
+  else if(G.state==="pregame"){/* updPreGameShow 已控制镜头 */}
   else if(G.state==="aishow")updShowCam();
   else if(["menu","diff","intro","roundend","sim","bracket","champion","runnerup","eliminated","battleend","rushend"].includes(G.state)){
     const a=G.tNow*0.1;
