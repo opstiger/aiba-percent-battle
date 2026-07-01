@@ -1,0 +1,18 @@
+{
+  "name": "aiBA·百分大战",
+  "short_name": "aiBA",
+  "description": "浏览器里的赛博 3D 篮球投篮对战。按住蓄力、松手出手，先到 100 分获胜。",
+  "lang": "zh-CN",
+  "start_url": "./",
+  "scope": "./",
+  "display": "fullscreen",
+  "display_override": ["fullscreen", "standalone"],
+  "background_color": "#0a0c18",
+  "theme_color": "#0a0c18",
+  "categories": ["games", "sports"],
+  "icons": [
+    { "src": "assets/icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "assets/icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}
