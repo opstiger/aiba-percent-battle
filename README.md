@@ -8,7 +8,7 @@
 
 https://opstiger.github.io/aiba-percent-battle/
 
-当前版本：`v1.42-hd-voxel-player`
+当前版本：`v1.43-hd-voxel-player`
 
 ## 模式
 
@@ -47,7 +47,7 @@ node scripts/check.js
 ## 项目结构
 
 - `index.html`：当前可玩的入口文件。
-- `block-3pt-kingv1.42-hd-voxel-player.html`：当前版本快照，和 `index.html` 保持一致。
+- `block-3pt-kingv1.43-hd-voxel-player.html`：当前版本快照，和 `index.html` 保持一致。
 - `styles.css`：游戏 HUD、首页、面板和移动端样式。
 - `src/assets-manifest.js`：封面角色、音频等资源清单。
 - `src/audio.js`：外部音频、合成音效、现场氛围和语音播报。
@@ -75,6 +75,7 @@ node scripts/check.js
 Three.js 按其 MIT License 使用。项目生成的图片资源默认随本项目使用，除非后续另有说明。
 第三方音频的来源与独立许可见 [`assets/aiba-audio/SOURCE.md`](assets/aiba-audio/SOURCE.md)。
 视觉模型来源与许可见 [`assets/aiba-vision/SOURCE.md`](assets/aiba-vision/SOURCE.md)。
+Orbitron 字体来源与许可见 [`assets/fonts/orbitron/SOURCE.md`](assets/fonts/orbitron/SOURCE.md)。
 
 ## License
 

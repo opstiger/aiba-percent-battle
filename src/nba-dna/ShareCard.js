@@ -55,24 +55,24 @@
     else drawCoverImage(c,data.img||userImg,hero.x,hero.y,hero.w,hero.h);
     c.restore();
 
-    c.fillStyle="#77e7ff";c.font="bold 29px monospace";c.fillText("YOUR NBA DNA",92,80);
-    c.fillStyle="#fff";c.font="900 154px Arial Black, sans-serif";c.shadowColor="rgba(0,0,0,.9)";c.shadowBlur=0;c.shadowOffsetX=6;c.shadowOffsetY=7;
+    c.fillStyle="#77e7ff";c.font="bold 29px Orbitron, monospace";c.fillText("YOUR NBA DNA",92,80);
+    c.fillStyle="#fff";c.font="900 154px Orbitron, sans-serif";c.shadowColor="rgba(0,0,0,.9)";c.shadowBlur=0;c.shadowOffsetX=6;c.shadowOffsetY=7;
     c.fillText(result.total+"%",132,962);
     c.shadowOffsetX=0;c.shadowOffsetY=0;
-    c.fillStyle="#ffd23f";c.font="900 52px Arial Black, sans-serif";c.fillText(result.star,136,1022);
-    c.fillStyle="#d9f6ff";c.font="26px sans-serif";c.fillText(result.line,138,1068);
+    c.fillStyle="#ffd23f";c.font="900 52px Orbitron, sans-serif";c.fillText(result.star,136,1022);
+    c.fillStyle="#d9f6ff";c.font="26px Orbitron, sans-serif";c.fillText(result.line,138,1068);
 
     const rows=[["出手动作",result.parts.shooting],["手肘稳定",result.parts.elbow],["身体平衡",result.parts.balance],["跟随动作",result.parts.follow]];
     rows.forEach((r,i)=>{
       const x=136+(i%2)*400,yy=1138+Math.floor(i/2)*74;
       c.fillStyle="rgba(5,8,13,.76)";c.fillRect(x-14,yy-38,330,54);
       c.strokeStyle=i===1?"rgba(124,252,107,.52)":"rgba(255,210,63,.45)";c.strokeRect(x-14,yy-38,330,54);
-      c.fillStyle="#f4fbff";c.font="bold 25px sans-serif";c.fillText(r[0],x,yy);
+      c.fillStyle="#f4fbff";c.font="bold 25px Orbitron, sans-serif";c.fillText(r[0],x,yy);
       c.fillStyle=i===0?"#ffd23f":(i===1?"#7CFC6B":"#77e7ff");c.textAlign="right";c.fillText(r[1]+"%",x+284,yy);c.textAlign="left";
     });
-    c.fillStyle="#ffd23f";c.font="bold 28px sans-serif";c.fillText("我的投篮有 "+result.total+"% 像 Kobe, 你呢?",138,1290);
+    c.fillStyle="#ffd23f";c.font="bold 28px Orbitron, sans-serif";c.fillText("我的投篮有 "+result.total+"% 像 Kobe, 你呢?",138,1290);
     makePseudoCode(c,W-206,H-206,136);
-    c.fillStyle="#9ab";c.font="16px monospace";c.textAlign="center";c.fillText("SCAN TO PLAY",W-138,H-46);c.textAlign="left";
+    c.fillStyle="#9ab";c.font="16px Orbitron, monospace";c.textAlign="center";c.fillText("SCAN TO PLAY",W-138,H-46);c.textAlign="left";
     return cv;
   }
   function save(canvas){

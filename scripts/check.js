@@ -7,7 +7,7 @@ const vm=require("vm");
 
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
-const snapshot="block-3pt-kingv1.42-hd-voxel-player.html";
+const snapshot="block-3pt-kingv1.43-hd-voxel-player.html";
 const requiredFiles=[
   entry,
   snapshot,

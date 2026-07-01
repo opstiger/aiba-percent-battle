@@ -1,13 +1,22 @@
+@font-face{
+  font-family:"Orbitron";
+  src:url("assets/fonts/orbitron/Orbitron-VariableFont_wght.ttf") format("truetype");
+  font-weight:400 900;
+  font-style:normal;
+  font-display:swap;
+  unicode-range:U+0000-024F,U+20A0-20CF,U+2100-22FF;
+}
 *{box-sizing:border-box;margin:0;padding:0;-webkit-tap-highlight-color:transparent}
 html{--app-height:100dvh;height:100%;height:var(--app-height);background:#04050a}
 html,body{width:100%;height:100%;height:var(--app-height);overflow:hidden;background:#04050a;touch-action:none;user-select:none;-webkit-user-select:none;
   -webkit-text-size-adjust:100%;text-size-adjust:100%;
-  font-family:"Courier New",ui-monospace,monospace;color:#fff}
+  font-family:"Orbitron","Courier New",ui-monospace,monospace;color:#fff}
 #c{position:fixed;inset:0;width:100%;height:var(--app-height);image-rendering:auto}
 html[data-render-crisp="1"] #c{image-rendering:pixelated;image-rendering:crisp-edges}
 .px{text-shadow:2px 2px 0 #000;letter-spacing:1px;font-weight:bold}
-#scan{position:fixed;inset:0;pointer-events:none;z-index:60;opacity:.065;
-  background:repeating-linear-gradient(0deg,transparent 0 4px,rgba(0,0,0,.72) 4px 5px)}
+#scan{position:fixed;inset:0;pointer-events:none;z-index:60;opacity:0;transition:opacity .22s ease;
+  background:repeating-linear-gradient(0deg,transparent 0 4px,rgba(0,0,0,.58) 4px 5px)}
+html[data-scan-overlay="menu"] #scan{opacity:.018}
 #vig{position:fixed;inset:0;pointer-events:none;z-index:59;
   background:radial-gradient(ellipse at center,transparent 55%,rgba(0,0,0,.55) 100%)}
 /* ---------- HUD ---------- */
@@ -108,6 +117,11 @@ html[data-render-crisp="1"] #c{image-rendering:pixelated;image-rendering:crisp-e
 #muteBtn{position:fixed;top:max(98px,calc(env(safe-area-inset-top) + 88px));right:12px;z-index:48;font-size:18px;
   background:rgba(0,0,0,.5);border:2px solid #333;padding:6px 9px;cursor:pointer;pointer-events:auto}
 #muteBtn.needsAudio{border-color:#ffd23f;animation:soundPulse 1s steps(2) infinite}
+#pauseBtn{position:fixed;top:max(138px,calc(env(safe-area-inset-top) + 128px));right:12px;z-index:48;width:40px;height:36px;
+  display:none;align-items:center;justify-content:center;padding:0;background:rgba(0,0,0,.58);border:2px solid #333;color:#fff;
+  font-family:"Orbitron","Courier New",monospace;font-size:20px;line-height:1;font-weight:bold;text-shadow:2px 2px 0 #000;cursor:pointer;pointer-events:auto}
+#pauseBtn.ready{display:flex}
+#pauseBtn:active{transform:translateY(2px);background:#2a2a2a}
 @keyframes soundPulse{50%{filter:brightness(1.8);transform:scale(1.06)}}
 #hudTarget{position:absolute;top:max(86px,calc(env(safe-area-inset-top) + 76px));left:14px;font-size:11px;
   font-weight:bold;text-shadow:1px 1px 0 #000;color:#ffd23f}
@@ -127,7 +141,7 @@ html[data-render-crisp="1"] #c{image-rendering:pixelated;image-rendering:crisp-e
 .visionHead{height:25px;display:flex;align-items:center;justify-content:space-between;padding-left:7px;border-bottom:1px solid rgba(255,255,255,.14);
   background:#0a111d;color:#a9c5d6;font-size:8px;font-weight:bold;letter-spacing:1px}
 .visionHead b{color:var(--vision-accent);font-size:9px}.visionClose{width:25px;height:24px;border:0;border-left:1px solid rgba(255,255,255,.14);
-  background:#111925;color:#dbe8ef;font:18px/1 monospace;cursor:pointer}
+  background:#111925;color:#dbe8ef;font-family:"Orbitron","Courier New",monospace;font-size:18px;line-height:1;cursor:pointer}
 .visionBody{display:grid;grid-template-columns:minmax(0,1fr);gap:0;background:#080d16;border-bottom:1px solid rgba(255,255,255,.12)}
 .visionStage{position:relative;width:100%;aspect-ratio:4/3;overflow:hidden;background:#090d12}
 #visionVideo,#visionCanvas{position:absolute;inset:0;width:100%;height:100%;object-fit:contain;transform:scaleX(-1)}
@@ -141,7 +155,7 @@ html[data-render-crisp="1"] #c{image-rendering:pixelated;image-rendering:crisp-e
 .visionMode{width:88%;margin:10px auto 4px;display:grid;grid-template-columns:minmax(0,1fr) repeat(2,minmax(82px,112px));align-items:stretch;
   background:#0e141e;border:2px solid #354356;box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}
 .visionModeLabel{padding:9px 11px;text-align:left}.visionModeLabel small{display:block;color:#778fa4;font-size:8px;letter-spacing:2px}.visionModeLabel b{font-size:12px;color:#eef7ff}
-.visionMode button{border:0;border-left:1px solid #354356;background:#161f2b;color:#8ea3b8;font:10px "Courier New",monospace;font-weight:bold;cursor:pointer}
+.visionMode button{border:0;border-left:1px solid #354356;background:#161f2b;color:#8ea3b8;font-family:"Orbitron","Courier New",monospace;font-size:10px;line-height:1.2;font-weight:bold;cursor:pointer}
 .visionMode button.active{background:#123b42;color:#70e8ff;box-shadow:inset 0 -3px 0 #70e8ff}.visionMode button:disabled{opacity:.38;cursor:not-allowed}
 /* toasts & pops */
 #toast{position:fixed;top:24%;left:50%;transform:translateX(-50%);z-index:45;font-size:24px;font-weight:bold;
@@ -203,6 +217,11 @@ html[data-render-crisp="1"] #c{image-rendering:pixelated;image-rendering:crisp-e
 .scoreQuote:before{content:"POST GAME CODE";display:block;margin-bottom:5px;color:#ffd23f;font-size:8px;font-weight:bold;letter-spacing:2px}
 .scoreQuote span{display:block;font-size:12px;line-height:1.55;color:#f7fbff}
 .scoreQuote cite{display:block;margin-top:5px;color:#77e7ff;font-size:9px;font-style:normal;letter-spacing:1px;text-transform:uppercase}
+.pausePanel{text-align:left;color:#eef7ff}
+.pausePanel h1{margin:0 0 10px;color:#fff;font-size:28px;text-shadow:3px 3px 0 #000}
+.pausePanel .pauseMeta{margin:0 0 13px;color:#8ea3b8;font-size:11px;letter-spacing:2px;text-transform:uppercase}
+.pausePanel .pauseActions{display:grid;gap:10px;margin-top:14px}
+.pausePanel .btn{width:100%;margin-left:0;margin-right:0}
 .coverActions{display:grid;gap:14px;width:min(760px,92vw);max-width:760px}
 .coverActions.schemeA{gap:12px;width:min(680px,92vw);max-width:680px}
 .modeTile{--accent:#2d9cff;--accent2:#0a3457;position:relative;display:grid;grid-template-columns:minmax(0,1fr) minmax(196px,260px);

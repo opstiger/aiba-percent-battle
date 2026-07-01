@@ -67,7 +67,7 @@
   }
   function drawBadge(ctx,x,y,text,color){
     ctx.save();
-    ctx.font="bold 12px 'Courier New', monospace";
+    ctx.font="bold 12px Orbitron, monospace";
     const w=ctx.measureText(text).width+18;
     ctx.fillStyle="rgba(5,8,13,.78)";ctx.fillRect(x,y,w,24);
     ctx.strokeStyle=color;ctx.lineWidth=1.5;ctx.strokeRect(x+.5,y+.5,w-1,23);
@@ -93,7 +93,7 @@
     pts.forEach((q,i)=>{if(p<i/pts.length*.55)return;ctx.beginPath();ctx.arc(q.x,q.y,4,0,Math.PI*2);ctx.fill();});
     ctx.shadowBlur=0;ctx.globalAlpha=.95;
     drawBadge(ctx,rect.x+rect.w-214,rect.y+70,"YOUR POSE NOT LOCKED","#77e7ff");
-    ctx.fillStyle="#9fdfff";ctx.font="bold 11px 'Courier New', monospace";
+    ctx.fillStyle="#9fdfff";ctx.font="bold 11px Orbitron, monospace";
     ctx.fillText("TRY FULL BODY / BRIGHT PHOTO",rect.x+rect.w-204,rect.y+116);
     ctx.restore();
   }
@@ -161,7 +161,7 @@
   }
   function drawType(ctx,text,x,y,count,color,size){
     const shown=text.slice(0,Math.max(0,Math.floor(count)));
-    ctx.fillStyle=color||"#eef7ff";ctx.font=`bold ${size||18}px "Courier New", monospace`;
+    ctx.fillStyle=color||"#eef7ff";ctx.font=`bold ${size||18}px Orbitron, monospace`;
     ctx.fillText(shown,x,y);
   }
   function drawCallouts(ctx,data,result,rect,amount,poster,userMap){
@@ -228,7 +228,7 @@
     const scanY=rect.y+rect.h*((progress*1.65)%1);
     ctx.fillStyle="rgba(119,231,255,.16)";ctx.fillRect(rect.x,scanY-12,rect.w,24);
     ctx.strokeStyle="rgba(119,231,255,.9)";ctx.lineWidth=2;ctx.beginPath();ctx.moveTo(rect.x,scanY);ctx.lineTo(rect.x+rect.w,scanY);ctx.stroke();
-    ctx.fillStyle="#77e7ff";ctx.font="bold 12px 'Courier New', monospace";ctx.fillText("POSE ALIGNMENT / LOCAL",22,H-48);
+    ctx.fillStyle="#77e7ff";ctx.font="bold 12px Orbitron, monospace";ctx.fillText("POSE ALIGNMENT / LOCAL",22,H-48);
     const dots=Math.floor((progress*18)%4);
     ctx.fillStyle="#ffd23f";ctx.fillText("PRINTING MATCH DATA"+".".repeat(dots),22,H-28);
     ctx.strokeStyle="rgba(255,210,63,.42)";ctx.strokeRect(rect.x,rect.y,rect.w,rect.h);
