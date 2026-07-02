@@ -4023,6 +4023,7 @@ function startRackRushLevel(level){
 function countdownRackRush(n){
   const el=$("countN");
   if(!G.rush||G.state!=="rushintro")return;
+  if(n===3)playPregameCountdownCue();
   if(n===0){
     el.textContent="GO!";el.style.display="flex";sGo();
     setTimeout(()=>el.style.display="none",450);
@@ -4294,6 +4295,7 @@ function startBattle(){
 }
 function countdownBattle(n){
   const el=$("countN");
+  if(n===3)playPregameCountdownCue();
   if(n===0){
     el.textContent="GO!";el.style.display="flex";sGo();
     setTimeout(()=>el.style.display="none",500);
@@ -4376,6 +4378,7 @@ function startRound(){
 }
 function countdown(n){
   const el=$("countN");
+  if(n===3)playPregameCountdownCue();
   if(n===0){
     el.textContent="GO!";el.style.display="flex";sGo();
     setTimeout(()=>el.style.display="none",500);

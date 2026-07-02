@@ -1,6 +1,14 @@
 /* ====== 真人配音: 固定台词优先播放英文 wav, 动态台词走英文合成兜底 ====== */
 const VOICE_BASE=(typeof EXT_AUDIO!=="undefined"&&EXT_AUDIO&&EXT_AUDIO.voiceBase)||"assets/aiba-audio/voices/";
 const voiceUrl=name=>VOICE_BASE+name;
+const PREGAME_COUNTDOWN_CLIPS=Object.freeze([
+  voiceUrl("pre_countdown_street_03.wav"),
+  voiceUrl("pre_countdown_street_04.wav"),
+  voiceUrl("pre_countdown_street_07.wav"),
+  voiceUrl("pre_countdown_wild_05.wav"),
+  voiceUrl("pre_countdown_wild_06.wav"),
+  voiceUrl("pre_countdown_wild_08.wav")
+]);
 const VOICE_CLIPS=Object.freeze({
   "三分线外是我的地盘。":voiceUrl("r_pre_01.wav"),
   "屈居亚军,虽败犹荣,观众把掌声送给你!":voiceUrl("p_08_en.wav"),
@@ -325,6 +333,25 @@ function playClip(t){
   return true;
 }
 playClip.cache=Object.create(null);
+let pregameCountdownClipLast=-1;
+function playPregameCountdownCue(){
+  if(MUTED||!PREGAME_COUNTDOWN_CLIPS.length)return false;
+  try{
+    audioInit();
+    const pool=PREGAME_COUNTDOWN_CLIPS;
+    let idx=(Math.random()*pool.length)|0;
+    if(pool.length>1&&idx===pregameCountdownClipLast)idx=(idx+1+(Math.random()*(pool.length-1)|0))%pool.length;
+    pregameCountdownClipLast=idx;
+    const u=pool[idx];
+    if(!playClip.cache[u]){const preload=new Audio(u);preload.preload="auto";preload.load();playClip.cache[u]=preload;}
+    const base=playClip.cache[u],a=base.paused&&base.currentTime===0?base:base.cloneNode();
+    a.volume=0.96;a.currentTime=0;
+    const p=a.play();if(p&&p.catch)p.catch(()=>{});
+    duckBroadcast(4200,0.52);
+    crowdSwell(.08,2.2);
+    return true;
+  }catch(e){return false}
+}
 function voiceClipFor(t){
   if(!t)return "";
   if(VOICE_CLIPS[t])return VOICE_CLIPS[t];
@@ -332,7 +359,7 @@ function voiceClipFor(t){
   return "";
 }
 function preloadVoiceClips(){
-  const urls=Object.values(VOICE_CLIPS).concat(VOICE_RULES.map(r=>r.url));
+  const urls=Object.values(VOICE_CLIPS).concat(VOICE_RULES.map(r=>r.url),PREGAME_COUNTDOWN_CLIPS);
   urls.forEach(u=>{
     if(!u||playClip.cache[u])return;
     try{const a=new Audio(u);a.preload="auto";a.load();playClip.cache[u]=a;}catch(e){}
