@@ -7,7 +7,7 @@ const vm=require("vm");
 
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
-const snapshot="block-3pt-kingv1.43-hd-voxel-player.html";
+const snapshot="block-3pt-kingv1.44-hd-voxel-player.html";
 const requiredFiles=[
   entry,
   snapshot,
@@ -47,8 +47,15 @@ for(const [i,script] of inlineScripts.entries()){
 }
 
 const manifest=read("src/assets-manifest.js");
-try{new Function(read("src/audio.js"));}
+const audioScript=read("src/audio.js");
+try{new Function(audioScript);}
 catch(e){fail("audio script syntax error: "+e.message);}
+const voiceFiles=new Set([...audioScript.matchAll(/voiceUrl\("([^"]+\.wav)"\)/g)].map(m=>m[1]));
+if(!voiceFiles.size)fail("no voiceUrl wav references found in audio script");
+for(const file of voiceFiles){
+  const rel=path.posix.join("assets/aiba-audio/voices",file);
+  if(!exists(rel))fail("missing referenced voice clip "+rel);
+}
 const vision=read("src/vision.js");
 try{new Function(vision);}
 catch(e){fail("vision script syntax error: "+e.message);}

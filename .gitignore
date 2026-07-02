@@ -11,6 +11,8 @@ assets/aiba-audio/voices/*
 !assets/aiba-audio/voices/
 !assets/aiba-audio/voices/p_*_en.wav
 !assets/aiba-audio/voices/dj_*_en.wav
+!assets/aiba-audio/voices/dj_c_*.wav
+!assets/aiba-audio/voices/r_*.wav
 assets/3d model/
 block-3pt-king-promo.mp4
 block-3pt-kingv1.40-rack-rush-alpha.html

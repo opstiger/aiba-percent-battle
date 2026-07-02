@@ -27,7 +27,8 @@
     horn:"",
     buzzer:"",
     bounce:"",
-    swish:""
+    swish:"assets/aiba-audio/swish.mp3",
+    clank:"assets/aiba-audio/clank.mp3"
   });
 
   global.AIBA_ASSETS=Object.freeze({coverStars,audio});

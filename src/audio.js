@@ -84,7 +84,49 @@ const VOICE_CLIPS=Object.freeze({
   "看好了,这才叫投篮。":voiceUrl("r_ch_01.wav"),
   "看好了，这才叫投篮。":voiceUrl("r_ch_01.wav"),
   "我会让你知道差距。":voiceUrl("r_ch_02.wav"),
-  "记好这个分数。":voiceUrl("r_ch_03.wav")
+  "记好这个分数。":voiceUrl("r_ch_03.wav"),
+
+  // --- Hot Streak 3 ---
+  "连进三个,手感开机了!":voiceUrl("dj_mk3_01_en.wav"),
+  "连进三个，手感开机了！":voiceUrl("dj_mk3_01_en.wav"),
+  "别眨眼,这节奏要起飞。":voiceUrl("p_mk3_02_en.wav"),
+  "别眨眼，这节奏要起飞。":voiceUrl("p_mk3_02_en.wav"),
+  "三连中,篮网开始发烫。":voiceUrl("dj_mk3_03_en.wav"),
+  "三连中，篮网开始发烫。":voiceUrl("dj_mk3_03_en.wav"),
+  "你该叫暂停了。":voiceUrl("r_mk3_04.wav"),
+
+  // --- Hot Streak 5 ---
+  "五连中,球馆已经炸了!":voiceUrl("dj_mk5_02_en.wav"),
+  "五连中，球馆已经炸了！":voiceUrl("dj_mk5_02_en.wav"),
+  "这不是手感,这是自动瞄准!":voiceUrl("r_mk5_03.wav"),
+  "这不是手感，这是自动瞄准！":voiceUrl("r_mk5_03.wav"),
+  "篮筐在向你招手。":voiceUrl("p_mk5_04_en.wav"),
+
+  // --- Hot Streak 8 ---
+  "八连中,全场进入见证模式!":voiceUrl("dj_mk8_01_en.wav"),
+  "八连中，全场进入见证模式！":voiceUrl("dj_mk8_01_en.wav"),
+  "现在每一次出手都像慢动作。":voiceUrl("p_mk8_02_en.wav"),
+  "别投了,这比赛要被你打坏了!":voiceUrl("r_mk8_03.wav"),
+  "别投了，这比赛要被你打坏了！":voiceUrl("r_mk8_03.wav"),
+
+  // --- Cold Streak 5 ---
+  "五连铁了,篮筐都要报警了。":voiceUrl("r_ms5_01.wav"),
+  "五连铁了，篮筐都要报警了。":voiceUrl("r_ms5_01.wav"),
+  "深呼吸,下一球找回手感。":voiceUrl("p_ms5_02_en.wav"),
+  "深呼吸，下一球找回手感。":voiceUrl("p_ms5_02_en.wav"),
+  "今天这篮筐有点不讲理。":voiceUrl("p_ms5_03_en.wav"),
+  "别急,节奏回来就有。":voiceUrl("p_ms5_04_en.wav"),
+  "别急，节奏回来就有。":voiceUrl("p_ms5_04_en.wav"),
+  "方块手感掉线了,重启一下。":voiceUrl("dj_ms5_05_en.wav"),
+  "方块手感掉线了，重启一下。":voiceUrl("dj_ms5_05_en.wav"),
+
+  // --- Cold Streak 8 ---
+  "八连铁,先把手感从地板上捡起来。":voiceUrl("r_ms8_01.wav"),
+  "八连铁，先把手感从地板上捡起来。":voiceUrl("r_ms8_01.wav"),
+  "稳住,下一球只看节奏。":voiceUrl("p_ms8_02_en.wav"),
+  "稳住，下一球只看节奏。":voiceUrl("p_ms8_02_en.wav"),
+  "别和篮筐较劲,用弧线说话。":voiceUrl("p_ms8_03_en.wav"),
+  "别和篮筐较劲，用弧线说话。":voiceUrl("p_ms8_03_en.wav")
 });
 const VOICE_RULES=Object.freeze([
   {re:/欢迎来到 aiBA/i,url:voiceUrl("p_09_en.wav")},
@@ -135,32 +177,32 @@ const VOICE_RULES=Object.freeze([
   {re:/记好这个分数/i,url:voiceUrl("r_ch_03.wav")}
 ]);
 const EN_SPEECH=Object.freeze({
-  "三分线外是我的地盘。":"Welcome to my house, kid! *snickers* You're out of bounds!",
-  "今晚我让你两个花球。":"*sighs* I'll let you have two money balls... you seriously need 'em.",
-  "方块小子,回家再练十年。":"Practice? *laughs* Practice?! We talkin' about practice, boy?!",
-  "我闭着眼都比你准。":"Psst... I can cash these blindfolded. *giggles* Watch.",
-  "听到观众在喊谁的名字了吗?":"Hear that? *mimicking* M-V-P! Yep, that's me, not you!",
-  "希望你的手别抖。":"Don't choke... *whispers* the Mailman doesn't deliver on Sundays...",
-  "运气球罢了…":"Waaah! That was pure luck! A lucky bounce!",
-  "风!刚才一定有风!":"Brrr! Turn the AC off! It's so windy in here!",
-  "裁判!他踩线了吧?!":"Ref! *sobs* Check his feet! He was out! He was out!",
-  "别得意,还没结束。":"*grumbles* Job's not finished... what is there to be happy about, huh?",
-  "……他什么时候变这么准的?":"Ugh! Since when does he cash that?! No way, man!",
-  "我热身还没做完而已。":"*yawns* That was just warmups, kid. Real game starts... now.",
+  "三分线外是我的地盘。":"This is my house! Shiiiet... out of bounds!",
+  "今晚我让你两个花球。":"Two money balls for you. Damn, you need 'em.",
+  "方块小子,回家再练十年。":"Practice? Hahaha! We talkin' about practice?!",
+  "我闭着眼都比你准。":"Blindfolded, baby! Hehehe, watch.",
+  "听到观众在喊谁的名字了吗?":"Hear that? MVP! Wohoo!",
+  "希望你的手别抖。":"Don't choke! The Mailman is coming...",
+  "运气球罢了…":"Wawawa! Pure luck! Lucky bounce!",
+  "风!刚才一定有风!":"Brrr! Windy in here! Holy shit!",
+  "裁判!他踩线了吧?!":"Ref! He stepped out! Out!",
+  "别得意,还没结束。":"Job's not finished! Damn it!",
+  "……他什么时候变这么准的?":"No! Holy shit, since when?!",
+  "我热身还没做完而已。":"Just warmups. Real game starts now.",
   "看到没!这就是差距!":"You know who I am! Easy money!",
   "谁是三分王?!":"Who's coming in second?!",
   "太轻松了!":"Too easy! BBQ chicken!",
   "跟我斗?还嫩点!":"You thought you was Kobe?! Too small!",
   "这分我拿定了!":"Board man gets paid!",
   "感受方块的力量!":"Voxel power! Welcome to the block party!",
-  "快追啊!":"Keep that same energy~ *giggles* Catch up, catch up!",
-  "就这点本事?":"*tsks* Is that all you got? Soft... *whispers* you are so soft.",
-  "我已经看到终点了!":"Look at the board, boy. Look. At. It.",
-  "你还差得远呢!":"You're too small! *laughs* Go to the weight room!",
-  "100分是我的!":"Night night~ *whispers* Put 'em to sleep, baby.",
-  "看好了,这才叫投篮。":"Watch closely... *whispers* splash.",
-  "我会让你知道差距。":"*mumbles* I took that personally... now watch me.",
-  "记好这个分数。":"Count the rings, baby. Just count 'em.",
+  "快追啊!":"Catch up! Catch up! Wohoo!",
+  "就这点本事?":"Soft! You are so soft!",
+  "我已经看到终点了!":"Look at the board! Shiiiet!",
+  "你还差得远呢!":"Too small! Hahaha, too small!",
+  "100分是我的!":"Night night! Put 'em to sleep!",
+  "看好了,这才叫投篮。":"Splash! Hehehe, splash!",
+  "我会让你知道差距。":"Personally! I took that personally! Damn!",
+  "记好这个分数。":"Count the rings! Shiiiet!",
   "反超!比分易主!":"Lead change!",
   "反超!你领先了!":"Lead change! You are in front.",
   "时间到!":"Time is up!",
@@ -170,13 +212,31 @@ const EN_SPEECH=Object.freeze({
   "新科三分王,诞生了!":"A new three point king is crowned.",
   "百分大战,率先破百!":"Percent Battle! First to one hundred.",
   "百分大战开始!先到一百分获胜!":"Percent Battle begins. First to one hundred wins!",
-  "就这?":"*sighs* Soft... y'all are just soft.",
-  "就这？":"*sighs* Soft... y'all are just soft.",
-  "我奶奶都比你稳。":"My grandma... *giggles* she got a better jumper than that!",
-  "手抖了啊兄弟。":"Stop it! *dramatically sobs* Please, get some help!",
-  "要不要借你我的发带?":"Ooh, you sweating? *giggles* Need to borrow my headband?",
-  "要不要借你我的发带？":"Ooh, you sweating? *giggles* Need to borrow my headband?",
-  "观众都替你尴尬了。":"Ugh... *groans* Brick! Westbrick! Oh my god!"
+  "就这?":"Pfft! Real soft!",
+  "就这？":"Pfft! Real soft!",
+  "我奶奶都比你稳。":"My grandma got a better jumper! Hehehe!",
+  "手抖了啊兄弟。":"Stop it! Get some help! Damn!",
+  "要不要借你我的发带?":"You sweating? Headband?",
+  "要不要借你我的发带？":"You sweating? Headband?",
+  "观众都替你尴尬了。":"Brick! Westbrick! Holy shit!",
+  "连进三个,手感开机了!":"THREE STRAIGHT! The jumper is ONLINE! Haha!",
+  "别眨眼,这节奏要起飞.":"Do NOT blink! This rhythm is about to take off!",
+  "三连中,篮网开始发烫.":"Three in a row! The net is getting HOT! Oh!",
+  "你该叫暂停了.":"Huh! You better call a timeout! For real!",
+  "五连中,球馆已经炸了!":"FIVE STRAIGHT! The arena is losing its MINDS! Woo!",
+  "这不是手感,这是自动瞄准!":"No! That is NOT touch! That is AUTO AIM! Cheater!",
+  "篮筐在向你招手.":"The rim is CALLING your name! Oh my!",
+  "八连中,全场进入见证模式!":"EIGHT STRAIGHT! The whole building is WITNESSING greatness!",
+  "现在每一次出手都像慢动作.":"Every... single... shot... feels like slow motion now!",
+  "别投了,这比赛要被你打坏了!":"STOP SHOOTING! You are about to BREAK THE GAME! No!",
+  "五连铁了,篮筐都要报警了.":"Five bricks! Haha, the rim is about to call the POLICE!",
+  "深呼吸,下一球找回手感.":"Breathe... Just breathe. Get the touch back on the next one!",
+  "今天这篮筐有点不讲理.":"Damn! This rim is acting personal tonight!",
+  "别急,节奏回来就有.":"Do NOT rush! Find the rhythm, and it comes right back!",
+  "方块手感掉线了,重启一下.":"The voxel touch went offline! Reboot! Reboot! Haha!",
+  "八连铁,先把手感从地板上捡起来.":"Eight bricks! Sheesh! Pick your jumper up off the floor!",
+  "稳住,下一球只看节奏.":"Stay steady. The next shot is ALL rhythm!",
+  "别和篮筐较劲,用弧线说话.":"Do NOT fight the rim! Let the arc do the talking!"
 });
 
 /* ---------------- 音频引擎 v3 (菜单BGM + 球馆现场 + DJ/转播 + 投篮手感) ---------------- */
@@ -236,7 +296,7 @@ function extPlay(k){
 }
 function extStop(k){const a=extA[k];if(a)try{a.pause()}catch(e){}}
 function sceneAudioArenaLike(){
-  return G.state==="cinematic"||G.state==="round"||G.state==="roundend"||G.state==="aishow"||G.state==="tiebreak"||G.state==="battle"||G.state==="battleend"||G.state==="rackrush"||G.state==="rushintro"||G.state==="rushbetween"||G.state==="rushend"||G.state==="wincine"||G.state==="replay";
+  return G.state==="cinematic"||G.state==="round"||G.state==="roundend"||G.state==="aishow"||G.state==="tiebreak"||G.state==="battle"||G.state==="battleend"||G.state==="rackrush"||G.state==="rushintro"||G.state==="rushbetween"||G.state==="rushend"||G.state==="wincine"||G.state==="victorycine"||G.state==="replay";
 }
 function syncSceneAmbience(){
   const arenaLike=sceneAudioArenaLike(),allowed=G.state==="diff"||arenaLike;
@@ -694,6 +754,7 @@ function sSwish(){
   }
 }
 function sClank(){ // 铁框:非谐金属泛音
+  if(extPlay("clank")){if(navigator.vibrate)navigator.vibrate(14);return;}
   if(!AC||MUTED){if(navigator.vibrate)navigator.vibrate(14);return;}
   const t=AC.currentTime;
   [317,476,833,1276].forEach((f,i)=>{
