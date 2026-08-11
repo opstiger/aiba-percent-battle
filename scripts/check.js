@@ -9,7 +9,7 @@ const childProcess=require("child_process");
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
 const legacyEntry="legacy.html";
-const snapshot="block-3pt-kingv2.18-modular.html";
+const snapshot="block-3pt-kingv2.18.2-modular.html";
 const requiredFiles=[
   entry,
   legacyEntry,
@@ -169,9 +169,12 @@ for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"]
 if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js?v=2.15.5-hand-follow"></script>'))fail("Percent Battle opponent cache version missing");
 if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js?v=refactor4a"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
-for(const token of ["v2.18 MODULAR","MODULAR / v2.18"])
+for(const token of ["v2.18.2 MODULAR","MODULAR / v2.18.2"])
   if(!entryHtml.includes(token))fail("visible version token missing "+token);
-if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.18";'))fail("GAME_VERSION must be v2.18");
+if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.18.2";'))fail("GAME_VERSION must be v2.18.2");
+const playerMeterGradient='<linearGradient id="ppGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#2e8bff"/><stop offset="55%" stop-color="#39d3ff"/><stop offset="78%" stop-color="#ffd23f"/><stop offset="100%" stop-color="#ff4040"/></linearGradient>';
+if(!entryHtml.includes(playerMeterGradient))fail("player power fill must preserve the original single-sweet-zone gradient");
+if((entryHtml.match(/class="ppSweet"/g)||[]).length!==1)fail("player power must expose exactly one sweet-zone marker");
 if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.15.5-hand-follow">'))fail("stylesheet link missing");
 const menuScript=read("src/ui/menu.js");
 const nbaDnaScript=read("src/nba-dna/NBADNA.js");
@@ -202,7 +205,7 @@ if(!entryHtml.includes('<script src="src/nba-dna/NBADNA.js?v=20260718-coming-soo
 if(!entryHtml.includes('<script src="src/assets-manifest.js?v=20260726-bkyx1"></script>'))fail("assets manifest script missing");
 if(!entryHtml.includes('<script src="src/config.js?v=2.15.5-hand-follow"></script>'))fail("config script missing");
 if(!entryHtml.includes('<script src="src/player-select.js?v=2.15.5-hand-follow"></script>'))fail("player select script missing");
-if(!entryHtml.includes('<script src="src/player-locker-preview.js?v=2.17-locker-idles"></script>'))fail("player locker preview script missing");
+if(!entryHtml.includes('<script src="src/player-locker-preview.js?v=2.18.2-locker-palm"></script>'))fail("player locker preview script missing");
 if(!entryHtml.includes('<script src="src/player-id.js"></script>'))fail("player id script missing");
 if(!entryHtml.includes('<script src="src/leaderboard-api.js"></script>'))fail("leaderboard api script missing");
 if(!entryHtml.includes('<script src="src/leaderboard-ui.js?v=1.94"></script>'))fail("leaderboard ui script missing");
@@ -318,7 +321,7 @@ for(const token of ["lockerStage","lockerWorkbench"])
   if(!(playerLockerPreviewScript+playerSelectScript+styles).includes(token))fail("fixed gear preview token missing "+token);
 for(const token of ["function mountLive","function refreshLive","function focusLive","mousedown","mousemove","touchstart","touchmove","wheel","ResizeObserver","clampZoom","clampPitch","baseAzimuth","baseElevation","Math.sin(azimuth)","Math.sin(elevation)","dataset.orbitYaw","dataset.orbitPitch","dataset.orbitZoom","AIBALockerPreview={render,refreshLive,reset:resetLive,focus:focusLive,destroy:destroyLive}"])
   if(!playerLockerPreviewScript.includes(token))fail("interactive locker orbit missing "+token);
-for(const token of ["LOCKER_ACTIONS","function idlePose","function wavePose","function shadowShotPose","function jerseyPose","function headbandPose","function startLiveMotion","lastMotionFrame<33","prefers-reduced-motion: reduce","cancelAnimationFrame(liveView.motionRaf)","dataset.lockerAction"])
+for(const token of ["LOCKER_ACTIONS","function idlePose","function wavePose","function shadowShotPose","function jerseyPose","function headbandPose","function startLiveMotion","lastMotionFrame<33","prefers-reduced-motion: reduce","cancelAnimationFrame(liveView.motionRaf)","dataset.lockerAction","Math.sin(progress*Math.PI*7)*k*sign"])
   if(!playerLockerPreviewScript.includes(token))fail("locker idle animation missing "+token);
 for(const token of ["lockerViewReset","rotate-ccw","AIBALockerPreview.reset()"])
   if(!playerSelectScript.includes(token))fail("locker orbit controls missing "+token);

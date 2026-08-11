@@ -87,7 +87,7 @@
   }
   function wavePose(guy,progress,side){
     const k=actionEnvelope(progress),index=side===1?1:0,other=index?0:1,sign=index?1:-1;
-    const wave=Math.sin(progress*Math.PI*7)*k;
+    const wave=Math.sin(progress*Math.PI*7)*k*sign;
     guy.g.rotation.y+=sign*.07*k;
     guy.g.rotation.z-=sign*.025*k;
     guy.g.position.z=.018*k;
