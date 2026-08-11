@@ -7,7 +7,7 @@
     G,BATTLE_TARGET,BATTLE_SPOTS,OPP_SPOT_EMPTY_WAIT,COURT,HOOP,P,V3,clamp,faceTo,rivals,
     matGold,matDeep,matBall,shotProfileFor,DIFFS,aiProb,rnd,shotFlightTime,ballGeo,scene,blobGeo,blobMat,
     balls,oppPasser,oppPasserBall,triggerStreetCrowdReaction,bloomOnScore,beginFinalAudioWindow,broadcastSting,toast,boo,gameDjSay,
-    sBounce,sSwish,battleScoreCallout,updJumbo,checkBattleOvertake,shotCurves,poseGuy,poseBallPos,checkBallCollisions
+    sBounce,sSwish,battleScoreCallout,updJumbo,checkBattleOvertake,shotCurves,poseGuy,poseBallPos,applyHandFollowThroughPose,checkBallCollisions
   }=ctx;
   const OPP=battle.OPP;
   const OPP_MIN_SEP=1.58;
@@ -145,6 +145,7 @@
     if(shootEl)shootEl.rotation.x=Math.min(shootEl.rotation.x,-0.8-0.22*hold);
     if(guide){guide.rotation.x=Math.min(guide.rotation.x,-1.28-0.14*hold);guide.rotation.z+=0.1*hold;}
     if(guideEl)guideEl.rotation.x=Math.min(guideEl.rotation.x,-0.66-0.14*hold);
+    if(applyHandFollowThroughPose)applyHandFollowThroughPose(guy,hold);
   }
   function startOppShooter(){
     OPP.on=true;OPP.o=G.battleOpp;OPP.guy=rivals[0];OPP.guy.active=true;

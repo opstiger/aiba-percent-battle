@@ -4,9 +4,9 @@
    或更衣室开关即可完整恢复原版（函数、球的挂点、第一人称手全部还原）。
 
    V2 内容：
-   1) 球贴手：第三人称把球挂到投篮手前臂(肘组)掌心处，蓄力/举球/出手全程跟手。
-   2) 第一人称粗糙手掌：原手模隐藏(可还原)，新手掌+手指+手腕 pivot 进入视野，
-      蓄力压腕、出手甩腕跟随(follow-through)，有真实投篮感。
+   1) 球贴手：第三人称把球挂到投篮手腕掌心处，蓄力/举球/出手全程跟手。
+   2) 第一人称共享骨架：原手模隐藏(可还原)，镜像第三人称球员的真实双臂、
+      肘腕、手掌、手指与装备，同一帧姿势从任何镜头观看都一致。
    3) 顶点即落：接线 AIBAShotPhysics(v1.52 已实现但未接入)——蓄力过顶后
       人物按时间轴自然下落，落地前自动出手并按严重晚释放/短球惩罚。
    4) 实体篮板：飞行段做线段穿越检测，过力平射被篮板正面弹回(算投失)；
@@ -27,46 +27,68 @@
   try{on=localStorage.getItem(LS_KEY)!=="off";}catch(e){}
   function save(){try{localStorage.setItem(LS_KEY,on?"on":"off");}catch(e){}}
 
-  /* ================= 第一人称 V2 手掌 ================= */
+  /* ================= 第一人称 V2：第三人称双臂的显示镜像 ================= */
   const FOLLOW_EXTEND=0.105,BALL_RELEASE_AT=0.092,FOLLOW_HOLD=0.24,FOLLOW_FADE=0.38;
-  let fpRig=null,fpHidden=[],followAge=0,followActive=false;
+  let fpRig=null,fpHidden=[],fpBallHome=null,followAge=0,followActive=false;
   let guideStart={x:-1.3,z:-0.18,elbowX:-0.68};
   let releasePose={shootX:-1.88,shootZ:0.10,shootElX:-1.28,shootElZ:0};
   let releaseCurve={dip:0,lift:1,rise:1,jmp:1,over:0},lastPoseCurve=releaseCurve,pendingRelease=null;
   const ease01=t=>{t=clampN(t,0,1);return t*t*(3-2*t);};
   const mixN=(a,b,k)=>a+(b-a)*k;
+  function mirrorArm(source,name){
+    const clone=source.clone(true),sourceNodes=[],cloneNodes=[];
+    clone.name=name;
+    source.traverse(node=>sourceNodes.push(node));
+    clone.traverse(node=>cloneNodes.push(node));
+    clone.traverse(node=>{
+      node.frustumCulled=false;
+      if(node.isMesh){node.castShadow=false;node.receiveShadow=false;}
+    });
+    return {source,clone,pairs:sourceNodes.map((node,index)=>[node,cloneNodes[index]])};
+  }
+  function mountFpBall(){
+    if(!fpRig||!fpRig.ballGrip||typeof handBall==="undefined")return;
+    if(!fpBallHome)fpBallHome={parent:handBall.parent,pos:handBall.position.clone(),quat:handBall.quaternion.clone(),scale:handBall.scale.clone()};
+    fpRig.ballGrip.add(handBall);
+    handBall.position.set(0,0,0);handBall.rotation.set(0,0,0);handBall.scale.set(1,1,1);
+  }
+  function restoreFpBall(){
+    if(!fpBallHome||typeof handBall==="undefined")return;
+    fpBallHome.parent.add(handBall);
+    handBall.position.copy(fpBallHome.pos);handBall.quaternion.copy(fpBallHome.quat);handBall.scale.copy(fpBallHome.scale);
+  }
   function buildFpRig(){
-    if(fpRig||typeof hands==="undefined"||typeof THREE==="undefined")return;
-    // 隐藏原第一人称手模(保留引用以便还原)，球(handBall)除外
+    if(fpRig||typeof hands==="undefined"||typeof THREE==="undefined"||typeof player==="undefined"||!player.arms||!scene)return;
+    // 原相机空间手模保留作经典动作兜底；新版只显示真实球员双臂的镜像。
     fpHidden=hands.children.filter(c=>c!==handBall&&c.visible!==false);
     fpHidden.forEach(c=>{c.visible=false;});
-    const skin=new THREE.MeshLambertMaterial({color:0xf0bd90});
-    const sleeve=new THREE.MeshLambertMaterial({color:0x1d428a});
-    const rig=new THREE.Group();rig.name="fpHandsV2";
-    const mk=(w,h,d,m)=>new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);
-    const side=(sx,shoot)=>{
-      const armRoot=new THREE.Group();                       // 从画面下侧探入
-      armRoot.position.set(sx*0.21,-0.26,0.1);
-      const fore=mk(0.11,0.11,0.34,sleeve);fore.position.set(0,0,0.1);
-      fore.rotation.x=0.5;armRoot.add(fore);
-      const wrist=new THREE.Group();wrist.position.set(0,0.06,-0.08); // 手腕 pivot
-      const palm=mk(0.2,0.05,0.2,skin);palm.position.set(0,0,-0.05);wrist.add(palm);
-      for(let i=0;i<4;i++){                                  // 粗糙四指
-        const f=mk(0.038,0.04,0.1,skin);
-        f.position.set((i-1.5)*0.048,0.005,-0.19);wrist.add(f);
-      }
-      const thumb=mk(0.045,0.045,0.1,skin);
-      thumb.position.set(sx*0.115,0.01,-0.06);thumb.rotation.y=sx*0.6;wrist.add(thumb);
-      armRoot.add(wrist);rig.add(armRoot);
-      return {root:armRoot,wrist,shoot};
-    };
-    fpRig={g:rig,r:side(1,true),l:side(-1,false)};
-    hands.add(rig);
+    const rig=new THREE.Group();rig.name="fpSharedPoseRig";rig.visible=false;
+    const shoot=mirrorArm(player.arms[0],"fpShootingArm");
+    const guide=mirrorArm(player.arms[1],"fpGuideArm");
+    rig.add(shoot.clone,guide.clone);scene.add(rig);
+    fpRig={g:rig,shoot,guide,ballGrip:shoot.clone.getObjectByName("ballGrip")};
+    mountFpBall();
+  }
+  function syncArmMirror(mirror){
+    mirror.pairs.forEach(pair=>{
+      const source=pair[0],clone=pair[1];
+      clone.position.copy(source.position);clone.quaternion.copy(source.quaternion);clone.scale.copy(source.scale);
+      clone.visible=source.visible;
+      if(source.isMesh){clone.geometry=source.geometry;clone.material=source.material;}
+    });
+  }
+  function syncFpRigFromPlayer(){
+    if(!fpRig||!player||!player.g)return;
+    fpRig.g.position.copy(player.g.position);fpRig.g.quaternion.copy(player.g.quaternion);fpRig.g.scale.copy(player.g.scale);
+    syncArmMirror(fpRig.shoot);syncArmMirror(fpRig.guide);
+    // handBall 是第一人称显示副本；位置来自真实投篮手的 ballGrip，不再另写一套持球坐标。
+    if(fpRig.ballGrip&&handBall.parent!==fpRig.ballGrip)mountFpBall();
+    fpRig.g.updateMatrixWorld(true);
   }
   function setFpRigVisible(v){
     if(!fpRig)return;
-    fpRig.g.visible=v;
-    fpHidden.forEach(c=>{c.visible=!v;});
+    fpRig.g.visible=!!v;
+    fpHidden.forEach(c=>{c.visible=!on;});
   }
   function beginFollow(){
     followAge=0;followActive=true;
@@ -182,24 +204,12 @@
       if(guideBlend>0)guideEl.rotation.x=mixN(targetGuideElX,baseGuideElX,guideBlend);
       else guideEl.rotation.x=mixN(guideStart.elbowX,targetGuideElX,state.extend);
     }
+    if(typeof applyHandFollowThroughPose==="function")applyHandFollowThroughPose(o,state.follow);
   }
-  function animFpRig(c,phys,state){
+  function animFpRig(){
     if(!fpRig)return;
-    const lift=c.lift,jmp=c.jmp;
-    // 球在 handBall(0,0.08,-0.12)，掌心托在球底部(半径0.16)
-    const cock=0.35+0.4*lift;                    // 蓄力压腕(掌心朝上兜住球)
-    const followK=state&&state.active?state.follow:0;
-    const snap=followK*1.08;                      // 手腕随伸直-保持-回收阶段平滑跟随
-    const r=fpRig.r,l=fpRig.l;
-    const stance=shotStanceBlend(c,typeof G!=="undefined"&&(G.canShoot||G.charging));
-    r.root.position.set(0.16-0.05*lift,-0.25+0.1*lift+0.05*jmp,-0.1);
-    // 辅助手贴到球的侧面,第一人称不再像离球很远的单手投篮。
-    l.root.position.set(-0.13+0.125*lift,-0.27+0.12*lift+0.03*jmp,-0.13+0.015*lift);
-    r.wrist.rotation.x=cock-snap;
-    l.wrist.rotation.x=cock*0.8-followK*0.5;
-    l.wrist.rotation.z=0.58-0.2*lift;             // 护球手侧扶球,出手时自然打开
-    r.root.rotation.z=-0.08*lift+SHOT_STANCE_YAW*0.2*stance;
-    l.root.rotation.z=0.18+0.16*lift;
+    syncFpRigFromPlayer();
+    setFpRigVisible(on&&typeof CAM!=="undefined"&&CAM.mode===0&&hands.visible);
   }
 
   /* ================= 第三人称球贴手 ================= */
@@ -207,9 +217,11 @@
   function attachBall(){
     if(ballAttached||typeof player==="undefined"||typeof pBall==="undefined")return;
     if(!pBallHome)pBallHome={parent:pBall.parent,pos:pBall.position.clone()};
-    // arms[0]/elbows[0] 是投篮手(x=-0.33)；掌心在肘组局部 y≈-0.335,z≈0.1
-    player.elbows[0].add(pBall);
-    pBall.position.set(0,-0.43,0.12);
+    // 优先挂到独立腕关节：压腕会把球连续推向指尖；经典角色仍回退到旧肘组挂点。
+    const parent=player.ballGrips&&player.ballGrips[0]?player.ballGrips[0]:player.elbows[0];
+    parent.add(pBall);
+    if(parent===player.elbows[0])pBall.position.set(0,-0.43,0.12);
+    else pBall.position.set(0,0,0);
     ballAttached=true;
   }
   function detachBall(){
@@ -246,20 +258,7 @@
     const c=visualReleaseCurve(rawCurve,follow);
     P.jump=phys.airborne?Math.max(0,rawCurve.jmp*0.55):Math.max(-0.06,rawCurve.jmp*0.55-rawCurve.over*0.28);
     P.eyeDip=-0.26*c.dip-0.09*lk;
-    // 第一人称手组整体运动沿用原公式,腕部动作由 rig 叠加
-    hands.position.x=-0.05*c.lift;
-    hands.position.y=-0.5-0.2*c.dip+0.3*c.lift+0.42*c.jmp;
-    hands.position.z=-0.62+0.12*c.dip-0.17*c.jmp;
     const stance=shotStanceBlend(c,G.canShoot||G.charging);
-    hands.rotation.x=-0.25*c.lift-0.85*c.jmp+Math.min(c.over,0.35)*1.1;
-    hands.rotation.y=SHOT_STANCE_YAW*0.38*stance;
-    hands.rotation.z=-0.07*c.lift+SHOT_STANCE_YAW*0.18*stance;
-    if(follow.active){
-      hands.position.y+=0.14*follow.follow;
-      hands.position.z-=0.08*follow.follow;
-      hands.rotation.x-=0.12*follow.follow;
-    }
-    animFpRig(c,phys,follow);
     // 第三人称
     player.g.position.set(P.pos.x,0,P.pos.z);
     player.g.rotation.y=P.face+(P.walking?0:SHOT_STANCE_YAW*stance);
@@ -273,6 +272,7 @@
       player.shoes[0].rotation.x=0;player.shoes[1].rotation.x=0;
       player.arms[0].rotation.x=-sw*0.45;player.arms[1].rotation.x=sw*0.45;
       player.elbows[0].rotation.x=-0.4;player.elbows[1].rotation.x=-0.4;
+      if(typeof poseHandJoints==="function")poseHandJoints(player,shotCurves(0));
     }else{
       player.g.position.y=poseGuy(player,c,lk)+P.jump;
       tuneGuideHandPose(player,c,G.canShoot||G.charging);
@@ -281,6 +281,8 @@
     }
     // 球挂在投篮手肘组上自动跟手,无需 poseBallPos
     if(!ballAttached)poseBallPos(pBall.position,c);
+    // 先完成真实球员姿势，再把同一组肩肘腕与手指结果镜像给第一人称。
+    animFpRig();
     if(pendingRelease&&followAge>=BALL_RELEASE_AT)completePendingRelease();
   }
 
@@ -363,6 +365,7 @@
   function restoreLegacyMotion(){
     if(pendingRelease)completePendingRelease();
     setFpRigVisible(false);
+    restoreFpBall();
     detachBall();
     global.updPose=origUpdPose;
     global.releaseShot=chainedReleaseShot;
@@ -372,7 +375,7 @@
   }
   function apply(){
     if(on){
-      buildFpRig();setFpRigVisible(true);attachBall();
+      buildFpRig();mountFpBall();setFpRigVisible(typeof CAM!=="undefined"&&CAM.mode===0&&hands.visible);attachBall();
       installMotionHooks();
     }else restoreLegacyMotion();
   }

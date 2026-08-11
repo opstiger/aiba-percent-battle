@@ -48,6 +48,8 @@
     {id:"buzz",name:"板寸"},
     {id:"afro",name:"爆炸头"},
     {id:"cornrows",name:"脏辫"},
+    {id:"ponytail",name:"高马尾"},
+    {id:"bun",name:"发髻"},
     {id:"flattop",name:"平头"}
   ]);
 
@@ -130,7 +132,7 @@
     return list.map(item=>{
       const value=item.id||item.name,on=state[field]===value;
       const color=item.v!=null?` style="--cc:${hex(item.v)}"`:"";
-      return `<button class="customChip ${on?"on":""}" type="button"${color} onclick="AIBACustomizerPick('${field}','${esc(value)}')"><i></i><b>${esc(item.name)}</b>${item.copy?`<em>${esc(item.copy)}</em>`:""}</button>`;
+      return `<button class="customChip ${esc(field)} ${on?"on":""}" type="button" data-custom-id="${esc(value)}"${color} onclick="AIBACustomizerPick('${field}','${esc(value)}')"><i></i><b>${esc(item.name)}</b>${item.copy?`<em>${esc(item.copy)}</em>`:""}</button>`;
     }).join("");
   }
   function jerseyChips(){
@@ -149,7 +151,7 @@
     return HEADS.map(item=>{
       const on=state.head===item.id,m=item.mods||{};
       const stat=[m.speed?`速${m.speed>0?"+":""}${Math.round(m.speed*100)}%`:"",m.window?`准${m.window>0?"+":""}${Math.round(m.window*100)}%`:"",m.arc?`弧+${Math.round(m.arc*100)}%`:""].filter(Boolean).join(" / ")||"均衡";
-      return `<button class="customChip style ${on?"on":""}" type="button" onclick="AIBACustomizerPick('head','${item.id}')"><i>${esc(item.tag)}</i><b>${esc(item.name)}</b><em>${esc(stat)} · ${esc(item.copy)}</em></button>`;
+      return `<button class="customChip head ${on?"on":""}" type="button" data-custom-id="${esc(item.id)}" onclick="AIBACustomizerPick('head','${item.id}')"><i>${esc(item.tag)}</i><b>${esc(item.name)}</b><em>${esc(stat)} · ${esc(item.copy)}</em></button>`;
     }).join("");
   }
   function statsMarkup(){
@@ -171,7 +173,7 @@
     global.showPanel(`<div class="avatarCustomizer">
       <div class="customHead"><small>CUSTOM PLAYER</small><h1>自建球员工坊</h1><p>每个选择都有长板和短板，角色更有个性，但不会把数值拉爆。</p></div>
       <div class="customBody">
-        <aside class="customPreview"><span class="lockerAvatar ready" data-locker-avatar="${CUSTOM_ID}"><i>3D</i><b>BUILD</b></span>${statsMarkup()}</aside>
+        <aside class="customPreview"><span class="lockerAvatar ready" data-locker-avatar="${CUSTOM_ID}"><i>3D</i><b>BUILD</b></span><button class="lockerViewReset" type="button" data-aiba-icon="rotate-ccw" data-aiba-label="重置视角" onclick="event.preventDefault();event.stopPropagation();AIBALockerPreview.reset()" aria-label="重置视角"></button>${statsMarkup()}</aside>
         <section class="customForm">
           <label class="customField"><span>昵称</span><input value="${esc(state.name)}" maxlength="10" oninput="AIBACustomizerSet('name',this.value)"></label>
           <label class="customField"><span>号码</span><input value="${esc(state.num)}" maxlength="2" inputmode="numeric" oninput="AIBACustomizerSet('num',this.value)"></label>
@@ -229,8 +231,11 @@
   }
 
   function clearCustomHead(guy){
+    if(global.AIBAEquipmentVisuals&&global.AIBAEquipmentVisuals.enabled){
+      global.AIBAEquipmentVisuals.clearKey(guy,"customHeadGroup");return;
+    }
     if(!guy||!guy.customHeadGroup)return;
-    guy.g.remove(guy.customHeadGroup);
+    if(guy.customHeadGroup.parent)guy.customHeadGroup.parent.remove(guy.customHeadGroup);
     guy.customHeadGroup.traverse(obj=>{
       if(obj.geometry&&obj.geometry.dispose)obj.geometry.dispose();
       const mats=Array.isArray(obj.material)?obj.material:[obj.material];
@@ -247,6 +252,11 @@
     clearCustomHead(guy);
     const head=star.customHead.id,color=star.customHead.color||0xffffff;
     if(head==="band")return;
+    if(global.AIBAEquipmentVisuals&&global.AIBAEquipmentVisuals.enabled){
+      const id=head==="mascot"?"head-weird":"head-"+head;
+      global.AIBAEquipmentVisuals.applyHead(guy,{id,color},{key:"customHeadGroup",color,accent:star.col&&star.col[0]});
+      return;
+    }
     const group=new THREE.Group(),mat=new THREE.MeshLambertMaterial({color}),dark=new THREE.MeshLambertMaterial({color:0x050508});
     if(head==="mask"){
       addBox(group,.3,.16,.025,0,1.62,.19,dark);addBox(group,.07,.04,.03,-.065,1.645,.21,mat);addBox(group,.07,.04,.03,.065,1.645,.21,mat);
@@ -258,9 +268,23 @@
       addBox(group,.46,.46,.46,0,1.63,0,mat);addBox(group,.08,.08,.08,-.12,1.69,.24,dark);addBox(group,.08,.08,.08,.12,1.69,.24,dark);addBox(group,.24,.045,.04,0,1.55,.25,dark);addBox(group,.14,.18,.12,-.28,1.75,0,mat);addBox(group,.14,.18,.12,.28,1.75,0,mat);
     }
     guy.customHeadGroup=group;
-    guy.g.add(group);
+    (guy.headRoot||guy.g).add(group);
+  }
+  function clearCustomTopHead(guy){
+    if(global.AIBAEquipmentVisuals&&global.AIBAEquipmentVisuals.enabled){
+      global.AIBAEquipmentVisuals.clearKey(guy,"customTopHeadGroup");return;
+    }
+    if(!guy||!guy.customTopHeadGroup)return;
+    if(guy.customTopHeadGroup.parent)guy.customTopHeadGroup.parent.remove(guy.customTopHeadGroup);
+    guy.customTopHeadGroup.traverse(obj=>{
+      if(obj.geometry&&obj.geometry.dispose)obj.geometry.dispose();
+      const mats=Array.isArray(obj.material)?obj.material:[obj.material];
+      mats.filter(Boolean).forEach(mat=>mat.dispose&&mat.dispose());
+    });
+    guy.customTopHeadGroup=null;
   }
   function clearCustomTop(guy){
+    clearCustomTopHead(guy);
     if(!guy||!guy.customTopGroup)return;
     guy.g.remove(guy.customTopGroup);
     guy.customTopGroup.traverse(obj=>{
@@ -273,22 +297,36 @@
   function applyCustomTop(guy,star){
     if(!global.THREE||!guy||!star||!star.customTop)return;
     clearCustomTop(guy);
-    const top=star.customTop.id,main=new THREE.MeshLambertMaterial({color:star.customTop.a}),trim=new THREE.MeshLambertMaterial({color:star.customTop.b});
+    const top=star.customTop.id;
+    const modern=global.AIBAEquipmentVisuals&&global.AIBAEquipmentVisuals.enabled;
+    if(top==="hoodie"&&modern){
+      if(guy.sleeves)guy.sleeves.forEach(s=>{s.visible=false;});
+      global.AIBAEquipmentVisuals.applyHead(
+        guy,
+        {id:"hoodie",color:star.customTop.a,accent:star.customTop.b},
+        {key:"customTopHeadGroup",color:star.customTop.a,accent:star.customTop.b,outfitOnly:!!(star.customHead&&star.customHead.id==="mascot")}
+      );
+      return;
+    }
     // 长袖:连帽衫/套头卫衣把两条袖套全部点亮并用球衣主色
     if(guy.sleeves)guy.sleeves.forEach(s=>{
       s.visible=top!=="vest";
       if(top!=="vest")s.material.color.setHex(star.customTop.a);
     });
     if(top==="vest")return;
+    const main=new THREE.MeshLambertMaterial({color:star.customTop.a}),trim=new THREE.MeshLambertMaterial({color:star.customTop.b});
     const group=new THREE.Group();
-    if(top==="hoodie"){
-      // 帽子戴头上:顶+两侧+后兜+额前帽檐,盖住头发
-      addBox(group,.44,.13,.42,0,1.85,-.02,main);
-      addBox(group,.095,.32,.4,-.215,1.63,-.03,main);
-      addBox(group,.095,.32,.4,.215,1.63,-.03,main);
-      addBox(group,.44,.34,.095,0,1.64,-.225,main);
-      addBox(group,.4,.07,.06,0,1.78,.185,trim);
-      addBox(group,.5,.09,.3,0,1.41,-.03,main);   // 披肩兜边
+    if(top==="hoodie"&&(!star.customHead||star.customHead.id!=="mascot")){
+      // 经典兜底帽兜
+      const headGroup=new THREE.Group();
+      addBox(headGroup,.44,.13,.42,0,1.85,-.02,main);
+      addBox(headGroup,.095,.32,.4,-.215,1.63,-.03,main);
+      addBox(headGroup,.095,.32,.4,.215,1.63,-.03,main);
+      addBox(headGroup,.44,.34,.095,0,1.64,-.225,main);
+      addBox(headGroup,.4,.07,.06,0,1.78,.185,trim);
+      guy.customTopHeadGroup=headGroup;(guy.headRoot||guy.g).add(headGroup);
+      addBox(group,.47,.055,.29,0,1.405,-.03,main); // 贴合肩颈的下摆
+      addBox(group,.23,.018,.30,0,1.43,.01,trim);    // 领口细滚边
     }else{
       // 套头卫衣:帽子垂在背后 + 领口
       addBox(group,.42,.13,.14,0,1.43,-.21,main);

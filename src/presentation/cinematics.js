@@ -51,8 +51,10 @@ const _showReleasePos=new THREE.Vector3();
 function attachShowBall(g){
   if(!g||!g.ball||g._showBallAttached)return;
   g._showBallHome={parent:g.ball.parent,pos:g.ball.position.clone()};
-  g.elbows[0].add(g.ball);
-  g.ball.position.set(0,-0.43,0.12);
+  const parent=g.ballGrips&&g.ballGrips[0]?g.ballGrips[0]:g.elbows[0];
+  parent.add(g.ball);
+  if(parent===g.elbows[0])g.ball.position.set(0,-0.43,0.12);
+  else g.ball.position.set(0,0,0);
   g._showBallAttached=true;
 }
 function detachShowBall(g){
@@ -171,6 +173,7 @@ function updShow(dt){
     const stance=shotStanceBlend(c,true);
     g.g.rotation.y=faceTo(g.pos,HOOP)+SHOT_STANCE_YAW*stance;
     tuneGuideHandPose(g,c,true);
+    applyHandFollowThroughPose(g,ease01((ph-.94)/.09));
     if(ph>=1.03&&!it.fired){
       it.fired=true;
       g.g.updateMatrixWorld(true);g.ball.getWorldPosition(_showReleasePos);

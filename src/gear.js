@@ -231,7 +231,7 @@
   function chipMarkup(slot,item){
     const on=load[slot]===item.id;
     return `<button class="gearChip ${on?"on":""}" type="button" style="--gc:${item.color}" onclick="AIBAGearEquip('${slot}','${item.id}')" aria-pressed="${on}">
-      <i></i><b>${esc(item.name)}</b><em>${esc(item.desc)}</em></button>`;
+      <span class="gearThumb ${slot}" data-gear-id="${esc(item.id)}" aria-hidden="true"><i></i></span><b>${esc(item.name)}</b><em>${esc(item.desc)}</em></button>`;
   }
   function slotMarkup(slot){
     const it=itemOf(slot.id),isActive=load.active===slot.id&&!!it;
@@ -268,7 +268,7 @@
       const next=SLOTS.find(s=>load[s.id]);
       load.active=next?next.id:"";
     }
-    save();refreshSection();refreshGearPreview();
+    save();refreshSection();refreshGearPreview(slot);
   }
   function setActive(slot){
     if(!load[slot])return;
@@ -288,7 +288,7 @@
   }
   function clearGearHead(guy){
     if(!guy||!guy.gearHeadGroup)return;
-    guy.g.remove(guy.gearHeadGroup);
+    if(guy.gearHeadGroup.parent)guy.gearHeadGroup.parent.remove(guy.gearHeadGroup);
     guy.gearHeadGroup.traverse(obj=>{
       if(obj.geometry&&obj.geometry.dispose)obj.geometry.dispose();
       const materials=Array.isArray(obj.material)?obj.material:[obj.material];
@@ -301,6 +301,9 @@
     mesh.position.set(x,y,z);group.add(mesh);return mesh;
   }
   function applyGearHead(guy,item){
+    if(global.AIBAEquipmentVisuals&&global.AIBAEquipmentVisuals.enabled){
+      global.AIBAEquipmentVisuals.applyHead(guy,item,{key:"gearHeadGroup"});return;
+    }
     clearGearHead(guy);
     if(guy.customHeadGroup)guy.customHeadGroup.visible=true;
     if(guy.hairGrp)guy.hairGrp.visible=true;
@@ -327,11 +330,17 @@
       if(guy.hairGrp)guy.hairGrp.visible=false;
       gearBox(group,.48,.48,.48,0,1.64,0,main);gearBox(group,.09,.09,.09,-.13,1.7,.25,dark);gearBox(group,.09,.09,.09,.13,1.7,.25,dark);gearBox(group,.25,.05,.045,0,1.55,.26,dark);gearBox(group,.15,.2,.13,-.29,1.77,0,main);gearBox(group,.15,.2,.13,.29,1.77,0,main);
     }
-    guy.gearHeadGroup=group;guy.g.add(group);
+    guy.gearHeadGroup=group;(guy.headRoot||guy.g).add(group);
   }
   function applyVisual(guy){
-    if(!guy||!global.THREE)return;
+    if(!guy||!global.THREE||global.AIBA_SUPPRESS_GEAR_VISUAL)return;
     const shoes=itemOf("shoes"),sleeve=itemOf("sleeve"),head=itemOf("band");
+    if(global.AIBAEquipmentVisuals&&global.AIBAEquipmentVisuals.enabled){
+      global.AIBAEquipmentVisuals.applyShoes(guy,shoes);
+      global.AIBAEquipmentVisuals.applySleeve(guy,sleeve);
+      global.AIBAEquipmentVisuals.applyHead(guy,head,{key:"gearHeadGroup"});
+      return;
+    }
     if(shoes)guy.shoes.forEach(shoe=>shoe.material.color.setHex(colorOf(shoes)));
     if(sleeve){
       const color=colorOf(sleeve);
@@ -341,9 +350,15 @@
     applyGearHead(guy,head);
   }
   function appearanceKey(){return [load.shoes||"-",load.sleeve||"-",load.band||"-"].join("|");}
-  function refreshGearPreview(){
+  function refreshGearPreview(part){
     const root=document.getElementById("lockerStage")||document.querySelector(".playerLocker");
-    if(root&&global.AIBALockerPreview)global.AIBALockerPreview.render(root);
+    if(root&&global.AIBALockerPreview){
+      if(typeof global.AIBALockerPreview.refreshLive==="function")global.AIBALockerPreview.refreshLive(root);
+      else global.AIBALockerPreview.render(root);
+      requestAnimationFrame(()=>{
+        if(global.AIBALockerPreview&&typeof global.AIBALockerPreview.focus==="function")global.AIBALockerPreview.focus(part||"full");
+      });
+    }
   }
 
   /* ---------------- 挂钩游戏全局(在主脚本之后加载) ---------------- */

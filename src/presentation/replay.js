@@ -54,6 +54,7 @@ function updReplay(dt){
     const ph=photo?0.98:Math.min(1.08,0.92+t/Math.max(0.01,h.tf)*0.18);
     const c=shotCurves(ph);
     const y=poseGuy(player,c,0)+Math.max(0,c.jmp*0.55-c.over*0.55);
+    applyHandFollowThroughPose(player,ease01((ph-.94)/.12));
     const s=h.shooterPos||V3(h.startPos.x,0,h.startPos.z);
     player.g.position.set(s.x,y,s.z);
     player.g.rotation.y=h.shooterFace!=null?h.shooterFace:faceTo(s,HOOP);

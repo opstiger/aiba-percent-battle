@@ -13,32 +13,37 @@
   const FEMALE_STYLES={ponytail:1,bun:1,long:1};
   function buildFemaleHair(o,style){
     const G=o.hairGrp,m=o.hairMat;
-    while(G.children.length)G.remove(G.children[0]);
+    while(G.children.length){
+      const child=G.children[0];G.remove(child);
+      if(child.geometry&&child.geometry.dispose)child.geometry.dispose();
+    }
     o.hairStyle=style;
     const box=(w,h,d,x,y,z)=>{const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);b.position.set(x,y,z);G.add(b);return b;};
-    /* 共用发冠:顶部+前发际+两鬓+后脑,比男款略厚 */
-    box(0.36,0.1,0.36,0,1.835,0);
-    box(0.34,0.055,0.08,0,1.8,0.16);
-    box(0.09,0.09,0.37,-0.17,1.785,0);
-    box(0.09,0.09,0.37,0.17,1.785,0);
-    box(0.37,0.09,0.16,0,1.79,-0.17);
+    const tuft=(rx,ry,rz,x,y,z)=>{const b=new THREE.Mesh(new THREE.SphereGeometry(1,8,5),m);b.scale.set(rx,ry,rz);b.position.set(x,y,z);G.add(b);return b;};
+    const lock=(r,h,x,y,z,rx,rz)=>{const b=new THREE.Mesh(new THREE.CylinderGeometry(r*.72,r,h,6),m);b.position.set(x,y,z);b.rotation.set(rx||0,0,rz||0);G.add(b);return b;};
+    /* 共用发冠:顶部之外继续包到侧后脑,避免像一块头顶盖板。 */
+    tuft(.182,.072,.182,0,1.787,0);
+    box(.30,.22,.058,0,1.68,-.166);
+    box(.058,.21,.29,-.166,1.69,0);
+    box(.058,.21,.29,.166,1.69,0);
+    box(.29,.042,.052,0,1.765,.17);
     if(style==="ponytail"){
-      box(0.1,0.05,0.1,0,1.79,-0.235);                 // 发圈位置
-      const t1=box(0.11,0.22,0.1,0,1.66,-0.265);t1.rotation.x=0.16;
-      const t2=box(0.09,0.2,0.08,0,1.49,-0.29);t2.rotation.x=0.08;
-      box(0.06,0.11,0.06,0,1.37,-0.3);                 // 发梢
+      tuft(.095,.09,.085,0,1.77,-.235);
+      lock(.075,.31,0,1.59,-.31,-.20,0);
+      lock(.063,.27,.025,1.34,-.34,-.17,.07);
+      tuft(.068,.072,.06,.04,1.18,-.35);
       return;
     }
     if(style==="bun"){
-      box(0.18,0.15,0.18,0,1.9,-0.12);                 // 丸子
-      box(0.21,0.045,0.21,0,1.82,-0.12);               // 发圈
+      tuft(.13,.13,.12,0,1.88,-.18);
+      tuft(.085,.075,.08,0,1.98,-.18);
       return;
     }
     /* long:披肩长发 */
-    box(0.095,0.44,0.31,-0.195,1.6,-0.03);
-    box(0.095,0.44,0.31,0.195,1.6,-0.03);
-    box(0.37,0.42,0.1,0,1.58,-0.205);
-    box(0.3,0.12,0.08,0,1.36,-0.21);                   // 发尾
+    box(.085,.42,.27,-.19,1.52,-.03);
+    box(.085,.42,.27,.19,1.52,-.03);
+    box(.34,.40,.075,0,1.52,-.205);
+    tuft(.17,.065,.055,0,1.31,-.21);
   }
   const origSetHair=global.setHair;
   if(typeof origSetHair==="function"&&!origSetHair.__aibaRoster){

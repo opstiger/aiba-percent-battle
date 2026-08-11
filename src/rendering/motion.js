@@ -27,13 +27,44 @@ function poseFootBottomY(hip,knee,ankle){
     -0.15*Math.abs(Math.sin(a3));
 }
 const POSE_STAND_FOOT_Y=poseFootBottomY(0,0,0);
+const HAND_FINGER_REST=-.08;
+const HAND_FINGER_FOLLOW=[.14,.38,Math.PI/6,.16];
+const GUIDE_PALM_INWARD_Y=-1.48;
+const GUIDE_FINGER_CUP=[.06,.10,.11,.07];
+function poseHandJoints(o,c){
+  if(!o||!o.handRoots)return;
+  const lift=c&&c.lift||0;
+  o.handRoots.forEach((hand,index)=>{
+    if(!hand)return;
+    hand.rotation.x=(index===0?.08:0)*lift;
+    hand.rotation.y=0;
+    hand.rotation.z=(index===0?-.025:0)*lift;
+  });
+  (o.fingerJoints||[]).forEach(fingers=>fingers.forEach(finger=>{
+    finger.rotation.x=HAND_FINGER_REST;finger.rotation.y=0;finger.rotation.z=0;
+  }));
+}
+function applyHandFollowThroughPose(o,k){
+  if(!o||!o.handRoots||!o.handRoots[0])return;
+  const follow=ease01(k||0),shoot=o.handRoots[0];
+  // 投篮臂与地面约60度时，腕部正向折回约68度，掌面转向地板。
+  shoot.rotation.x+=(1.18-shoot.rotation.x)*follow;
+  shoot.rotation.z+=( -.035-shoot.rotation.z)*follow;
+  const fingers=o.fingerJoints&&o.fingerJoints[0];
+  if(fingers)fingers.forEach((finger,index)=>{
+    const bend=HAND_FINGER_FOLLOW[index]||.14;
+    finger.rotation.x=HAND_FINGER_REST+bend*follow;
+  });
+}
 function poseGuy(o,c,lk){
+  poseHandJoints(o,c);
   const sh=o.arms[0],gd=o.arms[1]; // arms[0]=x-0.33=角色右手(面朝篮筐时屏幕右侧) 投篮 / arms[1]=左手 护球
   sh.rotation.x=-0.35-0.25*c.dip-1.55*c.lift-0.9*c.jmp;
   o.elbows[1].rotation.x=-(0.45+1.2*c.lift)*(1-c.jmp*0.92)-0.4*c.over;
   gd.rotation.x=-0.35-0.2*c.dip-1.1*c.lift-0.5*c.jmp+0.55*c.over;
   o.elbows[0].rotation.x=-(0.4+0.85*c.lift)*(1-c.jmp*0.6);
   sh.rotation.z=-0.12*c.lift;gd.rotation.z=0.18*c.lift;
+  poseGuidePalmToBall(o,c,false);
   // Real-shot leg chain: knees load forward, calves fold back into a V, soles stay planted until takeoff.
   const load=c.dip*(1-c.jmp*0.86);
   const land=lk||0;
@@ -59,6 +90,20 @@ function poseGuy(o,c,lk){
 function shotStanceBlend(c,ready){
   return clamp(Math.max(ready?0.72:0,c.dip*.55+c.lift*.85+c.jmp*.35),0,1);
 }
+function poseGuidePalmToBall(o,c,ready){
+  if(!o||!o.handRoots||!o.handRoots[1])return;
+  const curve=c||{dip:0,lift:0,jmp:0};
+  // Ready already starts at .72: reach the ball-facing pose before the lift begins.
+  const cup=ease01(clamp(shotStanceBlend(curve,ready)/.72,0,1));
+  const hand=o.handRoots[1];
+  hand.rotation.x=.08*cup;
+  hand.rotation.y=GUIDE_PALM_INWARD_Y*cup;
+  hand.rotation.z=-.05*cup;
+  const fingers=o.fingerJoints&&o.fingerJoints[1];
+  if(fingers)fingers.forEach((finger,index)=>{
+    finger.rotation.x=HAND_FINGER_REST+(GUIDE_FINGER_CUP[index]||.06)*cup;
+  });
+}
 function tuneGuideHandPose(o,c,ready){
   if(!o||!o.arms||!o.elbows)return;
   const k=shotStanceBlend(c,ready);
@@ -69,6 +114,7 @@ function tuneGuideHandPose(o,c,ready){
   guide.rotation.z=-0.18-0.34*c.lift;
   guideEl.rotation.x=-(0.62+0.96*c.lift)*(1-c.jmp*.62)-0.18*c.over;
   guideEl.rotation.z=-0.2*k;
+  poseGuidePalmToBall(o,c,ready);
 }
 function poseBallPos(v,c){
   v.set(-0.13+0.04*c.jmp,
@@ -116,6 +162,7 @@ function updPose(dt){
     player.shoes[0].rotation.x=0;player.shoes[1].rotation.x=0;
     player.arms[0].rotation.x=-sw*0.45;player.arms[1].rotation.x=sw*0.45;
     player.elbows[0].rotation.x=-0.4;player.elbows[1].rotation.x=-0.4;
+    poseHandJoints(player,shotCurves(0));
   }else{
     player.g.position.y=poseGuy(player,c,lk)+P.jump;
   }
@@ -193,7 +240,7 @@ function updWalk(dt){
 
 
 window.AIBA.runtime.register("rendering:motion",Object.freeze({
-  ease01,shotCurves,poseFootBottomY,poseGuy,poseBallPos,shotStanceBlend,tuneGuideHandPose,updPose,
+  ease01,shotCurves,poseFootBottomY,poseHandJoints,poseGuidePalmToBall,applyHandFollowThroughPose,poseGuy,poseBallPos,shotStanceBlend,tuneGuideHandPose,updPose,
   startPass,updPass,walkTo,updWalk,
   getState:()=>({poseK,landT,passing,walk})
 }));

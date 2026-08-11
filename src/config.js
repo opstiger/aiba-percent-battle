@@ -31,6 +31,9 @@
   });
 
   const CLASSIC_LEGENDS=Object.freeze([
+    {id:"nova24",n:"N-24 夜航者",t:"VOXEL PRO 原型 · 双层战衣",r:94,col:[0x11151c,0xf4c542],accent:0x6ff3ff,num:24,
+     skin:0x8d5524,shoe:0xf0f2ed,headband:false,wrist:0xf4c542,sleeve:0x0a0d12,hair:0x101010,hairStyle:"cornrows",beard:false,
+     visualProfile:"voxel-pro-01",body:{h:1.02,w:.98}},
     {id:"curry",n:"斯蒂芬·库里",t:"四届总冠军 · 历史三分王",r:97,col:[0x1d428a,0xffc72c],num:30},
     {id:"thompson",n:"克莱·汤普森",t:"四届总冠军 · 单节37分",r:93,col:[0xffc72c,0x1d428a],num:11},
     {id:"allen",n:"雷·阿伦",t:"两届总冠军 · 致命底角",r:91,col:[0x007a33,0xffffff],num:20},
@@ -46,6 +49,7 @@
 
   const DEFAULT_SHOT_PROFILE=Object.freeze({speed:1,window:1,arc:1,arcLabel:"标准弧线",label:"标准出手"});
   const SHOT_PROFILES=Object.freeze({
+    nova24:{speed:1.02,window:1.04,arc:1.05,arcLabel:"锐角中高弧",label:"节奏快射"},
     curry:{speed:1.13,window:1.1,arc:1.1,arcLabel:"高弧快射",label:"极速出手"},
     thompson:{speed:1.09,window:1.08,arc:.98,arcLabel:"平快定点",label:"快速定点"},
     allen:{speed:1.02,window:1.09,arc:.94,arcLabel:"低平快弧",label:"标准快出手"},
@@ -68,6 +72,7 @@
      (库里1.88偏瘦 / 伯德2.06 / 米勒瘦长 / AI 1.83小个 / KD高瘦 / 女性球员整体更小) */
   const DEFAULT_BODY=Object.freeze({h:1,w:1});
   const BODY_PROFILES=Object.freeze({
+    nova24:{h:1.02,w:.98},
     curry:{h:.97,w:.96},
     thompson:{h:1.01,w:1.02},
     allen:{h:1,w:.99},

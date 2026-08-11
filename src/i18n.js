@@ -96,6 +96,8 @@ const DICT={
 /* ---- 更衣室 ---- */
 "赛前更衣室":"Pre-game locker room",
 "横划查看球员。点卡片只是预览,确认后才会锁定上场。":"Swipe to browse. Tapping previews; confirm to lock in your starter.",
+"重置视角":"Reset view",
+"可旋转缩放的3D球员预览":"Interactive 3D player preview",
 "确认上场":"Confirm starter",
 "装备工坊":"Gear Lab",
 "可穿 3 件,同时只有 1 件的加成生效,点「设为生效」切换":"Wear up to 3 pieces — only one bonus active at a time; tap “Set active” to switch",

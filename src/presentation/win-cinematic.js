@@ -82,6 +82,7 @@ function updWinCine(dt){
   let ph=tt<WC_T0?(0.82+0.26*(tt/WC_T0)):1.08;
   const sc=shotCurves(ph);
   const sy=poseGuy(w.shooter,sc,0)+Math.max(0,sc.jmp*0.55-sc.over*0.55);
+  applyHandFollowThroughPose(w.shooter,ease01((ph-.94)/.12));
   w.shooter.g.position.set(w.sPos.x,sy,w.sPos.z);
   w.shooter.g.rotation.y=w.sFace;w.shooter.g.rotation.x=0;
 

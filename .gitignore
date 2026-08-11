@@ -5,6 +5,7 @@ backup/
 docs/*
 !docs/ARCHITECTURE.md
 !docs/MODULAR_REFACTOR_PLAN.md
+!docs/PROJECT_STATE.md
 assets/aiba-covers/*.MOV
 assets/aiba-covers/MJ24.mp4
 assets/aiba-covers/tmac1.mp4

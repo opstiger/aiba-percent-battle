@@ -70,6 +70,8 @@
     rnd,
     clamp,
     shotCurves,
+    poseHandJoints,
+    applyHandFollowThroughPose,
     poseGuy,
     poseBallPos,
     dressGuy,

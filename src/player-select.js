@@ -110,7 +110,7 @@
   function stageMarkup(id){
     const star=findStar(allStars(),id);
     return `<div id="lockerStage" class="lockerStage" style="${cardStyle(star)}">
-      <div class="lockerStageVisual">${avatarSlot(id||"")}<span>LIVE FIT PREVIEW</span></div>
+      <div class="lockerStageVisual">${avatarSlot(id||"")}<button class="lockerViewReset" type="button" data-aiba-icon="rotate-ccw" data-aiba-label="重置视角" onclick="event.preventDefault();event.stopPropagation();AIBALockerPreview.reset()" aria-label="重置视角"></button><span>360 FIT CAM</span></div>
       <div id="lockerCurrent" class="lockerStageCurrent">${currentMarkup(id||"")}</div>
     </div>`;
   }
@@ -167,7 +167,7 @@
     const gearSection=global.AIBAGear?global.AIBAGear.sectionMarkup(findStar(stars,current)):"";
     const motionSection=global.AIBAMotion?global.AIBAMotion.toggleMarkup():"";
     global.showPanel(`<div class="playerLocker">
-      <div class="lockerHead"><small>PLAYER LOCKER</small><h1>赛前更衣室</h1><p>横划查看球员。点卡片只是预览，确认后才会锁定上场。</p></div>
+      <div class="lockerHead"><small>PLAYER LOCKER</small><h1>赛前更衣室</h1><p>横划挑选阵容，当前球员与装备会在试衣镜中实时呈现。</p></div>
       ${stageMarkup(current)}
       <div class="lockerWorkbench">
         <div class="lockerDeck" aria-label="横向选择球员">${global.AIBACustomizer?global.AIBACustomizer.cardMarkup(current):""}${randomCard(current)}${stars.filter(star=>starKey(star)!=="custom-player").map(star=>choiceButton(star,current)).join("")}</div>

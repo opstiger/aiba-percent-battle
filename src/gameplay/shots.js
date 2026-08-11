@@ -1,4 +1,27 @@
 const balls=[];
+const BALL_FLOOR_PHYSICS=Object.freeze({
+  y:.16,
+  restitution:[.77,.67,.54],
+  horizontalRetention:[.88,.82,.74],
+  maxReboundSpeed:5.8,
+  minReboundSpeed:1.05,
+  maxBounces:3,
+  rollDrag:4.6,
+  rollLife:.65
+});
+function resolveFloorBounce(ball){
+  const impactSpeed=Math.max(0,-ball.vel.y),bounceNumber=(Number(ball.bounces)||0)+1;
+  const index=Math.min(bounceNumber-1,BALL_FLOOR_PHYSICS.restitution.length-1);
+  const reboundSpeed=Math.min(BALL_FLOOR_PHYSICS.maxReboundSpeed,impactSpeed*BALL_FLOOR_PHYSICS.restitution[index]);
+  const horizontal=BALL_FLOOR_PHYSICS.horizontalRetention[index];
+  ball.bounces=bounceNumber;ball.vel.x*=horizontal;ball.vel.z*=horizontal;
+  if(bounceNumber>BALL_FLOOR_PHYSICS.maxBounces||reboundSpeed<BALL_FLOOR_PHYSICS.minReboundSpeed){
+    ball.vel.y=0;ball.phase="roll";ball.rollT=0;return false;
+  }
+  ball.vel.y=reboundSpeed;
+  if(bounceNumber===1)ball.life=Math.max(Number(ball.life)||0,2.55);
+  return true;
+}
 function battleShot(){
   const sp=BATTLE_SPOTS[G.battleSpot||0];
   return {rack:sp.rack,deep:sp.deep,super:sp.super,money:false,val:sp.val,ball:G.shotIdx%5,label:sp.n,p:sp.p,battle:true,spotIdx:G.battleSpot||0,
@@ -418,6 +441,17 @@ function updBalls(dt){
         b.bFrom.z+(HOOP.z-b.bFrom.z)*k);
       b.mesh.rotation.x+=dt*6;
       if(k>=1){madeBall(b);toast("🔨 打板入网!","#ffd23f");b.phase="fall";b.vel.set(0,-1.8,0);}
+    }else if(b.phase==="roll"){
+      const p=b.mesh.position,drag=Math.exp(-BALL_FLOOR_PHYSICS.rollDrag*dt);
+      p.x+=b.vel.x*dt;p.z+=b.vel.z*dt;p.y=BALL_FLOOR_PHYSICS.y;
+      b.vel.x*=drag;b.vel.z*=drag;b.vel.y=0;
+      b.mesh.rotation.x-=b.vel.z*dt*3;b.mesh.rotation.z+=b.vel.x*dt*3;
+      b.rollT=(b.rollT||0)+dt;b.life-=dt;
+      if(b.life<=0||(b.rollT>=BALL_FLOOR_PHYSICS.rollLife&&Math.hypot(b.vel.x,b.vel.z)<.12)){
+        scene.remove(b.mesh);scene.remove(b.blob);
+        if(!b.silent)G.shots.push(b);
+        balls.splice(i,1);continue;
+      }
     }else{ // fall / free
       b.vel.y-=9.8*dt;
       b.mesh.position.addScaledVector(b.vel,dt);
@@ -428,16 +462,12 @@ function updBalls(dt){
         p.z=-8.5;b.vel.z*=-0.45;sBoard();
       }
       // floor
-      if(p.y<0.16&&b.vel.y<0){
-        p.y=0.16;b.vel.y*=-0.42;b.vel.x*=0.72;b.vel.z*=0.72;b.bounces++;
-        if(Math.abs(b.vel.y)>0.6){
-          if(b.bounces===1&&!b.made&&Math.random()<0.25){
-            sBounce("sequence");b.longBounceSfx=true;
-          }else if(!b.longBounceSfx)sBounce();
-        }
+      if(p.y<BALL_FLOOR_PHYSICS.y&&b.vel.y<0){
+        p.y=BALL_FLOOR_PHYSICS.y;
+        if(resolveFloorBounce(b))sBounce();
       }
       b.life-=dt;
-      if(b.life<=0||(b.bounces>3&&Math.abs(b.vel.y)<0.4)){
+      if(b.life<=0){
         scene.remove(b.mesh);scene.remove(b.blob);
         if(!b.silent)G.shots.push(b);
         balls.splice(i,1);continue;

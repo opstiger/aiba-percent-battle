@@ -120,8 +120,9 @@ function updPlayCam(dt){
   }
 }
 function ballWorldPos(out){
-  if(CAM.mode===0)handBall.getWorldPosition(out);
-  else pBall.getWorldPosition(out);
+  // Camera mode is presentation only. Shot physics always starts at the real
+  // player skeleton's ball grip so first/third person produce the same shot.
+  pBall.getWorldPosition(out);
   return out;
 }
 

@@ -100,6 +100,8 @@ app shell
 - `src/rendering/environments.js` owns outdoor parks, rain, progressive flowers, beach sunset and court-preset transitions.
 - `src/rendering/props.js` owns ball racks, rack-ball visibility, first-person hands and held-ball props.
 - `src/rendering/characters.js` owns the voxel player factory, visual styling, roster actors and bench placement.
+- `src/rendering/character-visuals.js` owns opt-in player-specific visual profiles layered over the shared voxel rig.
+- `src/rendering/equipment-visuals.js` owns lightweight shoe, arm-guard and head-gear geometry; `?gear=classic` restores the legacy shapes.
 - `src/rendering/camera.js` owns player world position, camera modes, automatic framing and play-camera updates.
 - `src/rendering/motion.js` owns the legacy base pose curves, pass animation and movement between shooting spots; `shot-motion.js` still applies the production V2 pose patch later in boot.
 - `src/rendering/effects.js` owns shadow blobs, fire/confetti particles, shared tweens and camera glides.
