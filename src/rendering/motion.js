@@ -5,6 +5,7 @@ function ease01(t){
   t=clamp(t,0,1);
   return t*t*(3-2*t);
 }
+const mixN=(a,b,k)=>a+(b-a)*k;
 function shotCurves(ph){
   const loadIn=ease01(ph/0.32);
   const rise=ease01((ph-0.58)/0.28);
@@ -31,11 +32,14 @@ const HAND_FINGER_REST=-.08;
 const HAND_FINGER_FOLLOW=[.14,.38,Math.PI/6,.16];
 const GUIDE_PALM_INWARD_Y=-1.48;
 const GUIDE_FINGER_CUP=[.06,.10,.11,.07];
+const SHOOT_HAND_BASE={x:0,y:-.29,z:.01};
+const SHOOT_HAND_CUP_OFFSET={y:-.045,z:.055};
 function poseHandJoints(o,c){
   if(!o||!o.handRoots)return;
   const lift=c&&c.lift||0;
   o.handRoots.forEach((hand,index)=>{
     if(!hand)return;
+    if(hand.position)hand.position.set(SHOOT_HAND_BASE.x,SHOOT_HAND_BASE.y,SHOOT_HAND_BASE.z);
     hand.rotation.x=(index===0?.08:0)*lift;
     hand.rotation.y=0;
     hand.rotation.z=(index===0?-.025:0)*lift;
@@ -43,6 +47,23 @@ function poseHandJoints(o,c){
   (o.fingerJoints||[]).forEach(fingers=>fingers.forEach(finger=>{
     finger.rotation.x=HAND_FINGER_REST;finger.rotation.y=0;finger.rotation.z=0;
   }));
+}
+function poseShootingHandToBall(o,c){
+  if(!o||!o.handRoots||!o.handRoots[0])return;
+  const curve=c||{},lift=ease01(clamp((curve.lift||0)-.12,0,.68)/.68);
+  const jmp=ease01(clamp(((curve.jmp||0)-.28)/.55,0,1));
+  const isPlayer=typeof player!=="undefined"&&o===player;
+  const hold=isPlayer&&typeof G!=="undefined"&&!G.charging?0:lift*(1-jmp);
+  const hand=o.handRoots[0];
+  // 球心在肘组局部(0,-.43,.12)。举球时把掌心收进球后侧，出手前随起跳退回基础腕位。
+  if(hand.position)hand.position.set(
+    SHOOT_HAND_BASE.x,
+    SHOOT_HAND_BASE.y+SHOOT_HAND_CUP_OFFSET.y*hold,
+    SHOOT_HAND_BASE.z+SHOOT_HAND_CUP_OFFSET.z*hold
+  );
+  hand.rotation.x=.08*(curve.lift||0)+.10*hold;
+  hand.rotation.y=0;
+  hand.rotation.z=-.025*(curve.lift||0)-.035*hold;
 }
 function applyHandFollowThroughPose(o,k){
   if(!o||!o.handRoots||!o.handRoots[0])return;
@@ -56,6 +77,87 @@ function applyHandFollowThroughPose(o,k){
     finger.rotation.x=HAND_FINGER_REST+bend*follow;
   });
 }
+function captureShotPose(o){
+  if(!o||!o.arms||!o.elbows)return null;
+  const shoot=o.arms[0],guide=o.arms[1],shootEl=o.elbows[0],guideEl=o.elbows[1];
+  return {
+    release:{shootX:shoot?shoot.rotation.x:-1.88,shootZ:shoot?shoot.rotation.z:.10,
+      shootElX:shootEl?shootEl.rotation.x:-1.28,shootElZ:shootEl?shootEl.rotation.z:0},
+    guide:{x:guide?guide.rotation.x:-1.3,z:guide?guide.rotation.z:-.18,elbowX:guideEl?guideEl.rotation.x:-.68}
+  };
+}
+function applyShotSetPose(o,c,active){
+  const enabled=active==null?(typeof G!=="undefined"&&G.charging):!!active;
+  if(!o||!o.arms||!o.elbows||!enabled)return;
+  const curve=c||{},k=ease01(((curve.lift||0)-.68)/.32),planeK=ease01(((curve.lift||0)-.40)/.45);
+  if(k<=0&&planeK<=0)return;
+  const shoot=o.arms[0],guide=o.arms[1],shootEl=o.elbows[0],guideEl=o.elbows[1];
+  // 举球终点:投篮大臂接近水平、前臂向上,把伸肘动作留到真正松手后。
+  if(shoot){
+    shoot.rotation.x=mixN(shoot.rotation.x,-1.88,k);
+    // 右手肩轴用正 Z 轻微内收，让肩、肘、腕留在同一投篮平面。
+    shoot.rotation.y=mixN(shoot.rotation.y,0,planeK);
+    shoot.rotation.z=mixN(shoot.rotation.z,0.10,planeK);
+  }
+  if(shootEl){
+    shootEl.rotation.x=mixN(shootEl.rotation.x,-1.28,k);
+    shootEl.rotation.y=mixN(shootEl.rotation.y,0,planeK);
+    shootEl.rotation.z=mixN(shootEl.rotation.z,0,planeK);
+  }
+  if(guide){guide.rotation.x=mixN(guide.rotation.x,-1.92,k);guide.rotation.z=mixN(guide.rotation.z,-0.50,k);}
+  if(guideEl)guideEl.rotation.x=mixN(guideEl.rotation.x,-1.42,k);
+}
+function applyShotFollowThroughPose(o,state,pose){
+  if(!o||!o.arms||!o.elbows||!state||!state.active)return;
+  const release=pose&&pose.release||{shootX:-1.88,shootZ:.10,shootElX:-1.28,shootElZ:0};
+  const guideStart=pose&&pose.guide||{x:-1.3,z:-.18,elbowX:-.68};
+  const shoot=o.arms[0],guide=o.arms[1],shootEl=o.elbows[0],guideEl=o.elbows[1];
+  // -2.62rad 约等于整条投篮臂与地面成60°,肘部趋近0表示主动伸直。
+  const targetShootX=-2.62,targetShootZ=0.06,targetShootElX=-.08,targetShootElZ=0;
+  const targetGuideX=Math.min(guideStart.x-.14,-2.06),targetGuideZ=guideStart.z+.14,targetGuideElX=Math.max(guideStart.elbowX,-.62);
+  const guideBlend=state.recover;
+  const baseShootX=shoot?shoot.rotation.x:targetShootX;
+  const baseShootZ=shoot?shoot.rotation.z:targetShootZ;
+  const baseShootElX=shootEl?shootEl.rotation.x:targetShootElX;
+  const baseShootElZ=shootEl?shootEl.rotation.z:targetShootElZ;
+  const baseGuideX=guide?guide.rotation.x:guideStart.x;
+  const baseGuideZ=guide?guide.rotation.z:guideStart.z;
+  const baseGuideElX=guideEl?guideEl.rotation.x:guideStart.elbowX;
+  if(shoot){
+    if(guideBlend>0){
+      shoot.rotation.x=targetShootX+(baseShootX-targetShootX)*guideBlend;
+      shoot.rotation.z=targetShootZ+(baseShootZ-targetShootZ)*guideBlend;
+    }else{
+      shoot.rotation.x=release.shootX+(targetShootX-release.shootX)*state.extend;
+      shoot.rotation.z=release.shootZ+(targetShootZ-release.shootZ)*state.extend;
+    }
+  }
+  if(shootEl){
+    if(guideBlend>0){
+      shootEl.rotation.x=mixN(targetShootElX,baseShootElX,guideBlend);
+      shootEl.rotation.z=mixN(targetShootElZ,baseShootElZ,guideBlend);
+    }else{
+      shootEl.rotation.x=mixN(release.shootElX,targetShootElX,state.extend);
+      shootEl.rotation.z=mixN(release.shootElZ,targetShootElZ,state.extend);
+    }
+    shootEl.rotation.y=0;
+  }
+  // 辅助手随顶肘自然打开,接近落地后再沿基线逐步收回。
+  if(guide){
+    if(guideBlend>0){
+      guide.rotation.x=mixN(targetGuideX,baseGuideX,guideBlend);
+      guide.rotation.z=mixN(targetGuideZ,baseGuideZ,guideBlend);
+    }else{
+      guide.rotation.x=mixN(guideStart.x,targetGuideX,state.extend);
+      guide.rotation.z=mixN(guideStart.z,targetGuideZ,state.extend);
+    }
+  }
+  if(guideEl){
+    if(guideBlend>0)guideEl.rotation.x=mixN(targetGuideElX,baseGuideElX,guideBlend);
+    else guideEl.rotation.x=mixN(guideStart.elbowX,targetGuideElX,state.extend);
+  }
+  applyHandFollowThroughPose(o,state.follow);
+}
 function poseGuy(o,c,lk){
   poseHandJoints(o,c);
   const sh=o.arms[0],gd=o.arms[1]; // arms[0]=x-0.33=角色右手(面朝篮筐时屏幕右侧) 投篮 / arms[1]=左手 护球
@@ -65,6 +167,7 @@ function poseGuy(o,c,lk){
   o.elbows[0].rotation.x=-(0.4+0.85*c.lift)*(1-c.jmp*0.6);
   sh.rotation.z=-0.12*c.lift;gd.rotation.z=0.18*c.lift;
   poseGuidePalmToBall(o,c,false);
+  poseShootingHandToBall(o,c);
   // Real-shot leg chain: knees load forward, calves fold back into a V, soles stay planted until takeoff.
   const load=c.dip*(1-c.jmp*0.86);
   const land=lk||0;
@@ -240,7 +343,7 @@ function updWalk(dt){
 
 
 window.AIBA.runtime.register("rendering:motion",Object.freeze({
-  ease01,shotCurves,poseFootBottomY,poseHandJoints,poseGuidePalmToBall,applyHandFollowThroughPose,poseGuy,poseBallPos,shotStanceBlend,tuneGuideHandPose,updPose,
+  ease01,shotCurves,poseFootBottomY,poseHandJoints,poseShootingHandToBall,poseGuidePalmToBall,applyHandFollowThroughPose,captureShotPose,applyShotSetPose,applyShotFollowThroughPose,poseGuy,poseBallPos,shotStanceBlend,tuneGuideHandPose,updPose,
   startPass,updPass,walkTo,updWalk,
   getState:()=>({poseK,landT,passing,walk})
 }));

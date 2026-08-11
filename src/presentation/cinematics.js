@@ -124,7 +124,7 @@ function nextShowItem(){
     attachShowBall(show.guy);
     show.guy.ball.visible=true;
     show.guy.ball.material=it.s.deep!=null?matDeep:(it.s.money?matGold:matBall);
-    const profile=shotProfileFor(show.o),speed=Math.max(.78,Number(profile&&profile.speed)||1);
+    const profile=shotProfileFor(G.myStar||show.o),speed=Math.max(.78,Number(profile&&profile.speed)||1);
     show.shotNo++;
     it.loadDur=clamp(1.18/speed,.96,1.38);
     it.totalDur=it.loadDur+(.72+(it.s.ball===0?.14:0));
@@ -173,6 +173,7 @@ function updShow(dt){
     const stance=shotStanceBlend(c,true);
     g.g.rotation.y=faceTo(g.pos,HOOP)+SHOT_STANCE_YAW*stance;
     tuneGuideHandPose(g,c,true);
+    applyShotSetPose(g,c,true);
     applyHandFollowThroughPose(g,ease01((ph-.94)/.09));
     if(ph>=1.03&&!it.fired){
       it.fired=true;
@@ -201,7 +202,7 @@ function fireSilentBall(base,s,releasePos){
   if(s.make){depth=rnd(-0.03,0.03);lat=rnd(-0.04,0.04);}
   else{depth=0.27*(Math.random()<0.5?1:-1);lat=rnd(-0.14,0.14);}
   const T=HOOP.clone().addScaledVector(dirH,depth).addScaledVector(perp,lat);
-  const tf=shotFlightTime(0.78+dist*0.062,show.o||G.myStar,s);
+  const tf=shotFlightTime(0.78+dist*0.062,G.myStar||show.o,s);
   const v0=V3((T.x-p0.x)/tf,(T.y-p0.y)/tf+4.9*tf,(T.z-p0.z)/tf);
   const mesh=new THREE.Mesh(ballGeo,s.deep!=null?matDeep:(s.money?matGold:matBall));
   mesh.position.copy(p0);scene.add(mesh);

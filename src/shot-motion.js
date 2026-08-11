@@ -136,75 +136,10 @@
       rise:mixN(c.rise||0,releaseCurve.rise,hold)
     });
   }
-  function applyShotSetPose(o,c){
-    if(!o||!o.arms||!o.elbows||!G.charging)return;
-    const k=ease01(((c.lift||0)-0.68)/0.32);
-    const planeK=ease01(((c.lift||0)-0.40)/0.45);
-    if(k<=0&&planeK<=0)return;
-    const shoot=o.arms[0],guide=o.arms[1],shootEl=o.elbows[0],guideEl=o.elbows[1];
-    // 举球终点:投篮大臂接近水平、前臂向上,把伸肘动作留到真正松手后。
-    if(shoot){
-      shoot.rotation.x=mixN(shoot.rotation.x,-1.88,k);
-      // 右手肩轴用正 Z 轻微内收，让肩、肘、腕留在同一投篮平面。
-      shoot.rotation.y=mixN(shoot.rotation.y,0,planeK);
-      shoot.rotation.z=mixN(shoot.rotation.z,0.10,planeK);
-    }
-    if(shootEl){
-      shootEl.rotation.x=mixN(shootEl.rotation.x,-1.28,k);
-      shootEl.rotation.y=mixN(shootEl.rotation.y,0,planeK);
-      shootEl.rotation.z=mixN(shootEl.rotation.z,0,planeK);
-    }
-    if(guide){guide.rotation.x=mixN(guide.rotation.x,-1.92,k);guide.rotation.z=mixN(guide.rotation.z,-0.50,k);}
-    if(guideEl)guideEl.rotation.x=mixN(guideEl.rotation.x,-1.42,k);
-  }
-  function applyFollowThroughPose(o,state){
-    if(!o||!o.arms||!o.elbows||!state||!state.active)return;
-    const shoot=o.arms[0],guide=o.arms[1],shootEl=o.elbows[0],guideEl=o.elbows[1];
-    // -2.62rad 约等于整条投篮臂与地面成60°,肘部趋近0表示主动伸直。
-    const targetShootX=-2.62,targetShootZ=0.06,targetShootElX=-0.08,targetShootElZ=0;
-    const targetGuideX=Math.min(guideStart.x-0.14,-2.06),targetGuideZ=guideStart.z+0.14,targetGuideElX=Math.max(guideStart.elbowX,-0.62);
-    const guideBlend=state.recover;
-    const baseShootX=shoot?shoot.rotation.x:targetShootX;
-    const baseShootZ=shoot?shoot.rotation.z:targetShootZ;
-    const baseShootElX=shootEl?shootEl.rotation.x:targetShootElX;
-    const baseShootElZ=shootEl?shootEl.rotation.z:targetShootElZ;
-    const baseGuideX=guide?guide.rotation.x:guideStart.x;
-    const baseGuideZ=guide?guide.rotation.z:guideStart.z;
-    const baseGuideElX=guideEl?guideEl.rotation.x:guideStart.elbowX;
-    if(shoot){
-      if(guideBlend>0){
-        shoot.rotation.x=targetShootX+(baseShootX-targetShootX)*guideBlend;
-        shoot.rotation.z=targetShootZ+(baseShootZ-targetShootZ)*guideBlend;
-      }else{
-        shoot.rotation.x=releasePose.shootX+(targetShootX-releasePose.shootX)*state.extend;
-        shoot.rotation.z=releasePose.shootZ+(targetShootZ-releasePose.shootZ)*state.extend;
-      }
-    }
-    if(shootEl){
-      if(guideBlend>0){
-        shootEl.rotation.x=mixN(targetShootElX,baseShootElX,guideBlend);
-        shootEl.rotation.z=mixN(targetShootElZ,baseShootElZ,guideBlend);
-      }else{
-        shootEl.rotation.x=mixN(releasePose.shootElX,targetShootElX,state.extend);
-        shootEl.rotation.z=mixN(releasePose.shootElZ,targetShootElZ,state.extend);
-      }
-      shootEl.rotation.y=0;
-    }
-    // 辅助手随顶肘自然打开,接近落地后再沿基线逐步收回。
-    if(guide){
-      if(guideBlend>0){
-        guide.rotation.x=mixN(targetGuideX,baseGuideX,guideBlend);
-        guide.rotation.z=mixN(targetGuideZ,baseGuideZ,guideBlend);
-      }else{
-        guide.rotation.x=mixN(guideStart.x,targetGuideX,state.extend);
-        guide.rotation.z=mixN(guideStart.z,targetGuideZ,state.extend);
-      }
-    }
-    if(guideEl){
-      if(guideBlend>0)guideEl.rotation.x=mixN(targetGuideElX,baseGuideElX,guideBlend);
-      else guideEl.rotation.x=mixN(guideStart.elbowX,targetGuideElX,state.extend);
-    }
-    if(typeof applyHandFollowThroughPose==="function")applyHandFollowThroughPose(o,state.follow);
+  function applyFollowThroughPose(o,state,poseOverride){
+    if(!state||!state.active)return;
+    const pose=poseOverride||{release:releasePose,guide:guideStart};
+    if(typeof applyShotFollowThroughPose==="function")applyShotFollowThroughPose(o,state,pose);
   }
   function animFpRig(){
     if(!fpRig)return;
@@ -394,6 +329,10 @@
   }
 
   global.AIBAMotionToggle=toggle;
+  global.AIBAShotMotion=Object.freeze({
+    applyFollowThroughPose,
+    captureShotPose:o=>typeof captureShotPose==="function"?captureShotPose(o):null
+  });
   global.AIBAMotion={
     enabled:()=>on,
     setEnabled,toggleMarkup,restoreLegacy:restoreLegacyMotion,

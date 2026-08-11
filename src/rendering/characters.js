@@ -33,7 +33,7 @@ function voxelGuy(){
   const add=(p,w,h,d,m,x,y,z)=>{const b=mk(w,h,d,m);b.position.set(x,y,z);p.add(b);return b;};
   const addSoft=(p,w,h,d,m,x,y,z,r,segments)=>{const b=soft(w,h,d,m,r,segments);b.position.set(x,y,z);p.add(b);return b;};
   const round=(p,rx,ry,rz,m,x,y,z)=>{const b=new THREE.Mesh(new THREE.SphereGeometry(1,10,6),m);b.scale.set(rx,ry,rz);b.position.set(x,y,z);p.add(b);return b;};
-  const legs=[],knees=[],ankles=[],arms=[],elbows=[],shoes=[],wrists=[],sleeves=[],palms=[],handRoots=[],fingerJoints=[],ballGrips=[];
+  const legs=[],knees=[],ankles=[],arms=[],elbows=[],shoes=[],wrists=[],sleeves=[],palms=[],thumbs=[],handRoots=[],fingerJoints=[],ballGrips=[];
   const hipBlends=[],kneeBlends=[],ankleBlends=[],elbowBlends=[],wristBlends=[];
   // ---- 腿 ----
   [-VOXEL_HIP_X,VOXEL_HIP_X].forEach(x=>{
@@ -145,8 +145,9 @@ function voxelGuy(){
     wristBlend.name="wristBlend";                             // 随手掌旋转并与前臂交叠
     const palm=new THREE.Mesh(roundedBoxGeometry(.145,.135,.058,.024,3),mS);
     palm.name="palm";palm.position.set(0,-.055,0);handRoot.add(palm);            // 圆角扁矩形手掌
-    const hsx=x<0?1:-1;
-    const thumb=addSoft(handRoot,0.035,0.085,0.04,mS,hsx*.072,-.055,.025,.010,2);thumb.rotation.z=hsx*.28;
+    const handSide=x<0?-1:1;
+    const thumb=addSoft(handRoot,0.038,0.078,0.042,mS,handSide*.074,-.024,.025,.010,2);
+    thumb.name="thumb";thumb.rotation.z=-handSide*.70;
     const fingerLengths=[.094,.108,.112,.100];
     const fingerRoots=[];
     [-1.5,-.5,.5,1.5].forEach((i,index)=>{
@@ -159,11 +160,11 @@ function voxelGuy(){
     const ballGrip=new THREE.Group();
     ballGrip.name="ballGrip";ballGrip.position.set(0,-.43,.12);el.add(ballGrip); // 腕前持球锚点不随压腕反转
     sh2.add(el);g.add(sh2);
-    arms.push(sh2);elbows.push(el);wrists.push(wr);sleeves.push(sl);palms.push(palm);handRoots.push(handRoot);fingerJoints.push(fingerRoots);ballGrips.push(ballGrip);
+    arms.push(sh2);elbows.push(el);wrists.push(wr);sleeves.push(sl);palms.push(palm);thumbs.push(thumb);handRoots.push(handRoot);fingerJoints.push(fingerRoots);ballGrips.push(ballGrip);
     elbowBlends.push(elbowBlend);wristBlends.push(wristBlend);
   });
   const o={g,headRoot,headScale:VOXEL_HEAD_SCALE,baseShoulderX:VOXEL_SHOULDER_X,baseHipX:VOXEL_HIP_X,
-    legs,knees,ankles,arms,elbows,shoes,wrists,sleeves,palms,handRoots,fingerJoints,ballGrips,
+    legs,knees,ankles,arms,elbows,shoes,wrists,sleeves,palms,thumbs,handRoots,fingerJoints,ballGrips,
     hipBlends,kneeBlends,ankleBlends,elbowBlends,wristBlends,neckBlend,headband,
     hair:hairGrp,hairGrp,hairMat,beardGrp,beardMat,mJ,mP,mS,bodyF,bodyB,mFace,hairStyle:"short"};
   setHair(o,"short");

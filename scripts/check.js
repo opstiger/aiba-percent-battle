@@ -9,7 +9,7 @@ const childProcess=require("child_process");
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
 const legacyEntry="legacy.html";
-const snapshot="block-3pt-kingv2.18.2-modular.html";
+const snapshot="block-3pt-kingv2.18.5-modular.html";
 const requiredFiles=[
   entry,
   legacyEntry,
@@ -110,11 +110,11 @@ if(!entryHtml.includes('<script src="src/rendering/core.js?v=2.12"></script>'))f
 for(const file of ["core/error-boundary","core/foundation","data/dialogue","core/state","services/audio-cues","ui/result-copy"]){
   if(!entryHtml.includes(`<script src="src/${file}.js?v=refactor39"></script>`))fail(`next shell module missing ${file}`);
 }
-if(!entryHtml.includes('<script src="src/data/game-config.js?v=2.16.2-human-proportion"></script>'))fail("next game config cache version missing");
+if(!entryHtml.includes('<script src="src/data/game-config.js?v=2.18.5-shared-ai-shot"></script>'))fail("next game config cache version missing");
 
 if(entryHtml.indexOf('src/core/runtime.js')>entryHtml.indexOf('src/config.js'))fail("next runtime must load before config");
 if(entryHtml.indexOf('<script src="src/rendering/core.js?v=2.12"></script>')>entryHtml.indexOf('<script src="src/core/scene-init.js?v=refactor38"></script>'))fail("rendering core must load before scene construction");
-if(!entryHtml.includes('<script src="src/core/legacy-adapter.js?v=2.15.5-hand-follow"></script>'))fail("next legacy adapter missing");
+if(!entryHtml.includes('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>'))fail("next legacy adapter missing");
 if(!entryHtml.includes('<script src="src/modes/rack-rush.js?v=refactor5b"></script>'))fail("next Rack Rush module missing");
 if(!entryHtml.includes('<script src="src/modes/contest.js?v=refactor5c"></script>'))fail("next contest module missing");
 if(!entryHtml.includes('<script src="src/modes/practice.js?v=refactor5a"></script>'))fail("next practice module missing");
@@ -127,7 +127,7 @@ if(!entryHtml.includes('<script src="src/ui/pause.js?v=1.98"></script>'))fail("n
 if(!entryHtml.includes('<script src="src/core/bootstrap-next.js?v=cutover1"></script>'))fail("next bootstrap module missing");
 if(!entryHtml.includes('<script src="src/modes/percent-battle/state.js?v=refactor4c"></script>'))fail("next Percent Battle state module missing");
 if(!entryHtml.includes('<script src="src/modes/percent-battle/spots.js?v=refactor4b"></script>'))fail("next Percent Battle spots module missing");
-const percentBattleVersions={opponent:"2.15.5-hand-follow",results:"refactor4a",index:"refactor4a"};
+const percentBattleVersions={opponent:"2.18.5-shared-ai-shot",results:"refactor4a",index:"refactor4a"};
 for(const [file,version] of Object.entries(percentBattleVersions)){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js?v=${version}"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
@@ -146,11 +146,11 @@ for(const token of ["const GAME_VERSION=","const G={","function triggerMakeRunVo
   if(entryHtml.includes(token))fail("next entry still contains inline shell ownership "+token);
 }
 if(entryHtml.includes("/* Renderer, camera, adaptive quality and base lights are owned"))fail("next entry still contains generated ownership placeholders");
-if(entryHtml.indexOf('src/core/foundation.js?v=refactor39')>entryHtml.indexOf('src/data/game-config.js?v=2.16.2-human-proportion'))fail("foundation must load before game config");
-if(entryHtml.indexOf('src/data/game-config.js?v=2.16.2-human-proportion')>entryHtml.indexOf('src/core/state.js?v=refactor39'))fail("game config must load before runtime state");
+if(entryHtml.indexOf('src/core/foundation.js?v=refactor39')>entryHtml.indexOf('src/data/game-config.js?v=2.18.5-shared-ai-shot'))fail("foundation must load before game config");
+if(entryHtml.indexOf('src/data/game-config.js?v=2.18.5-shared-ai-shot')>entryHtml.indexOf('src/core/state.js?v=refactor39'))fail("game config must load before runtime state");
 if(entryHtml.indexOf('src/core/state.js?v=refactor39')>entryHtml.indexOf('src/services/audio-cues.js?v=refactor39'))fail("runtime state must load before audio cues");
 if(entryHtml.indexOf('src/services/audio-cues.js?v=refactor39')>entryHtml.indexOf('src/audio.js?v=2.19'))fail("audio cues must load before audio engine");
-if(entryHtml.indexOf('<script src="src/core/legacy-adapter.js?v=2.15.5-hand-follow"></script>')>entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=refactor5b"></script>'))fail("legacy adapter must load before Rack Rush module");
+if(entryHtml.indexOf('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>')>entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=refactor5b"></script>'))fail("legacy adapter must load before Rack Rush module");
 if(entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=refactor5b"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Rack Rush module must load before late hooks");
 if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("contest module must load before late hooks");
 if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>')>entryHtml.indexOf('<script src="src/modes/practice.js?v=refactor5a"></script>'))fail("contest module must load before practice module");
@@ -166,16 +166,19 @@ if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>'
 for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"],["results","index"]]){
   if(entryHtml.indexOf(`src/modes/percent-battle/${pair[0]}.js`)>entryHtml.indexOf(`src/modes/percent-battle/${pair[1]}.js`))fail(`Percent Battle ${pair[0]} must load before ${pair[1]}`);
 }
-if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js?v=2.15.5-hand-follow"></script>'))fail("Percent Battle opponent cache version missing");
+if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js?v=2.18.5-shared-ai-shot"></script>'))fail("Percent Battle opponent cache version missing");
 if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js?v=refactor4a"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
-for(const token of ["v2.18.2 MODULAR","MODULAR / v2.18.2"])
+for(const token of ["v2.18.5 MODULAR","MODULAR / v2.18.5"])
   if(!entryHtml.includes(token))fail("visible version token missing "+token);
-if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.18.2";'))fail("GAME_VERSION must be v2.18.2");
+if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.18.5";'))fail("GAME_VERSION must be v2.18.5");
 const playerMeterGradient='<linearGradient id="ppGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#2e8bff"/><stop offset="55%" stop-color="#39d3ff"/><stop offset="78%" stop-color="#ffd23f"/><stop offset="100%" stop-color="#ff4040"/></linearGradient>';
 if(!entryHtml.includes(playerMeterGradient))fail("player power fill must preserve the original single-sweet-zone gradient");
 if((entryHtml.match(/class="ppSweet"/g)||[]).length!==1)fail("player power must expose exactly one sweet-zone marker");
-if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.15.5-hand-follow">'))fail("stylesheet link missing");
+if((entryHtml.match(/class="ppFill"/g)||[]).length!==1)fail("player power must expose one continuous fill path");
+for(const token of ["ppMidClip","ppTopClip","ppFillBase","ppFillMid","ppFillTop"])
+  if(entryHtml.includes(token)||read("styles.css").includes(token))fail("player power duplicate fill layer remains "+token);
+if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.18.5-shared-ai-shot">'))fail("stylesheet link missing");
 const menuScript=read("src/ui/menu.js");
 const nbaDnaScript=read("src/nba-dna/NBADNA.js");
 const homeMenuSource=menuScript.slice(menuScript.indexOf("function showMenu"),menuScript.indexOf("function showModeInfo"));
@@ -205,7 +208,7 @@ if(!entryHtml.includes('<script src="src/nba-dna/NBADNA.js?v=20260718-coming-soo
 if(!entryHtml.includes('<script src="src/assets-manifest.js?v=20260726-bkyx1"></script>'))fail("assets manifest script missing");
 if(!entryHtml.includes('<script src="src/config.js?v=2.15.5-hand-follow"></script>'))fail("config script missing");
 if(!entryHtml.includes('<script src="src/player-select.js?v=2.15.5-hand-follow"></script>'))fail("player select script missing");
-if(!entryHtml.includes('<script src="src/player-locker-preview.js?v=2.18.2-locker-palm"></script>'))fail("player locker preview script missing");
+if(!entryHtml.includes('<script src="src/player-locker-preview.js?v=2.18.3-locker-hands"></script>'))fail("player locker preview script missing");
 if(!entryHtml.includes('<script src="src/player-id.js"></script>'))fail("player id script missing");
 if(!entryHtml.includes('<script src="src/leaderboard-api.js"></script>'))fail("leaderboard api script missing");
 if(!entryHtml.includes('<script src="src/leaderboard-ui.js?v=1.94"></script>'))fail("leaderboard ui script missing");
@@ -215,7 +218,7 @@ if(!entryHtml.includes('<script src="src/result-stats.js?v=1.78"></script>'))fai
 if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.16-soft-voxel"></script>'))fail("equipment visual script missing");
 if(!entryHtml.includes('<script src="src/gear.js?v=2.15.5-hand-follow"></script>'))fail("gear script missing");
 if(!entryHtml.includes('<script src="src/avatar-customizer.js?v=2.15.5-hand-follow"></script>'))fail("avatar customizer script missing");
-if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.18-shared-fp-pose"></script>'))fail("shot motion script missing");
+if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.18.5-shared-ai-shot"></script>'))fail("shot motion script missing");
 if(!entryHtml.includes('<script src="src/roster-style.js?v=2.15.5-hand-follow"></script>'))fail("roster style script missing");
 if(!entryHtml.includes('<script src="src/rendering/character-visuals.js?v=2.16.2-human-proportion"></script>'))fail("voxel pro character visuals missing");
 if(entryHtml.indexOf('src/roster-style.js?v=2.15.5-hand-follow')>entryHtml.indexOf('src/rendering/character-visuals.js?v=2.16.2-human-proportion'))fail("voxel pro visuals must wrap roster styling");
@@ -321,7 +324,7 @@ for(const token of ["lockerStage","lockerWorkbench"])
   if(!(playerLockerPreviewScript+playerSelectScript+styles).includes(token))fail("fixed gear preview token missing "+token);
 for(const token of ["function mountLive","function refreshLive","function focusLive","mousedown","mousemove","touchstart","touchmove","wheel","ResizeObserver","clampZoom","clampPitch","baseAzimuth","baseElevation","Math.sin(azimuth)","Math.sin(elevation)","dataset.orbitYaw","dataset.orbitPitch","dataset.orbitZoom","AIBALockerPreview={render,refreshLive,reset:resetLive,focus:focusLive,destroy:destroyLive}"])
   if(!playerLockerPreviewScript.includes(token))fail("interactive locker orbit missing "+token);
-for(const token of ["LOCKER_ACTIONS","function idlePose","function wavePose","function shadowShotPose","function jerseyPose","function headbandPose","function startLiveMotion","lastMotionFrame<33","prefers-reduced-motion: reduce","cancelAnimationFrame(liveView.motionRaf)","dataset.lockerAction","Math.sin(progress*Math.PI*7)*k*sign"])
+for(const token of ["LOCKER_ACTIONS","function idlePose","function wavePose","function shadowShotPose","function jerseyPose","function headbandPose","function startLiveMotion","lastMotionFrame<33","prefers-reduced-motion: reduce","cancelAnimationFrame(liveView.motionRaf)","dataset.lockerAction","Math.sin(progress*Math.PI*7)*k*sign","blendRotation(guy.handRoots&&guy.handRoots[1],-.18,-1.05,.04,k)","blendRotation(guy.handRoots&&guy.handRoots[0],-.18,Math.PI","blendRotation(guy.handRoots&&guy.handRoots[0],-.18,Math.PI*.5"])
   if(!playerLockerPreviewScript.includes(token))fail("locker idle animation missing "+token);
 for(const token of ["lockerViewReset","rotate-ccw","AIBALockerPreview.reset()"])
   if(!playerSelectScript.includes(token))fail("locker orbit controls missing "+token);
@@ -395,13 +398,14 @@ try{
 }catch(e){fail("shot physics pause check failed: "+e.message);}
 try{new Function(shotMotionScript);}
 catch(e){fail("shot motion script syntax error: "+e.message);}
-for(const key of ["AIBAMotion","restoreLegacy","installMotionHooks","boardHit","attachBall","STANCE_YAW","tuneGuideHand","captureGuideStart","captureReleasePose","followState","guideBlend","BALL_RELEASE_AT","applyShotSetPose","completePendingRelease","pendingRelease"])
+for(const key of ["AIBAMotion","restoreLegacy","installMotionHooks","boardHit","attachBall","STANCE_YAW","tuneGuideHand","captureGuideStart","captureReleasePose","followState","AIBAShotMotion","BALL_RELEASE_AT","completePendingRelease","pendingRelease"])
 if(!shotMotionScript.includes(key))fail("shot motion script missing "+key);
 for(const key of ['function mirrorArm(','source.clone(true)','function syncArmMirror(','function syncFpRigFromPlayer(','rig.name="fpSharedPoseRig"','ballGrip:shoot.clone.getObjectByName("ballGrip")','clone.material=source.material','restoreFpBall();'])
   if(!shotMotionScript.includes(key))fail("shared first-person pose mirror missing "+key);
 if(shotMotionScript.includes("function animFpRig(c,phys,state)"))fail("first-person pose must not keep a second charge-animation formula");
-for(const key of ["planeK","shoot.rotation.z=mixN(shoot.rotation.z,0.10,planeK)","targetShootZ=0.06","shootEl.rotation.y=0"])
-if(!shotMotionScript.includes(key))fail("shot arm plane correction missing "+key);
+const sharedShotPose=read("src/rendering/motion.js");
+for(const key of ["function applyShotSetPose","planeK","shoot.rotation.z=mixN(shoot.rotation.z,0.10,planeK)","function applyShotFollowThroughPose","targetShootZ=0.06","shootEl.rotation.y=0"])
+if(!sharedShotPose.includes(key))fail("shared shot arm pose missing "+key);
 for(const key of ["releaseJump","lastJump","launchJump"])
   if(!shotPhysicsScript.includes(key))fail("shot physics continuity token missing "+key);
 if(!read("src/gameplay/shots.js").includes("afterPlayerLands"))fail("shot lifecycle must wait for landing before the next possession");
@@ -617,6 +621,8 @@ for(const token of ["oppPasser","function oppBeginPass","OPP.phase=\"receive\"",
   if(!battleOpponent.includes(token))fail("Percent Battle opponent pass sequence missing "+token);
 if(battleOpponent.includes("G.superStock=Math.max(0,(G.superStock||0)-1)"))fail("opponent attempt must not consume Logo chance");
 if(!battleOpponent.includes("applyHandFollowThroughPose(guy,hold)"))fail("Percent Battle opponent wrist follow-through missing");
+for(const token of ["function attachOppBall","guy.ball.getWorldPosition(start)","shotFlightTime(0.78+distance*0.062,G.myStar||opponent,spot)","applyShotSetPose(guy,curve,true)","captureShotPose","AIBAShotMotion"])
+  if(!battleOpponent.includes(token))fail("Percent Battle opponent shared shot pose missing "+token);
 const battleSpots=read("src/modes/percent-battle/spots.js");
 for(const token of ["if(spot.super)return;","function battleConsumeSuperChance","chanceId!==G.superChanceId","G.superResolvedId=chanceId"])
   if(!battleSpots.includes(token))fail("shared Logo make-only opportunity missing "+token);
@@ -631,7 +637,8 @@ for(const token of [".battleIntroBox",".battleLineup",".battleMetric",".battleRu
   if(!styles.includes(token))fail("Percent Battle versus styles missing "+token);
 if(!read("src/core/legacy-adapter.js").includes("dressGuy"))fail("legacy adapter must expose dressGuy to pregame");
 if(!read("src/core/legacy-adapter.js").includes("sBounce"))fail("legacy adapter must expose bounce SFX to opponent passing");
-if(!read("src/core/legacy-adapter.js").includes("applyHandFollowThroughPose"))fail("legacy adapter must expose wrist follow-through");
+for(const token of ["applyHandFollowThroughPose","tuneGuideHandPose","captureShotPose","applyShotSetPose"])
+  if(!read("src/core/legacy-adapter.js").includes(token))fail("legacy adapter must expose shared shot pose "+token);
 const renderingCore=read("src/rendering/core.js");
 for(const token of ['runtime.register("rendering:core"',"WebGLRenderer","RENDER_QUALITY","updateRenderQuality","dampRig","visualViewport","AmbientLight"])
   if(!renderingCore.includes(token))fail("rendering core token missing "+token);
@@ -697,7 +704,7 @@ for(const token of ['runtime.register("rendering:motion"',"function shotCurves",
   if(!renderingMotion.includes(token))fail("rendering motion token missing "+token);
 for(const token of ["SHOT_STANCE_YAW","function shotStanceBlend","function tuneGuideHandPose"])
   if(!renderingMotion.includes(token))fail("shared shot pose token missing "+token);
-for(const token of ["function poseHandJoints","function poseGuidePalmToBall","function applyHandFollowThroughPose","HAND_FINGER_FOLLOW=[.14,.38,Math.PI/6,.16]","GUIDE_PALM_INWARD_Y=-1.48","shoot.rotation.x+=(1.18-shoot.rotation.x)*follow","poseGuidePalmToBall(o,c,ready)"])
+for(const token of ["function poseHandJoints","function poseShootingHandToBall","function poseGuidePalmToBall","function applyHandFollowThroughPose","function captureShotPose","function applyShotSetPose","function applyShotFollowThroughPose","SHOOT_HAND_CUP_OFFSET={y:-.045,z:.055}","HAND_FINGER_FOLLOW=[.14,.38,Math.PI/6,.16]","GUIDE_PALM_INWARD_Y=-1.48","shoot.rotation.x+=(1.18-shoot.rotation.x)*follow","poseShootingHandToBall(o,c)","poseGuidePalmToBall(o,c,ready)"])
   if(!renderingMotion.includes(token))fail("shared wrist follow-through token missing "+token);
 try{
   let motionApi=null;
@@ -708,15 +715,18 @@ try{
   vm.runInNewContext(renderingMotion,motionSandbox);
   const rotation=()=>({x:0,y:0,z:0});
   const fingers=()=>Array.from({length:4},()=>({rotation:rotation()}));
-  const pose={handRoots:[{rotation:rotation()},{rotation:rotation()}],fingerJoints:[fingers(),fingers()]};
+  const position=()=>({x:0,y:0,z:0,set(x,y,z){this.x=x;this.y=y;this.z=z;}});
+  const pose={handRoots:[{rotation:rotation(),position:position()},{rotation:rotation(),position:position()}],fingerJoints:[fingers(),fingers()]};
   motionApi.poseHandJoints(pose,{lift:1});
+  motionApi.poseShootingHandToBall(pose,{dip:0,lift:1,jmp:0});
+  if(pose.handRoots[0].position.y>=-.29||pose.handRoots[0].position.z<=.01)fail("shooting hand must cup toward the held ball during lift");
   motionApi.poseGuidePalmToBall(pose,{dip:0,lift:1,jmp:0},true);
   if(Math.abs(pose.handRoots[1].rotation.y+1.48)>.001)fail("guide palm must face inward toward the ball");
   const guideBefore={...pose.handRoots[1].rotation};
   motionApi.applyHandFollowThroughPose(pose,1);
   if(Object.keys(guideBefore).some(axis=>Math.abs(pose.handRoots[1].rotation[axis]-guideBefore[axis])>.001))fail("shooting follow-through must not flip the guide palm");
 }catch(e){fail("guide palm pose check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=refactor23a','src/rendering/characters.js?v=2.16.2-human-proportion','src/rendering/camera.js?v=2.18-shared-fp-pose','src/rendering/motion.js?v=2.15.5-hand-follow'])
+for(const token of ['src/rendering/props.js?v=refactor23a','src/rendering/characters.js?v=2.16.2-human-proportion','src/rendering/camera.js?v=2.18-shared-fp-pose','src/rendering/motion.js?v=2.18.5-shared-ai-shot'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -731,7 +741,7 @@ for(const token of ['if(G.state!=="victorycine"){stopVictoryCine();return;}','se
 const percentBattleState=read("src/modes/percent-battle/state.js");
 if(!percentBattleState.includes("function resetBattleState(){\n    stopVictoryCine();"))
   fail("Percent Battle reset must cancel stale victory cinematics");
-for(const token of ["function attachShowBall","getWorldPosition(_showReleasePos)","function setAIShowActors","tuneGuideHandPose(g,c,true)"])
+for(const token of ["function attachShowBall","getWorldPosition(_showReleasePos)","function setAIShowActors","tuneGuideHandPose(g,c,true)","applyShotSetPose(g,c,true)","G.myStar||show.o"])
   if(!presentationCinematics.includes(token))fail("contest opponent presentation fix missing "+token);
 const presentationPregame=read("src/presentation/pregame.js");
 for(const token of ['runtime.register("presentation:pregame"',"const PREGAME=","function startPreGameShow","function updPreGameShow"])
@@ -741,7 +751,7 @@ for(const token of ["function pregameSmoothPose","pregameSmoothPose(a.guy,dt)","
 const presentationBattle=read("src/presentation/battle.js");
 for(const token of ['runtime.register("presentation:battle"',"function updBattleCut","function checkBattleOvertake","function battleScoreCallout"])
   if(!presentationBattle.includes(token))fail("presentation battle token missing "+token);
-for(const token of ['src/rendering/effects.js?v=refactor27','src/presentation/cinematics.js?v=2.15.5-hand-follow','src/presentation/pregame.js?v=refactor29c','src/presentation/battle.js?v=refactor30'])
+for(const token of ['src/rendering/effects.js?v=refactor27','src/presentation/cinematics.js?v=2.18.5-shared-ai-shot','src/presentation/pregame.js?v=refactor29c','src/presentation/battle.js?v=refactor30'])
   if(!entryHtml.includes(token))fail("next entry missing presentation module "+token);
 for(const token of ["function startHero(","function startAIShow(","function startVictoryCine(","function startPreGameShow(","function battleScoreCallout(","function startConfetti("])
   if(entryHtml.includes(token))fail("next entry still contains inline presentation "+token);
@@ -789,8 +799,8 @@ for(const token of ['src/gameplay/shots.js?v=2.15.5-hand-follow','src/presentati
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);
-if(!(entryHtml.indexOf('src/core/input.js?v=cutover2')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.15.5-hand-follow')))fail("input must load before legacy adapter");
-if(!(entryHtml.indexOf('src/core/scene-init.js?v=refactor38')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.15.5-hand-follow')))fail("scene init must load before legacy adapter");
+if(!(entryHtml.indexOf('src/core/input.js?v=cutover2')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot')))fail("input must load before legacy adapter");
+if(!(entryHtml.indexOf('src/core/scene-init.js?v=refactor38')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot')))fail("scene init must load before legacy adapter");
 
 const sandbox={window:{}};
 vm.createContext(sandbox);

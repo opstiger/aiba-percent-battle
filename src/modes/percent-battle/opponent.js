@@ -7,7 +7,8 @@
     G,BATTLE_TARGET,BATTLE_SPOTS,OPP_SPOT_EMPTY_WAIT,COURT,HOOP,P,V3,clamp,faceTo,rivals,
     matGold,matDeep,matBall,shotProfileFor,DIFFS,aiProb,rnd,shotFlightTime,ballGeo,scene,blobGeo,blobMat,
     balls,oppPasser,oppPasserBall,triggerStreetCrowdReaction,bloomOnScore,beginFinalAudioWindow,broadcastSting,toast,boo,gameDjSay,
-    sBounce,sSwish,battleScoreCallout,updJumbo,checkBattleOvertake,shotCurves,poseGuy,poseBallPos,applyHandFollowThroughPose,checkBallCollisions
+    sBounce,sSwish,battleScoreCallout,updJumbo,checkBattleOvertake,ease01,shotCurves,SHOT_STANCE_YAW,shotStanceBlend,tuneGuideHandPose,
+    poseGuy,poseBallPos,applyShotSetPose,captureShotPose,applyHandFollowThroughPose,checkBallCollisions
   }=ctx;
   const OPP=battle.OPP;
   const OPP_MIN_SEP=1.58;
@@ -56,6 +57,16 @@
     oppPasser.arms.forEach(arm=>arm.rotation.x=0);
     oppPasser.elbows.forEach(elbow=>elbow.rotation.x=0);
     oppPasser.g.rotation.x=0;
+  }
+  function attachOppBall(){
+    const guy=OPP.guy;if(!guy||!guy.ball)return;
+    const parent=guy.ballGrips&&guy.ballGrips[0]?guy.ballGrips[0]:guy.elbows&&guy.elbows[0];
+    if(!parent)return;
+    if(guy.ball.parent!==parent)parent.add(guy.ball);
+    if(guy.ballGrips&&guy.ballGrips[0]===parent)guy.ball.position.set(0,0,0);
+    else guy.ball.position.set(0,-.43,.12);
+    guy.ball.rotation.set(0,0,0);
+    OPP.ballAttached=true;
   }
   function cancelOppPass(hidePasser){
     if(OPP.ballOut&&OPP.ballOut.mesh)scene.remove(OPP.ballOut.mesh);
@@ -133,9 +144,10 @@
   }
   function oppBeginLoad(){
     const spot=BATTLE_SPOTS[OPP.spotIdx],guy=OPP.guy;
+    attachOppBall();
     guy.ball.visible=true;guy.ball.material=spot.super?matGold:(spot.deep!=null?matDeep:matBall);
-    OPP.phase="load";OPP.t=0;OPP.fired=false;
-    OPP.shootDur=clamp((0.9-(OPP.o.r-85)*0.012-DIFFS[G.diff].ai*0.5)/shotProfileFor(OPP.o).speed,0.5,1.08);
+    OPP.phase="load";OPP.t=0;OPP.fired=false;OPP.shotPose=null;
+    OPP.shootDur=clamp((0.9-DIFFS[G.diff].ai*0.5)/shotProfileFor(G.myStar||OPP.o).speed,0.5,1.08);
   }
   function oppFollowThroughPose(guy,k){
     if(!guy||!guy.arms||!guy.elbows||k<=0)return;
@@ -175,19 +187,22 @@
     OPP.from=OPP.pos.clone();OPP.to=oppSpotPos(index);OPP.phase="walk";OPP.t=0;
   }
   function oppFireBall(){
-    const spot=BATTLE_SPOTS[OPP.spotIdx],base=(OPP.pos||oppSpotPos(OPP.spotIdx)).clone(),opponent=OPP.o;
+    const spot=BATTLE_SPOTS[OPP.spotIdx],base=(OPP.pos||oppSpotPos(OPP.spotIdx)).clone(),opponent=OPP.o,guy=OPP.guy;
     const probability=aiProb(opponent.r);
     const chance=spot.super?clamp(probability*0.22+0.03,0.08,0.22):clamp(probability*0.58+0.1,0.28,0.6);
     const made=Math.random()<chance;
-    const direction=HOOP.clone().sub(base);direction.y=0;const distance=direction.length();direction.normalize();
-    const start=base.clone().addScaledVector(direction,-0.1);start.y=2.05;
+    const start=new global.THREE.Vector3();
+    if(guy&&guy.g&&guy.ball){guy.g.updateMatrixWorld(true);guy.ball.getWorldPosition(start);}
+    else{start.copy(base);start.y=2.05;}
+    const direction=HOOP.clone().sub(start);direction.y=0;const distance=direction.length();direction.normalize();
     const perpendicular=V3(direction.z,0,-direction.x);
     let depth,lateral;
     if(made){depth=rnd(-0.03,0.03);lateral=rnd(-0.04,0.04);}
     else{depth=0.27*(Math.random()<0.5?1:-1);lateral=rnd(-0.14,0.14);}
     const target=HOOP.clone().addScaledVector(direction,depth).addScaledVector(perpendicular,lateral);
-    const flightTime=shotFlightTime(0.82+distance*0.06,opponent,spot);
+    const flightTime=shotFlightTime(0.78+distance*0.062,G.myStar||opponent,spot);
     const velocity=V3((target.x-start.x)/flightTime,(target.y-start.y)/flightTime+4.9*flightTime,(target.z-start.z)/flightTime);
+    OPP.shotPose=captureShotPose?captureShotPose(OPP.guy):null;
     const mesh=new global.THREE.Mesh(ballGeo,spot.super?matGold:(spot.deep!=null?matDeep:matBall));
     mesh.position.copy(start);scene.add(mesh);
     const blob=new global.THREE.Mesh(blobGeo,blobMat.clone());blob.rotation.x=-Math.PI/2;blob.position.set(start.x,0.02,start.z);scene.add(blob);
@@ -238,19 +253,25 @@
     }else if(OPP.phase==="load"){
       const phase=Math.min(1.05,OPP.t/OPP.shootDur*1.05),curve=shotCurves(phase);
       const groundLift=poseGuy(guy,curve,0);
-      guy.g.position.set(OPP.pos.x,groundLift+Math.max(0,curve.jmp*0.55-curve.over*0.55),OPP.pos.z);poseBallPos(guy.ball.position,curve);
+      const stance=shotStanceBlend(curve,true);
+      guy.g.position.set(OPP.pos.x,groundLift+Math.max(0,curve.jmp*0.55-curve.over*0.28),OPP.pos.z);
+      guy.g.rotation.y=faceTo(OPP.pos,HOOP)+SHOT_STANCE_YAW*stance;
+      tuneGuideHandPose(guy,curve,true);applyShotSetPose(guy,curve,true);
       if(phase>=1.02&&!OPP.fired){OPP.fired=true;oppFireBall();OPP.phase="land";OPP.t=0;}
     }else if(OPP.phase==="land"){
       const progress=Math.min(1,OPP.t/.36),settle=progress*progress;
       const curve=shotCurves(1.02*(1-settle));
       const landing=progress>.72?Math.sin((progress-.72)/.28*Math.PI)*.12:0;
       const poseY=poseGuy(guy,curve,landing);
-      guy.g.position.set(OPP.pos.x,poseY+.55*(1-settle),OPP.pos.z);
-      poseBallPos(guy.ball.position,curve);
-      const follow=progress<.55?1:clamp(1-(progress-.55)/.45,0,1);
-      oppFollowThroughPose(guy,follow);
+      const jump=Math.max(0,curve.jmp*0.55-curve.over*0.28);
+      guy.g.position.set(OPP.pos.x,poseY+jump,OPP.pos.z);
+      guy.g.rotation.y=faceTo(OPP.pos,HOOP)+SHOT_STANCE_YAW*shotStanceBlend(curve,false);
+      const extend=ease01(OPP.t/.105),recover=ease01((OPP.t-.105-.24)/.38);
+      const followState={active:OPP.t<.105+.24+.38,extend,follow:extend*(1-recover),recover};
+      if(global.AIBAShotMotion&&OPP.shotPose)global.AIBAShotMotion.applyFollowThroughPose(guy,followState,OPP.shotPose);
+      else oppFollowThroughPose(guy,followState.follow);
       if(progress>=1){
-        OPP.fired=false;poseGuy(guy,shotCurves(0),0);guy.g.position.set(OPP.pos.x,0,OPP.pos.z);guy.g.rotation.x=0;
+        OPP.fired=false;OPP.shotPose=null;poseGuy(guy,shotCurves(0),0);guy.g.position.set(OPP.pos.x,0,OPP.pos.z);guy.g.rotation.x=0;
         oppMarkSpotUse();OPP.phase="cool";OPP.t=0;
         const baseCool=clamp(0.5-(OPP.o.r-85)*0.01,0.25,0.55)+rnd(0,0.2);OPP.coolDur=OPP.forceMove?Math.max(0.2,baseCool*0.55):baseCool;
       }

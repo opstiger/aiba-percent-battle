@@ -120,7 +120,7 @@
     blendRotation(guy.elbows&&guy.elbows[0],-.42-.82*lift+1.02*release,0,0,k);
     blendRotation(guy.elbows&&guy.elbows[1],-.46-.90*lift+.58*release,0,0,k);
     blendRotation(guy.handRoots&&guy.handRoots[0],1.02*release,0,-.04,k);
-    blendRotation(guy.handRoots&&guy.handRoots[1],-.18,release*-1.05,.04,k);
+    blendRotation(guy.handRoots&&guy.handRoots[1],-.18,-1.05,.04,k);
     if(guy.fingerJoints&&guy.fingerJoints[0])guy.fingerJoints[0].forEach((finger,index)=>{
       finger.rotation.x=-.08+release*([.12,.30,.42,.18][index]||.12);
     });
@@ -143,8 +143,8 @@
     blendRotation(guy.arms&&guy.arms[1],-.48,0,-.54,k);
     blendRotation(guy.elbows&&guy.elbows[0],-.98,0,-.08,k);
     blendRotation(guy.elbows&&guy.elbows[1],-.98,0,.08,k);
-    blendRotation(guy.handRoots&&guy.handRoots[0],-.18,0,.08+tug*.08,k);
-    blendRotation(guy.handRoots&&guy.handRoots[1],-.18,0,-.08-tug*.08,k);
+    blendRotation(guy.handRoots&&guy.handRoots[0],-.18,Math.PI,.08+tug*.08,k);
+    blendRotation(guy.handRoots&&guy.handRoots[1],-.18,Math.PI,-.08-tug*.08,k);
     if(guy.legs&&guy.knees&&guy.ankles){
       guy.legs[0].rotation.x-=.035*k;guy.knees[0].rotation.x+=.075*k;guy.ankles[0].rotation.x-=.04*k;
       guy.legs[1].rotation.x+=.018*k;guy.knees[1].rotation.x+=.028*k;guy.ankles[1].rotation.x-=.025*k;
@@ -159,8 +159,8 @@
     blendRotation(guy.arms&&guy.arms[1],-.42,0,1.48,k);
     blendRotation(guy.elbows&&guy.elbows[0],-1.22,0,-.08,k);
     blendRotation(guy.elbows&&guy.elbows[1],-1.22,0,.08,k);
-    blendRotation(guy.handRoots&&guy.handRoots[0],-.18,0,-.10+adjust,k);
-    blendRotation(guy.handRoots&&guy.handRoots[1],-.18,0,.10-adjust,k);
+    blendRotation(guy.handRoots&&guy.handRoots[0],-.18,Math.PI*.5,-.10+adjust,k);
+    blendRotation(guy.handRoots&&guy.handRoots[1],-.18,-Math.PI*.5,.10-adjust,k);
     if(guy.legs&&guy.knees&&guy.ankles){
       guy.legs[0].rotation.x-=.022*k;guy.legs[1].rotation.x-=.022*k;
       guy.knees[0].rotation.x+=.052*k;guy.knees[1].rotation.x+=.052*k;

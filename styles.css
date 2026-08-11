@@ -55,10 +55,7 @@ html[data-scan-overlay="menu"] #scan{opacity:.018}
 #playerPower path{fill:none;vector-effect:non-scaling-stroke}
 #playerPower .ppTrack{stroke:rgba(11,16,28,.64);stroke-width:6.6;stroke-linecap:round}
 #playerPower .ppSweet{stroke:#42ff57;stroke-width:5.2;stroke-linecap:butt;opacity:.82;stroke-dasharray:0 100;stroke-dashoffset:0}
-#playerPower .ppFill{stroke:url(#ppGrad);stroke-linecap:butt;opacity:.68}
-#playerPower .ppFillBase{stroke-width:3.1}
-#playerPower .ppFillMid{stroke-width:4.3;opacity:.54}
-#playerPower .ppFillTop{stroke-width:5.1;opacity:.5}
+#playerPower .ppFill{stroke:url(#ppGrad);stroke-width:5.1;stroke-linecap:butt;opacity:.68}
 #playerPower .ppRim{stroke:rgba(255,255,255,.42);stroke-width:1.1;stroke-linecap:round}
 #tiltWrap{position:absolute;left:50%;bottom:88px;transform:translateX(-50%);width:150px;height:10px;background:rgba(0,0,0,.45);border:2px solid #333;display:none}
 #tiltCenter{position:absolute;left:50%;top:-3px;width:2px;height:14px;background:#888}
