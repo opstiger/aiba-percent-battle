@@ -33,7 +33,7 @@ function voxelGuy(){
   const add=(p,w,h,d,m,x,y,z)=>{const b=mk(w,h,d,m);b.position.set(x,y,z);p.add(b);return b;};
   const addSoft=(p,w,h,d,m,x,y,z,r,segments)=>{const b=soft(w,h,d,m,r,segments);b.position.set(x,y,z);p.add(b);return b;};
   const round=(p,rx,ry,rz,m,x,y,z)=>{const b=new THREE.Mesh(new THREE.SphereGeometry(1,10,6),m);b.scale.set(rx,ry,rz);b.position.set(x,y,z);p.add(b);return b;};
-  const legs=[],knees=[],ankles=[],arms=[],elbows=[],shoes=[],wrists=[],sleeves=[],palms=[],thumbs=[],handRoots=[],fingerJoints=[],ballGrips=[];
+  const legs=[],knees=[],ankles=[],arms=[],elbows=[],upperArms=[],forearms=[],shoes=[],wrists=[],sleeves=[],palms=[],thumbs=[],handRoots=[],fingerJoints=[],ballGrips=[];
   const hipBlends=[],kneeBlends=[],ankleBlends=[],elbowBlends=[],wristBlends=[];
   // ---- 腿 ----
   [-VOXEL_HIP_X,VOXEL_HIP_X].forEach(x=>{
@@ -145,26 +145,40 @@ function voxelGuy(){
     wristBlend.name="wristBlend";                             // 随手掌旋转并与前臂交叠
     const palm=new THREE.Mesh(roundedBoxGeometry(.145,.135,.058,.024,3),mS);
     palm.name="palm";palm.position.set(0,-.055,0);handRoot.add(palm);            // 圆角扁矩形手掌
-    const handSide=x<0?-1:1;
-    const thumb=addSoft(handRoot,0.038,0.078,0.042,mS,handSide*.074,-.024,.025,.010,2);
-    thumb.name="thumb";thumb.rotation.z=-handSide*.70;
+    /* 拇指在两手相对的内侧:投篮手(index 0)的拇指朝辅助手,
+       辅助手(index 1)的拇指朝回球心。旧写法把拇指放在两手外侧,
+       第一人称看起来就像两只手背同时顶球。 */
+    const handSide=x<0?1:-1;
+    /* Pose Lab 的手掌原点在 palm center、手指沿 +Y。游戏手模通过绕 local X
+       旋转 PI 与之对齐，因此这里也把拇指根与子网格按同一基变换重建。 */
+    const thumbRoot=new THREE.Group();
+    thumbRoot.position.set(handSide*.075,-.061,-.018);thumbRoot.rotation.z=handSide*.70;handRoot.add(thumbRoot);
+    const thumb=addSoft(thumbRoot,0.038,0.078,0.042,mS,0,-.036,0,.010,2);
+    thumb.name="thumb";
     const fingerLengths=[.094,.108,.112,.100];
     const fingerRoots=[];
     [-1.5,-.5,.5,1.5].forEach((i,index)=>{
       const length=fingerLengths[index];
       const fingerRoot=new THREE.Group();
-      fingerRoot.name="fingerJoint";fingerRoot.position.set(i*.028,-.108,.026);fingerRoot.rotation.x=-.08;
+      /* palm center 在 handRoot local y=-.055；此坐标正是 Pose Lab 指根
+         [x,+.073,+.015] 经 local-X PI 基变换后的精确位置。 */
+      fingerRoot.name="fingerJoint";fingerRoot.position.set(i*.028,-.128,-.015);fingerRoot.rotation.x=-.08;
       const finger=addSoft(fingerRoot,0.022,length,0.03,mS,0,-length*.5,0,.008,2);
       finger.name="finger";handRoot.add(fingerRoot);fingerRoots.push(fingerRoot);
     });
     const ballGrip=new THREE.Group();
-    ballGrip.name="ballGrip";ballGrip.position.set(0,-.43,.12);el.add(ballGrip); // 腕前持球锚点不随压腕反转
+    /* 持球锚点(= pBall 的父节点,也是物理出手点)。
+       v2.19.3 起它属于投篮手 handRig，而不是肘节点的兄弟：蓄力末端球心来自
+       3D Pose Lab 的 [-.106,1.8962,.3201]，在用户摆好的掌面四元数下反解为
+       handRig 局部 [.012341,-.108954,-.193745]。因此伸肘与压腕期间球会连续随手
+       前送，直到 releaseShot 真正读取 pBall 世界坐标后才脱手。 */
+    ballGrip.name="ballGrip";ballGrip.position.set(.012341,-.108954,-.193745);handRoot.add(ballGrip);
     sh2.add(el);g.add(sh2);
-    arms.push(sh2);elbows.push(el);wrists.push(wr);sleeves.push(sl);palms.push(palm);thumbs.push(thumb);handRoots.push(handRoot);fingerJoints.push(fingerRoots);ballGrips.push(ballGrip);
+    arms.push(sh2);elbows.push(el);upperArms.push(up);forearms.push(fo);wrists.push(wr);sleeves.push(sl);palms.push(palm);thumbs.push(thumb);handRoots.push(handRoot);fingerJoints.push(fingerRoots);ballGrips.push(ballGrip);
     elbowBlends.push(elbowBlend);wristBlends.push(wristBlend);
   });
   const o={g,headRoot,headScale:VOXEL_HEAD_SCALE,baseShoulderX:VOXEL_SHOULDER_X,baseHipX:VOXEL_HIP_X,
-    legs,knees,ankles,arms,elbows,shoes,wrists,sleeves,palms,thumbs,handRoots,fingerJoints,ballGrips,
+    legs,knees,ankles,arms,elbows,upperArms,forearms,shoes,wrists,sleeves,palms,thumbs,handRoots,fingerJoints,ballGrips,
     hipBlends,kneeBlends,ankleBlends,elbowBlends,wristBlends,neckBlend,headband,
     hair:hairGrp,hairGrp,hairMat,beardGrp,beardMat,mJ,mP,mS,bodyF,bodyB,mFace,hairStyle:"short"};
   setHair(o,"short");
@@ -414,7 +428,7 @@ function benchVis(){
 /* player world state */
 
 window.AIBA.runtime.register("rendering:characters",Object.freeze({
-  voxelGuy,setHair,setBeard,faceTex,jerseyTex,dressGuy,applyStarStyle,randomizeOutfit,
+  voxelGuy,setHair,setBeard,faceTex,jerseyTex,dressGuy,applyStarStyle,randomizeOutfit,bakeActorSegments,
   buildCharacters,rivalFor,benchSetup,benchVis,
   getActors:()=>({player,playerBall:pBall,passer,passerBall,oppPasser,oppPasserBall,rivals})
 }));

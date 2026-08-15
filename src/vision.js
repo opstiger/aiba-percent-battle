@@ -31,12 +31,19 @@ function saveVisionControlPreference(value){
   VISION_CONTROL_PREFERENCE=value==="vision"?"vision":"touch";
   try{localStorage.setItem(VISION_CONTROL_STORAGE,VISION_CONTROL_PREFERENCE);}catch(e){}
 }
+/* 能自动恢复体感的入口状态。原来只认 "diff"(难度选择界面)，
+   而绝杀时刻是从主菜单直接进 "lastshot" 的——整个模式永远等不到体感启动。 */
+const VISION_AUTO_STATES={diff:true,lastshot:true};
+function visionCanAutoStart(){
+  return VISION_CONTROL_PREFERENCE==="vision"&&VISION.supported
+    &&!VISION.desired&&!VISION.enabled&&!VISION.loading&&!!VISION_AUTO_STATES[G.state];
+}
 function restoreVisionControlPreference(){
-  if(VISION_CONTROL_PREFERENCE!=="vision"||!VISION.supported||VISION.desired||VISION.enabled||VISION.loading||G.state!=="diff"||visionPreferenceQueued)return;
+  if(!visionCanAutoStart()||visionPreferenceQueued)return;
   visionPreferenceQueued=true;
   setTimeout(()=>{
     visionPreferenceQueued=false;
-    if(VISION_CONTROL_PREFERENCE==="vision"&&!VISION.desired&&!VISION.enabled&&!VISION.loading&&G.state==="diff")enableVisionControl();
+    if(visionCanAutoStart())enableVisionControl();
   },0);
 }
 const VISION={
@@ -89,9 +96,10 @@ function visionLostPromptActive(){
   if(G.state==="tiebreak")return !G.buzzed&&(G.canShoot||G.charging||G.shotIdx>0);
   if(G.state==="battle")return G.running&&!G.battleOver;
   if(G.state==="rackrush")return G.running&&!G.buzzed;
+  if(G.state==="lastshot")return G.running&&!G.buzzed;
   return false;
 }
-function visionGameActive(){return (G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush")&&G.canShoot&&!G.cutAway&&!G.battleCut;}
+function visionGameActive(){return (G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot")&&G.canShoot&&!G.cutAway&&!G.battleCut;}
 function resetVisionGesture(sm){
   sm.phase="idle";sm.holdStart=0;sm.chargeStart=0;sm.lastSeen=0;sm.cooldownUntil=0;sm.releaseFlashUntil=0;
   sm.chargeBaseY=0;sm.releaseLineY=VISION.releaseLineY;sm.power=0;sm.lastPowerAt=0;
@@ -297,7 +305,7 @@ function visionClearPreviewDock(wrap){
   VISION.dock.name="";VISION.dock.stance="";VISION.dock.lockedUntil=0;
   delete document.documentElement.dataset.visionDock;
 }
-function visionLivePlayState(){return G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush";}
+function visionLivePlayState(){return G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot";}
 function visionPreviewPlayState(){return visionLivePlayState()||G.state==="pregame"||G.state==="rushintro"||G.state==="rushbetween";}
 function visionSyncPreviewVisibility(wrap){
   if(!wrap)return;
@@ -592,6 +600,14 @@ function visionFrame(now){
     document.documentElement.dataset.visionCadence=cadence.mode;
   }
 }
+/* 切换控制模式后要刷新当前这张面板。不能一律走 goDiff——绝杀时刻的开始界面
+   也把 G.state 设成 "diff"，直接 goDiff 会把玩家踢到通用难度界面(看起来就是
+   "选了体感却跳到三分大赛去了")。按模式分流，各自重渲染自己的面板。 */
+function refreshControlPanel(){
+  if(G.state!=="diff")return;
+  if(G.mode==="lastshot"&&typeof openLastShot==="function"){openLastShot();return;}
+  if(typeof goDiff==="function")goDiff(G.mode,true);
+}
 async function enableVisionControl(event){
   if(event){event.stopPropagation();event.preventDefault();}
   if(!VISION.supported){toast("此浏览器不支持体感控制","#ff8d7a");return;}
@@ -607,7 +623,7 @@ async function enableVisionControl(event){
     VISION.enabled=true;VISION.lastSample=null;VISION.lastPose=null;VISION.lastHands=[];VISION.lastPoseAt=0;VISION.lastHandAt=0;VISION.lastDraw=0;VISION.lastVideoTime=-1;VISION.inferAvg=0;visionResetTracking(true);resetVisionGesture(VISION.machine);visionSetUI("idle","双手放入下方蓄力框",0);
     cancelAnimationFrame(VISION.raf);VISION.raf=requestAnimationFrame(visionFrame);
     document.documentElement.dataset.visionControl="ready";
-    if(G.state==="diff")goDiff(G.mode,true);
+    refreshControlPanel();
   }catch(e){
     VISION.desired=false;VISION.enabled=false;if(VISION.stream)VISION.stream.getTracks().forEach(t=>t.stop());VISION.stream=null;
     visionSyncPreviewVisibility($("visionPreview"));visionSetUI("error",e&&e.name==="NotAllowedError"?"摄像头权限未开启":"体感识别启动失败",0);
@@ -618,7 +634,7 @@ function disableVisionControl(event){
   if(event){event.stopPropagation();event.preventDefault();}
   saveVisionControlPreference("touch");
   suspendVisionControl();
-  if(G.state==="diff")goDiff(G.mode,true);
+  refreshControlPanel();
 }
 function suspendVisionControl(){
   VISION.desired=false;VISION.enabled=false;VISION.loading=false;cancelAnimationFrame(VISION.raf);cancelVisionOwnedCharge();

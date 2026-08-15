@@ -86,13 +86,23 @@ function dampRig(dt,k){
   const a=1-Math.exp(-(k||4.5)*dt);
   rig.pos.lerp(camTarget.pos,a);rig.look.lerp(camTarget.look,a);
 }
+/* 竖屏必须按 Hor+ 补偿视野。THREE 的 fov 是**垂直**视角，竖屏(aspect≈0.46)时
+   垂直 68° 换算出的水平视角只剩 34.5°(横屏是 100°)——贴到面前的防守人会糊满
+   半个屏幕，自己的手和球全被挤出画面。
+   这里锁定水平视角 BASE_HFOV，竖屏时反解出需要的垂直 fov；横屏维持原来的 68°
+   垂直视角不变(取 min，避免宽屏把画面拉得过广)。 */
+const BASE_VFOV=68,MAX_VFOV=90,BASE_HFOV=2*Math.atan(Math.tan(BASE_VFOV/2*Math.PI/180)*(16/9))*180/Math.PI;
+function fovForAspect(aspect){
+  const wanted=2*Math.atan(Math.tan(BASE_HFOV/2*Math.PI/180)/Math.max(.2,aspect))*180/Math.PI;
+  return Math.max(BASE_VFOV,Math.min(MAX_VFOV,wanted));
+}
 function resize(){
   const vv=window.visualViewport;
   const w=Math.max(1,Math.round(vv?vv.width:innerWidth));
   const h=Math.max(1,Math.round(vv?vv.height:innerHeight));
   document.documentElement.style.setProperty("--app-height",h+"px");
   RENDER_QUALITY.w=w;RENDER_QUALITY.h=h;applyRenderScale(true);
-  camera.aspect=w/h;camera.updateProjectionMatrix();
+  camera.aspect=w/h;camera.fov=fovForAspect(camera.aspect);camera.updateProjectionMatrix();
 }
 let _resizeT=0;
 function debouncedResize(){clearTimeout(_resizeT);_resizeT=setTimeout(resize,120);}

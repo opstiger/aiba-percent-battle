@@ -37,6 +37,10 @@
                 <button class="quickInfo" onclick="ensureAudio(true,true);showModeInfo('contest')" aria-label="三分挑战说明">i</button>
                 <button class="quickPlay" onclick="ensureAudio(true,true);goDiff('contest')"><small>03 / CLASSIC</small><b>三分大赛</b><span>70 秒挑战</span></button>
               </div>
+              <div class="quickMode">
+                <button class="quickInfo" onclick="ensureAudio(true,true);showModeInfo('lastshot')" aria-label="绝杀时刻说明">i</button>
+                <button class="quickPlay" onclick="ensureAudio(true,true);openLastShot()"><small>04 / DAILY</small><b>绝杀时刻</b><span>每天一次</span></button>
+              </div>
             </div>
           </div>${global.AIBALeaderboardHomeMarkup?global.AIBALeaderboardHomeMarkup():""}
         </div></div>
@@ -60,6 +64,14 @@
         <div class="card">进入后先选难度，再选择子模式：<b>闯关挑战</b> 或 <b>百分竞速</b>。</div>
         <div class="card">闯关挑战是逐关达标刷总分；百分竞速是普通球 <b>3 分</b>、彩球 <b>4 分</b>，达成 <b>${RACK_RUSH_SPEED_TARGET}</b> 分立刻停表，比谁更快。</div>
         <button class="btn gold" onclick="ensureAudio(true,true);goDiff('rackrush')">选择投篮机玩法</button>
+        <button class="btn sm" onclick="showMenu()">返回封面</button>`);
+      return;
+    }
+    if(mode==="lastshot"){
+      global.showPanel(`<h1 class="title" style="font-size:22px">每日挑战 · 绝杀时刻</h1>
+        <div class="card">第一人称站在三分线外,先看 5 秒现场:队友持球推进、对手包夹,最后把球分给你。</div>
+        <div class="card">比赛钟走完前必须出手。<b>进了算完成,失手当天结束</b>。每天只有 <b>1 次</b>正式机会,另有不计成绩的练习模式。</div>
+        <button class="btn red" onclick="ensureAudio(true,true);openLastShot()">进入今日挑战</button>
         <button class="btn sm" onclick="showMenu()">返回封面</button>`);
       return;
     }

@@ -256,7 +256,7 @@
       const stance=shotStanceBlend(curve,true);
       guy.g.position.set(OPP.pos.x,groundLift+Math.max(0,curve.jmp*0.55-curve.over*0.28),OPP.pos.z);
       guy.g.rotation.y=faceTo(OPP.pos,HOOP)+SHOT_STANCE_YAW*stance;
-      tuneGuideHandPose(guy,curve,true);applyShotSetPose(guy,curve,true);
+      // poseGuy 内部已由 applyShotSetPose 统一写入与玩家相同的松手前姿势。
       if(phase>=1.02&&!OPP.fired){OPP.fired=true;oppFireBall();OPP.phase="land";OPP.t=0;}
     }else if(OPP.phase==="land"){
       const progress=Math.min(1,OPP.t/.36),settle=progress*progress;

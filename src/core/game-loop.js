@@ -28,6 +28,7 @@ function animate(){
   if(G.state==="aishow")updShow(dt);
   if(G.state==="battle"&&!G.battleCut)updBattle(dt);
   if(G.state==="rackrush")updateRackRush(dt);
+  if(G.state==="lastshot"&&typeof updateLastShot==="function")updateLastShot(dt);
   if(G.state==="pregame")updPreGameShow(dt);
   updFire(dt);
   updConf(dt);
@@ -80,11 +81,13 @@ function animate(){
   else if(G.battleCut){/* updBattleCut 已控制镜头 */}
   else if(G.state==="pregame"){/* updPreGameShow 已控制镜头 */}
   else if(G.state==="aishow")updShowCam();
-  else if(["menu","diff","intro","roundend","sim","bracket","champion","runnerup","eliminated","battleend","rushend"].includes(G.state)){
+  else if(["menu","diff","intro","roundend","sim","bracket","champion","runnerup","eliminated","battleend","rushend","lsend"].includes(G.state)){
     const a=G.tNow*0.1;
     rig.pos.set(Math.cos(a)*18,8+Math.sin(G.tNow*0.3)*0.5,COURT.midZ+Math.sin(a)*20);
     rig.look.set(0,2.2,COURT.midZ);
   }
+  // 绝杀时刻:观看阶段由模式接管转头镜头,球一到手就交还 updPlayCam,出手镜头与其他模式一致
+  else if(G.state==="lastshot"){if(!(typeof updateLastShotCam==="function"&&updateLastShotCam(dt)))updPlayCam(dt);}
   else if((G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush")&&!G.glideCam)updPlayCam(dt);
   updateRenderQuality(dt);
   camera.position.copy(rig.pos);

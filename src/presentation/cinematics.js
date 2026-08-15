@@ -158,13 +158,20 @@ function updShow(dt){
   if(it.type==="move"){
     const k=Math.min(1,show.t/(it.dur||0.48));
     g.pos.lerpVectors(it.from,it.to,k);
-    g.g.position.copy(g.pos);
+    g.g.position.x=g.pos.x;g.g.position.z=g.pos.z;
     g.g.rotation.y=faceTo(g.pos,HOOP);
-    const sw=Math.sin(show.t*16);
-    g.legs[0].rotation.x=sw*0.6;g.legs[1].rotation.x=-sw*0.6;
-    g.knees[0].rotation.x=Math.max(0,-sw*0.45+0.22);g.knees[1].rotation.x=Math.max(0,sw*0.45+0.22);
-    g.ankles[0].rotation.x=-sw*0.22;g.ankles[1].rotation.x=sw*0.22;g.g.rotation.x=0;
-    if(k>=1){g.legs[0].rotation.x=0;g.legs[1].rotation.x=0;g.knees[0].rotation.x=0;g.knees[1].rotation.x=0;g.ankles[0].rotation.x=0;g.ankles[1].rotation.x=0;nextShowItem();}
+    /* 移动到下一个点也走共享的 poseRunCycle：原来这里是 sin(show.t*16) 的时间驱动，
+       腿的摆动和实际位移完全脱钩，脚在地上滑。共享实现按位移推进步频。 */
+    it.gait=it.gait||{phase:Math.random()*6.28,idleT:0,lean:0};
+    const moved=it.from.distanceTo(it.to);
+    const spd=moved/Math.max(1e-3,it.dur||1);
+    poseRunCycle(g,it.gait,spd,dt,{});
+    if(k>=1){
+      poseRunCycle(g,it.gait,0,dt,{});
+      g.legs[0].rotation.x=0;g.legs[1].rotation.x=0;g.knees[0].rotation.x=0;g.knees[1].rotation.x=0;
+      g.ankles[0].rotation.x=0;g.ankles[1].rotation.x=0;g.g.rotation.x=0;
+      nextShowItem();
+    }
   }else if(it.type==="shot"){
     const ph=Math.min(1.03,show.t/(it.loadDur||0.72)*1.03);
     const c=shotCurves(ph);show.c=c;
@@ -172,20 +179,27 @@ function updShow(dt){
     g.g.position.set(g.pos.x,y,g.pos.z);
     const stance=shotStanceBlend(c,true);
     g.g.rotation.y=faceTo(g.pos,HOOP)+SHOT_STANCE_YAW*stance;
-    tuneGuideHandPose(g,c,true);
-    applyShotSetPose(g,c,true);
-    applyHandFollowThroughPose(g,ease01((ph-.94)/.09));
+    /* 出手跟随必须走和玩家同一套 applyShotFollowThroughPose：
+       applyHandFollowThroughPose 只压腕、不伸肩肘，出手后手臂会僵在最高点，
+       看起来就是"球出去了人还悬停在空中"。这里捕获松手前姿势再交给共用控制器。 */
     if(ph>=1.03&&!it.fired){
-      it.fired=true;
+      it.fired=true;it.followT=0;
+      it.shotPose=(typeof captureShotPose==="function")?captureShotPose(g):null;
       g.g.updateMatrixWorld(true);g.ball.getWorldPosition(_showReleasePos);
       g.ball.visible=false;
       fireSilentBall(g.pos,it.s,_showReleasePos);
+    }
+    if(it.fired){
+      it.followT+=dt;
+      const extend=ease01(it.followT/.105),recover=ease01((it.followT-.105-.24)/.38);
+      const st={active:it.followT<.105+.24+.38,extend,recover,follow:extend*(1-recover),age:it.followT};
+      if(st.active&&it.shotPose&&typeof applyShotFollowThroughPose==="function")
+        applyShotFollowThroughPose(g,st,it.shotPose);
     }
     if(show.t>=(it.totalDur||1.02)){
       const rest=shotCurves(0);
       g.g.position.set(g.pos.x,poseGuy(g,rest,0),g.pos.z);
       g.g.rotation.y=faceTo(g.pos,HOOP);
-      tuneGuideHandPose(g,rest,false);
       nextShowItem();
     }
   }else if(it.type==="chip"){

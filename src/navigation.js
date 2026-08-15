@@ -6,7 +6,7 @@
   function sync(){
     const button=$("homeBtn");
     if(!button)return;
-    const arena=/^(cinematic|pregame|aishow|round|tiebreak|battle|rackrush|rushintro|rushbetween|replay|victorycine|wincine)$/.test(G.state);
+    const arena=/^(cinematic|pregame|aishow|round|tiebreak|battle|rackrush|rushintro|rushbetween|replay|victorycine|wincine|lastshot)$/.test(G.state);
     const visible=!global.BOOT_GATE_ACTIVE&&G.state!=="boot"&&G.state!=="menu"&&!arena;
     button.classList.toggle("ready",visible);
     button.setAttribute("aria-hidden",visible?"false":"true");

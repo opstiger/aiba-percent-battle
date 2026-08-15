@@ -9,7 +9,7 @@ const childProcess=require("child_process");
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
 const legacyEntry="legacy.html";
-const snapshot="block-3pt-kingv2.18.5-modular.html";
+const snapshot="block-3pt-kingv2.19.5-modular.html";
 const requiredFiles=[
   entry,
   legacyEntry,
@@ -65,6 +65,10 @@ const requiredFiles=[
   "src/modes/percent-battle/opponent.js",
   "src/modes/percent-battle/results.js",
   "src/modes/percent-battle/index.js",
+  "src/modes/last-shot/config.js",
+  "src/modes/last-shot/squad.js",
+  "src/modes/last-shot/sequence.js",
+  "src/modes/last-shot/index.js",
   "src/ui/panels.js",
   "src/ui/loading.js",
   "src/ui/menu.js",
@@ -105,32 +109,50 @@ if(!entryHtml.includes('<script src="src/i18n.js?v=2.14-locker-orbit"></script>'
 if(!entryHtml.includes('<script src="src/core/runtime.js?v=refactor7"></script>'))fail("next runtime bridge missing");
 if(entryHtml.includes("player-id-sandbox")||entryHtml.includes("leaderboard-sandbox"))fail("entry must not load sandbox identity/leaderboard");
 if(!entryHtml.includes('<script src="src/recorder.js?v=refactor10"></script>'))fail("next recorder cache version missing");
-if(!entryHtml.includes('<script src="src/vision.js?v=2.13"></script>'))fail("next vision cache version missing");
-if(!entryHtml.includes('<script src="src/rendering/core.js?v=2.12"></script>'))fail("next rendering core missing");
+if(!entryHtml.includes('<script src="src/vision.js?v=2.19.5-unify"></script>'))fail("next vision cache version missing");
+if(!entryHtml.includes('<script src="src/rendering/core.js?v=2.19.5-hfov"></script>'))fail("next rendering core missing");
 for(const file of ["core/error-boundary","core/foundation","data/dialogue","core/state","services/audio-cues","ui/result-copy"]){
-  if(!entryHtml.includes(`<script src="src/${file}.js?v=refactor39"></script>`))fail(`next shell module missing ${file}`);
+  const version=file==="core/state"?"2.19.2-fp-lastshot":"refactor39";
+  if(!entryHtml.includes(`<script src="src/${file}.js?v=${version}"></script>`))fail(`next shell module missing ${file}`);
 }
-if(!entryHtml.includes('<script src="src/data/game-config.js?v=2.18.5-shared-ai-shot"></script>'))fail("next game config cache version missing");
+if(!entryHtml.includes('<script src="src/data/game-config.js?v=2.19.5-release"></script>'))fail("next game config cache version missing");
 
 if(entryHtml.indexOf('src/core/runtime.js')>entryHtml.indexOf('src/config.js'))fail("next runtime must load before config");
-if(entryHtml.indexOf('<script src="src/rendering/core.js?v=2.12"></script>')>entryHtml.indexOf('<script src="src/core/scene-init.js?v=refactor38"></script>'))fail("rendering core must load before scene construction");
+if(entryHtml.indexOf('<script src="src/rendering/core.js?v=2.19.5-hfov"></script>')>entryHtml.indexOf('<script src="src/core/scene-init.js?v=refactor38"></script>'))fail("rendering core must load before scene construction");
 if(!entryHtml.includes('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>'))fail("next legacy adapter missing");
 if(!entryHtml.includes('<script src="src/modes/rack-rush.js?v=refactor5b"></script>'))fail("next Rack Rush module missing");
 if(!entryHtml.includes('<script src="src/modes/contest.js?v=refactor5c"></script>'))fail("next contest module missing");
 if(!entryHtml.includes('<script src="src/modes/practice.js?v=refactor5a"></script>'))fail("next practice module missing");
 if(!entryHtml.includes('<script src="src/ui/panels.js?v=refactor7"></script>'))fail("next panels module missing");
 if(!entryHtml.includes('<script src="src/ui/loading.js?v=2.13"></script>'))fail("next loading module missing");
-if(!entryHtml.includes('<script src="src/ui/menu.js?v=cutover7"></script>'))fail("next menu module missing");
+if(!entryHtml.includes('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>'))fail("next menu module missing");
 if(!entryHtml.includes('<script src="src/ui/setup.js?v=refactor13"></script>'))fail("next setup module missing");
 if(!entryHtml.includes('<script src="src/ui/pregame.js?v=refactor15c"></script>'))fail("next pregame module missing");
 if(!entryHtml.includes('<script src="src/ui/pause.js?v=1.98"></script>'))fail("next pause module missing");
 if(!entryHtml.includes('<script src="src/core/bootstrap-next.js?v=cutover1"></script>'))fail("next bootstrap module missing");
 if(!entryHtml.includes('<script src="src/modes/percent-battle/state.js?v=refactor4c"></script>'))fail("next Percent Battle state module missing");
 if(!entryHtml.includes('<script src="src/modes/percent-battle/spots.js?v=refactor4b"></script>'))fail("next Percent Battle spots module missing");
-const percentBattleVersions={opponent:"2.18.5-shared-ai-shot",results:"refactor4a",index:"refactor4a"};
+const percentBattleVersions={opponent:"2.19.3-tstage",results:"refactor4a",index:"refactor4a"};
 for(const [file,version] of Object.entries(percentBattleVersions)){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js?v=${version}"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
+const lastShotModules=["config","squad","sequence","index"];
+const lastShotVersions={config:"2.19.5-roster",squad:"2.19.5-mob3",sequence:"2.19.5-celeb3",index:"2.19.5-unify3"};
+for(const file of lastShotModules){
+  if(!entryHtml.includes(`<script src="src/modes/last-shot/${file}.js?v=${lastShotVersions[file]}"></script>`))fail(`next Last Shot ${file} module missing`);
+}
+for(let i=1;i<lastShotModules.length;i++){
+  const prev=entryHtml.indexOf(`src/modes/last-shot/${lastShotModules[i-1]}.js`);
+  const cur=entryHtml.indexOf(`src/modes/last-shot/${lastShotModules[i]}.js`);
+  if(prev<0||cur<0||prev>cur)fail(`Last Shot module order broken at ${lastShotModules[i]}`);
+}
+if(entryHtml.includes("function beginLastShot(")||entryHtml.includes("function updateLastShot("))fail("next entry still contains inline Last Shot implementation");
+const lastShotLoop=read("src/core/game-loop.js");
+if(!lastShotLoop.includes("updateLastShotCam")||!lastShotLoop.includes("updPlayCam(dt)"))fail("Last Shot camera must fall back to shared updPlayCam");
+const lastShotInput=read("src/core/input.js");
+if(!/G\.state==="lastshot"/.test(lastShotInput))fail("Last Shot must be able to receive touch/keyboard shot input");
+if(!/G\.state==="lastshot"/.test(read("src/vision.js")))fail("Last Shot must be reachable by vision (体感) control");
+if(!/G\.mode!=="lastshot"/.test(read("src/rendering/props.js")))fail("Last Shot must hide the practice ball racks");
 if(entryHtml.includes("function startRackRush("))fail("next entry still contains inline Rack Rush implementation");
 if(entryHtml.includes("function beginStage(")||entryHtml.includes("function champion("))fail("next entry still contains inline contest implementation");
 if(entryHtml.includes("function startPractice(")||entryHtml.includes("function endPractice("))fail("next entry still contains inline practice implementation");
@@ -146,32 +168,32 @@ for(const token of ["const GAME_VERSION=","const G={","function triggerMakeRunVo
   if(entryHtml.includes(token))fail("next entry still contains inline shell ownership "+token);
 }
 if(entryHtml.includes("/* Renderer, camera, adaptive quality and base lights are owned"))fail("next entry still contains generated ownership placeholders");
-if(entryHtml.indexOf('src/core/foundation.js?v=refactor39')>entryHtml.indexOf('src/data/game-config.js?v=2.18.5-shared-ai-shot'))fail("foundation must load before game config");
-if(entryHtml.indexOf('src/data/game-config.js?v=2.18.5-shared-ai-shot')>entryHtml.indexOf('src/core/state.js?v=refactor39'))fail("game config must load before runtime state");
-if(entryHtml.indexOf('src/core/state.js?v=refactor39')>entryHtml.indexOf('src/services/audio-cues.js?v=refactor39'))fail("runtime state must load before audio cues");
+if(entryHtml.indexOf('src/core/foundation.js?v=refactor39')>entryHtml.indexOf('src/data/game-config.js?v=2.19.5-release'))fail("foundation must load before game config");
+if(entryHtml.indexOf('src/data/game-config.js?v=2.19.5-release')>entryHtml.indexOf('src/core/state.js?v=2.19.2-fp-lastshot'))fail("game config must load before runtime state");
+if(entryHtml.indexOf('src/core/state.js?v=2.19.2-fp-lastshot')>entryHtml.indexOf('src/services/audio-cues.js?v=refactor39'))fail("runtime state must load before audio cues");
 if(entryHtml.indexOf('src/services/audio-cues.js?v=refactor39')>entryHtml.indexOf('src/audio.js?v=2.19'))fail("audio cues must load before audio engine");
 if(entryHtml.indexOf('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>')>entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=refactor5b"></script>'))fail("legacy adapter must load before Rack Rush module");
 if(entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=refactor5b"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Rack Rush module must load before late hooks");
 if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("contest module must load before late hooks");
 if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>')>entryHtml.indexOf('<script src="src/modes/practice.js?v=refactor5a"></script>'))fail("contest module must load before practice module");
 if(entryHtml.indexOf('<script src="src/ui/panels.js?v=refactor7"></script>')>entryHtml.indexOf('<script src="src/ui/loading.js?v=2.13"></script>'))fail("panels must load before loading module");
-if(entryHtml.indexOf('<script src="src/ui/loading.js?v=2.13"></script>')>entryHtml.indexOf('<script src="src/ui/menu.js?v=cutover7"></script>'))fail("loading must load before menu module");
-if(entryHtml.indexOf('<script src="src/ui/menu.js?v=cutover7"></script>')>entryHtml.indexOf('<script src="src/ui/setup.js?v=refactor13"></script>'))fail("menu must load before setup module");
+if(entryHtml.indexOf('<script src="src/ui/loading.js?v=2.13"></script>')>entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>'))fail("loading must load before menu module");
+if(entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>')>entryHtml.indexOf('<script src="src/ui/setup.js?v=refactor13"></script>'))fail("menu must load before setup module");
 if(entryHtml.indexOf('<script src="src/ui/setup.js?v=refactor13"></script>')>entryHtml.indexOf('<script src="src/ui/pregame.js?v=refactor15c"></script>'))fail("setup must load before pregame module");
 if(entryHtml.indexOf('<script src="src/ui/pregame.js?v=refactor15c"></script>')>entryHtml.indexOf('<script src="src/ui/pause.js?v=1.98"></script>'))fail("pregame must load before pause module");
 if(entryHtml.indexOf('<script src="src/ui/pause.js?v=1.98"></script>')>entryHtml.indexOf('<script src="src/core/bootstrap-next.js?v=cutover1"></script>'))fail("pause module must load before bootstrap");
-if(!entryHtml.includes('<script src="src/navigation.js?v=1.98a"></script>'))fail("next navigation cache version missing");
-if(entryHtml.indexOf('<script src="src/core/bootstrap-next.js?v=refactor12"></script>')>entryHtml.indexOf('<script src="src/navigation.js?v=1.98a"></script>'))fail("boot must begin before navigation rewires the loading gate");
+if(!entryHtml.includes('<script src="src/navigation.js?v=2.19-lastshot5"></script>'))fail("next navigation cache version missing");
+if(entryHtml.indexOf('<script src="src/core/bootstrap-next.js?v=refactor12"></script>')>entryHtml.indexOf('<script src="src/navigation.js?v=2.19-lastshot5"></script>'))fail("boot must begin before navigation rewires the loading gate");
 if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>')>entryHtml.indexOf('<script src="src/modes/percent-battle/state.js?v=refactor4c"></script>'))fail("contest module must load before Percent Battle modules");
 for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"],["results","index"]]){
   if(entryHtml.indexOf(`src/modes/percent-battle/${pair[0]}.js`)>entryHtml.indexOf(`src/modes/percent-battle/${pair[1]}.js`))fail(`Percent Battle ${pair[0]} must load before ${pair[1]}`);
 }
-if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js?v=2.18.5-shared-ai-shot"></script>'))fail("Percent Battle opponent cache version missing");
+if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js?v=2.19.3-tstage"></script>'))fail("Percent Battle opponent cache version missing");
 if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js?v=refactor4a"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
-for(const token of ["v2.18.5 MODULAR","MODULAR / v2.18.5"])
+for(const token of ["v2.19.5 MODULAR","MODULAR / v2.19.5"])
   if(!entryHtml.includes(token))fail("visible version token missing "+token);
-if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.18.5";'))fail("GAME_VERSION must be v2.18.5");
+if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.19.5";'))fail("GAME_VERSION must be v2.19.5");
 const playerMeterGradient='<linearGradient id="ppGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#2e8bff"/><stop offset="55%" stop-color="#39d3ff"/><stop offset="78%" stop-color="#ffd23f"/><stop offset="100%" stop-color="#ff4040"/></linearGradient>';
 if(!entryHtml.includes(playerMeterGradient))fail("player power fill must preserve the original single-sweet-zone gradient");
 if((entryHtml.match(/class="ppSweet"/g)||[]).length!==1)fail("player power must expose exactly one sweet-zone marker");
@@ -213,12 +235,12 @@ if(!entryHtml.includes('<script src="src/player-id.js"></script>'))fail("player 
 if(!entryHtml.includes('<script src="src/leaderboard-api.js"></script>'))fail("leaderboard api script missing");
 if(!entryHtml.includes('<script src="src/leaderboard-ui.js?v=1.94"></script>'))fail("leaderboard ui script missing");
 if(!entryHtml.includes('<script src="src/share.js?v=2.01"></script>'))fail("share script missing");
-if(!entryHtml.includes('<script src="src/shot-physics.js?v=2.06"></script>'))fail("shot physics script missing");
+if(!entryHtml.includes('<script src="src/shot-physics.js?v=2.07-late-diag"></script>'))fail("shot physics script missing");
 if(!entryHtml.includes('<script src="src/result-stats.js?v=1.78"></script>'))fail("result stats script missing");
 if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.16-soft-voxel"></script>'))fail("equipment visual script missing");
 if(!entryHtml.includes('<script src="src/gear.js?v=2.15.5-hand-follow"></script>'))fail("gear script missing");
 if(!entryHtml.includes('<script src="src/avatar-customizer.js?v=2.15.5-hand-follow"></script>'))fail("avatar customizer script missing");
-if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.18.5-shared-ai-shot"></script>'))fail("shot motion script missing");
+if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.19.5-syncfp"></script>'))fail("shot motion script missing");
 if(!entryHtml.includes('<script src="src/roster-style.js?v=2.15.5-hand-follow"></script>'))fail("roster style script missing");
 if(!entryHtml.includes('<script src="src/rendering/character-visuals.js?v=2.16.2-human-proportion"></script>'))fail("voxel pro character visuals missing");
 if(entryHtml.indexOf('src/roster-style.js?v=2.15.5-hand-follow')>entryHtml.indexOf('src/rendering/character-visuals.js?v=2.16.2-human-proportion'))fail("voxel pro visuals must wrap roster styling");
@@ -230,10 +252,10 @@ if(!entryHtml.includes('<script src="src/face-overlays.js?v=1.1-realnames"></scr
 if(!entryHtml.includes('<script src="src/haptics.js?v=1.80"></script>'))fail("haptics script missing");
 if(!entryHtml.includes('<script src="src/visual-director.js?v=1.85"></script>'))fail("visual director script missing");
 if(!entryHtml.includes('<script src="src/audio.js?v=2.19"></script>'))fail("audio script missing");
-if(!entryHtml.includes('<script src="src/vision.js?v=2.13"></script>'))fail("vision script missing");
+if(!entryHtml.includes('<script src="src/vision.js?v=2.19.5-unify"></script>'))fail("vision script missing");
 if(!entryHtml.includes('<script src="src/ui/icons.js?v=1"></script>'))fail("local SVG icon script missing");
 if(!entryHtml.includes('<script src="src/ui/interactive-tutorial.js?v=2.05"></script>'))fail("interactive tutorial script missing");
-if(!entryHtml.includes('<script src="src/navigation.js?v=1.98a"></script>'))fail("navigation script missing");
+if(!entryHtml.includes('<script src="src/navigation.js?v=2.19-lastshot5"></script>'))fail("navigation script missing");
 if(!entryHtml.includes('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("game flow script missing");
 if(/<style>[\s\S]*?<\/style>/.test(entryHtml))fail("inline style block should stay split out");
 if(/const COVER_STARS=\[/.test(entryHtml)||/const EXT_AUDIO=\{/.test(entryHtml))fail("asset manifest data leaked back into html");
@@ -398,14 +420,26 @@ try{
 }catch(e){fail("shot physics pause check failed: "+e.message);}
 try{new Function(shotMotionScript);}
 catch(e){fail("shot motion script syntax error: "+e.message);}
-for(const key of ["AIBAMotion","restoreLegacy","installMotionHooks","boardHit","attachBall","STANCE_YAW","tuneGuideHand","captureGuideStart","captureReleasePose","followState","AIBAShotMotion","BALL_RELEASE_AT","completePendingRelease","pendingRelease"])
+for(const key of ["AIBAMotion","restoreLegacy","installMotionHooks","boardHit","attachBall","STANCE_YAW","captureReleasePose","followState","AIBAShotMotion","BALL_RELEASE_AT","completePendingRelease","pendingRelease"])
 if(!shotMotionScript.includes(key))fail("shot motion script missing "+key);
+for(const oldKey of ["tuneGuideHand","captureGuideStart"])
+  if(shotMotionScript.includes(oldKey))fail("shot motion duplicate hand controller remains "+oldKey);
 for(const key of ['function mirrorArm(','source.clone(true)','function syncArmMirror(','function syncFpRigFromPlayer(','rig.name="fpSharedPoseRig"','ballGrip:shoot.clone.getObjectByName("ballGrip")','clone.material=source.material','restoreFpBall();'])
   if(!shotMotionScript.includes(key))fail("shared first-person pose mirror missing "+key);
 if(shotMotionScript.includes("function animFpRig(c,phys,state)"))fail("first-person pose must not keep a second charge-animation formula");
 const sharedShotPose=read("src/rendering/motion.js");
-for(const key of ["function applyShotSetPose","planeK","shoot.rotation.z=mixN(shoot.rotation.z,0.10,planeK)","function applyShotFollowThroughPose","targetShootZ=0.06","shootEl.rotation.y=0"])
-if(!sharedShotPose.includes(key))fail("shared shot arm pose missing "+key);
+for(const key of ["SHOT_CATCH_POSE","SHOT_READY_POSE","SHOT_SET_POSE","SHOT_FOLLOW_POSE","handActorQuat","function applyShotSetPose","function applyShootingHandWorldFollow","function applyShotFollowThroughPose","pose.aq="])
+  if(!sharedShotPose.includes(key))fail("shared shot arm pose missing "+key);
+/* 迎球→持球→最高点必须是同一族关键帧：握球腕姿直接引用 SHOT_SET_POSE，
+   任何一处改回“各写一套腕姿”都会让手掌重新追不上小臂。 */
+for(const key of ["handQuat:SHOT_SET_POSE.shooting.handQuat","handQuat:SHOT_SET_POSE.guide.handQuat"])
+  if(!sharedShotPose.includes(key))fail("ready grip must reuse the T-stage hand quaternion: "+key);
+for(const oldKey of ["planeK","targetShootZ","SHOT_HOLD_POSE","SHOT_FOLLOW_POSE.shooting.handQuat"])
+  if(sharedShotPose.includes(oldKey))fail("legacy local-axis follow-through remains "+oldKey);
+/* v2.19.4 回归护栏：持球段一旦再用“球员局部绝对朝向”钉手腕，或用世界坐标反解
+   辅助手腕位，接球到最高点的双手就会重新乱转/脱节。 */
+for(const oldKey of ["READY_SHOOT_HAND_ACTOR_QUAT","READY_GUIDE_HAND_ACTOR_QUAT","blendHandActorQuat","applyActorLocalQuat","captureActorLocalQuat","worldToLocal(_holdTarget"])
+  if(sharedShotPose.includes(oldKey))fail("hold phase must stay parent-local, found "+oldKey);
 for(const key of ["releaseJump","lastJump","launchJump"])
   if(!shotPhysicsScript.includes(key))fail("shot physics continuity token missing "+key);
 if(!read("src/gameplay/shots.js").includes("afterPlayerLands"))fail("shot lifecycle must wait for landing before the next possession");
@@ -611,8 +645,12 @@ for(const token of ["rackShots.forEach(s=>q.push({type:\"shot\",s}))","it.from.d
   if(!contestCinematics.includes(token))fail("contest AI full-run behavior missing "+token);
 for(const token of ["contest_opponent_intro","contest_moneyrack","contest_finalrack","contest_final10","final_shot","function announceAIShowResult","TALK_STREAK_THREE","TALK_MISS_FIVE"])
   if(!contestCinematics.includes(token))fail("contest AI broadcast parity missing "+token);
-for(const token of ["g.ballGrips&&g.ballGrips[0]","applyHandFollowThroughPose(g,ease01((ph-.94)/.09))"])
-  if(!contestCinematics.includes(token))fail("contest hand follow-through missing "+token);
+/* 出手跟随必须复用玩家那一套 applyShotFollowThroughPose(伸肩肘 + 压腕)。
+   applyHandFollowThroughPose 只压腕，球出去了手臂还僵在最高点——就是"悬停空中"。 */
+for(const token of ["g.ballGrips&&g.ballGrips[0]","applyShotFollowThroughPose(g,st,it.shotPose)","captureShotPose(g)"])
+  if(!contestCinematics.includes(token))fail("contest follow-through must reuse the shared one: "+token);
+if(/applyHandFollowThroughPose\(g,ease01/.test(contestCinematics))
+  fail("contest must not fall back to the wrist-only follow-through (the arm freezes mid-air)");
 if(contestCinematics.includes("每架可视化2球"))fail("contest AI must not use the two-shot montage");
 const battleOpponent=read("src/modes/percent-battle/opponent.js");
 for(const token of ["function oppRepositionForPlayer","OPP.playerSpotSeen","candidates.sort"])
@@ -621,8 +659,9 @@ for(const token of ["oppPasser","function oppBeginPass","OPP.phase=\"receive\"",
   if(!battleOpponent.includes(token))fail("Percent Battle opponent pass sequence missing "+token);
 if(battleOpponent.includes("G.superStock=Math.max(0,(G.superStock||0)-1)"))fail("opponent attempt must not consume Logo chance");
 if(!battleOpponent.includes("applyHandFollowThroughPose(guy,hold)"))fail("Percent Battle opponent wrist follow-through missing");
-for(const token of ["function attachOppBall","guy.ball.getWorldPosition(start)","shotFlightTime(0.78+distance*0.062,G.myStar||opponent,spot)","applyShotSetPose(guy,curve,true)","captureShotPose","AIBAShotMotion"])
+for(const token of ["function attachOppBall","guy.ball.getWorldPosition(start)","shotFlightTime(0.78+distance*0.062,G.myStar||opponent,spot)","poseGuy(guy,curve,0)","captureShotPose","AIBAShotMotion"])
   if(!battleOpponent.includes(token))fail("Percent Battle opponent shared shot pose missing "+token);
+if(/applyShotSetPose\(guy|tuneGuideHandPose\(guy/.test(battleOpponent))fail("Percent Battle must not overwrite poseGuy hand transforms");
 const battleSpots=read("src/modes/percent-battle/spots.js");
 for(const token of ["if(spot.super)return;","function battleConsumeSuperChance","chanceId!==G.superChanceId","G.superResolvedId=chanceId"])
   if(!battleSpots.includes(token))fail("shared Logo make-only opportunity missing "+token);
@@ -704,29 +743,180 @@ for(const token of ['runtime.register("rendering:motion"',"function shotCurves",
   if(!renderingMotion.includes(token))fail("rendering motion token missing "+token);
 for(const token of ["SHOT_STANCE_YAW","function shotStanceBlend","function tuneGuideHandPose"])
   if(!renderingMotion.includes(token))fail("shared shot pose token missing "+token);
-for(const token of ["function poseHandJoints","function poseShootingHandToBall","function poseGuidePalmToBall","function applyHandFollowThroughPose","function captureShotPose","function applyShotSetPose","function applyShotFollowThroughPose","SHOOT_HAND_CUP_OFFSET={y:-.045,z:.055}","HAND_FINGER_FOLLOW=[.14,.38,Math.PI/6,.16]","GUIDE_PALM_INWARD_Y=-1.48","shoot.rotation.x+=(1.18-shoot.rotation.x)*follow","poseShootingHandToBall(o,c)","poseGuidePalmToBall(o,c,ready)"])
+for(const token of [
+  "function poseHandJoints","function poseShootingHandToBall","function poseGuidePalmToBall","function poseCatchHands",
+  "function applyHandFollowThroughPose","function captureShotPose","function applyShotSetPose","function applyShootingHandWorldFollow",
+  "function applyShotFollowThroughPose","SHOT_SET_BALL={x:-.106,y:1.8962,z:.3201}",
+  "handActorQuat:Object.freeze([-Math.SQRT1_2,0,0,Math.SQRT1_2])","HAND_FINGER_FOLLOW=[.14,.38,Math.PI/6,.16]",
+  "_shotPoseDesiredQuat.copy(_shotPoseActorQuat).invert().multiply(_shotPoseWorldQuat)",
+  "shoot.quaternion.copy(_shotPoseParentQuat.invert().multiply(_shotPoseWorldQuat))"
+])
   if(!renderingMotion.includes(token))fail("shared wrist follow-through token missing "+token);
+for(const removed of ["STATIC_HOLD_DEBUG","applyStaticBallHoldPose","BALL_IN_ELBOW","SHOOT_HAND_PITCH","GUIDE_PALM_YAW"])
+  if(renderingMotion.includes(removed))fail("obsolete hand controller remains "+removed);
+if((renderingMotion.match(/function applyShotSetPose\(/g)||[]).length!==1||
+  (renderingMotion.match(/^\s*applyShotSetPose\(o,c\);/gm)||[]).length!==1)
+  fail("applyShotSetPose must have one definition and one poseGuy call");
+if(!renderingCharacters.includes('ballGrip.position.set(.012341,-.108954,-.193745)'))fail("handRig ballGrip must match the T-stage ball center");
+for(const token of ["upperArms.push(up)","forearms.push(fo)",'fingerRoot.position.set(i*.028,-.128,-.015)'])
+  if(!renderingCharacters.includes(token))fail("T-stage adjustable arm rig missing "+token);
+if(!renderingCharacters.includes('const handSide=x<0?1:-1'))fail("thumb side must face between the two hands");
+if(!read("src/shot-motion.js").includes("const parent=player.ballGrips&&player.ballGrips[0];"))fail("player ball must use the handRig ballGrip");
+if(/parent===player\.elbows\[0\]|pBall\.position\.set\(\.01,-\.105,\.065\)/.test(read("src/shot-motion.js")))
+  fail("legacy elbow ball anchor fallback remains");
 try{
+  const THREE=require(path.join(root,"vendor/three.min.r128.js"));
   let motionApi=null;
   const motionSandbox={
+    THREE,
     clamp:(v,a,b)=>Math.max(a,Math.min(b,v)),
     window:{AIBA:{runtime:{register:(name,api)=>{if(name==="rendering:motion")motionApi=api;}}}}
   };
+  motionSandbox.globalThis=motionSandbox;
   vm.runInNewContext(renderingMotion,motionSandbox);
-  const rotation=()=>({x:0,y:0,z:0});
-  const fingers=()=>Array.from({length:4},()=>({rotation:rotation()}));
-  const position=()=>({x:0,y:0,z:0,set(x,y,z){this.x=x;this.y=y;this.z=z;}});
-  const pose={handRoots:[{rotation:rotation(),position:position()},{rotation:rotation(),position:position()}],fingerJoints:[fingers(),fingers()]};
-  motionApi.poseHandJoints(pose,{lift:1});
-  motionApi.poseShootingHandToBall(pose,{dip:0,lift:1,jmp:0});
-  if(pose.handRoots[0].position.y>=-.29||pose.handRoots[0].position.z<=.01)fail("shooting hand must cup toward the held ball during lift");
-  motionApi.poseGuidePalmToBall(pose,{dip:0,lift:1,jmp:0},true);
-  if(Math.abs(pose.handRoots[1].rotation.y+1.48)>.001)fail("guide palm must face inward toward the ball");
-  const guideBefore={...pose.handRoots[1].rotation};
-  motionApi.applyHandFollowThroughPose(pose,1);
-  if(Object.keys(guideBefore).some(axis=>Math.abs(pose.handRoots[1].rotation[axis]-guideBefore[axis])>.001))fail("shooting follow-through must not flip the guide palm");
-}catch(e){fail("guide palm pose check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=refactor23a','src/rendering/characters.js?v=2.16.2-human-proportion','src/rendering/camera.js?v=2.18-shared-fp-pose','src/rendering/motion.js?v=2.18.5-shared-ai-shot'])
+  if(!motionApi)fail("rendering motion runtime API did not register");
+  const actor={g:new THREE.Group(),baseShoulderX:.285,arms:[],elbows:[],handRoots:[],fingerJoints:[],ballGrips:[],legs:[],knees:[],ankles:[],shoes:[]};
+  for(let i=0;i<2;i++){
+    const arm=new THREE.Group(),elbow=new THREE.Group(),hand=new THREE.Group(),grip=new THREE.Group();
+    actor.g.add(arm);arm.add(elbow);elbow.add(hand);hand.add(grip);
+    actor.arms.push(arm);actor.elbows.push(elbow);actor.handRoots.push(hand);actor.ballGrips.push(grip);
+    actor.fingerJoints.push(Array.from({length:4},()=>{const finger=new THREE.Group();hand.add(finger);return finger;}));
+    grip.position.set(.012341,-.108954,-.193745);
+    actor.legs.push(new THREE.Group());actor.knees.push(new THREE.Group());actor.ankles.push(new THREE.Group());actor.shoes.push(new THREE.Group());
+  }
+  const resetSet=()=>{
+    motionApi.poseHandJoints(actor,{lift:1});
+    motionApi.applyShotSetPose(actor,{lift:1},true);
+    actor.g.updateMatrixWorld(true);
+  };
+  resetSet();
+  const setBall=actor.ballGrips[0].getWorldPosition(new THREE.Vector3());
+  const expectedBall=new THREE.Vector3(-.106,1.8962,.3201);
+  if(setBall.distanceTo(expectedBall)>=1e-3)fail(`T-stage ball center drifted by ${setBall.distanceTo(expectedBall).toFixed(6)}`);
+
+  // 接球与前段蓄力必须继续走旧曲线；只有末段才收敛到上面的 T台最高点。
+  motionSandbox.player=actor;
+  motionSandbox.G={canShoot:true,charging:false};
+  const curve=(lift,dip=0,jmp=0)=>({lift,dip,rise:0,jmp,over:0});
+  const actorHandQuat=hand=>{
+    actor.g.updateMatrixWorld(true);
+    const world=hand.getWorldQuaternion(new THREE.Quaternion());
+    const rootQ=actor.g.getWorldQuaternion(new THREE.Quaternion());
+    return rootQ.invert().multiply(world).normalize();
+  };
+  /* 持球帧必须与最高点同一种握球方式：腕部相对前臂一格都不许转。
+     只要这两个夹角不是 0，抬球段的手掌就又开始自己拧了。 */
+  const topHandQuat=actor.handRoots[0].quaternion.clone(),topGuideHandQuat=actor.handRoots[1].quaternion.clone();
+  motionApi.poseGuy(actor,curve(0),0);
+  if(actor.handRoots[0].quaternion.angleTo(topHandQuat)>1e-5||actor.handRoots[1].quaternion.angleTo(topGuideHandQuat)>1e-5)
+    fail("ready grip must match the T-stage wrist exactly");
+  if(actor.g.userData.shotSetPosePhase!=="ready-hold")fail("ready must sit on the hold keyframe");
+  /* 抬球全程扫描：球心只能往上走(球硬挂在投篮手上，往回掉就是姿势在打架)、
+     手腕必须留在前臂末端、逐帧角速度不许炸。阈值取实测值 4.77°/步的 2 倍余量。 */
+  motionSandbox.G.canShoot=false;motionSandbox.G.charging=true;
+  let prevHand=null,prevBall=null,worstStep=0,ballDrops=0,wristOff=0,ballReach=0;
+  const LIFT_STEPS=22;
+  for(let i=0;i<=LIFT_STEPS;i++){
+    motionApi.poseGuy(actor,curve(i/LIFT_STEPS),0);
+    actor.g.updateMatrixWorld(true);
+    const ball=actor.ballGrips[0].getWorldPosition(new THREE.Vector3());
+    const handQ=actor.handRoots[0].getWorldQuaternion(new THREE.Quaternion());
+    if(prevHand)worstStep=Math.max(worstStep,prevHand.angleTo(handQ)*180/Math.PI);
+    if(prevBall&&ball.y<prevBall.y-1e-4)ballDrops++;
+    actor.handRoots.forEach(hand=>{wristOff=Math.max(wristOff,Math.hypot(hand.position.x,hand.position.z));});
+    ballReach=Math.max(ballReach,ball.z);
+    prevHand=handQ;prevBall=ball;
+  }
+  if(worstStep>10)fail(`lift whips the shooting hand at ${worstStep.toFixed(1)}deg per step`);
+  if(ballDrops)fail(`ball center dips ${ballDrops}x while the arm lifts`);
+  if(wristOff>.02)fail(`wrist left the forearm end by ${wristOff.toFixed(3)} (no world-space IK on the hold phase)`);
+  if(ballReach>.75)fail(`ball swings ${ballReach.toFixed(2)} in front of the body during the lift`);
+  motionSandbox.G.charging=false;
+
+  motionSandbox.G.charging=false;motionSandbox.G.canShoot=false;
+  motionApi.poseGuy(actor,curve(0),0);
+  const catchState={active:true,progress:1};
+  motionApi.poseCatchHands(actor,catchState,0);
+  const catchGuide=actor.arms[1].quaternion.clone();
+  motionSandbox.G.canShoot=true;
+  motionApi.poseGuy(actor,curve(0),0);
+  const readyGuide=actor.arms[1].quaternion.clone();
+  const catchGap=catchGuide.angleTo(readyGuide);
+  const settleSeconds=parseFloat((/CATCH_SETTLE_SECONDS=([\d.]+)/.exec(sharedShotPose)||[])[1]);
+  if(!(settleSeconds>0))fail("catch settle duration must be declared");
+  const settleFrames=Math.ceil(settleSeconds*60);
+  catchState.settling=true;catchState.settle=0;
+  for(let i=0;i<Math.floor(settleFrames/2);i++){motionApi.poseGuy(actor,curve(0),0);motionApi.poseCatchHands(actor,catchState,1/60);}
+  const midGap=actor.arms[1].quaternion.angleTo(readyGuide);
+  for(let i=0;i<settleFrames;i++){motionApi.poseGuy(actor,curve(0),0);motionApi.poseCatchHands(actor,catchState,1/60);}
+  const settledGap=actor.arms[1].quaternion.angleTo(readyGuide);
+  if(midGap>=catchGap*.75||settledGap>.01||catchState.active)fail("catch-to-ready bridge must settle continuously instead of switching pose in one frame");
+
+  /* 压腕必须晚于球脱手：ballGrip 在掌心前方 19cm，压腕会把球从掌上翻到掌下。
+     两个常量必须对齐，否则球会在 release 前先掉下去。 */
+  /* 传球飞行时长与 shots.js 的供球间隔预算必须同步，否则调快慢传球会连带改掉整关节奏。 */
+  const rushPass=/PASS_FLIGHT_RUSH=Object\.freeze\(\{([^}]*)\}\)/.exec(sharedShotPose);
+  if(!rushPass)fail("rack rush pass flight timing must be declared as PASS_FLIGHT_RUSH");
+  else{
+    const num=key=>parseFloat((new RegExp(key+":([\\d.]+)").exec(rushPass[1])||[])[1]);
+    const mid=(num("min")+num("max"))/2;
+    if(!(num("min")>=.3))fail(`rack rush pass flight ${num("min")}s is too fast to read`);
+    if(Math.abs(num("budget")-mid)>.03)fail(`pass flight budget ${num("budget")} does not track the ${mid} midpoint`);
+    if(!read("src/gameplay/shots.js").includes("PASS_FLIGHT_RUSH.budget"))
+      fail("rack rush feed delay must derive its flight budget from PASS_FLIGHT_RUSH");
+  }
+  /* 出手跟随与接球必须叠加，二选一会把跟随姿势整个丢掉。 */
+  if(!/if\(follow\.active\)applyFollowThroughPose/.test(shotMotionScript))
+    fail("follow-through must keep posing while the catch reaches out");
+  const wristDelay=/SHOT_WRIST_SNAP_DELAY=([\d.]+)/.exec(sharedShotPose);
+  const ballReleaseAt=/BALL_RELEASE_AT=([\d.]+)/.exec(shotMotionScript);
+  if(!wristDelay||!ballReleaseAt)fail("wrist-snap delay and ball release time must both be declared");
+  else if(Math.abs(parseFloat(wristDelay[1])-parseFloat(ballReleaseAt[1]))>1e-6)
+    fail(`wrist snap starts at ${wristDelay[1]} but the ball leaves at ${ballReleaseAt[1]}`);
+  const releaseAt=parseFloat(ballReleaseAt[1]),extendSeconds=.105;
+  const smooth=t=>{t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);};
+  /* 出手段扫描：球心必须一路升到脱手那一刻(= 从托着球的手掌直接送出去)，
+     且脱手瞬间球仍在手腕上方、掌心还朝上托着，不能已经压到朝地。 */
+  let releaseBallY=null,liftDrops=0,prevBallY=null,ballOverWrist=null,palmUpAtRelease=null;
+  for(let age=0;age<=releaseAt+1e-9;age+=1/240){
+    resetSet();
+    motionApi.applyShotFollowThroughPose(actor,{active:true,extend:smooth(age/extendSeconds),recover:0,follow:1,age},motionApi.captureShotPose(actor));
+    actor.g.updateMatrixWorld(true);
+    const ball=actor.ballGrips[0].getWorldPosition(new THREE.Vector3());
+    if(prevBallY!=null&&ball.y<prevBallY-1e-4)liftDrops++;
+    prevBallY=ball.y;releaseBallY=ball.y;
+    const wrist=actor.handRoots[0].getWorldPosition(new THREE.Vector3());
+    ballOverWrist=ball.y-wrist.y;
+    palmUpAtRelease=new THREE.Vector3(0,0,-1).applyQuaternion(actor.handRoots[0].getWorldQuaternion(new THREE.Quaternion())).y;
+  }
+  if(liftDrops)fail(`ball dips ${liftDrops}x before it leaves the hand`);
+  if(releaseBallY<=setBall.y)fail(`release point ${releaseBallY.toFixed(3)} is not above the set point ${setBall.y.toFixed(3)}`);
+  if(ballOverWrist<.08)fail(`ball sits ${ballOverWrist.toFixed(3)} above the wrist at release (wrist snapped too early)`);
+  if(palmUpAtRelease<.5)fail(`palm already turned over at release (up component ${palmUpAtRelease.toFixed(2)})`);
+
+  resetSet();
+  const releasePose=motionApi.captureShotPose(actor);
+  if(!releasePose||!releasePose.release.hand.aq)fail("release pose must capture the shooting hand in actor-local space");
+  let midPalm=null,finalPalm=null,finalFinger=null,finalSide=null;
+  for(const progress of [0,.1,.2,.3,.4,.5,.6,.7,.8,.9,1]){
+    resetSet();
+    motionApi.applyShotFollowThroughPose(actor,{active:true,extend:progress,follow:progress,recover:0},releasePose);
+    actor.g.updateMatrixWorld(true);
+    const q=actor.handRoots[0].getWorldQuaternion(new THREE.Quaternion());
+    const palm=new THREE.Vector3(0,0,-1).applyQuaternion(q);
+    const finger=new THREE.Vector3(0,-1,0).applyQuaternion(q);
+    const side=new THREE.Vector3(1,0,0).applyQuaternion(q);
+    if(Math.abs(palm.x)>.31)fail(`wrist snap twists sideways at ${progress.toFixed(1)}: ${palm.x.toFixed(3)}`);
+    if(palm.z<-.001)fail(`wrist snap must rotate through the hoop direction at ${progress.toFixed(1)}`);
+    if(progress===.5)midPalm=palm;
+    if(progress===1){finalPalm=palm;finalFinger=finger;finalSide=side;}
+  }
+  if(!midPalm||midPalm.z<.95||Math.abs(midPalm.x)>.15)fail("wrist snap midpoint must face the hoop without a side flip");
+  if(!finalPalm||finalPalm.y>-.995||Math.abs(finalPalm.x)>.01||Math.abs(finalPalm.z)>.01)fail("follow-through palm must finish facing the ground");
+  if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
+  if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
+}catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.5-catchpose','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.5-mob3','src/modes/last-shot/sequence.js?v=2.19.5-celeb3'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -741,8 +931,9 @@ for(const token of ['if(G.state!=="victorycine"){stopVictoryCine();return;}','se
 const percentBattleState=read("src/modes/percent-battle/state.js");
 if(!percentBattleState.includes("function resetBattleState(){\n    stopVictoryCine();"))
   fail("Percent Battle reset must cancel stale victory cinematics");
-for(const token of ["function attachShowBall","getWorldPosition(_showReleasePos)","function setAIShowActors","tuneGuideHandPose(g,c,true)","applyShotSetPose(g,c,true)","G.myStar||show.o"])
+for(const token of ["function attachShowBall","getWorldPosition(_showReleasePos)","function setAIShowActors","poseGuy(g,c,0)","G.myStar||show.o"])
   if(!presentationCinematics.includes(token))fail("contest opponent presentation fix missing "+token);
+if(/applyShotSetPose\(g|tuneGuideHandPose\(g/.test(presentationCinematics))fail("contest presentation must not overwrite poseGuy hand transforms");
 const presentationPregame=read("src/presentation/pregame.js");
 for(const token of ['runtime.register("presentation:pregame"',"const PREGAME=","function startPreGameShow","function updPreGameShow"])
   if(!presentationPregame.includes(token))fail("presentation pregame token missing "+token);
@@ -751,7 +942,7 @@ for(const token of ["function pregameSmoothPose","pregameSmoothPose(a.guy,dt)","
 const presentationBattle=read("src/presentation/battle.js");
 for(const token of ['runtime.register("presentation:battle"',"function updBattleCut","function checkBattleOvertake","function battleScoreCallout"])
   if(!presentationBattle.includes(token))fail("presentation battle token missing "+token);
-for(const token of ['src/rendering/effects.js?v=refactor27','src/presentation/cinematics.js?v=2.18.5-shared-ai-shot','src/presentation/pregame.js?v=refactor29c','src/presentation/battle.js?v=refactor30'])
+for(const token of ['src/rendering/effects.js?v=refactor27','src/presentation/cinematics.js?v=2.19.5-unify2','src/presentation/pregame.js?v=refactor29c','src/presentation/battle.js?v=refactor30'])
   if(!entryHtml.includes(token))fail("next entry missing presentation module "+token);
 for(const token of ["function startHero(","function startAIShow(","function startVictoryCine(","function startPreGameShow(","function battleScoreCallout(","function startConfetti("])
   if(entryHtml.includes(token))fail("next entry still contains inline presentation "+token);
@@ -769,6 +960,310 @@ if(gameplayShots.includes("b.vel.y*=-0.42"))fail("legacy underinflated floor bou
 for(const token of ["function playRimImpactSound","b.rimSoundPlayed","playRimImpactSound(b,b.rin)","playRimImpactSound(b,false)"])
   if(!gameplayShots.includes(token))fail("rim impact sound route missing "+token);
 if(!gameplayShots.includes('announceAIShowResult(b,true)')||!gameplayShots.includes('announceAIShowResult(b,false)'))fail("contest AI shot results must feed broadcast commentary");
+if(!gameplayShots.includes('G.mode!=="lastshot"&&!G.practice'))fail("Last Shot must bypass hero moment camera");
+if(!renderingMotion.includes("G.passCatch={active:true,progress:0,target:catchP.clone()}")||
+  !renderingMotion.includes("G.passCatch.active=k<1")||!renderingMotion.includes("G.passCatch.settling=true"))
+  fail("shared pass must drive incoming catch and the catch-to-ready bridge");
+if(!read("src/shot-motion.js").includes("poseCatchHands(player,catchState,dt)"))fail("shared shot loop must advance the catch settle bridge");
+const lastShotSquad=read("src/modes/last-shot/squad.js");
+for(const token of ["function startPostShot","function updatePostShot","function startReaction","poseWatcher","headTrack","REACTION_ALLY_MADE","REACTION_FOE_MADE"])
+  if(!lastShotSquad.includes(token))fail("Last Shot post-shot reaction token missing "+token);
+/* headRoot 的原点在球员局部 y≈0.203，头网格却在它局部 y=1.62：直接写 rotation
+   会让头沿 1.39m 半径公转飞出身体(实测抬头 .58rad 漂 0.797m)。旋转后必须用
+   pivotHead 把旋转中心搬回脖子，且常量要跟 characters.js 的 VOXEL_HEAD_PIVOT_Y 一致。 */
+if(!lastShotSquad.includes("function pivotHead"))fail("Last Shot head rotation must re-pivot to the neck");
+{
+  const squadPivot=/HEAD_PIVOT_Y=([\d.]+)/.exec(lastShotSquad);
+  const charPivot=/VOXEL_HEAD_PIVOT_Y=([\d.]+)/.exec(read("src/rendering/characters.js"));
+  if(!squadPivot||!charPivot)fail("head pivot constants must be declared on both sides");
+  else if(Math.abs(parseFloat(squadPivot[1])-parseFloat(charPivot[1]))>1e-6)
+    fail(`Last Shot head pivot ${squadPivot[1]} does not match the rig pivot ${charPivot[1]}`);
+  // 两条姿势路径(跑动编排 + 出手后反应)都必须收尾调用，否则只修好一半
+  if((lastShotSquad.match(/pivotHead\(actor\.guy\)/g)||[]).length<2)
+    fail("pivotHead must run on both the choreography and the post-shot pose paths");
+}
+/* 跑动摆幅必须由速度主导：原来站着不动也摆 0.28rad，全场看着像原地踏步。
+   跑动速度必须取纯路径差分，用 actor.pos 差分会把 separate() 的推挤算成跑动。 */
+if(/const swing=0\.28\+/.test(lastShotSquad))fail("idle actors must not keep swinging their legs");
+if(!/actor\.speed=prev\?/.test(lastShotSquad))fail("runner speed must come from path sampling, not separated positions");
+if(!lastShotSquad.includes("function poseDribble"))fail("the ball handler must actually dribble instead of holding a frozen ball");
+/* 对位防守必须是"有延迟、有惯性"的追踪，不能再让防守人跟着手写路点与进攻人同频同步。
+   DEF_ACCEL 是决定性的一个数：给太高会瞬间补掉感知延迟，重新退化成完美跟随。 */
+for(const token of ["function steerTo","function trailAt","function recordTrail","function markTarget","function updateOnBall","function contestLevel"])
+  if(!lastShotSquad.includes(token))fail("defensive tracking model missing "+token);
+{
+  const num=key=>{const m=new RegExp(key+"=([\\d.]+)").exec(lastShotSquad);return m?parseFloat(m[1]):NaN;};
+  const react=num("DEF_REACTION"),accel=num("DEF_ACCEL"),markSpeed=num("DEF_MARK_SPEED"),closeout=num("DEF_CLOSEOUT_SPEED");
+  if(!(react>=.18&&react<=.35))fail(`defender reaction ${react}s is outside the measured 0.2-0.3s window`);
+  if(!(accel<=9))fail(`defender accel ${accel}m/s2 is high enough to erase the reaction delay (perfect tracking again)`);
+  if(!(markSpeed<4.9))fail(`defender top speed ${markSpeed} must stay under the handler's 4.95m/s peak so crossovers create separation`);
+  if(!(closeout>=4&&closeout<=7.5))fail(`closeout speed ${closeout} is outside the measured 4-7.5m/s range`);
+  if(!/actor\.speed=steerTo\(actor,tgt\.x,tgt\.z/.test(lastShotSquad))
+    fail("man-to-man defenders must steer toward the delayed read, not follow scripted waypoints");
+}
+// 冲刺庆祝不能是写死的对称双臂——那就是"双手交叉在胸前像叉车"
+if(/action==="rush"\|\|action==="push"\)\{\s*guy\.arms\[0\]\.rotation\.x=-1\.12/.test(lastShotSquad))
+  fail("charging celebration must not freeze both arms into the same crossed pose");
+if(!lastShotSquad.includes("function poseContestJump"))fail("the on-ball defender must be able to jump and contest");
+if(!lastShotSquad.includes("function poseBoxOut")||!lastShotSquad.includes("BOX_OUT_SPOTS"))
+  fail("bigs must box out under the rim once the shot is up");
+/* 盯你的人必须堵在你与篮筐之间(投篮路线上)。用"保持防守人当前方位角"靠近的写法
+   会让他从哪边来就停在哪边，永远在侧面防守。 */
+if(!/const spot=markTarget\(playerPos,gap\);/.test(lastShotSquad))
+  fail("on-ball defender must close out onto the shooting line, not from whatever side he came");
+if(/const tx=playerPos\.x\+dx\/d\*gap/.test(lastShotSquad))
+  fail("on-ball closeout must not preserve the defender's current bearing");
+// 持球拖延要有递增压迫：贴得更近 + 手举更高，否则"等很久也没人来"
+if(!lastShotSquad.includes("function poseContestHands")||!/actor\.pressure=/.test(lastShotSquad))
+  fail("holding the ball too long must ramp up on-ball pressure");
+/* 跑动姿势全项目只能有一套：实现在 motion.js 的 poseRunCycle，
+   步频必须由位移驱动(按 dt 推进相位会让腿和位移脱钩，脚在地上滑)。
+   任何模块都不许再自己写一遍腿部循环。 */
+{
+  if(!renderingMotion.includes("function poseRunCycle"))
+    fail("the shared run cycle must live in rendering/motion.js");
+  if(!/state\.phase=\(state\.phase\|\|0\)\+\(speed\*dt\/stride\)\*Math\.PI;/.test(renderingMotion))
+    fail("stride must be driven by distance travelled, not by elapsed time (foot sliding)");
+  if(!/poseRunCycle\(actor\.guy,actor,speed,dt/.test(lastShotSquad))
+    fail("Last Shot must reuse the shared run cycle");
+  const cine=read("src/presentation/cinematics.js");
+  if(!cine.includes("poseRunCycle("))fail("AI show must reuse the shared run cycle");
+  if(/g\.legs\[0\]\.rotation\.x=sw\*0\.6/.test(cine))
+    fail("AI show must not keep its own time-driven leg swing");
+}
+// 你出手时没人反应是最假的：近处大概率起跳，其余至少举手
+if(!lastShotSquad.includes("CONTEST_JUMP_CHANCE")||!/actor\.handsUp/.test(lastShotSquad))
+  fail("defenders must either jump or at least get a hand up when you shoot");
+/* 手势安全：绝不允许"单臂接近伸直 + 斜前上方"。举手一律接近垂直，靠 rotation.z 挥动。
+   guardArms 是运行时兜底，必须挂在两条姿势路径的收尾。 */
+if(!lastShotSquad.includes("function guardArms")||(lastShotSquad.match(/guardArms\(actor\.guy\)/g)||[]).length<2)
+  fail("arm-gesture safety guard must run on both pose paths");
+for(const banned of ["arms[0].rotation.x=-1.85","arms[0].rotation.x=-1.34","arms[0].rotation.x=-1.52-.44"])
+  if(lastShotSquad.includes(banned))fail("celebration must not raise a straight arm forward-diagonally: "+banned);
+{
+  const lift=/lift:-2\.72-Math\.random\(\)\*\.30/.test(lastShotSquad);
+  if(!lift)fail("raised arms must stay near vertical");
+  // 十个人不能一模一样：幅度/频率/惯用手都要有个体差异
+  for(const key of ["style","amp:","rate:","swing:","hand:","both:","bias:"])
+    if(!lastShotSquad.includes(key))fail("per-actor gesture variation missing "+key);
+  /* 举手不能整条手臂绷直(小臂要有自然倾斜)，挥动的内摆要收着，否则手会扫进头里。 */
+  if(!lastShotSquad.includes("function swingZ")||!lastShotSquad.includes("ARM_OUT"))
+    fail("raised-arm swing must be biased outward so hands never clip the head");
+  if(/elbows\[hand\]\.rotation\.x=-\.(1|2|3)\d/.test(lastShotSquad))
+    fail("celebration elbows must stay bent (a locked-straight arm looks rigid)");
+}
+{
+  const seq=read("src/modes/last-shot/sequence.js");
+  /* 结果一定下来就反应，不能等球在地上弹完才开始庆祝/懊恼。 */
+  if(!seq.includes("function ballSettled")||!/ballSettled\(activeBall\)/.test(seq))
+    fail("reactions must fire the moment the result is decided, not after the ball stops bouncing");
+  if(/!LS\.reactionStarted&&!activeBall&&/.test(seq))
+    fail("miss reaction must not wait for the ball to be removed");
+}
+// 打铁时离篮筐最近的两人必须去抢板，球在空中时也要有人跟进
+if(!lastShotSquad.includes("boarders")||!lastShotSquad.includes("function poseTrailIn"))
+  fail("a miss must send the two nearest players after the rebound, and others should trail in");
+{
+  const seq=read("src/modes/last-shot/sequence.js");
+  // 出手后比赛钟必须继续走
+  if(/if\(!LS\.released\)updClock\(clock\)/.test(seq))fail("game clock must keep running after the release");
+  if(!/FOUL_CHANCE/.test(seq)||!/andOne/.test(seq))fail("shooting fouls (3 shots / and-one) must be possible");
+  /* 第一人称相机高度：FP_RISE 与 FP_BALL_DUCK 是一对耦合参数，
+     举球到位的最终高度 = EYE + FP_RISE - FP_BALL_DUCK 必须保持 1.60m(既有投篮取景)。
+     FP_RISE 过大(曾经 0.28 → 相机 2.06m)会高过防守人头顶，投完只能看到对方头发，
+     接球时投篮手也被压出画面下缘。 */
+  {
+    const cam=read("src/rendering/camera.js");
+    const rise=/FP_RISE=([\d.]+)/.exec(cam),duck=/FP_BALL_DUCK=([\d.]+)/.exec(cam);
+    if(!rise||!duck)fail("first-person camera height constants must be declared");
+    else{
+      const r=parseFloat(rise[1]),k=parseFloat(duck[1]),EYE=1.78;
+      if(r>.12)fail(`FP_RISE ${r} puts the camera above defenders' heads (only their hair is visible)`);
+      const shotY=EYE+r-k;
+      if(Math.abs(shotY-1.60)>.03)fail(`raised-ball camera height ${shotY.toFixed(2)} drifted from the tuned 1.60m`);
+    }
+    if(/fpRise-=clamp\(\(rel\+0\.25\)\/0\.45/.test(cam))
+      fail("the duck curve must engage while the ball is still at waist height, not only near eye level");
+    if(!/rig\.pos\.set\(eye\.x-dir\.x\*0\.85,eye\.y\+\(typeof FP_RISE/.test(read("src/modes/last-shot/sequence.js")))
+      fail("Last Shot watch camera must share FP_RISE instead of hardcoding its own lift");
+  }
+  /* 竖屏必须按 Hor+ 补偿视野。THREE 的 fov 是垂直视角，竖屏(aspect≈0.46)时
+     垂直 68° 只换算出 35° 的水平视角，贴脸的防守人会糊满半屏、自己的手被挤出画面。 */
+  {
+    const core=read("src/rendering/core.js");
+    if(!core.includes("function fovForAspect")||!/camera\.fov=fovForAspect/.test(core))
+      fail("portrait must widen the vertical fov to keep a usable horizontal FOV (Hor+)");
+    const maxV=/MAX_VFOV=(\d+)/.exec(core);
+    if(!maxV)fail("the vertical fov cap must be declared");
+    else{
+      const m=parseInt(maxV[1],10);
+      if(m<80)fail(`MAX_VFOV ${m} is too tight — portrait horizontal FOV stays cramped`);
+      if(m>95)fail(`MAX_VFOV ${m} distorts perspective in portrait`);
+    }
+    // 横屏不能被改宽：宽屏下仍是原来的 68° 垂直视角
+    if(!/Math\.max\(BASE_VFOV,/.test(core))
+      fail("landscape must keep the original 68deg vertical fov");
+  }
+  /* 球一到手身体必须朝篮筐。传球结束后 LS.pass 被清空，如果朝向目标退回"看持球人"，
+     身体会转向左路的核心，投篮手和球被甩出画面左侧(实测腕 NDC x=-1.27、球 -1.50)。 */
+  {
+    const seq=read("src/modes/last-shot/sequence.js");
+    if(!/const inHand=G\.canShoot&&!LS\.released;/.test(seq))
+      fail("body orientation must know when the ball is in hand");
+    if(!/const target=\(inHand\|\|!handler\)\?V3\(HOOP\.x/.test(seq))
+      fail("once the ball is in hand the player must square up to the hoop, not keep facing the handler");
+  }
+  // 第一人称等球时要有碎步与镜头起伏，且出手前收住
+  if(!/LS\.footT/.test(seq)||!/LS\.spot/.test(seq))fail("first-person must shuffle its feet while waiting for the pass");
+}
+/* 封盖必须由"你起跳"触发，不能用持球秒表——起跳到出手只有 0.19s，
+   任何时间阈值都永远等不到，结果就是从不封盖。 */
+if(!lastShotSquad.includes("function triggerContest"))fail("contest must be triggered by the player's jump");
+if(!/contestPending=\.08\+Math\.random\(\)\*\.20/.test(lastShotSquad))
+  fail("defender must jump after a randomised visual-reaction delay");
+if(/chargeT\|\|0\)>=CONTEST_JUMP_AT/.test(lastShotSquad))
+  fail("contest must not depend on a hold-time threshold the player never reaches");
+/* 身高：每个位置不能一样高，且缩放必须参与触地计算，否则高个会陷进地板。 */
+{
+  const cfgSrc=read("src/modes/last-shot/config.js");
+  const hs=[...cfgSrc.matchAll(/height:([\d.]+)/g)].map(m=>parseFloat(m[1]));
+  if(hs.length<9)fail(`every actor needs a height, found ${hs.length}`);
+  else{
+    const spread=Math.max(...hs)-Math.min(...hs);
+    if(spread<.15)fail(`height spread ${spread.toFixed(2)} is too flat — guards and centers must differ`);
+    if(new Set(hs).size<6)fail("too many actors share the exact same height");
+  }
+  if(!/footY\*hs/.test(renderingMotion))fail("foot contact must scale with actor height");
+  if(!/1\.62\*\(actor\.hs\|\|1\)/.test(lastShotSquad))fail("head height must scale with actor height");
+  if(!/hs=cfg\.hs\|\|1/.test(renderingMotion))fail("shared run cycle must accept a height scale");
+}
+/* 反应阶段:视线各看各的(不再统一锁篮筐),且任何有位移的反应都必须走 poseRunner——
+   只改 pos 不摆腿就是"没有走路动作自己飘过来"。 */
+if(!lastShotSquad.includes("REACTION_META"))fail("each reaction must declare its own gaze/move target");
+if(!/poseRunner\(actor,moved,dt/.test(lastShotSquad))fail("moving reactions must run their legs instead of sliding");
+if(!/function poseWatcher\(actor,dt,target,faceTarget\)/.test(lastShotSquad))
+  fail("poseWatcher must take an explicit face target instead of always turning to the hoop");
+if(/const want=faceTo\(actor\.pos,HOOP\);/.test(lastShotSquad))
+  fail("post-shot body orientation must not be hard-locked to the hoop");
+// 运球手与球必须同侧:arms[0] 建在 -X 侧
+if(!lastShotSquad.includes("actor.dribbleHand")||!lastShotSquad.includes("side*0.32"))
+  fail("dribble must switch hands on direction changes and keep the ball on the dribbling side");
+{
+  const cfgSrc=read("src/modes/last-shot/config.js");
+  const handler=/ally0:\{role:"handler",[^[]*path:\[([^\]]*)\]\}/.exec(cfgSrc);
+  if(!handler)fail("last shot handler path must be declared");
+  else{
+    const pts=[...handler[1].matchAll(/wp\(([-\d.]+),([-\d.]+),([-\d.]+)\)/g)]
+      .map(m=>({t:parseFloat(m[1]),x:parseFloat(m[2]),z:parseFloat(m[3])}));
+    if(pts.length<6)fail(`handler drive needs direction changes, only ${pts.length} waypoints`);
+    let dist=0;for(let i=1;i<pts.length;i++)dist+=Math.hypot(pts[i].x-pts[i-1].x,pts[i].z-pts[i-1].z);
+    const avg=dist/(pts[pts.length-1].t-pts[0].t);
+    if(avg<2)fail(`handler averages ${avg.toFixed(2)}m/s — too slow for the final seconds`);
+  }
+}
+const lastShotSequence=read("src/modes/last-shot/sequence.js");
+for(const token of ["G.passCatch={active:true,progress:0,target:to.clone()}","G.passCatch.settling=true","squadApi.startPostShot()","squadApi.updatePostShot","squadApi.startReaction","reactionT>=3.6"])
+  if(!lastShotSequence.includes(token))fail("Last Shot catch/reaction lifecycle token missing "+token);
+/* 结果已定(进网/砸框/开始弹跳/掉到筐下)之后不能再让全场用眼睛跟球，
+   否则十个人会跟着球在地上反复点头(实测 5 次上下点头，最后低头看地)。 */
+if(!lastShotSequence.includes("function gazeTarget"))fail("Last Shot gaze must stop tracking the ball once the result is settled");
+if(!/squadApi\.updatePostShot\(dt,gazeTarget\(/.test(lastShotSequence))
+  fail("post-shot gaze must go through gazeTarget instead of the raw ball position");
+for(const token of ["ball.made","ball.rimSoundPlayed","ball.bounces>0",'ball.phase!=="fly"'])
+  if(!lastShotSequence.includes(token))fail("gaze release condition missing "+token);
+/* 绝不能拿"球低于篮筐高度"当结果已定的判据：出手点才 2.1m、篮筐 3.05m，
+   球一离手就满足，全场会在你刚出手时就开始庆祝。 */
+if(/position\.y<=HOOP\.y/.test(lastShotSequence))
+  fail("ball-settled must not test against hoop height (the release point is already below it)");
+/* 庆祝只有两个启动点：进球后 CELEBRATE_DELAY，或时间走完。 */
+if(!lastShotSequence.includes("CELEBRATE_DELAY")||!lastShotSequence.includes("BUZZER_DELAY"))
+  fail("celebration must trigger only on a make (after a delay) or on the buzzer");
+/* 时间到但球还在空中，不能直接判负——出手在结束前、球进了就算。 */
+if(!/clock<=0&&\(!activeBall\|\|ballSettled\(activeBall\)\)/.test(lastShotSequence))
+  fail("buzzer must wait for a ball still in flight instead of ruling it a loss");
+/* 篮板球权：防守方大概率保护篮板；我方抢到只能补篮且必定不进。 */
+if(!lastShotSquad.includes("DEF_REBOUND_RATE")||!lastShotSquad.includes("rb.winner"))
+  fail("rebound possession must be decided, not just a footrace");
+if(!lastShotSequence.includes("startPutback")||!lastShotSequence.includes("startOutlet"))
+  fail("a secured rebound must lead to a putback or an outlet pass");
+/* 犯规门槛必须用"最近防守人距离"，不能用 contestLevel——后者在 1.9m 之外恒为 0，
+   拿它当门槛等于果断出手永远不可能被犯规(实测名义 33% 实际只有 13%，玩家连打
+   10 盘一次都碰不到)。同时保留 TEST/LIVE 两档，上线前切回 LIVE。 */
+if(!lastShotSquad.includes("function defenderDistance"))
+  fail("squad must expose the nearest-defender distance for foul gating");
+if(!/foulDist<=FOUL_RANGE&&Math\.random\(\)<FOUL_CHANCE/.test(lastShotSequence))
+  fail("fouls must be gated by defender distance, not by contestLevel");
+if(/level>=\.5&&Math\.random\(\)<FOUL_CHANCE/.test(lastShotSequence))
+  fail("contestLevel is zero beyond 1.9m — gating fouls on it makes them nearly unreachable");
+for(const token of ["FOUL_CHANCE_TEST","FOUL_CHANCE_LIVE","FOUL_RANGE"])
+  if(!lastShotSequence.includes(token))fail("foul tuning constant missing "+token);
+/* 罚球必须由玩家自己投，不能拿概率算掉。 */
+for(const token of ["function beginFreeThrows","function nextFreeThrow","function updateFreeThrows",'LS.phase==="freethrow"'])
+  if(!lastShotSequence.includes(token))fail("free throws must be shot by the player: "+token);
+if(/for\(let i=0;i<shots;i\+\+\)if\(Math\.random\(\)<FT_RATE\)hit\+\+/.test(lastShotSequence))
+  fail("free throws must not be auto-resolved by probability");
+if(!lastShotSquad.includes("function lineUpForFreeThrow"))fail("players must line the lane for free throws");
+/* 罚球必须能收尾：最后一罚落定后要调用 finishFreeThrows，
+   否则整个模式永远卡在罚球阶段(曾经就是这样，罚完没有任何后续)。 */
+if(!/if\(f\.taken<f\.shots\)nextFreeThrow\(\);\s*else finishFreeThrows\(\);/.test(lastShotSequence))
+  fail("the last free throw must fall through to finishFreeThrows");
+if(/!LS\.ftBall&&f\.taken<f\.shots\)\{/.test(lastShotSequence))
+  fail("free-throw loop must not strand itself once all attempts are taken");
+/* 罚球站位按规则排：禁区两侧 3 防守 + 2 进攻穿插，其余退到三分线外。 */
+{
+  const lane=/const FT_LANE=\[([\s\S]*?)\];/.exec(lastShotSquad);
+  if(!lane)fail("free-throw lane slots must be declared");
+  else{
+    const defs=(lane[1].match(/def:true/g)||[]).length;
+    const offs=(lane[1].match(/def:false/g)||[]).length;
+    if(defs!==3||offs!==2)fail(`lane must hold 3 defenders and 2 offensive players, got ${defs}/${offs}`);
+  }
+  if(!lastShotSquad.includes("FT_ARC"))fail("everyone else must clear out beyond the arc");
+}
+/* 体感在绝杀模式里也要能自动启动——原来只认难度选择界面。 */
+{
+  const vision=read("src/vision.js");
+  if(!vision.includes("VISION_AUTO_STATES")||!/lastshot:true/.test(vision))
+    fail("motion control must be able to auto-start in Last Shot, not only on the difficulty screen");
+  if(/G\.state!=="diff"\|\|visionPreferenceQueued/.test(vision))
+    fail("vision auto-start must not be hard-gated to the difficulty screen");
+  /* 绝杀模式的开始界面必须和其他模式一样给出控制模式选择。
+     visionModeMarkup() 既是那两个按钮，也是 restoreVisionControlPreference() 的唯一触发点——
+     不插它就等于既没有选项、也永远不会自动拉起摄像头。 */
+  const lastShotIndex=read("src/modes/last-shot/index.js");
+  if(!lastShotIndex.includes("visionModeMarkup"))
+    fail("Last Shot start panel must offer the touch/motion control picker like every other mode");
+  /* 没进要告诉玩家怎么调整，不能只说一句"偏了"；正式挑战用完要有去处。 */
+  for(const token of ["function missAdvice","function practiceCta","蓄力严重不足","出手时机没问题"])
+    if(!lastShotIndex.includes(token))fail("a miss must explain how to adjust: "+token);
+  for(const mode of ["rackrush","battle","contest"])
+    if(!lastShotIndex.includes(`goDiff('${mode}')`))fail("result panel must route to "+mode+" for practice");
+  if(!read("src/modes/last-shot/sequence.js").includes("LS.diag="))
+    fail("release must record diagnostics (power error / contest) for the post-game advice");
+  /* err 是 releasePower 扣减晚出手惩罚之后的数，蓄太久也可能被扣成 err<0，
+     看起来像"蓄力不足"——方向刚好反了。late(扣减前的原始信号)必须比 err 优先判断，
+     且要在扣减发生之前捕获，否则读到的已经是被污染的值。 */
+  const physics=read("src/shot-physics.js");
+  if(!physics.includes("function lastLate")||!physics.includes("lastLate}"))
+    fail("shot physics must expose the pre-penalty late signal for diagnostics");
+  const motion=read("src/shot-motion.js");
+  if(!/G\.lastReleaseLate=AIBAShotPhysics\.lastLate[\s\S]{0,40}\n\s*const adj=AIBAShotPhysics\.releasePower/.test(motion))
+    fail("late must be captured before releasePower applies its penalty");
+  const lsIndex=read("src/modes/last-shot/index.js");
+  if(!/if\(late>\.02\)\{/.test(lsIndex))
+    fail("missAdvice must check the late-release signal before falling back to power-error sign");
+  const lateIdx=lsIndex.indexOf("if(late>.02){"),inZoneIdx=lsIndex.indexOf("const inZone=Math.abs(err)");
+  if(lateIdx<0||inZoneIdx<0||lateIdx>inZoneIdx)
+    fail("the late-release branch must run before the power-error branches, not after");
+}
+// 速度不能全是固定值，每个人要有自己的快慢
+if(!/pace:\.86\+Math\.random/.test(lastShotSquad)||!/pace\(actor\)/.test(lastShotSquad))
+  fail("movement speeds must vary per actor instead of reading like a script");
+if(!lastShotSequence.includes("squadApi.startRebound"))fail("a miss must kick off a rebound scramble");
+if(!lastShotSquad.includes("function poseRebound")||!lastShotSquad.includes("reboundJump"))
+  fail("players must chase and jump for the rebound");
+// 最后 5 秒要有倒计时音
+if(!/clock<=5&&clock>0/.test(lastShotSequence))fail("final 5 seconds need an audible countdown");
 const gameplayCollisions=read("src/gameplay/collisions.js");
 for(const token of ['runtime.register("gameplay:collisions"',"function checkBallCollisions","function ballCollide"])
   if(!gameplayCollisions.includes(token))fail("gameplay collisions token missing "+token);
@@ -795,11 +1290,11 @@ if(!coreLoop.includes('if(VICTORY_CINE.on&&G.state!=="victorycine")stopVictoryCi
   fail("game loop must cancel a stale victory cinematic before camera dispatch");
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.15.5-hand-follow','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=refactor33b','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=cutover2','src/core/game-loop.js?v=refactor37a','src/core/scene-init.js?v=refactor38'])
+for(const token of ['src/gameplay/shots.js?v=2.19.5-hand-chain','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=refactor33b','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19-lastshot5','src/core/game-loop.js?v=2.19-lastshot5','src/core/scene-init.js?v=refactor38'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);
-if(!(entryHtml.indexOf('src/core/input.js?v=cutover2')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot')))fail("input must load before legacy adapter");
+if(!(entryHtml.indexOf('src/core/input.js?v=2.19-lastshot5')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot')))fail("input must load before legacy adapter");
 if(!(entryHtml.indexOf('src/core/scene-init.js?v=refactor38')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot')))fail("scene init must load before legacy adapter");
 
 const sandbox={window:{}};
@@ -833,3 +1328,39 @@ for(const token of ["function extPlayVariant(","function sRimMake(","startWhistl
   if(!(audioScript+gameplayShots).includes(token))fail("gameplay SFX routing missing "+token);
 
 console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.legacy+" legacy inline scripts,",inlineLines+" main inline lines,",assets.coverStars.length+" cover stars");
+
+/* ---------------- 你自己的庆祝 & 反应阶段防穿模 ---------------- */
+{
+  const seq=read("src/modes/last-shot/sequence.js");
+  const squad=read("src/modes/last-shot/squad.js");
+  /* 全场进入反应的每一个入口，你自己也必须跟着庆祝/懊恼。
+     漏掉任何一个入口，就会出现"十个人在庆祝，只有你像根木桩"。 */
+  const reactionSites=(seq.match(/squadApi\.startReaction\(/g)||[]).length;
+  const celebSites=(seq.match(/startPlayerCelebrate\(/g)||[]).length;
+  if(reactionSites===0)fail("Last Shot must start a squad reaction");
+  if(celebSites<reactionSites+1)   // +1 是函数定义本身
+    fail(`every startReaction must also start your own celebration (${reactionSites} reactions / ${celebSites-1} celebrations)`);
+  /* 姿势必须写满三个轴。投篮链路会在肩上留下 rotation.y，只改 x/z 的话残留会一直挂着，
+     第一人称里两只手一高一低、一个朝上一个朝右。 */
+  if(!/guy\.arms\[i\]\.rotation\.set\(/.test(seq)||!/guy\.elbows\[i\]\.rotation\.set\(/.test(seq))
+    fail("celebration arm pose must write all three rotation axes (a stale rotation.y desyncs both hands)");
+  // 手腕也要拉回中立帧，否则还保持着压腕的投篮手型
+  if(!/poseHandJoints\(guy,/.test(seq))
+    fail("celebration must reset the wrist to a neutral frame");
+  // 举手姿势同样要过场上那套敏感手势守卫
+  if(!/squadApi\.guardArms\(guy\)/.test(seq))
+    fail("your own celebration must go through the shared gesture guard");
+  // 推搡必须挂在队友真的挤过来那一刻，不能是定时器假装的
+  if(!/squadApi\.nearestMate\(/.test(seq))
+    fail("the shove must be triggered by a team-mate actually arriving, not a timer");
+  /* 反应阶段没有战术站位约束，必须跑一次最小间距推开：
+     不然罚球失败后对方一拥而上，人直接穿进你和彼此身体里。 */
+  if(!/if\(reaction\)separate\(/.test(squad))
+    fail("the reaction phase must run the separation pass (celebrating players otherwise clip through each other)");
+  // 冲过来的人和抢球的人都要有各自的落点，不能共用同一个点
+  /* 落点必须按编号改"方向"，只改半径等于排成一列往你身上挤，还是会互相顶。 */
+  const mobBody=squad.slice(squad.indexOf("function mobTarget"),squad.indexOf("function poseReaction"));
+  if(!mobBody||!/mobSlot/.test(mobBody)||!mobBody.split("\n").some(l=>/mobSlot/.test(l)&&/ang/.test(l)))
+    fail("mobbing team-mates must fan out by bearing instead of stacking on one point");
+  if(!/actor\.rimSlot/.test(squad))fail("the two rebounders must split left/right instead of pressing into each other");
+}

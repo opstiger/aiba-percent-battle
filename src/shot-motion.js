@@ -30,11 +30,15 @@
   /* ================= 第一人称 V2：第三人称双臂的显示镜像 ================= */
   const FOLLOW_EXTEND=0.105,BALL_RELEASE_AT=0.092,FOLLOW_HOLD=0.24,FOLLOW_FADE=0.38;
   let fpRig=null,fpHidden=[],fpBallHome=null,followAge=0,followActive=false;
-  let guideStart={x:-1.3,z:-0.18,elbowX:-0.68};
-  let releasePose={shootX:-1.88,shootZ:0.10,shootElX:-1.28,shootElZ:0};
+  let releasePose=null;
   let releaseCurve={dip:0,lift:1,rise:1,jmp:1,over:0},lastPoseCurve=releaseCurve,pendingRelease=null;
   const ease01=t=>{t=clampN(t,0,1);return t*t*(3-2*t);};
   const mixN=(a,b,k)=>a+(b-a)*k;
+  /* 第一人称相机在眼睛后方 0.85,所以自己的肩和上臂会正对镜头。
+     手臂垂着时那截圆角肩块就糊在画面底部,看着像"一只没有手腕没有手指的手"。
+     真实第一人称视角里本来也看不到自己的肩膀,所以镜像手臂只保留肘部往下。
+     注意:只隐藏 fp 镜像体的网格,第三人称的真实球员手臂不受影响。 */
+  const FP_HIDDEN_PARTS=["shoulderBlend","upperArm"];
   function mirrorArm(source,name){
     const clone=source.clone(true),sourceNodes=[],cloneNodes=[];
     clone.name=name;
@@ -43,6 +47,7 @@
     clone.traverse(node=>{
       node.frustumCulled=false;
       if(node.isMesh){node.castShadow=false;node.receiveShadow=false;}
+      if(node.isMesh&&FP_HIDDEN_PARTS.indexOf(node.name)>=0)node.userData.fpAlwaysHidden=true;
     });
     return {source,clone,pairs:sourceNodes.map((node,index)=>[node,cloneNodes[index]])};
   }
@@ -73,7 +78,8 @@
     mirror.pairs.forEach(pair=>{
       const source=pair[0],clone=pair[1];
       clone.position.copy(source.position);clone.quaternion.copy(source.quaternion);clone.scale.copy(source.scale);
-      clone.visible=source.visible;
+      // 每帧从真实球员同步可见性,但肩/上臂在第一人称永远不出现(见 FP_HIDDEN_PARTS)
+      clone.visible=source.visible&&!clone.userData.fpAlwaysHidden;
       if(source.isMesh){clone.geometry=source.geometry;clone.material=source.material;}
     });
   }
@@ -105,21 +111,8 @@
     }
     return {active:true,extend,follow,recover,age:followAge};
   }
-  function captureGuideStart(o){
-    if(!o||!o.arms||!o.elbows)return;
-    const guide=o.arms[1],guideEl=o.elbows[1];
-    if(guide)guideStart={x:guide.rotation.x,z:guide.rotation.z,elbowX:guideEl?guideEl.rotation.x:-.68};
-  }
   function captureReleasePose(o){
-    if(!o||!o.arms||!o.elbows)return;
-    const shoot=o.arms[0],shootEl=o.elbows[0];
-    releasePose={
-      shootX:shoot?shoot.rotation.x:-1.88,
-      shootZ:shoot?shoot.rotation.z:-0.12,
-      shootElX:shootEl?shootEl.rotation.x:-1.28,
-      shootElZ:shootEl?shootEl.rotation.z:0
-    };
-    captureGuideStart(o);
+    releasePose=typeof captureShotPose==="function"?captureShotPose(o):null;
   }
   function captureReleaseCurve(){
     releaseCurve={
@@ -138,25 +131,31 @@
   }
   function applyFollowThroughPose(o,state,poseOverride){
     if(!state||!state.active)return;
-    const pose=poseOverride||{release:releasePose,guide:guideStart};
+    const pose=poseOverride||releasePose;
     if(typeof applyShotFollowThroughPose==="function")applyShotFollowThroughPose(o,state,pose);
   }
+  /* 热身/过场/表演赛期间镜头会被搬去弧顶等机位展示球员，但 CAM.mode 仍是 0，
+     挂在相机上的第一人称骨架就会跟着停在半空——看起来是"两只空手悬在弧顶"。
+     这些状态一律强制隐藏，不依赖各处记得去改 hands.visible。 */
+  const FP_HIDDEN_STATES={pregame:1,aishow:1,cinematic:1,victorycine:1,menu:1,diff:1};
   function animFpRig(){
+    if(!fpRig&&on)buildFpRig();
     if(!fpRig)return;
     syncFpRigFromPlayer();
-    setFpRigVisible(on&&typeof CAM!=="undefined"&&CAM.mode===0&&hands.visible);
+    const cine=typeof G!=="undefined"&&!!FP_HIDDEN_STATES[G.state];
+    setFpRigVisible(on&&typeof CAM!=="undefined"&&CAM.mode===0&&hands.visible&&!cine);
   }
 
   /* ================= 第三人称球贴手 ================= */
   let ballAttached=false,pBallHome=null;
   function attachBall(){
     if(ballAttached||typeof player==="undefined"||typeof pBall==="undefined")return;
+    // 新骨架的 ballGrip 是唯一持球/物理出手锚点；禁止再用肘节点上的旧坐标兜底。
+    const parent=player.ballGrips&&player.ballGrips[0];
+    if(!parent)return;
     if(!pBallHome)pBallHome={parent:pBall.parent,pos:pBall.position.clone()};
-    // 优先挂到独立腕关节：压腕会把球连续推向指尖；经典角色仍回退到旧肘组挂点。
-    const parent=player.ballGrips&&player.ballGrips[0]?player.ballGrips[0]:player.elbows[0];
     parent.add(pBall);
-    if(parent===player.elbows[0])pBall.position.set(0,-0.43,0.12);
-    else pBall.position.set(0,0,0);
+    pBall.position.set(0,0,0);
     ballAttached=true;
   }
   function detachBall(){
@@ -210,11 +209,16 @@
       if(typeof poseHandJoints==="function")poseHandJoints(player,shotCurves(0));
     }else{
       player.g.position.y=poseGuy(player,c,lk)+P.jump;
-      tuneGuideHandPose(player,c,G.canShoot||G.charging);
-      applyShotSetPose(player,c);
-      applyFollowThroughPose(player,follow);
+      const catchState=G.passCatch;
+      /* 出手跟随要 0.725 秒，而 Rack Rush 后几关出手 60ms 后就开始传球，两者必然重叠。
+         这里必须叠加而不是二选一：先让跟随继续写它的收手姿势，poseCatchHands 再用
+         blendNodeQuat 从"本帧已有姿势"往迎球帧插值(progress 小的时候 k≈0)。
+         二选一会把跟随姿势整个丢掉，手从静止姿势直接弹去接球，就是"还没收回手就去接了"。 */
+      if(follow.active)applyFollowThroughPose(player,follow);
+      // 飞行阶段迎球；到手后由同一控制器短暂缓冲到持球帧，禁止一帧换骨架。
+      if(catchState&&catchState.active)poseCatchHands(player,catchState,dt);
     }
-    // 球挂在投篮手肘组上自动跟手,无需 poseBallPos
+    // 球挂在投篮手 handRig 上，伸肘与压腕期间连续随手，真正 release 后才隐藏/脱离。
     if(!ballAttached)poseBallPos(pBall.position,c);
     // 先完成真实球员姿势，再把同一组肩肘腕与手指结果镜像给第一人称。
     animFpRig();
@@ -244,6 +248,10 @@
     captureReleaseCurve();
     beginFollow();
     const ideal=weatherAdjustedIdeal(shot,true);
+    /* 必须在 releasePower 扣力度之前把 late 记下来。扣完之后的 power 拿去算的
+       err 符号已经不可信了(晚出手也可能被扣成 err<0，看着像蓄力不够)，
+       下游(绝杀模式失手诊断)要靠这个原始信号才能分清"没蓄够"和"蓄太久"。 */
+    G.lastReleaseLate=AIBAShotPhysics.lastLate?AIBAShotPhysics.lastLate():0;
     const adj=AIBAShotPhysics.releasePower(power,ideal); // 下落中出手→明显偏短
     pendingRelease={ctx:this,power:adj,shot};
     G.canShoot=false;
@@ -331,6 +339,8 @@
   global.AIBAMotionToggle=toggle;
   global.AIBAShotMotion=Object.freeze({
     applyFollowThroughPose,
+    // 姿势在 updPose 之后被改写时(例如绝杀庆祝)，用它把第一人称镜像重新对齐
+    syncFp(){if(fpRig)syncFpRigFromPlayer();},
     captureShotPose:o=>typeof captureShotPose==="function"?captureShotPose(o):null
   });
   global.AIBAMotion={

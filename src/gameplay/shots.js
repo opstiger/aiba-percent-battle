@@ -229,13 +229,16 @@ function releaseShot(power,shot){
     const cfg=RACK_RUSH_LEVELS[rush.level],expectedCharge=shotIdeal(shot)/Math.max(1,playerChargeRate());
     const speedFeed=G.diff==="easy"?1.16:(G.diff==="hard"?.96:1.06);
     const feed=isRackRushSpeed(rush)?speedFeed:cfg.feed;
-    const delay=Math.max(60,(feed-expectedCharge-.27)*1000);
+    // 供球节奏 = 蓄力 + 传球飞行 + 这里的间隔；飞行预算跟着 PASS_FLIGHT_RUSH 走。
+    const flightBudget=typeof PASS_FLIGHT_RUSH!=="undefined"?PASS_FLIGHT_RUSH.budget:.27;
+    const delay=Math.max(60,(feed-expectedCharge-flightBudget)*1000);
     afterPlayerLands(delay,()=>{if(G.state==="rackrush"&&G.running&&!G.buzzed)readyBall();});
     return;
   }
   // hero moment: last ball / buzzer beater / tiebreak
   const isLast=G.shotIdx===G.seq.length-1;
-  if(!G.practice&&(isLast||G.state==="tiebreak"||(G.state==="round"&&G.timer<=3)))startHero(B);
+  /* 每日绝杀模式的核心是第一人称看球和全场反应,不切英雄时刻特写。 */
+  if(G.mode!=="lastshot"&&!G.practice&&(isLast||G.state==="tiebreak"||(G.state==="round"&&G.timer<=3)))startHero(B);
   // advance
   G.shotIdx++;G.canShoot=false;
   const nxt=curShot();if(nxt){if(G.mode==="contest"&&shot&&nxt.rack!==shot.rack&&shot.rack!==null){if(nxt.rack===G.moneyRack)playAudioEvent("contest_moneyrack");else if(nxt.rack===4)playAudioEvent("contest_finalrack");}const samePos=isSameShotSpot(nxt,shot);afterPlayerLands(samePos?260:200,()=>{if(G.state!=="round"&&G.state!=="tiebreak")return;if(samePos){readyBall();}else{walkTo(nxt,()=>readyBall());}});}

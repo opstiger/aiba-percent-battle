@@ -39,7 +39,8 @@ function buildRacks(){
   halfCourtBall.ped=hped;
 }
 function resetRackBalls(){
-  const showRacks=G.mode!=="battle";
+  // 绝杀时刻模拟的是真实比赛回合,场上不该有投篮架和备用球
+  const showRacks=G.mode!=="battle"&&G.mode!=="lastshot";
   rackStands.forEach(stand=>{stand.visible=showRacks;});
   deepStands.forEach(stand=>{stand.visible=showRacks;});
   rackBalls.forEach(r=>r.forEach(m=>{m.visible=showRacks;}));

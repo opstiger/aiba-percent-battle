@@ -67,5 +67,8 @@
     return Math.max(0,Math.min(power-short,ideal-short*.72));
   }
   function isAirborne(){return S.airborne;}
-  global.AIBAShotPhysics=Object.freeze({reset,update,releasePower,isAirborne});
+  // 供诊断用：releasePower 内部读的就是这个值，暴露出来才能区分
+  // "力度不够"和"晚出手被扣力度"——扣完之后的 err 符号已经不可信了。
+  function lastLate(){return S.late||0;}
+  global.AIBAShotPhysics=Object.freeze({reset,update,releasePower,isAirborne,lastLate});
 })(window);

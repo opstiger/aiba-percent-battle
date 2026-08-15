@@ -7,7 +7,7 @@ function cycleCam(){
   applyCamMode();blip(700,0.05,"square",0.06);
 }
 function applyCamMode(){
-  const inPlay=(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="rushintro"||G.state==="rushbetween"||G.state==="pregame");
+  const inPlay=(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="rushintro"||G.state==="rushbetween"||G.state==="pregame"||G.state==="lastshot");
   hands.visible=CAM.mode===0&&inPlay;
   player.g.visible=CAM.mode!==0&&inPlay;
   passer.g.visible=inPlay;
@@ -76,6 +76,15 @@ function autoFrameCam(rig,pPos,pJump,faceDir,opts){
   rig.look.copy(_afCenter);
 }
 let fpLookY=null;
+const _fpBall=V3(0,0,0);
+// 举球到顶时相机相对眼睛下压的幅度;0.46 让相机落到球心下方约 0.2,刚好仰视球看到手背。
+/* 第一人称相机高度。FP_RISE 是"眼睛之上"的抬升量，FP_BALL_DUCK 是举球时的下压量。
+   两者必须一起调：举球到位的最终高度 = EYE + FP_RISE - FP_BALL_DUCK，这个值(1.60m)
+   是已经调好的投篮取景，不能动。
+   FP_RISE 原本 0.28 → 不举球时相机 2.06m，比防守人头顶(1.84m)还高，
+   所以投完球对方扑上来只能看到头发、接球时手也被压出画面下缘。
+   降到 0.05 后不举球是 1.83m(基本就是眼高)，DUCK 同步 0.46→0.23 保持举球取景不变。 */
+const FP_RISE=0.05,FP_BALL_DUCK=0.23;
 function updPlayCam(dt){
   dt=dt||0.016;
   const d=V3(Math.sin(P.face),0,Math.cos(P.face));
@@ -87,7 +96,22 @@ function updPlayCam(dt){
     // 第一人称:略微后拉抬高(身体网格在本视角隐藏,不会入画);
     // 球出手后镜头随球高度平滑抬升,保证高弧线在空中全程可见
     const e=eyePos();
-    rig.pos.set(e.x-d.x*0.85,e.y+0.28,e.z-d.z*0.85);
+    /* 举球到位时相机要让回到球下方。原本恒定 +0.28 会让眼线高过球心(实测相机 2.51 / 球 2.34),
+       变成低头看自己的手:投篮手在球的后下方,于是整只手被球挡死,永远看不到手背。
+       真实投篮里球是过额头的,眼睛仰视球、从球下缘看到手背和手指。
+       这里按球心相对眼睛的高度平滑下压:球在腰间时完全不变(保持原取景),
+       球升到眼睛附近才压下去,避免影响非举球阶段的手感。 */
+    let fpRise=FP_RISE;
+    if(typeof pBall!=="undefined"&&pBall&&(G.canShoot||G.charging)){
+      pBall.getWorldPosition(_fpBall);
+      const rel=_fpBall.y-e.y;
+      /* 原曲线只在球快到眼睛高度时才介入(rel>-0.25)，导致刚接到球、球还在腰腹
+         高度(rel≈-0.63)时相机完全不下压，投篮手被压在画面下缘外。
+         区间放宽到 rel∈[-0.95, 0.14]：持球时已下压约 29%，举球到位仍是满值，
+         保证最终高度精确落回 1.60m 的既有投篮取景。 */
+      fpRise-=clamp((rel+0.95)/1.09,0,1)*FP_BALL_DUCK;
+    }
+    rig.pos.set(e.x-d.x*0.85,e.y+fpRise,e.z-d.z*0.85);
     let fpTarget=HOOP.y+0.15;
     if(typeof balls!=="undefined"&&balls.length){
       const fb=balls[balls.length-1];

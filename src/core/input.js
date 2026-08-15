@@ -3,7 +3,7 @@ function audioGestureUnlock(e){
   if(BOOT_GATE_ACTIVE)return;
   if(e&&e.target&&e.target.id==="muteBtn")return;
   const menuLike=G.state==="menu"||G.state==="diff";
-  const arenaLike=G.state==="cinematic"||G.state==="pregame"||G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="rushintro"||G.state==="rushbetween"||G.state==="victorycine";
+  const arenaLike=G.state==="cinematic"||G.state==="pregame"||G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot"||G.state==="rushintro"||G.state==="rushbetween"||G.state==="victorycine";
   if(!AC||AC.state==="suspended"||(menuLike&&!audioState().menuMusic))ensureAudio(menuLike,true);
   if(arenaLike&&extA.crowd&&extA.crowd.paused)extPlay("crowd");
   if(arenaLike&&extA.crowdCheer&&extA.crowdCheer.paused)extPlay("crowdCheer");
@@ -17,7 +17,7 @@ function onDown(e){
   if(e.target&&e.target.closest&&e.target.closest("#visionPreview"))return;
   if(e.target&&e.target.closest&&e.target.closest("#battleControls"))return;
   if(e.target&&e.target.closest&&e.target.closest("#spotDots"))return;
-  if(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"){e.preventDefault();startCharge();}
+  if(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot"){e.preventDefault();startCharge();}
 }
 function onUp(e){
   if(BOOT_GATE_ACTIVE)return;
@@ -27,7 +27,7 @@ function onUp(e){
   if(e.target&&e.target.closest&&e.target.closest("#visionPreview"))return;
   if(e.target&&e.target.closest&&e.target.closest("#battleControls"))return;
   if(e.target&&e.target.closest&&e.target.closest("#spotDots"))return;
-  if(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"){doRelease();}
+  if(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot"){doRelease();}
 }
 ["pointerdown","touchstart","touchend","mousedown","click"].forEach(type=>{
   addEventListener(type,audioGestureUnlock,{passive:true,capture:true});
@@ -44,7 +44,7 @@ addEventListener("keydown",e=>{
   }
   if(PAUSE.on)return;
   if(e.code==="Space"&&!e.repeat)startCharge();
-  if(e.code==="KeyC"&&(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"))cycleCam();
+  if(e.code==="KeyC"&&(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot"))cycleCam();
   if(G.state==="battle"&&(e.code==="ArrowLeft"||e.code==="KeyA"))battlePrevSpot();
   if(G.state==="battle"&&(e.code==="ArrowRight"||e.code==="KeyD"))battleNextSpot();
 });
@@ -66,7 +66,7 @@ addEventListener("deviceorientation",e=>{
 function calibrateTilt(){TILT.base=TILT.raw;}
 function updTiltUI(){
   const w=$("tiltWrap");if(!w)return;
-  const show=TILT.on&&(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush");
+  const show=TILT.on&&(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot");
   w.style.display=show?"block":"none";
   if(!show)return;
   const d=tiltDeg();
