@@ -422,36 +422,24 @@ function poseRunCycle(o,state,speed,dt,opts){
   o.g.position.y=POSE_STAND_FOOT_Y-footY*hs;
   return footY;
 }
-/* 接球时上半身从髋关节开始朝篮筐方向拧 10°（不是前后俯仰，是绕垂直轴的转体）。
-   投篮站位是"侧身"的：投篮肩在前，胸口并不正对篮筐。接球那一下人会把上半身
-   转正过来对着筐，这一步之前完全没有，看起来就是"斜着身子把球接住"。
+/* 接球时上半身绕髋关节向前俯 10°（矢状面内的前倾，肩膀往膝盖方向压）。
+   之前接球只有屈膝、上半身是竖直的，看起来像"直着腰把球接住"。
 
-   骨架是扁平的——g 下面直接挂腿、躯干、头和手臂，没有单独的躯干节点。
-   所以这里转整个 g，再把两条腿按相同角度反向转回去，脚就留在原地，
-   效果等价于"从髋关节往上拧"。这样也不用动骨架结构，
-   第一人称镜像(fpRig 直接拷 player.g.quaternion)自动跟着对。
+   ⚠ 这个骨架里 g.rotation.x 的正号是【后仰】，不是前倾。
+   实测：+0.175 时头沿朝向位移 -0.0376m（往后），-0.175 时 +0.0376m（往前）。
+   所以前倾必须用负号。原来那行的注释写着"上身前倾:蓄力约10°"但用的是
+   正号 0.12*load —— 注释和实际方向是反的，蓄力时人其实在后仰。
+   这次一并翻正（见下面的 -0.12*load）。
 
-   拧转在蓄力抬球的过程中按 lift 平滑让位，lift=1 时严格归零 ——
+   前倾在蓄力抬球的过程中按 lift 平滑让位，lift=1 时严格归零 ——
    最高点姿势因此逐字不变（check.js 有 1e-3 的球心断言，动到最高点会立刻失败）。
    c.hold 由调用方给：玩家在球到手到出手之间给 1，其余角色不给就是 0。 */
-const CATCH_HIP_TURN=0.175;   // 10°，绕 Y 轴
+const CATCH_HIP_LEAN=-0.175;   // 10° 前倾（负号=前倾，见上）
 const CATCH_LEAN_RATE=9;      // 屈髋的平滑速率(1/秒)
 let holdLean=0;
 /* 球到手那一帧 G.canShoot 硬翻 true，直接用会让躯干一帧折下 10°，所以做指数平滑。
    注意：updPose 有两条实现（motion.js 这条是兜底，shot-motion.js 那条才是当前生效的），
    两边都必须把结果写进曲线的 hold，否则只改一条会完全看不到效果。 */
-/* 往篮筐方向拧，最多 10°，且永远不会拧过头。
-   不写死正负号：直接算"当前朝向到篮筐"的有向夹角再夹住，符号自然是对的，
-   各个投篮点、左右手投篮都不用分别配。同时因为夹住了，本来就正对篮筐的站位
-   （比如绝杀时刻 P.face 就是 faceTo(spot,HOOP)）会自动变成 0，不会被拧歪。 */
-function catchTurnAmount(o){
-  if(typeof HOOP==="undefined"||!o||!o.g)return 0;
-  const want=Math.atan2(HOOP.x-o.g.position.x,HOOP.z-o.g.position.z);
-  let d=want-o.g.rotation.y;
-  while(d>Math.PI)d-=6.283185307;
-  while(d<-Math.PI)d+=6.283185307;
-  return Math.max(-CATCH_HIP_TURN,Math.min(CATCH_HIP_TURN,d));
-}
 function updateHoldLean(dt){
   const want=(typeof G!=="undefined"&&G.canShoot)?1:0;
   holdLean+=(want-holdLean)*Math.min(1,(dt||0.016)*CATCH_LEAN_RATE);
@@ -485,13 +473,12 @@ function poseGuy(o,c,lk){
   o.shoes[0].rotation.x=0;
   o.shoes[1].rotation.x=0;
   // 上身前倾:蓄力约10°(0.17rad),起跳回正并略后仰送球
-  o.g.rotation.x=0.12*load - 0.06*c.over - 0.03*c.jmp + 0.08*land;
-  /* 上半身拧向篮筐：转 g，再把腿反向转回去，脚不动。
-     TURN_SIGN 的正负取决于哪只肩在前，由 catchTurnSign() 按投篮手决定。 */
-  const twist=catchTurnAmount(o)*(c.hold||0)*(1-ease01(c.lift));
-  o.g.rotation.y+=twist;
-  o.legs[0].rotation.y=-twist;
-  o.legs[1].rotation.y=-twist;
+  /* 接球前倾，随 lift 让位给蓄力/最高点的躯干角。
+     -0.12*load：蓄力也翻成前倾（原来是 +，实际是后仰，和注释相反）。
+     over/jmp/land 三项维持原样 —— 最高点的 -0.03*jmp 是 T台导入姿势的一部分，
+     被 check.js 的球心断言锁着，不能动。 */
+  const catchLean=CATCH_HIP_LEAN*(c.hold||0)*(1-ease01(c.lift));
+  o.g.rotation.x=catchLean - 0.12*load - 0.06*c.over - 0.03*c.jmp + 0.08*land;
   const footY=(poseFootBottomY(hipLead,kneeLead,ankleLead)+poseFootBottomY(hipTrail,kneeTrail,ankleTrail))*0.5;
   return POSE_STAND_FOOT_Y-footY;
 }
