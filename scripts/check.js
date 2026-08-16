@@ -137,7 +137,7 @@ for(const [file,version] of Object.entries(percentBattleVersions)){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js?v=${version}"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
 const lastShotModules=["config","squad","sequence","index"];
-const lastShotVersions={config:"2.19.5-roster",squad:"2.19.5-mob3",sequence:"2.19.5-celeb3",index:"2.19.5-unify3"};
+const lastShotVersions={config:"2.19.5-roster",squad:"2.19.6-kit2",sequence:"2.19.5-celeb3",index:"2.19.5-unify3"};
 for(const file of lastShotModules){
   if(!entryHtml.includes(`<script src="src/modes/last-shot/${file}.js?v=${lastShotVersions[file]}"></script>`))fail(`next Last Shot ${file} module missing`);
 }
@@ -916,7 +916,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-hipfwd','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.5-mob3','src/modes/last-shot/sequence.js?v=2.19.5-celeb3'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-hipfwd','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.5-celeb3'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1388,4 +1388,21 @@ console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.le
   // 下半身不动：屈膝链路仍由 load 驱动
   if(!/const kneeBase=Math\.max\(0,0\.98\*load/.test(m))
     fail("下半身屈膝链路不应被接球前倾改动");
+}
+
+/* ---------------- 绝杀时刻队服 ---------------- */
+{
+  const sq=read("src/modes/last-shot/squad.js");
+  /* 队友必须跟玩家同色、对手必须拉开色差。之前是写死的 config 颜色：
+     玩家近黑 #11151c、对手深蓝灰 #2c3550（几乎同色）、队友白 —— 分不清敌我，
+     打铁后冲上来挑衅的对手会被当成自己人在庆祝。 */
+  if(!/function playerKit\(cfg\)/.test(sq)||!/player&&player\.mJ&&player\.mJ\.color/.test(sq))
+    fail("队友球衣必须取玩家自己的球衣色");
+  if(!/function foeKit\(allyJersey\)/.test(sq)||!/MIN_KIT_DELTA/.test(sq))
+    fail("对手球衣必须按色差挑选并保证最小色差");
+  /* build() 带缓存（阵容只建一次）。只在创建时染色的话，玩家中途换角色，
+     队友还会穿上一次的颜色 —— 实测换 8 个角色队友一直停在第一个色。 */
+  if(!/if\(squad\)\{dressSquad\(cfg\);return squad;\}/.test(sq))
+    fail("复用已建阵容时必须重刷队服，否则换角色后队友仍是旧色");
+  if(!/function dressSquad\(cfg\)/.test(sq))fail("队服染色应收敛到 dressSquad()");
 }

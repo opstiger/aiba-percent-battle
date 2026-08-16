@@ -9,7 +9,7 @@
   const chars=runtime&&runtime.service("rendering:characters");
   const motion=runtime&&runtime.service("rendering:motion");
   if(!runtime||!ctx||!chars||!motion)throw new Error("Last Shot squad requires runtime, characters and motion services");
-  const {scene,V3,clamp,faceTo,HOOP}=ctx;
+  const {scene,V3,clamp,faceTo,HOOP,player}=ctx;
   const {poseFootBottomY}=motion;
 
   const ALLY_IDS=["ally0","ally1","ally2","ally3"];
@@ -79,17 +79,77 @@
 
   let squad=null;
 
+
+/* ---------------- 队服配色 ----------------
+   之前 ally/foe 的球衣色是写死在 config 里的（队友白 0xf2f4f7、对手深蓝灰 0x2c3550），
+   跟玩家自己的球衣毫无关系。实测玩家用"N-24 夜航者"时自己穿近黑 #11151c，
+   于是画面上是：我近黑、对手深蓝灰(几乎同色)、队友白、核心红 —— 四种颜色，
+   而且**我和对手最像**。用户因此分不清谁是谁：打铁后冲上来挑衅的对手
+   看起来像自己人，就成了"球没进我也开始庆祝"。
+
+   现在：队友一律取玩家自己的球衣色（核心用同色系加深，仍然一眼能认出持球人），
+   对手从候选里挑与队友色差最大的一个，并强制留出最小色差。 */
+const FOE_PALETTE=[0xd7263d,0xf2a413,0x1b998b,0x2e86de,0x8e44ad,0xf2f4f7,0x2c3550];
+const MIN_KIT_DELTA=140;   // RGB 欧氏距离，低于这个就算撞色
+function rgb(hex){return [(hex>>16)&255,(hex>>8)&255,hex&255];}
+function kitDelta(a,b){
+  const x=rgb(a),y=rgb(b);
+  return Math.hypot(x[0]-y[0],x[1]-y[1],x[2]-y[2]);
+}
+function shade(hex,k){
+  const c=rgb(hex).map(v=>Math.max(0,Math.min(255,Math.round(v+(k>0?(255-v)*k:v*k)))));
+  return (c[0]<<16)|(c[1]<<8)|c[2];
+}
+/* 玩家自己的球衣。取不到就退回 config 里的队伍主色。 */
+function playerKit(cfg){
+  const c=player&&player.mJ&&player.mJ.color;
+  return c?c.getHex():cfg.team.ally.jersey;
+}
+/* 对手色：先按与队友色的差值排序取最大，再确认确实拉开了距离。 */
+function foeKit(allyJersey){
+  let best=FOE_PALETTE[0],bestD=-1;
+  for(const cand of FOE_PALETTE){
+    const d=kitDelta(cand,allyJersey);
+    if(d>bestD){bestD=d;best=cand;}
+  }
+  // 候选全都太近（玩家球衣正好在色盘中间）时，用亮度反转拉开
+  if(bestD<MIN_KIT_DELTA){
+    const lum=rgb(allyJersey).reduce((a,b)=>a+b,0)/3;
+    best=lum>127?0x141821:0xf2f4f7;
+  }
+  return best;
+}
+
+  /* 队服要在每次进入模式时重刷。build() 是带缓存的（阵容只建一次），
+     如果只在创建时染色，玩家中途换了角色，队友还会穿着上一次的颜色 ——
+     实测换 8 个传奇角色，队友一直停在第一次那个色。 */
+  function dressSquad(cfg){
+    if(!squad)return;
+    const allyJersey=playerKit(cfg);
+    const foeJersey=foeKit(allyJersey);
+    IDS.forEach(id=>{
+      const actor=squad.actors[id];if(!actor)return;
+      const ally=actor.ally;
+      const jersey=ally?(id==="ally0"?shade(allyJersey,-0.28):allyJersey):foeJersey;
+      chars.dressGuy(actor.guy,jersey,shade(jersey,-0.45),"");
+    });
+  }
+
   function build(cfg){
-    if(squad)return squad;
+    if(squad){dressSquad(cfg);return squad;}
     const actors={};
     IDS.forEach(id=>{
       const ally=id.indexOf("ally")===0;
       const guy=chars.voxelGuy();
       guy.g.visible=false;scene.add(guy.g);
-      const skin=ally?cfg.team.ally:cfg.team.foe;
-      // 持球核心穿主色,和其他队友区分开,方便你一眼找到球在谁手上。
-      const jersey=(id==="ally0"&&cfg.star)?cfg.star.jersey:skin.jersey;
-      const shorts=(id==="ally0"&&cfg.star)?cfg.star.shorts:skin.shorts;
+      /* 队友跟你同色，对手取色差最大的那个 —— 分不清敌我的话，
+         打铁后冲上来挑衅的对手会被当成自己人在庆祝。
+         这里先给个占位，真正的染色在下面 dressSquad() 里统一做（换角色要能重刷）。 */
+      const allyJersey=playerKit(cfg);
+      const jersey=ally
+        ? (id==="ally0"?shade(allyJersey,-0.28):allyJersey)   // 核心同色系加深，仍能一眼认出持球人
+        : foeKit(allyJersey);
+      const shorts=shade(jersey,-0.45);
       chars.randomizeOutfit(guy);
       chars.dressGuy(guy,jersey,shorts,"");
       const ball=new THREE.Mesh(ctx.ballGeo,ctx.matBall);
@@ -114,6 +174,7 @@
         reaction:null,reactionT:0,startPos:V3(0,0,0)};
     });
     squad={actors,cfg,baked:false,post:null};
+    dressSquad(cfg);
     return squad;
   }
 
