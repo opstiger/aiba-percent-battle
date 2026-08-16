@@ -240,7 +240,7 @@ if(!entryHtml.includes('<script src="src/result-stats.js?v=1.78"></script>'))fai
 if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.16-soft-voxel"></script>'))fail("equipment visual script missing");
 if(!entryHtml.includes('<script src="src/gear.js?v=2.15.5-hand-follow"></script>'))fail("gear script missing");
 if(!entryHtml.includes('<script src="src/avatar-customizer.js?v=2.15.5-hand-follow"></script>'))fail("avatar customizer script missing");
-if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.19.5-syncfp"></script>'))fail("shot motion script missing");
+if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.19.6-hiplean"></script>'))fail("shot motion script missing");
 if(!entryHtml.includes('<script src="src/roster-style.js?v=2.15.5-hand-follow"></script>'))fail("roster style script missing");
 if(!entryHtml.includes('<script src="src/rendering/character-visuals.js?v=2.16.2-human-proportion"></script>'))fail("voxel pro character visuals missing");
 if(entryHtml.indexOf('src/roster-style.js?v=2.15.5-hand-follow')>entryHtml.indexOf('src/rendering/character-visuals.js?v=2.16.2-human-proportion'))fail("voxel pro visuals must wrap roster styling");
@@ -916,7 +916,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.5-catchpose','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.5-mob3','src/modes/last-shot/sequence.js?v=2.19.5-celeb3'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-hiplean','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.5-mob3','src/modes/last-shot/sequence.js?v=2.19.5-celeb3'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1363,4 +1363,27 @@ console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.le
   if(!mobBody||!/mobSlot/.test(mobBody)||!mobBody.split("\n").some(l=>/mobSlot/.test(l)&&/ang/.test(l)))
     fail("mobbing team-mates must fan out by bearing instead of stacking on one point");
   if(!/actor\.rimSlot/.test(squad))fail("the two rebounders must split left/right instead of pressing into each other");
+}
+
+/* ---------------- 接球屈髋 ---------------- */
+{
+  const m=read("src/rendering/motion.js");
+  /* 接球时上半身要从髋关节前倾约 10°，且必须随 lift 归零 ——
+     lift=1 时若还有残留，就会动到 T台导入的最高点姿势（上面 1e-3 的球心断言会挂）。 */
+  if(!/const CATCH_HIP_LEAN=0\.175;/.test(m))
+    fail("接球屈髋角度应为 10°(0.175rad)");
+  if(!/const catchLean=CATCH_HIP_LEAN\*\(c\.hold\|\|0\)\*\(1-ease01\(c\.lift\)\);/.test(m))
+    fail("接球屈髋必须随 lift 平滑归零，否则会改掉最高点躯干角");
+  if(!/o\.g\.rotation\.x=catchLean \+ 0\.12\*load/.test(m))
+    fail("屈髋是叠加在原有躯干角上的，不能替换掉蓄力/落地那几项");
+  // 平滑：球到手那一帧 G.canShoot 硬翻 true，直接用会让躯干一帧折下去
+  if(!/holdLean\+=\(want-holdLean\)\*Math\.min\(1,\(dt\|\|0\.016\)\*CATCH_LEAN_RATE\)/.test(m))
+    fail("接球屈髋必须做平滑，不能在 canShoot 翻转那一帧硬切");
+  /* updPose 有两条实现，shot-motion.js 那条才是当前生效的。
+     只改 motion.js 的话画面上完全没有反应（第一次就踩了这个坑）。 */
+  if(!/c\.hold=updateHoldLean\(dt\)/.test(read("src/shot-motion.js")))
+    fail("生效的 updPose(shot-motion.js) 也必须写入 c.hold");
+  // 下半身不动：屈膝链路仍由 load 驱动
+  if(!/const kneeBase=Math\.max\(0,0\.98\*load/.test(m))
+    fail("下半身屈膝链路不应被接球屈髋改动");
 }

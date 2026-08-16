@@ -422,6 +422,24 @@ function poseRunCycle(o,state,speed,dt,opts){
   o.g.position.y=POSE_STAND_FOOT_Y-footY*hs;
   return footY;
 }
+/* 接球时上半身从髋关节前倾 10°，下半身沿用现有的屈膝逻辑。
+   之前接球只有屈膝、躯干是直的，看起来像"站着把球接住"，没有屈髋。
+   这个前倾在蓄力抬球的过程中按 lift 平滑让位，lift=1 时严格归零 ——
+   最高点的躯干角度因此逐字不变，T台导入的那套最高点姿势不受影响
+   （check.js 有 1e-3 的球心断言，动到最高点会立刻失败）。
+   c.hold 由调用方给：玩家在球到手到出手之间给 1，其余角色不给就是 0，
+   所以电脑的动作完全不变，将来要接入只需在它的曲线上补一个 hold。 */
+const CATCH_HIP_LEAN=0.175;   // 10°
+const CATCH_LEAN_RATE=9;      // 屈髋的平滑速率(1/秒)
+let holdLean=0;
+/* 球到手那一帧 G.canShoot 硬翻 true，直接用会让躯干一帧折下 10°，所以做指数平滑。
+   注意：updPose 有两条实现（motion.js 这条是兜底，shot-motion.js 那条才是当前生效的），
+   两边都必须把结果写进曲线的 hold，否则只改一条会完全看不到效果。 */
+function updateHoldLean(dt){
+  const want=(typeof G!=="undefined"&&G.canShoot)?1:0;
+  holdLean+=(want-holdLean)*Math.min(1,(dt||0.016)*CATCH_LEAN_RATE);
+  return holdLean;
+}
 function poseGuy(o,c,lk){
   poseHandJoints(o,c);
   const sh=o.arms[0],gd=o.arms[1]; // arms[0]=x-0.33=角色右手(面朝篮筐时屏幕右侧) 投篮 / arms[1]=左手 护球
@@ -450,7 +468,8 @@ function poseGuy(o,c,lk){
   o.shoes[0].rotation.x=0;
   o.shoes[1].rotation.x=0;
   // 上身前倾:蓄力约10°(0.17rad),起跳回正并略后仰送球
-  o.g.rotation.x=0.12*load - 0.06*c.over - 0.03*c.jmp + 0.08*land;
+  const catchLean=CATCH_HIP_LEAN*(c.hold||0)*(1-ease01(c.lift));
+  o.g.rotation.x=catchLean + 0.12*load - 0.06*c.over - 0.03*c.jmp + 0.08*land;
   const footY=(poseFootBottomY(hipLead,kneeLead,ankleLead)+poseFootBottomY(hipTrail,kneeTrail,ankleTrail))*0.5;
   return POSE_STAND_FOOT_Y-footY;
 }
@@ -554,6 +573,9 @@ function updPose(dt){
     ?AIBAShotPhysics.update({charging:G.charging,dt,ideal,rate:playerChargeRate(),curve:base})
     :null;
   const c=phys?phys.curve:base;
+  /* 接球屈髋的开关。G.canShoot 在球到手那一帧硬翻 true，直接用会让躯干
+     一帧折下 10°，所以这里做指数平滑再交给 poseGuy。 */
+  c.hold=updateHoldLean(dt);
   // apex cue: tiny vibration + faint tick at the top of the jump
   if(G.charging&&!G.apexed&&(phys?phys.apexCue:poseK>=1)){
     G.apexed=true;
