@@ -1398,7 +1398,8 @@ console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.le
      打铁后冲上来挑衅的对手会被当成自己人在庆祝。 */
   if(!/function playerKit\(cfg\)/.test(sq)||!/player&&player\.mJ&&player\.mJ\.color/.test(sq))
     fail("队友球衣必须取玩家自己的球衣色");
-  if(!/function foeKit\(allyJersey\)/.test(sq)||!/MIN_KIT_DELTA/.test(sq))
+  // 注意别用 /MIN_KIT_DELTA/ 这种子串匹配：改名成 MIN_KIT_DELTA_X 也能匹配上，抓不到
+  if(!/function foeKit\(allyJersey\)/.test(sq)||!/bestD<MIN_KIT_DELTA\b/.test(sq))
     fail("对手球衣必须按色差挑选并保证最小色差");
   /* build() 带缓存（阵容只建一次）。只在创建时染色的话，玩家中途换角色，
      队友还会穿上一次的颜色 —— 实测换 8 个角色队友一直停在第一个色。 */
