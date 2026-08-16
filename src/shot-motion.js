@@ -191,7 +191,6 @@
     const follow=followState(dt);
     const c=visualReleaseCurve(rawCurve,follow);
     // 接球屈髋：这条才是当前生效的 updPose，不写这里改了也看不见
-    if(typeof updateHoldLean==="function")c.hold=updateHoldLean(dt);
     P.jump=phys.airborne?Math.max(0,rawCurve.jmp*0.55):Math.max(-0.06,rawCurve.jmp*0.55-rawCurve.over*0.28);
     P.eyeDip=-0.26*c.dip-0.09*lk;
     const stance=shotStanceBlend(c,G.canShoot||G.charging);

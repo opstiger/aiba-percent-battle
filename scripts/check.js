@@ -240,7 +240,7 @@ if(!entryHtml.includes('<script src="src/result-stats.js?v=1.78"></script>'))fai
 if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.16-soft-voxel"></script>'))fail("equipment visual script missing");
 if(!entryHtml.includes('<script src="src/gear.js?v=2.15.5-hand-follow"></script>'))fail("gear script missing");
 if(!entryHtml.includes('<script src="src/avatar-customizer.js?v=2.15.5-hand-follow"></script>'))fail("avatar customizer script missing");
-if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.19.6-hipfwd"></script>'))fail("shot motion script missing");
+if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.19.6-dip10"></script>'))fail("shot motion script missing");
 if(!entryHtml.includes('<script src="src/roster-style.js?v=2.15.5-hand-follow"></script>'))fail("roster style script missing");
 if(!entryHtml.includes('<script src="src/rendering/character-visuals.js?v=2.16.2-human-proportion"></script>'))fail("voxel pro character visuals missing");
 if(entryHtml.indexOf('src/roster-style.js?v=2.15.5-hand-follow')>entryHtml.indexOf('src/rendering/character-visuals.js?v=2.16.2-human-proportion'))fail("voxel pro visuals must wrap roster styling");
@@ -916,7 +916,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-hipfwd','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.5-celeb3'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.5-celeb3'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1365,29 +1365,25 @@ console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.le
   if(!/actor\.rimSlot/.test(squad))fail("the two rebounders must split left/right instead of pressing into each other");
 }
 
-/* ---------------- 接球前倾 ---------------- */
+/* ---------------- 蓄力前倾 ---------------- */
 {
   const m=read("src/rendering/motion.js");
   /* 这个骨架里 g.rotation.x 的正号是【后仰】（实测 +0.175 时头往后 3.8cm）。
-     前倾必须用负号 —— 第一版写成 +0.175，画面上就是往后倒。 */
-  if(!/const CATCH_HIP_LEAN=-0\.175;/.test(m))
-    fail("接球前倾应为 -0.175（负号=前倾，正号是后仰）");
-  if(!/const catchLean=CATCH_HIP_LEAN\*\(c\.hold\|\|0\)\*\(1-ease01\(c\.lift\)\);/.test(m))
-    fail("接球前倾必须随 lift 平滑归零，否则会改掉最高点姿势");
-  /* 蓄力项同样翻成前倾。原来是 +0.12*load，注释写着"上身前倾"但实际在后仰。 */
-  if(!/o\.g\.rotation\.x=catchLean - 0\.12\*load - 0\.06\*c\.over - 0\.03\*c\.jmp \+ 0\.08\*land;/.test(m))
-    fail("躯干角必须是 catchLean - 0.12*load（蓄力也前倾），且 over/jmp/land 三项保持原样");
-  if(/0\.g\.rotation\.y\+=twist|catchTurnAmount/.test(m))
+     原来写的是 +0.12*load 却注释成"上身前倾"，蓄力时人一直在后仰。 */
+  // load 峰值到 1.0，所以系数就是最深角度：0.175rad = 10°
+  if(!/const DIP_LEAN=0\.175;/.test(m))fail("蓄力前倾应为 0.175（最深 10°）");
+  if(!/o\.g\.rotation\.x=-DIP_LEAN\*load - 0\.06\*c\.over - 0\.03\*c\.jmp \+ 0\.08\*land;/.test(m))
+    fail("躯干角必须是 -DIP_LEAN*load（负号=前倾），over/jmp/land 三项保持原样");
+  /* 前倾只跟蓄力走：接球那一下人是站直的，不加任何前倾。
+     曾经加过一层 catchLean/c.hold，方向和时机都不对，已整块拆除。 */
+  if(/CATCH_HIP_LEAN|catchLean|updateHoldLean|holdLean|c\.hold/.test(m)
+     ||/updateHoldLean|c\.hold/.test(read("src/shot-motion.js")))
+    fail("接球不应再有独立的前倾层，前倾只由 load 驱动");
+  if(/catchTurnAmount|rotation\.y\+=twist/.test(m))
     fail("绕垂直轴转体那一版是理解错的，应已移除");
-  if(!/holdLean\+=\(want-holdLean\)\*Math\.min\(1,\(dt\|\|0\.016\)\*CATCH_LEAN_RATE\)/.test(m))
-    fail("接球前倾必须做平滑，不能在 canShoot 翻转那一帧硬切");
-  /* updPose 有两条实现，shot-motion.js 那条才是当前生效的。
-     只改 motion.js 的话画面上完全没有反应（第一次就踩了这个坑）。 */
-  if(!/c\.hold=updateHoldLean\(dt\)/.test(read("src/shot-motion.js")))
-    fail("生效的 updPose(shot-motion.js) 也必须写入 c.hold");
-  // 下半身不动：屈膝链路仍由 load 驱动
+  // 下半身屈膝链路不动
   if(!/const kneeBase=Math\.max\(0,0\.98\*load/.test(m))
-    fail("下半身屈膝链路不应被接球前倾改动");
+    fail("下半身屈膝链路不应被改动");
 }
 
 /* ---------------- 绝杀时刻队服 ---------------- */

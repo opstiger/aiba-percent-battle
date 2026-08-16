@@ -422,29 +422,17 @@ function poseRunCycle(o,state,speed,dt,opts){
   o.g.position.y=POSE_STAND_FOOT_Y-footY*hs;
   return footY;
 }
-/* 接球时上半身绕髋关节向前俯 10°（矢状面内的前倾，肩膀往膝盖方向压）。
-   之前接球只有屈膝、上半身是竖直的，看起来像"直着腰把球接住"。
-
-   ⚠ 这个骨架里 g.rotation.x 的正号是【后仰】，不是前倾。
+/* ⚠ 这个骨架里 g.rotation.x 的正号是【后仰】，不是前倾。
    实测：+0.175 时头沿朝向位移 -0.0376m（往后），-0.175 时 +0.0376m（往前）。
    所以前倾必须用负号。原来那行的注释写着"上身前倾:蓄力约10°"但用的是
    正号 0.12*load —— 注释和实际方向是反的，蓄力时人其实在后仰。
-   这次一并翻正（见下面的 -0.12*load）。
+   现在是 -0.12*load，真的前倾。
 
-   前倾在蓄力抬球的过程中按 lift 平滑让位，lift=1 时严格归零 ——
-   最高点姿势因此逐字不变（check.js 有 1e-3 的球心断言，动到最高点会立刻失败）。
-   c.hold 由调用方给：玩家在球到手到出手之间给 1，其余角色不给就是 0。 */
-const CATCH_HIP_LEAN=-0.175;   // 10° 前倾（负号=前倾，见上）
-const CATCH_LEAN_RATE=9;      // 屈髋的平滑速率(1/秒)
-let holdLean=0;
-/* 球到手那一帧 G.canShoot 硬翻 true，直接用会让躯干一帧折下 10°，所以做指数平滑。
-   注意：updPose 有两条实现（motion.js 这条是兜底，shot-motion.js 那条才是当前生效的），
-   两边都必须把结果写进曲线的 hold，否则只改一条会完全看不到效果。 */
-function updateHoldLean(dt){
-  const want=(typeof G!=="undefined"&&G.canShoot)?1:0;
-  holdLean+=(want-holdLean)*Math.min(1,(dt||0.016)*CATCH_LEAN_RATE);
-  return holdLean;
-}
+   前倾只跟蓄力走：dip 涨 -> 身体压下去，到最低点最深；起跳后 jmp 把 load 吃掉
+   -> 自动回正往上送。接球那一下不加任何前倾，人是站直的。
+   幅度 DIP_LEAN=0.175，最深处正好 10°（实测 load 峰值到 1.0）。
+   原来是 0.12(6.9°)，压下去的感觉不够。 */
+const DIP_LEAN=0.175;
 function poseGuy(o,c,lk){
   poseHandJoints(o,c);
   const sh=o.arms[0],gd=o.arms[1]; // arms[0]=x-0.33=角色右手(面朝篮筐时屏幕右侧) 投篮 / arms[1]=左手 护球
@@ -477,8 +465,7 @@ function poseGuy(o,c,lk){
      -0.12*load：蓄力也翻成前倾（原来是 +，实际是后仰，和注释相反）。
      over/jmp/land 三项维持原样 —— 最高点的 -0.03*jmp 是 T台导入姿势的一部分，
      被 check.js 的球心断言锁着，不能动。 */
-  const catchLean=CATCH_HIP_LEAN*(c.hold||0)*(1-ease01(c.lift));
-  o.g.rotation.x=catchLean - 0.12*load - 0.06*c.over - 0.03*c.jmp + 0.08*land;
+  o.g.rotation.x=-DIP_LEAN*load - 0.06*c.over - 0.03*c.jmp + 0.08*land;
   const footY=(poseFootBottomY(hipLead,kneeLead,ankleLead)+poseFootBottomY(hipTrail,kneeTrail,ankleTrail))*0.5;
   return POSE_STAND_FOOT_Y-footY;
 }
@@ -582,9 +569,6 @@ function updPose(dt){
     ?AIBAShotPhysics.update({charging:G.charging,dt,ideal,rate:playerChargeRate(),curve:base})
     :null;
   const c=phys?phys.curve:base;
-  /* 接球屈髋的开关。G.canShoot 在球到手那一帧硬翻 true，直接用会让躯干
-     一帧折下 10°，所以这里做指数平滑再交给 poseGuy。 */
-  c.hold=updateHoldLean(dt);
   // apex cue: tiny vibration + faint tick at the top of the jump
   if(G.charging&&!G.apexed&&(phys?phys.apexCue:poseK>=1)){
     G.apexed=true;
