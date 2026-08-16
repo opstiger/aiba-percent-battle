@@ -85,24 +85,33 @@
     OPP.fired=false;OPP.from=OPP.pos.clone();OPP.to=safe;OPP.phase="walk";OPP.t=0;
     return true;
   }
+  /* 对手必须和你站在同一个投篮点的左右两侧，且到篮筐的距离基本相同。
+     旧实现的首选槽位是沿 out（背离篮筐）方向后撤 0.95m —— 对手因此站到你身后，
+     接球点更远、出手距离更长，对她明显不公平（用户实测："电脑在我后面，
+     她接球点就离篮筐更远了，接球慢，投篮远"）。
+     改成绕篮筐做圆弧位移：半径严格不变，只在弧上左右分开，
+     于是任何点位都不会再出现明显的前后差。 */
+  const OPP_ARC_GAP=1.25;   // 与玩家的弧长间距(米)，旧实现要求 >=0.9 不重叠
   function oppSpotPos(index){
-    const i=index;
-    const sp=BATTLE_SPOTS[i];if(!sp)return V3(0,0,0);
-    // 确定性双槽位:玩家永远站点位圈上,对手站固定副槽位;与玩家位置无关,任何点位都不重叠。
-    // 底角/中场等贴边点位依次尝试 外侧→左右侧向→内侧,取钳制后仍保持 0.9m 间距的第一个槽位。
-    const out=V3(sp.p.x-HOOP.x,0,sp.p.z-HOOP.z);if(out.lengthSq()<0.01)out.set(0,0,1);out.normalize();
-    const side=V3(out.z,0,-out.x),ss=sp.p.x>=-0.01?1:-1;
-    const cands=[[out,0.95,side,ss*0.5],[out,0.95,side,-ss*0.5],[side,ss*1.1,out,0],[side,-ss*1.1,out,0],[out,-0.95,side,ss*0.5]];
-    let best=null,bestD=-1;
-    for(const c of cands){
-      const pos=sp.p.clone().addScaledVector(c[0],c[1]).addScaledVector(c[2],c[3]);
-      pos.x=clamp(pos.x,-COURT.halfWidth+.55,COURT.halfWidth-.55);
-      pos.z=clamp(pos.z,COURT.nearBaseline+.55,COURT.playMaxZ);
-      const d=pos.distanceTo(sp.p);
-      if(d>=0.9)return pos;
-      if(d>bestD){bestD=d;best=pos;}
+    const sp=BATTLE_SPOTS[index];if(!sp)return V3(0,0,0);
+    const out=V3(sp.p.x-HOOP.x,0,sp.p.z-HOOP.z);
+    const R=out.length();
+    if(R<0.05)return sp.p.clone();
+    const base=Math.atan2(out.x,out.z);
+    const dTheta=OPP_ARC_GAP/R;           // 弧长换圆心角，近点转得多、远点转得少
+    const ss=sp.p.x>=-0.01?-1:1;          // 优先往中线一侧让，底角点位才不会被边线夹住
+    const at=a=>V3(HOOP.x+Math.sin(a)*R,0,HOOP.z+Math.cos(a)*R);
+    const inBounds=pos=>pos.x>=-COURT.halfWidth+.55&&pos.x<=COURT.halfWidth-.55
+      &&pos.z>=COURT.nearBaseline+.55&&pos.z<=COURT.playMaxZ;
+    for(const sign of [ss,-ss]){
+      const pos=at(base+sign*dTheta);
+      if(inBounds(pos))return pos;
     }
-    return best;
+    // 两侧都出界(极端贴边点位)：夹回场内，半径尽量保住
+    const pos=at(base+ss*dTheta);
+    pos.x=clamp(pos.x,-COURT.halfWidth+.55,COURT.halfWidth-.55);
+    pos.z=clamp(pos.z,COURT.nearBaseline+.55,COURT.playMaxZ);
+    return pos;
   }
   function oppSpotQuota(index){
     const spot=BATTLE_SPOTS[index];
