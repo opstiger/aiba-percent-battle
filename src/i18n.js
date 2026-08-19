@@ -701,6 +701,7 @@ const DICT={
 "花球到位 · 命中3分":"Money ball up · 3 pts a make",
 "⚡ MINE-DEW 深远三分 (3分)":"⚡ MINE-DEW deep three (3 pts)",
 "💰全花球架":"💰 All-money rack",
+"保持手机水平":"keep the phone level",
 "✔ 命中":"✔ Made",
 "花球!":"Money ball!",
 "最后10秒加成 ·":"Final-10s bonus ·",
@@ -1173,6 +1174,44 @@ const RULES=[
 [/^精彩(.+)(预录中|生成中)\.\.\.(.+)$/,
   m=>"Highlight "+m[1]+(m[2]==="预录中"?" pre-recording":" rendering")+"... "+t(m[3])],
 /* ---- 绝杀时刻:带数字/插值的文案 ---- */
+/* 百分大战点位 HUD:"🎯 左彩球点 (5分 · 可投1次)" / "🔥 中场LOGO (10分 · 8秒恢复)"
+   点位名和右边的状态标签都要各自走词典(shots.js hudRackName)。 */
+[/^(🔥|🎯) (.+) \((\d+)分 · (.+)\)$/,
+  m=>m[1]+" "+t(m[2])+" ("+m[3]+" pts · "+t(m[4])+")"],
+/* 点位冷却标签 "10秒恢复"(spots.js),数字是算出来的 */
+[/^(\d+)秒恢复$/,m=>m[1]+"s to recover"],
+/* 对手命中彩球:球员名 + 固定句(opponent.js)。名字本身也要走词典。 */
+[/^(.+) 命中彩球5分!$/,m=>t(m[1])+" hits a 5-pt color ball!"],
+/* 命中吐司第三种拼法:("中场10分! "|"彩球5分! ")+欢呼+(" x连中")(shots.js) */
+[/^(中场10分! |彩球5分! )?(.+?) x(\d+)$/,
+  m=>(m[1]?t(m[1].trim())+" ":"")+t(m[2])+" x"+m[3]],
+[/^(中场10分!|彩球5分!) (.+)$/,m=>t(m[1])+" "+t(m[2])],
+/* 百分大战的三条播报都是拼字符串,带实时比分,整句进不了词典
+   (battle.js hint/播报、spots.js 中场 10 分)。 */
+[/^(你|对手)取得领先 · (\d+) : (\d+)$/,
+  m=>(m[1]==="你"?"You take the lead":"Rival takes the lead")+" · "+m[2]+" : "+m[3]],
+[/^比分播报 (\d+) : (\d+)$/,m=>"Score check "+m[1]+" : "+m[2]],
+[/^(你|对手)触发中场10分机会!$/,
+  m=>(m[1]==="你"?"You":"Rival")+" unlocked the halfcourt 10-pointer!"],
+/* 精力条上的关键时刻角标(gear.js updateHud 的 chip) */
+[/^CLUTCH 准星 \+(\d+)%$/,m=>"CLUTCH +"+m[1]+"% aim"],
+/* 投篮机/三分大赛 HUD:球架名后面追加 " 💰全花球架"(shots.js hudRackName) */
+[/^(.+) 💰全花球架$/,m=>t(m[1])+" 💰 All-money rack"],
+/* 命中吐司另一条拼法:("⚡ 深远三分! ")+随机欢呼+(" 🔥x连中数")(shots.js) */
+[/^(⚡ 深远三分! )?(.+?) 🔥x(\d+)$/,
+  m=>(m[1]?"⚡ Deep three! ":"")+t(m[2])+" 🔥x"+m[3]],
+[/^⚡ 深远三分! (.+)$/,m=>"⚡ Deep three! "+t(m[1])],
+/* 精力力竭提示带 WAKE_RATIO 算出来的百分比(gear.js),整句进不了词典 */
+[/^💦 力竭中 · 精力回到 (\d+)% 才能出手$/,
+  m=>"💦 Out of gas · recover to "+m[1]+"% before you can shoot"],
+/* 命中吐司是拼出来的:("花球! ")+("最后10秒加成 · ")+随机欢呼(CHEERS),
+   拼完就不等于任何一条词典 key。欢呼本身仍走 t()。 */
+[/^(花球! )?最后10秒加成 · (.+)$/,m=>(m[1]?"Money ball! ":"")+"Final-10s bonus · "+t(m[2])],
+[/^花球! (.+)$/,m=>"Money ball! "+t(m[1])],
+/* 投篮机 HUD:最后 10 秒会在同一个节点后面追加 " + FINAL BONUS",
+   整句就不再等于词典 key 了(shots.js hudRackName)。 */
+[/^(连续供球 · 下一球2分|花球到位 · 命中3分)( \+ FINAL BONUS)?$/,
+  m=>t(m[1])+(m[2]?" + FINAL BONUS":"")],
 [/^关键时刻\+(\d+)%$/,m=>"Clutch +"+m[1]+"%"],
 [/^累计完成 (\d+) \/ (\d+) 次$/,m=>"Cleared "+m[1]+" of "+m[2]+" attempts"],
 /* 队名带比分:"你的球队 104 : 104 主场球队"。队名走词典,比分原样。 */

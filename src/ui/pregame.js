@@ -70,10 +70,13 @@
     let html=`<h1 class="title" style="font-size:22px">对位介绍</h1>
       <div class="note">今晚的像素之夜 · ${count+1} 人半决赛 · 前 2 名晋级决赛<br>出手顺序随机抽签 · 对手比赛全程直播</div>`;
     G.opponents.forEach(opponent=>{
-      const rawTalk=TALK_PRE[(Math.random()*TALK_PRE.length)|0],talk=translate(rawTalk);
+      /* 连角括号一起翻。只翻里面那句的话,节点会变成「English」 —— 里面没有汉字了,
+         DOM 翻译层不会再回来处理,英文界面上就一直挂着一对中文角括号。
+         整句走 t() 才会命中 `「(.+)」` 规则,换成英文的 “ ”。 */
+      const rawTalk=TALK_PRE[(Math.random()*TALK_PRE.length)|0],talk=translate("「"+rawTalk+"」");
       html+=`<div class="card"><b>${opponent.n}</b> #${opponent.num} <span style="color:#ffb">${stars(opponent.r)}</span><br>
         <span style="color:#9ab;font-size:11px">三分能力 ${opponent.r}</span><br>
-        <span style="color:#ff9d8d;font-size:11px">「${talk}」</span></div>`;
+        <span style="color:#ff9d8d;font-size:11px">${talk}</span></div>`;
     });
     html+=`<div class="card" style="border-color:#3a6"><b style="color:#9dff8d">你 (YOU)</b> #${G.myNum} ${stars(G.myStar.r||88)}<br>
       <span style="color:#9ab;font-size:11px">${G.myStar.n} · 三分能力 ${G.myStar.r||88}</span><br>
