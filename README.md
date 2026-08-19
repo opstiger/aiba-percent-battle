@@ -64,6 +64,24 @@ Run the static checks before committing:
 node scripts/check.js
 ```
 
+## 在浏览器里测试
+
+除非这次测的就是音效，**先跑静音器再动**（工作环境里突然爆音很打断人）：
+
+```js
+// 注入脚本的第一件事，必须在 beginLastShot / ensureAudio 之前
+await fetch("scripts/silence-browser.js").then(r => r.text()).then(eval);
+```
+
+它做四件事：`<audio>` 全部静音并让新建的一出生就静音、语音合成关掉、
+断开 WebAudio 的 `connect()`、外加一个 250ms 看门狗压住主增益
+（`ensureAudio()` 之后音量会被恢复，只静音一次挡不住）。
+
+关键是**不改控制流** —— 元素照样 `play()`、解码照样进行、`extPlay()` 照样返回 true，
+只是听不见，所以被测逻辑不受影响。测完 `window.__unsilence()` 还原。
+
+`scripts/smoke-browser.js`（全模式打完整一局的冒烟）已经内置调用。
+
 ## Project layout
 
 - `index.html` — the playable entry: a ~200-line modular shell that loads the game from `src/` (cutover completed in v2.0).

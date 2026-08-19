@@ -3,16 +3,22 @@
    check.js 是静态分析，抓不到"跑起来才炸"的问题；这个补那一块。
 
    已知局限（读结果时要清楚）：
-   - 全程约 70 秒。过场用 setTimeout，必须让出事件循环才会推进，快不了。
-   - 百分大战常跑满 12000 帧上限才退出，且结束态会串到上一模式（模式间没有硬隔离）。
-     它那一行的"0 报错"只代表这段时间没抛异常，不代表打完了一整局。
+   - 全程约 1~2 分钟。过场用 setTimeout，必须让出事件循环才会推进，快不了。
+   - 模式之间靠 showMenu() 隔离。不隔离的话上一个模式的结束屏会让下一个 setup()
+     失效，循环会在死状态上空转到帧上限。
+   - ⚠ 百分大战目前只跑到约 24 帧就退出（赛前演出比 settle 的耐心长，
+     started 停在 pregame，状态一变就被当成"结束了"）。它那一行的"0 报错"
+     只代表没抛异常，**不代表这个模式被打过**。要真正覆盖它得单独处理赛前演出。
+     其余四个模式的帧数是真的（绝杀 314 / 三分 3664 / 投篮机 1801 / 练习 2900）。
    - 只验"有没有抛异常 + 状态机走没走到头"，不验画面对不对。观感仍需人眼。 */
 (async () => {
   const errs = [];
   addEventListener("error", e => errs.push("error: " + e.message));
   addEventListener("unhandledrejection", e => errs.push("promise: " + e.reason));
   const bl = document.getElementById("bootLoad"); if (bl) bl.style.display = "none";
-  if (window.mainGain) mainGain.gain.value = 0;          // 冒烟不需要声音
+  // 冒烟不测音效 -> 先彻底静音（见 scripts/silence-browser.js）
+  try { await fetch("scripts/silence-browser.js").then(r => r.text()).then(src => eval(src)); }
+  catch (e) { if (window.mainGain) mainGain.gain.value = 0; }
 
   /* 后台标签会冻结 rAF，所以手动逐帧驱动，dt 固定 1/60 保证可复现 */
   const step = (n, dt = 1 / 60) => {
@@ -35,12 +41,12 @@
   const PLAYABLE = /^(round|tiebreak|battle|rackrush|lastshot)$/;
   /* 过场/入场用的是 setTimeout。同步空转帧循环从不让出事件循环，定时器就永远不触发，
      模式会一直卡在 cinematic / rushintro。所以分块步进，块之间 await 一下让计时器跑。 */
-  const stepAsync = async (frames, chunk = 30) => {
+  const stepAsync = async (frames, chunk = 120) => {
     for (let done = 0; done < frames; done += chunk) { step(Math.min(chunk, frames - done)); await wait(0); }
   };
   const settle = async (limit = 4000) => {
     let k = 0;
-    while (!PLAYABLE.test(G.state) && !/end$/.test(G.state) && k < limit) { await stepAsync(30); k += 30; }
+    while (!PLAYABLE.test(G.state) && !/end$/.test(G.state) && k < limit) { await stepAsync(120); k += 120; }
     return k;
   };
   const playUntilEnd = async (limit = 12000) => {
@@ -50,7 +56,7 @@
     while (G.state === started && k < limit) {
       if (G.canShoot && !G.charging) shoot();
       step(1); k++;
-      if (k % 30 === 0) await wait(0);          // 同样要让计时器有机会跑
+      if (k % 120 === 0) await wait(0);         // 同样要让计时器有机会跑（120 帧一让，30 帧太碎、整轮要好几分钟）
     }
     return { 起始状态: started, 帧数: k };
   };
@@ -59,6 +65,13 @@
     const before = errs.length;
     const t0 = performance.now();
     let info = {};
+    /* 每个模式开始前先回封面。不回的话上一个模式会把游戏留在自己的结束屏
+       （比如 rushend），下一个 setup() 根本不生效，playUntilEnd 就在那个死状态上
+       空转到 12000 帧上限 —— 之前百分大战那一行的"0 报错"就是这么来的，
+       它压根没打。 */
+    try {
+      if (typeof showMenu === "function") { showMenu(); step(30); await wait(80); }
+    } catch (e) {}
     try { setup(); step(60); await wait(120); info = (await play()) || {}; }
     catch (e) { errs.push(name + ": " + e.message); }
     rows.push({
