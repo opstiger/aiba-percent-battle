@@ -1441,7 +1441,7 @@ console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.le
 {
   const a=read("src/audio.js"), ld=read("src/ui/loading.js");
   const arenaAudio=a.slice(a.indexOf("function sceneAudioArenaLike"),a.indexOf("function externalMediaDuckActive"));
-  const menu=read("src/ui/menu.js"),lastShot=read("src/modes/last-shot/sequence.js"),rush=read("src/modes/rack-rush.js"),practice=read("src/modes/practice.js");
+  const menu=read("src/ui/menu.js"),lastShot=read("src/modes/last-shot/sequence.js"),rush=read("src/modes/rack-rush.js"),practice=read("src/modes/practice.js"),pause=read("src/ui/pause.js");
   for(const token of ['G.state==="pregame"','G.state==="lastshot"','G.state==="victorycine"'])
     if(!arenaAudio.includes(token))fail("scene audio must stay active in "+token+" state");
   for(const token of ['G.state==="roundend"','G.state==="battleend"','G.state==="rushend"','G.state==="lsend"'])
@@ -1449,6 +1449,8 @@ console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.le
   if(!/const arenaLike=sceneAudioArenaLike\(\);/.test(a))fail("mute/unmute must share the scene audio state list");
   if((lastShot.match(/leaveArenaAudio\(\)/g)||[]).length<2)fail("Last Shot must stop arena audio on finish and exit");
   if(!/if\(foulDist<=FOUL_RANGE&&Math\.random\(\)<FOUL_CHANCE\)\{[\s\S]{0,260}whistle\(\)/.test(lastShot))fail("Last Shot fouls must trigger a referee whistle");
+  if((lastShot.match(/hideLastShotHud\(\)/g)||[]).length<2)fail("Last Shot finish and exit must hide the HUD");
+  if(!/if\(G\.mode==="lastshot"&&typeof global\.exitLastShot==="function"\)global\.exitLastShot\(\);/.test(pause))fail("home cleanup must exit Last Shot before returning to menu");
   if(!/function showRackRushResult\(record\)\{\s*G\.state="rushend";\s*leaveArenaAudio\(\);/.test(rush))fail("Rack Rush result must enter result state and stop arena audio");
   if((practice.match(/leaveArenaAudio\(\)/g)||[]).length<3)fail("Practice must stop arena audio on enter, finish, and exit");
   if(!/G\.state="menu";leaveArenaAudio\(\);/.test(menu))fail("menu entry must stop arena audio before starting menu music");

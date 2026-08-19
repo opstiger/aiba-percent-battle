@@ -65,6 +65,7 @@
     global.hidePanel();updatePauseButton();
   }
   function clearLiveObjectsForMenu(options){
+    if(G.mode==="lastshot"&&typeof global.exitLastShot==="function")global.exitLastShot();
     if(global.AIBANavigation)global.AIBANavigation.cleanup(options);
     const passing=ctx.getPassing();if(passing){scene.remove(passing.mesh);ctx.setPassing(null);}
     balls.slice().forEach(ball=>{scene.remove(ball.mesh);scene.remove(ball.blob);});balls.length=0;

@@ -50,6 +50,11 @@
     if(el.className!==cls)el.className=cls;
   }
 
+  function hideLastShotHud(){
+    const hud=$("hud");
+    if(hud){hud.dataset.mode="";hud.style.display="none";}
+  }
+
   /* ---------------- 进场 ---------------- */
   function resetState(cfg,practice){
     resetFinalRun();resetAudioCueMemory();
@@ -649,6 +654,7 @@
     if(LS.resolved)return;
     leaveArenaAudio();
     setCelebrateView(false);
+    hideLastShotHud();
     LS.resolved=true;LS.on=false;LS.phase="done";
     G.running=false;G.canShoot=false;G.passCatch=null;
     if(global.AIBALastShotResult)global.AIBALastShotResult.show(LS.cfg,made,reason,LS.practice,LS.diag||null);
@@ -660,7 +666,7 @@
     LS.on=false;LS.phase="idle";G.running=false;G.canShoot=false;G.passCatch=null;
     if(LS.pass){scene.remove(LS.pass.mesh);LS.pass=null;}
     squadApi.dispose();
-    const hud=$("hud");if(hud)hud.dataset.mode="";
+    hideLastShotHud();
   }
 
   const api=Object.freeze({beginLastShot,updateLastShot,updateLastShotCam,exitLastShot,finish,state});
