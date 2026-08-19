@@ -137,7 +137,7 @@ for(const [file,version] of Object.entries(percentBattleVersions)){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js?v=${version}"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
 const lastShotModules=["config","squad","sequence","index"];
-const lastShotVersions={config:"2.19.5-roster",squad:"2.19.6-kit2",sequence:"2.19.5-celeb3",index:"2.19.5-unify3"};
+const lastShotVersions={config:"2.19.5-roster",squad:"2.19.6-kit2",sequence:"2.19.7-celeb3p",index:"2.19.5-unify3"};
 for(const file of lastShotModules){
   if(!entryHtml.includes(`<script src="src/modes/last-shot/${file}.js?v=${lastShotVersions[file]}"></script>`))fail(`next Last Shot ${file} module missing`);
 }
@@ -920,7 +920,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.5-celeb3'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.7-celeb3p'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1454,4 +1454,20 @@ console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.le
     fail("天气/环境音不应进启动清单");
   if(!/function prefetchDeferredAudio/.test(ld)||!/prefetchDeferredAudio\(deferred\)/.test(ld))
     fail("移出启动清单的音轨必须在启动完成后后台补拉，否则进场景时第一次会没声");
+}
+
+/* ---------------- 庆祝镜头 ---------------- */
+{
+  const seq=read("src/modes/last-shot/sequence.js");
+  /* 第一人称的肩和上臂是刻意隐藏的（FP_HIDDEN_PARTS，相机在眼后 0.85m 时
+     肩块会糊住画面底部）。庆祝时相机后拉，那截藏掉的部分就露馅成"悬空的手"。
+     所以庆祝这几秒切过肩第三人称：身体显出来、手接回身上。 */
+  if(!/function setCelebrateView\(on\)/.test(seq))
+    fail("庆祝要切过肩第三人称，需要 setCelebrateView 控制身体/手的可见性");
+  if(!/player\.g\.visible=on\?true:/.test(seq)||!/hands\.visible=on\?false:/.test(seq))
+    fail("庆祝时必须显出身体并收起第一人称的手，否则还是两只手悬空");
+  /* 不还原的话第一人称回不来：手没了、身体一直显着。 */
+  const restores=(seq.match(/setCelebrateView\(false\)/g)||[]).length;
+  if(restores<2)fail("finish() 和 exitLastShot() 都要还原视图（当前 "+restores+" 处）");
+  if(!/CELEB_BACK_3P/.test(seq))fail("过肩机位距离应是具名常量，便于调");
 }

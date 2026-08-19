@@ -540,21 +540,41 @@
   }
   /* 庆祝阶段自己接管第一人称镜头：共用的 updPlayCam 会把视线死锁在篮筐上，
      庆祝时人是转着头蹦的，锁筐等于站着不动只有手在抖。 */
+  /* ---------------- 庆祝镜头：切过肩第三人称 ----------------
+     第一人称下"你"只有两条镜像出来的手臂，肩和上臂是刻意隐藏的
+     （FP_HIDDEN_PARTS，因为相机在眼后 0.85m 时肩块会糊住画面底部）。
+     庆祝时相机后拉，那截藏掉的部分就露馅了 —— 两只手悬在空中没有身体。
+
+     而庆祝本来就是"看别人"的镜头：队友推搡、对手挑衅、全场反应，
+     第一人称反而全看不到。所以这几秒切到过肩第三人称：
+     身体显出来、手接回身上，顺带把周围的反应一起框进画面。
+     出手瞬间仍然是第一人称，手感取景不受影响。 */
+  const CELEB_BACK_3P=2.6, CELEB_SIDE=0.95, CELEB_HEIGHT=1.95;
+  function setCelebrateView(on){
+    /* applyCamMode() 只在切机位时跑，这里直接改可见性即可。
+       hands 关掉后 animFpRig 会自动收起第一人称镜像骨架。 */
+    if(typeof hands!=="undefined"&&hands)hands.visible=on?false:(CAM.mode===0);
+    if(player&&player.g)player.g.visible=on?true:(CAM.mode!==0);
+  }
   function updateCelebrateCam(){
     const c=LS.celeb;if(!c||CAM.mode!==0)return false;
+    setCelebrateView(true);
     const yaw=P.face;
-    const dir=V3(Math.sin(yaw),0,Math.cos(yaw));
-    const rise=typeof FP_RISE==="number"?FP_RISE:.05;
-    const bob=c.made?Math.sin(c.t*3.4+c.phase)*.018:0;
-    const eyeY=EYE+P.eyeDip+P.jump+bob;
-    /* 竖屏的水平视野只有 50° 左右(见 core.js 的 Hor+ 补偿)，投篮取景的 0.85m 后拉
-       在这里放不下举起来的双手——实测手的 NDC.x 会跑到 ±1.3 以外，整只手在画面外。
-       庆祝阶段没有瞄准要求，把相机再退到 CELEB_BACK，可视锥在手的深度上就宽了一半，
-       双手才真的在画面里。 */
-    rig.pos.set(P.pos.x-dir.x*CELEB_BACK,eyeY+rise,P.pos.z-dir.z*CELEB_BACK);
-    // 抬头看看天/看看队友，撞上来的一瞬间视线被顶偏
-    const lookY=eyeY+(c.made?.52+Math.sin(c.t*1.1+c.phase)*.20:-.55)+c.bump*c.bumpDir*.22;
-    rig.look.set(P.pos.x+dir.x*6,lookY,P.pos.z+dir.z*6);
+    const dir=V3(Math.sin(yaw),0,Math.cos(yaw));      // 身体朝向
+    const right=V3(Math.cos(yaw),0,-Math.sin(yaw));   // 身体右侧
+    const bob=c.made?Math.sin(c.t*3.4+c.phase)*.03:0;
+    const kick=c.bump*c.bumpDir;                       // 被撞那一下的侧向冲击
+    // 过肩：退到身后偏一侧，略高于头顶，看向自己的上半身
+    rig.pos.set(
+      P.pos.x-dir.x*CELEB_BACK_3P+right.x*(CELEB_SIDE+kick*.35),
+      CELEB_HEIGHT+P.jump*.35+bob,
+      P.pos.z-dir.z*CELEB_BACK_3P+right.z*(CELEB_SIDE+kick*.35)
+    );
+    rig.look.set(
+      P.pos.x+dir.x*.45+right.x*kick*.25,
+      1.45+P.jump*.55+(c.made?Math.sin(c.t*1.1+c.phase)*.06:-.12),
+      P.pos.z+dir.z*.45+right.z*kick*.25
+    );
     return true;
   }
   function updateBodyState(dt){
@@ -626,12 +646,14 @@
   }
   function finish(made,reason){
     if(LS.resolved)return;
+    setCelebrateView(false);
     LS.resolved=true;LS.on=false;LS.phase="done";
     G.running=false;G.canShoot=false;G.passCatch=null;
     if(global.AIBALastShotResult)global.AIBALastShotResult.show(LS.cfg,made,reason,LS.practice,LS.diag||null);
   }
 
   function exitLastShot(){
+    setCelebrateView(false);   // 还原第一人称，否则手没了、身体一直显着
     LS.on=false;LS.phase="idle";G.running=false;G.canShoot=false;G.passCatch=null;
     if(LS.pass){scene.remove(LS.pass.mesh);LS.pass=null;}
     squadApi.dispose();
