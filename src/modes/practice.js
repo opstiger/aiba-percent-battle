@@ -4,12 +4,12 @@
   const runtime=global.AIBA&&global.AIBA.runtime,ctx=runtime&&runtime.service("legacy");
   if(!runtime||!ctx)throw new Error("Practice requires AIBA runtime legacy adapter");
   const {
-    $,G,RACKS,HOOP,scene,balls,P,rig,V3,ensureAudio,hidePanel,music,resetProgressiveSceneForRun,
+    $,G,RACKS,HOOP,scene,balls,P,rig,V3,ensureAudio,leaveArenaAudio,hidePanel,music,resetProgressiveSceneForRun,
     resetRackBalls,faceTo,glideTo,shotEye,applyCamMode,readyBall,toast,showPanel
   }=ctx;
 
   function startPractice(){
-    ensureAudio(false);hidePanel();music(false);resetProgressiveSceneForRun();
+    ensureAudio(false);leaveArenaAudio();hidePanel();music(false);resetProgressiveSceneForRun();
     G.practice=true;G.moneyRack=(Math.random()*5)|0;
     G.seq=[0,1,2].map(ball=>({rack:2,ball,val:1,money:false,deep:null}));
     G.shotIdx=0;G.shots=[];G.score=0;G.streak=0;G.timer=0;G.running=false;G.buzzed=false;
@@ -28,6 +28,8 @@
     });
   }
   function endPractice(){
+    G.state="roundend";
+    leaveArenaAudio();
     G.practice=false;$("hud").style.display="none";applyCamMode();
     const made=G.shots.filter(shot=>shot.made).length;
     showPanel(`<h1 class="title" style="font-size:20px">热身结束 · ${made}/3</h1>
@@ -39,6 +41,7 @@
     if(G.practice&&G.state==="round"&&G.shotIdx>=G.seq.length&&balls.length===0&&!G.charging&&!ctx.getPassing())endPractice();
   }
   function exitPractice(){
+    leaveArenaAudio();
     G.practice=false;G.running=false;G.canShoot=false;
   }
 

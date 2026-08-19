@@ -3,10 +3,10 @@
 
   const runtime=global.AIBA&&global.AIBA.runtime,ctx=runtime&&runtime.service("legacy");
   if(!runtime||!ctx||!runtime.service("ui:panels")||!runtime.service("ui:loading"))throw new Error("UI menu requires panels, loading, and legacy adapter");
-  const {G,COVER_STARS,BATTLE_BAR_VISIBLE_SHOTS,RACK_RUSH_SPEED_TARGET,resetFinalRun,ensureAudio}=ctx;
+  const {G,COVER_STARS,BATTLE_BAR_VISIBLE_SHOTS,RACK_RUSH_SPEED_TARGET,resetFinalRun,ensureAudio,leaveArenaAudio}=ctx;
 
   function showMenu(){
-    G.state="menu";resetFinalRun();
+    G.state="menu";leaveArenaAudio();resetFinalRun();
     if(ctx.hasAudioContext()){
       ensureAudio(true);
       if(typeof global.playSFX==="function")global.playSFX("ui_mode_whoosh_01",.42);

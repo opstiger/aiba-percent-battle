@@ -124,6 +124,7 @@
     battleScoreCallout,
     checkBattleOvertake,
     crowdSwell,
+    whistle,
     doRelease,
     sBuzz,
     startConfetti,

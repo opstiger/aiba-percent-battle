@@ -496,7 +496,7 @@ function extPlayVariant(group,keys){
 function extStop(k){const a=extA[k];if(a)try{a.pause()}catch(e){}}
 extInit();
 function sceneAudioArenaLike(){
-  return G.state==="cinematic"||G.state==="round"||G.state==="roundend"||G.state==="aishow"||G.state==="tiebreak"||G.state==="battle"||G.state==="battleend"||G.state==="rackrush"||G.state==="rushintro"||G.state==="rushbetween"||G.state==="rushend"||G.state==="wincine"||G.state==="victorycine"||G.state==="replay";
+  return G.state==="cinematic"||G.state==="pregame"||G.state==="round"||G.state==="aishow"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot"||G.state==="rushintro"||G.state==="rushbetween"||G.state==="wincine"||G.state==="victorycine"||G.state==="replay";
 }
 function externalMediaDuckActive(){
   return Date.now()<mediaDuckUntil;
@@ -1278,7 +1278,7 @@ function rivalSay(o,t,emo){
 }
 function toggleMute(){
   const menuLike=G.state==="menu"||G.state==="diff";
-  const arenaLike=G.state==="cinematic"||G.state==="round"||G.state==="aishow"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="rushintro"||G.state==="rushbetween";
+  const arenaLike=sceneAudioArenaLike();
   try{
     const s=audioState();
     const needsStart=MUTED||!AC||AC.state==="suspended"||(menuLike&&!s.menuMusic)||

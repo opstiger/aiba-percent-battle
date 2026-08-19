@@ -10,7 +10,7 @@
     RACK_RUSH_SPEED_TARGET,VISION,RACKS,HOOP,COURT_ATTACK_DIR,GAME_VERSION,GAME_SEED,
     scene,balls,rivals,player,passer,handBall,pBall,hands,confPts,CAM,P,rig,camTarget,
     shotProfileText,playerShotProfile,resetFinalRun,resetAudioCueMemory,resetRackBalls,
-    stopCelebrate,ensureAudio,hidePanel,music,resetProgressiveSceneForRun,enterArenaAudio,
+    stopCelebrate,ensureAudio,hidePanel,music,resetProgressiveSceneForRun,enterArenaAudio,leaveArenaAudio,
     faceTo,applyCamMode,autoFrameCam,glideTo,startPreGameShow,broadcastSting,paSay,
     playPregameCountdownCue,sGo,calibrateTilt,readyBall,toast,sBeep,updDotsUI,updPowerUI,
     playAudioEvent,crowdSwell,doRelease,sBuzz,startConfetti,cheerSound,airhorn,
@@ -230,6 +230,8 @@
     return record.levels.map(row=>`<tr><td>${row.level<=5?"L"+row.level:"FINAL"} · ${row.name}</td><td>${row.score}${row.target!=null?" / "+row.target:""}</td></tr>`).join("");
   }
   function showRackRushResult(record){
+    G.state="rushend";
+    leaveArenaAudio();
     const accuracy=Math.round(rackRushAccuracy(record)*100),speed=isRackRushSpeed(record),headline=speed?"百分竞速完成":(record.completed?"FINAL RUSH 完成":"挑战结束");
     if(global.AIBARecorder&&AIBARecorder.result)AIBARecorder.result(record,{title:headline,score:speed?formatRackRushClock(record.elapsedMs/1000):record.total+" PTS",sub:`命中 ${record.makes}/${record.attempts} · 命中率 ${accuracy}%`,postMs:9000});
     showPanel(`${global.AIBAResultHeaderMarkup(record,{headline,score:speed?formatRackRushClock(record.elapsedMs/1000):record.total+" 分",label:speed?"TIME (SECONDS)":"TOTAL POINTS",mode:speed?"100% SPRINT COMPLETE":"RACK RUSH COMPLETE"})}

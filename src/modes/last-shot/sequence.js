@@ -15,8 +15,8 @@
   const {
     $,G,V3,clamp,scene,balls,player,passer,oppPasser,handBall,pBall,hands,confPts,CAM,P,rig,camTarget,LEGENDS,
     HOOP,ballGeo,matBall,faceTo,applyCamMode,ensureAudio,hidePanel,music,resetProgressiveSceneForRun,
-    resetRackBalls,resetFinalRun,resetAudioCueMemory,enterArenaAudio,stopCelebrate,rivals,
-    toast,paSay,sBeep,sGo,sBounce,sBuzz,broadcastSting,calibrateTilt,updPowerUI,updDotsUI,
+    resetRackBalls,resetFinalRun,resetAudioCueMemory,enterArenaAudio,leaveArenaAudio,stopCelebrate,rivals,
+    toast,paSay,sBeep,sGo,sBounce,sBuzz,broadcastSting,whistle,calibrateTilt,updPowerUI,updDotsUI,
     doRelease,boo,crowdSwell,playAudioEvent
   }=ctx;
 
@@ -95,9 +95,9 @@
     // 强制第一人称:这是模式的核心体验,不允许切镜头
     CAM.mode=0;if(global.AIBASetIcon)global.AIBASetIcon("camBtn","camera",CAM.names[0]);
     ctx.setCamSnap(true);
-    enterArenaAudio(.92);
     hudSetup(cfg);
     G.state="lastshot";G.running=true;
+    enterArenaAudio(.92);
     applyCamMode();
     // 本模式自己管递球员,隐藏共用的两个背景递球角色
     passer.g.visible=false;oppPasser.g.visible=false;
@@ -179,6 +179,7 @@
          这里只记账，等球落定后进入罚球阶段。 */
       const willMake=b.outcome==="swish"||b.outcome==="rattle"||b.outcome==="bank";
       LS.foul={andOne:willMake,shots:willMake?1:3,made:0,taken:0};
+      whistle();crowdSwell&&crowdSwell(.28,1.2);
       if(willMake){
         toast("🙌 打手犯规 · 3+1！","#7CFC6B");
       }else{
@@ -646,6 +647,7 @@
   }
   function finish(made,reason){
     if(LS.resolved)return;
+    leaveArenaAudio();
     setCelebrateView(false);
     LS.resolved=true;LS.on=false;LS.phase="done";
     G.running=false;G.canShoot=false;G.passCatch=null;
@@ -653,6 +655,7 @@
   }
 
   function exitLastShot(){
+    leaveArenaAudio();
     setCelebrateView(false);   // 还原第一人称，否则手没了、身体一直显着
     LS.on=false;LS.phase="idle";G.running=false;G.canShoot=false;G.passCatch=null;
     if(LS.pass){scene.remove(LS.pass.mesh);LS.pass=null;}

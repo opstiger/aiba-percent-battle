@@ -1440,6 +1440,18 @@ console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.le
 /* ---------------- 音频加载 ---------------- */
 {
   const a=read("src/audio.js"), ld=read("src/ui/loading.js");
+  const arenaAudio=a.slice(a.indexOf("function sceneAudioArenaLike"),a.indexOf("function externalMediaDuckActive"));
+  const menu=read("src/ui/menu.js"),lastShot=read("src/modes/last-shot/sequence.js"),rush=read("src/modes/rack-rush.js"),practice=read("src/modes/practice.js");
+  for(const token of ['G.state==="pregame"','G.state==="lastshot"','G.state==="victorycine"'])
+    if(!arenaAudio.includes(token))fail("scene audio must stay active in "+token+" state");
+  for(const token of ['G.state==="roundend"','G.state==="battleend"','G.state==="rushend"','G.state==="lsend"'])
+    if(arenaAudio.includes(token))fail("scene audio must stay stopped in result state "+token);
+  if(!/const arenaLike=sceneAudioArenaLike\(\);/.test(a))fail("mute/unmute must share the scene audio state list");
+  if((lastShot.match(/leaveArenaAudio\(\)/g)||[]).length<2)fail("Last Shot must stop arena audio on finish and exit");
+  if(!/if\(foulDist<=FOUL_RANGE&&Math\.random\(\)<FOUL_CHANCE\)\{[\s\S]{0,260}whistle\(\)/.test(lastShot))fail("Last Shot fouls must trigger a referee whistle");
+  if(!/function showRackRushResult\(record\)\{\s*G\.state="rushend";\s*leaveArenaAudio\(\);/.test(rush))fail("Rack Rush result must enter result state and stop arena audio");
+  if((practice.match(/leaveArenaAudio\(\)/g)||[]).length<3)fail("Practice must stop arena audio on enter, finish, and exit");
+  if(!/G\.state="menu";leaveArenaAudio\(\);/.test(menu))fail("menu entry must stop arena audio before starting menu music");
   /* 游戏音效走 WebAudio 解码(decodeGameplaySfx 自己 fetch)，extInit 不能再赋 src，
      否则同一个文件下载两遍 —— 实测 crowd-boo-01 / bounce-sequence 各被拉了两次。 */
   if(!/GAMEPLAY_SFX_KEYS\.indexOf\(k\)>=0/.test(a)||!/const lazySrc=/.test(a))
