@@ -373,7 +373,13 @@ function decodeGameplaySfx(k){
       }catch(error){fail(error);}
     }))
     .then(buffer=>{decodedGameplaySfx[k]=buffer;syncGameplaySfxDebug();return buffer;})
-    .catch(error=>{noteAudioIssue("sfx-decode-"+k,error);syncGameplaySfxDebug();return null;});
+    .catch(error=>{
+      /* 解码失败必须把 in-flight 标记清掉。extPlay 里有一条
+         "正在解码就先别用 <audio>" 的短路，标记不清的话这个音效会永远静音，
+         再也回不到 <audio> 兜底。 */
+      delete decodedGameplaySfxLoads[k];
+      noteAudioIssue("sfx-decode-"+k,error);syncGameplaySfxDebug();return null;
+    });
   syncGameplaySfxDebug();
   return decodedGameplaySfxLoads[k];
 }
@@ -398,10 +404,10 @@ function playDecodedGameplaySfx(k,maxMs){
 function prewarmGameplaySfx(){
   syncGameplaySfxDebug();
   for(const k of GAMEPLAY_SFX_KEYS){
+    /* 只预热 WebAudio 那一路。以前这里还会 extEnsureSrc + a.load()，
+       等于把同一个文件再用 <audio> 下一遍。真要播而解码没成时，
+       extPlay 会自己懒赋 src。 */
     decodeGameplaySfx(k);
-    const a=extA[k];if(!a)continue;
-    extEnsureSrc(k);
-    if(a.readyState<2)try{a.load();}catch(e){}
   }
 }
 try{
@@ -423,7 +429,12 @@ function extInit(){
       const a=new Audio();
       const looped=k==="bgm"||k==="crowd"||k==="crowdCheer"||k==="rain"||k==="ocean";
       a.preload="auto";a.loop=looped;
-      if(EXT_BOOT_KEYS.indexOf(k)<0)a.src=u;   // 其余音效立刻带 src;启动音轨等 blob
+      /* 启动音轨等 blob；游戏音效走 WebAudio 解码(decodeGameplaySfx 会自己 fetch)，
+         这里再赋一次 src 就是同一个文件下载两遍 —— 实测 crowd-boo-01 和
+         bounce-sequence-indoor-01 各被拉了两次，约 325KB 白付。
+         解码失败时 extPlay 会懒赋 src 兜底，所以这里不赋不影响出声。 */
+      const lazySrc=EXT_BOOT_KEYS.indexOf(k)>=0||GAMEPLAY_SFX_KEYS.indexOf(k)>=0;
+      if(!lazySrc)a.src=u;
       a.volume=EXT_DEFAULT_VOLUME[k]||0.85;
       a.onerror=()=>{delete extA[k];};
       extA[k]=a;

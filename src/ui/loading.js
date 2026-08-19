@@ -38,14 +38,37 @@
     if(!document.fonts||!document.fonts.load)return;
     try{await Promise.race([document.fonts.load("700 16px Orbitron"),new Promise(resolve=>setTimeout(resolve,1000))]);}catch(error){}
   }
+  /* 启动之后的后台补拉。不计进度、不阻塞任何流程，失败也只是回到
+     "真要播时由 extPlay 懒赋 src"的老路，不影响出声。 */
+  function prefetchDeferredAudio(list){
+    if(!list||!list.length)return;
+    const idle=global.requestIdleCallback||(fn=>setTimeout(fn,1500));
+    idle(()=>{
+      list.forEach(asset=>{
+        if(!asset.url)return;
+        fetch(asset.url,{cache:"force-cache"})
+          .then(r=>r.ok?r.blob():null)
+          .then(blob=>{
+            if(blob&&typeof extHydrate==="function")extHydrate(asset.media,URL.createObjectURL(blob));
+          })
+          .catch(()=>{});
+      });
+    });
+  }
   async function bootGame(){
     global.BOOT_COVER=COVER_STARS[(Math.random()*COVER_STARS.length)|0];
     $("bootLoad").addEventListener("pointerdown",unlockBoot,{passive:false});global.showMenu();
+    /* 天气/环境音(rain 731KB + ocean + gull ≈ 796KB)不进启动清单：
+       它们是场景条件音 —— rain 只在下雨天气播、ocean 只在海滩场景播 ——
+       却占了首屏音频的一大块。移出后在启动完成后的空闲时间后台补拉，
+       等真的进到下雨场景时已经就绪，不会退化成"第一次没声"。 */
     const assets=[
       {url:global.BOOT_COVER.cover,weight:100000},{url:"assets/fonts/orbitron/Orbitron-VariableFont_wght.ttf",weight:38576},
       {media:"bgm",url:EXT_AUDIO.bgm,weight:807227},{media:"crowd",url:EXT_AUDIO.crowd,weight:1119164},
-      {media:"crowdCheer",url:EXT_AUDIO.crowdCheer,weight:300975},{media:"rain",url:EXT_AUDIO.rain,weight:731204},
-      {media:"ocean",url:EXT_AUDIO.ocean,weight:32684},{media:"gull",url:EXT_AUDIO.gull,weight:32108}
+      {media:"crowdCheer",url:EXT_AUDIO.crowdCheer,weight:300975}
+    ];
+    const deferred=[
+      {media:"rain",url:EXT_AUDIO.rain},{media:"ocean",url:EXT_AUDIO.ocean},{media:"gull",url:EXT_AUDIO.gull}
     ];
     const usable=assets.filter(asset=>asset.url),total=usable.reduce((sum,asset)=>sum+asset.weight,0);
     const state={done:0,finished:0,count:usable.length};$("bootStatus").textContent="正在同步画面与球馆声音";
@@ -53,6 +76,7 @@
     await ensureUIFontReady();setBootProgress(total,total,usable.length,usable.length);global.BOOT_READY=true;
     const gate=$("bootLoad");gate.classList.add("ready");gate.setAttribute("aria-busy","false");
     $("bootStatus").textContent=bootFailed?"基础资源就绪":"赛场资源就绪";document.documentElement.dataset.bootReady="1";
+    prefetchDeferredAudio(deferred);
   }
   function unlockBoot(event){
     if(!global.BOOT_GATE_ACTIVE)return false;
