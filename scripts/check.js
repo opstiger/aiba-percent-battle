@@ -226,7 +226,11 @@ if(/quickMode dna|NBA DNA|showModeInfo\('nbadna'\)/.test(homeMenuSource))fail("N
 if(!homeMenuSource.includes("grid")&&!read("styles.css").includes(".quickModes{display:grid;grid-template-columns:repeat(2"))fail("home quick modes should use two columns");
 for(const token of ["const NBA_DNA_ENABLED=false","if(!NBA_DNA_ENABLED)","return false"])
   if(!nbaDnaScript.includes(token))fail("NBA DNA runtime gate missing "+token);
-if(!entryHtml.includes('<script src="src/nba-dna/NBADNA.js?v=20260718-coming-soon"></script>'))fail("next NBA DNA gate cache version missing");
+/* NBA DNA 未上线：入口锁死(NBA_DNA_ENABLED=false)且封面无卡片，
+   那 5 个脚本(42KB)不再随首屏加载。源码里的 gate 仍然保留，
+   恢复上线时把脚本标签加回 index.html 即可。 */
+if(/<script src="src\/nba-dna\//.test(entryHtml))
+  fail("NBA DNA 未上线期间不应加载它的脚本（42KB 首屏开销）");
 if(!entryHtml.includes('<script src="src/assets-manifest.js?v=20260726-bkyx1"></script>'))fail("assets manifest script missing");
 if(!entryHtml.includes('<script src="src/config.js?v=2.15.5-hand-follow"></script>'))fail("config script missing");
 if(!entryHtml.includes('<script src="src/player-select.js?v=2.15.5-hand-follow"></script>'))fail("player select script missing");
