@@ -9,7 +9,7 @@ const childProcess=require("child_process");
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
 const legacyEntry="legacy.html";
-const snapshot="block-3pt-kingv2.19.5-modular.html";
+const snapshot="block-3pt-kingv2.19.6-modular.html";
 const requiredFiles=[
   entry,
   legacyEntry,
@@ -191,9 +191,9 @@ for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"]
 if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js?v=2.19.3-tstage"></script>'))fail("Percent Battle opponent cache version missing");
 if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js?v=refactor4a"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
-for(const token of ["v2.19.5 MODULAR","MODULAR / v2.19.5"])
+for(const token of ["v2.19.6 MODULAR","MODULAR / v2.19.6"])
   if(!entryHtml.includes(token))fail("visible version token missing "+token);
-if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.19.5";'))fail("GAME_VERSION must be v2.19.5");
+if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.19.6";'))fail("GAME_VERSION must be v2.19.6");
 const playerMeterGradient='<linearGradient id="ppGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#2e8bff"/><stop offset="55%" stop-color="#39d3ff"/><stop offset="78%" stop-color="#ffd23f"/><stop offset="100%" stop-color="#ff4040"/></linearGradient>';
 if(!entryHtml.includes(playerMeterGradient))fail("player power fill must preserve the original single-sweet-zone gradient");
 if((entryHtml.match(/class="ppSweet"/g)||[]).length!==1)fail("player power must expose exactly one sweet-zone marker");
