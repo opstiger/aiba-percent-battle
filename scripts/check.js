@@ -231,7 +231,7 @@ if(!entryHtml.includes('<script src="src/assets-manifest.js?v=20260726-bkyx1"></
 if(!entryHtml.includes('<script src="src/config.js?v=2.15.5-hand-follow"></script>'))fail("config script missing");
 if(!entryHtml.includes('<script src="src/player-select.js?v=2.15.5-hand-follow"></script>'))fail("player select script missing");
 if(!entryHtml.includes('<script src="src/player-locker-preview.js?v=2.18.3-locker-hands"></script>'))fail("player locker preview script missing");
-if(!entryHtml.includes('<script src="src/player-id.js"></script>'))fail("player id script missing");
+if(!entryHtml.includes('<script src="src/player-id.js?v=2.19.7-timeout"></script>'))fail("player id script missing");
 if(!entryHtml.includes('<script src="src/leaderboard-api.js"></script>'))fail("leaderboard api script missing");
 if(!entryHtml.includes('<script src="src/leaderboard-ui.js?v=1.94"></script>'))fail("leaderboard ui script missing");
 if(!entryHtml.includes('<script src="src/share.js?v=2.01"></script>'))fail("share script missing");
@@ -1419,4 +1419,16 @@ console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.le
     fail("切模式时必须重扫 DOM，否则新面板里的拼接文案会漏翻");
   // 拼接文案被拆成多个文本节点时，带尾随/前置分隔符的那段也要能单独翻
   if(!/\[\/\^\(\.\+\?\)\\s\*·\\s\*\$\//.test(i))fail("缺少尾随分隔符的分段规则");
+}
+
+/* ---------------- 网络调用必须有超时 ---------------- */
+{
+  const pid=read("src/player-id.js");
+  /* 接口不可达时无超时的 fetch 会无限挂着 —— 实测首屏 /v1/players 这一条
+     19.4 秒仍未结束，是整个页面最慢的资源。玩家身份是可降级的，
+     拿不到就用本地档案，绝不该卡住任何流程。 */
+  if(!/AbortController/.test(pid)||!/ctrl\.abort\(\)/.test(pid))
+    fail("player-id 的网络调用必须带 AbortController 超时");
+  if(/await fetch\(API\+/.test(pid))
+    fail("player-id 里不应再有裸 fetch，全部走 fetchWithTimeout");
 }
