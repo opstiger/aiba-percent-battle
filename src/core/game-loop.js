@@ -1,6 +1,6 @@
 /* ---------------- main loop ---------------- */
 const clock=new THREE.Clock();
-let jumboAcc=0,lowBeep=0,menuFrameAcc=0,visionAmbienceAcc=0;
+let jumboAcc=0,lowBeep=0,menuFrameAcc=0,visionAmbienceAcc=0,lastI18nState=null;
 function animate(){
   requestAnimationFrame(animate);
   let dt=Math.min(0.05,clock.getDelta());
@@ -20,6 +20,12 @@ function animate(){
     return;
   }
   G.tNow+=dt;
+  /* 切模式时把 DOM 重扫一遍。观察器只在节点变化那一刻触发，应用自己拼的字符串
+     （如 vsBanner 的 "星名 · 已翻译文案"）会停在半中半英上不再变化。 */
+  if(G.state!==lastI18nState){
+    lastI18nState=G.state;
+    if(window.AIBAI18N&&AIBAI18N.refresh)AIBAI18N.refresh();
+  }
   updateEnvironment(dt);
   updateSceneAudio(dt);
   updTweens(dt);

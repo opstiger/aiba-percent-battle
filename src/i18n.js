@@ -19,6 +19,101 @@ const CJK=/[一-鿿]/;
 function norm(s){return s.trim().replace(/，/g,",").replace(/！/g,"!").replace(/？/g,"?").replace(/：/g,":").replace(/；/g,";").replace(/（/g,"(").replace(/）/g,")").replace(/\s+/g," ");}
 
 const DICT={
+/* ---- v2.19.7 补齐：解说/捏人/排行榜/新手引导/难度/投篮机 ---- */
+"MOTION CONTROL":"MOTION CONTROL",
+"🎥 用身体投篮":"🎥 Shoot with your body",
+"🔒 摄像头画面只在本机识别姿态,不上传、不存储。":"🔒 The camera feed is processed on-device only — never uploaded, never stored.",
+"开启摄像头,进入真实球场":"Turn on the camera and step onto the court",
+"还是用触屏":"Stick with touch",
+"动作已经完全掌握,上场就是这套流程。":"You've got the motion. This is exactly how it works in a game.",
+"开打!":"Let's play!",
+"aiBA · 百分大战":"aiBA · Percent Battle",
+"热身启动":"Warm-up",
+"节奏加速":"Pace up",
+"压力测试":"Pressure test",
+"火力全开":"Full throttle",
+"极限盲投":"Blind fire",
+"室内经典":"Indoor classic",
+"晴天街头":"Sunny street",
+"雨天街头":"Rainy street",
+"鲜花球场":"Flower court",
+"西海岸夕阳":"West coast sunset",
+"百分竞速":"Speed 100",
+"彩球架":"Money rack",
+"RACK RUSH完成!":"RACK RUSH complete!",
+"运气球罢了...":"Just a lucky one...",
+"别眨眼,这节奏要起飞.":"Don't blink — this rhythm is taking off.",
+"三连中,篮网开始发烫.":"Three straight. The net is heating up.",
+"你该叫暂停了.":"Somebody call a timeout.",
+"篮筐在向你招手.":"The rim is waving you in.",
+"现在每一次出手都像慢动作.":"Every release looks like slow motion now.",
+"五连铁了,篮筐都要报警了.":"Five straight bricks — the rim is filing a complaint.",
+"深呼吸,下一球找回手感.":"Deep breath. Find the touch on the next one.",
+"今天这篮筐有点不讲理.":"This rim is being unreasonable today.",
+"别急,节奏回来就有.":"Easy. The rhythm will come back.",
+"方块手感掉线了,重启一下.":"Voxel touch went offline. Reboot it.",
+"八连铁,先把手感从地板上捡起来.":"Eight bricks. Go pick your touch up off the floor.",
+"稳住,下一球只看节奏.":"Settle. Next one is all rhythm.",
+"别和篮筐较劲,用弧线说话.":"Stop fighting the rim — let the arc talk.",
+"双方打平":"All square",
+"你暂时领先":"You're ahead for now",
+"暂时领先":"ahead for now",
+"最后五分决胜":"Final five points decide it",
+"九十分关口":"Ninety-point mark",
+"黑":"Black",
+"棕":"Brown",
+"金":"Blond",
+"高马尾":"High ponytail",
+"发髻":"Bun",
+"快":"Speed",
+"稳":"Control",
+"弧":"Arc",
+"杀":"Clutch",
+"N-24 夜航者":"N-24 Nightrunner",
+/* 规则 /^([A-Z]+-\d+)\s+(.+)$/ 会把 "N-24 夜航者 · xxx" 拆成 "N-24" + t("夜航者 · xxx")，
+   所以裸的"夜航者"也必须能单独翻，否则整句会原样吐回。 */
+"夜航者":"Nightrunner",
+"VOXEL PRO 原型 · 双层战衣":"VOXEL PRO prototype · dual-layer kit",
+"锐角中高弧":"Sharp mid-high arc",
+"节奏快射":"Quick-rhythm release",
+"未装备":"None equipped",
+"三分大赛云端榜稍后接入":"3PT Contest cloud leaderboard coming soon",
+"暂无全球记录":"No global records yet",
+"今日榜服务升级中,可先查看总榜":"Daily board is upgrading — check the all-time board",
+"全球排行榜读取失败,稍后再试。":"Couldn't load the global leaderboard. Try again later.",
+"暂无记录":"No records yet",
+"🎯 轮到你出手":"🎯 Your turn to shoot",
+"FINAL RUSH,最后冲刺!":"FINAL RUSH — last push!",
+"普通命中 3 分,彩球 4 分。先冲到 100 分,停表排时间榜。":"Normal shots 3 pts, money balls 4. First to 100 stops the clock for the time board.",
+"用时":"Time",
+"分数":"Score",
+"命中":"Made",
+"出手":"Att",
+"总分":"Total",
+"关卡":"Stage",
+"耗时":"Elapsed",
+"练习模式":"Practice",
+"不计成绩":"not scored",
+"英雄时刻 HERO BALL":"HERO BALL",
+"英雄时刻":"Hero moment",
+
+"无计时 · 无计分":"No clock · no score",
+"净计时":"net time",
+"WELCOME TO":"WELCOME TO",
+"直接开逛":"Just explore",
+"查看完整玩法说明 ›":"Full how-to-play ›",
+"玩法说明":"How to play",
+"选择难度":"Choose difficulty",
+"百分大战中,难度会影响你的甜区宽度和对手命中节奏。":"In Percent Battle, difficulty changes your sweet-zone width and the opponent's scoring rhythm.",
+"难度决定每关晋级目标与投篮甜区,供球速度按关卡逐步加快。":"Difficulty sets each stage's target and your sweet zone; feed speed ramps up stage by stage.",
+"绝杀时刻说明":"About Clutch Shot",
+"双手":"Two hands",
+"双手偏高":"Two hands, high",
+"投篮手抬高":"Shooting hand high",
+"辅助手抬高":"Guide hand high",
+"含现场音频":"with arena audio",
+"音频未接入":"audio not wired",
+"⚠ 出错了(请把这段发给开发者):":"⚠ Something broke (send this to the developer):",
 /* ---- 每日挑战 · 绝杀时刻 ---- */
 "每日挑战 · 绝杀时刻":"Daily Challenge · Clutch Shot",
 "绝杀时刻":"Clutch Shot",
@@ -1026,6 +1121,20 @@ const DICT={
 
 /* 参数化文案:整节点正则规则 */
 const RULES=[
+/* ---- v2.19.7:拼接与插值文案 ---- */
+[/^第 ?(\d+) ?关,(.+)。目标 ?(\d+) ?分。$/,m=>"Stage "+m[1]+" — "+t(m[2])+". Target "+m[3]+" pts."],
+[/^第 ?(\d+) ?架$/,m=>"Rack "+m[1]],
+[/^本次挑战结束,\s*总分\s*(\d+)\s*分。$/,m=>"Run over. Total "+m[1]+" pts."],
+[/^(\d+) ?分 · ([\d.]+) ?秒$/,m=>m[1]+" pts · "+m[2]+"s"],
+[/^速([+-]?\d+)%$/,m=>"SPD "+m[1]+"%"],
+[/^准([+-]?\d+)%$/,m=>"ACC "+m[1]+"%"],
+[/^弧\+(\d+)%$/,m=>"ARC +"+m[1]+"%"],
+[/^(.+) 已载入工坊$/,m=>t(m[1])+" loaded into the workshop"],
+[/^前 ?(\d+) ?球显示投篮条,之后靠手感出手。$/,
+  m=>"Shot meter for the first "+m[1]+" attempts, then shoot by feel."],
+[/^(.+) · (.+) · 甜区 ?(\d+)%$/,m=>t(m[1])+" · "+t(m[2])+" · sweet zone "+m[3]+"%"],
+[/^精彩(.+)(预录中|生成中)\.\.\.(.+)$/,
+  m=>"Highlight "+m[1]+(m[2]==="预录中"?" pre-recording":" rendering")+"... "+t(m[3])],
 /* ---- 绝杀时刻:带数字/插值的文案 ---- */
 [/^(\d+) 小时 (\d+) 分$/,m=>m[1]+"h "+m[2]+"m"],
 [/^(\d+) 分$/,m=>m[1]+"m"],
@@ -1121,7 +1230,12 @@ const RULES=[
 [/^蓄力 · ?(.*)$/,m=>"Charging · "+m[1]],
 [/^生效 · ?(.*)$/,m=>"Active · "+t(m[1])],
 /* 兜底:按 " · " 分段各自翻译(需放在最后) */
-[/ · /,m=>m.input.split(" · ").map(p=>t(p)).join(" · ")]
+/* 拼接文案常常被拆成多个文本节点，前一段会带着尾随的分隔符（实测 vsBanner
+   就是 "N-24 夜航者 · " + "投篮热身" 两个节点）。带尾巴的那段要能单独翻。 */
+[/^(.+?)\s*·\s*$/,m=>t(m[1])+" · "],
+[/^\s*·\s*(.+)$/,m=>" · "+t(m[1])],
+[/ · /,m=>m.input.split(" · ").map(p=>t(p)).join(" · ")],
+[/ \/ /,m=>m.input.split(" / ").map(p=>t(p)).join(" / ")]
 ];
 
 function t(s){
@@ -1190,5 +1304,10 @@ global.AIBALang=function(l){
     location.replace(u.toString());
   }catch(e){location.reload();}
 };
-global.AIBAI18N={lang:LANG,t:t};
+/* MutationObserver 只在节点变化那一刻触发。应用如果自己拼字符串
+   （实测 vsBanner 是 "星名 · " + 已翻译文案），那次写入的结果可能就停在
+   半中半英上不再变化，观察器没有第二次机会。refresh() 是通用兜底：
+   任何时候都能把当前 DOM 整个重扫一遍。切模式后调它最省心。 */
+function refresh(){if(LANG==="en")walk(document.body);}
+global.AIBAI18N={lang:LANG,t:t,refresh:refresh};
 })(window);

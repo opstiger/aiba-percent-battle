@@ -105,7 +105,7 @@ if(!entryHtml.includes('<meta name="aiba-entry" content="main">'))fail("entry ma
 if(!legacyHtml.includes("v1.96-full-en"))fail("legacy entry version token missing");
 if(legacyHtml.includes('location.replace("legacy.html"'))fail("legacy entry must not self-redirect");
 if(!entryHtml.includes("data-aiba-early-errors"))fail("next early error diagnostics missing");
-if(!entryHtml.includes('<script src="src/i18n.js?v=2.14-locker-orbit"></script>'))fail("i18n cache version missing");
+if(!entryHtml.includes('<script src="src/i18n.js?v=2.19.7-final"></script>'))fail("i18n cache version missing");
 if(!entryHtml.includes('<script src="src/core/runtime.js?v=refactor7"></script>'))fail("next runtime bridge missing");
 if(entryHtml.includes("player-id-sandbox")||entryHtml.includes("leaderboard-sandbox"))fail("entry must not load sandbox identity/leaderboard");
 if(!entryHtml.includes('<script src="src/recorder.js?v=refactor10"></script>'))fail("next recorder cache version missing");
@@ -1290,7 +1290,7 @@ if(!coreLoop.includes('if(VICTORY_CINE.on&&G.state!=="victorycine")stopVictoryCi
   fail("game loop must cancel a stale victory cinematic before camera dispatch");
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.19.5-hand-chain','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=refactor33b','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19-lastshot5','src/core/game-loop.js?v=2.19-lastshot5','src/core/scene-init.js?v=refactor38'])
+for(const token of ['src/gameplay/shots.js?v=2.19.5-hand-chain','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=refactor33b','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19-lastshot5','src/core/game-loop.js?v=2.19.7-i18n-refresh','src/core/scene-init.js?v=refactor38'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);
@@ -1402,4 +1402,21 @@ console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.le
   if(!/if\(squad\)\{dressSquad\(cfg\);return squad;\}/.test(sq))
     fail("复用已建阵容时必须重刷队服，否则换角色后队友仍是旧色");
   if(!/function dressSquad\(cfg\)/.test(sq))fail("队服染色应收敛到 dressSquad()");
+}
+
+/* ---------------- i18n 覆盖 ---------------- */
+{
+  const i=read("src/i18n.js");
+  /* 规则 /^([A-Z]+-\d+)\s+(.+)$/ 会把 "N-24 夜航者 · xxx" 拆成 "N-24" + t("夜航者 · xxx")，
+     所以裸的角色名也必须能单独翻，否则整句原样吐回（实测就是这条把百分大战的
+     vsBanner 卡在半中半英）。 */
+  if(!/"夜航者":/.test(i))fail("角色名的裸词也要进字典，否则前缀规则拆开后翻不动");
+  /* MutationObserver 只在节点变化那一刻触发。应用自己拼的字符串写进去后不再变化，
+     观察器没有第二次机会 —— 需要一个能整树重扫的兜底。 */
+  if(!/function refresh\(\)\{if\(LANG==="en"\)walk\(document\.body\);\}/.test(i))
+    fail("i18n 必须暴露 refresh() 作为拼接文案的兜底");
+  if(!/AIBAI18N\.refresh\(\)/.test(read("src/core/game-loop.js")))
+    fail("切模式时必须重扫 DOM，否则新面板里的拼接文案会漏翻");
+  // 拼接文案被拆成多个文本节点时，带尾随/前置分隔符的那段也要能单独翻
+  if(!/\[\/\^\(\.\+\?\)\\s\*·\\s\*\$\//.test(i))fail("缺少尾随分隔符的分段规则");
 }
