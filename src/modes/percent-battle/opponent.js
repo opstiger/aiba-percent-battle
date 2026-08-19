@@ -266,7 +266,16 @@
       guy.g.position.set(OPP.pos.x,groundLift+Math.max(0,curve.jmp*0.55-curve.over*0.28),OPP.pos.z);
       guy.g.rotation.y=faceTo(OPP.pos,HOOP)+SHOT_STANCE_YAW*stance;
       // poseGuy 内部已由 applyShotSetPose 统一写入与玩家相同的松手前姿势。
-      if(phase>=1.02&&!OPP.fired){OPP.fired=true;oppFireBall();OPP.phase="land";OPP.t=0;}
+      /* fired 先置位、再调 oppFireBall,一旦它抛异常就永远停在 load:
+         守卫是 `!OPP.fired`,而 phase="land" 那一步已经被异常跳过 —— 对手会僵在
+         出手姿势里,整场比赛不再动也不再得分,玩家只看到"电脑不动了",没有任何报错。
+         排查时用空的 G.battleOpp 复现过一次(OPP.o 为 null,aiProb(opponent.r) 抛错)。
+         正常流程不会走到,但出手这一步牵扯球、音效、录制,不该由它决定状态机能否推进。 */
+      if(phase>=1.02&&!OPP.fired){
+        OPP.fired=true;
+        try{oppFireBall();}catch(err){if(global.console)console.error("oppFireBall failed",err);}
+        OPP.phase="land";OPP.t=0;
+      }
     }else if(OPP.phase==="land"){
       const progress=Math.min(1,OPP.t/.36),settle=progress*progress;
       const curve=shotCurves(1.02*(1-settle));

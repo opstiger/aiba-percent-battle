@@ -105,7 +105,7 @@ if(!entryHtml.includes('<meta name="aiba-entry" content="main">'))fail("entry ma
 if(!legacyHtml.includes("v1.96-full-en"))fail("legacy entry version token missing");
 if(legacyHtml.includes('location.replace("legacy.html"'))fail("legacy entry must not self-redirect");
 if(!entryHtml.includes("data-aiba-early-errors"))fail("next early error diagnostics missing");
-if(!entryHtml.includes('<script src="src/i18n.js?v=2.19.8-stories5"></script>'))fail("i18n cache version missing");
+if(!entryHtml.includes('<script src="src/i18n.js?v=2.19.8-quotes2"></script>'))fail("i18n cache version missing");
 if(!entryHtml.includes('<script src="src/core/runtime.js?v=refactor7"></script>'))fail("next runtime bridge missing");
 if(entryHtml.includes("player-id-sandbox")||entryHtml.includes("leaderboard-sandbox"))fail("entry must not load sandbox identity/leaderboard");
 if(!entryHtml.includes('<script src="src/recorder.js?v=refactor10"></script>'))fail("next recorder cache version missing");
@@ -132,12 +132,12 @@ if(!entryHtml.includes('<script src="src/ui/pause.js?v=1.98"></script>'))fail("n
 if(!entryHtml.includes('<script src="src/core/bootstrap-next.js?v=cutover1"></script>'))fail("next bootstrap module missing");
 if(!entryHtml.includes('<script src="src/modes/percent-battle/state.js?v=refactor4c"></script>'))fail("next Percent Battle state module missing");
 if(!entryHtml.includes('<script src="src/modes/percent-battle/spots.js?v=refactor4b"></script>'))fail("next Percent Battle spots module missing");
-const percentBattleVersions={opponent:"2.19.3-tstage",results:"refactor4a",index:"refactor4a"};
+const percentBattleVersions={opponent:"2.19.8-firedguard",results:"refactor4a",index:"refactor4a"};
 for(const [file,version] of Object.entries(percentBattleVersions)){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js?v=${version}"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
 const lastShotModules=["config","squad","sequence","index"];
-const lastShotVersions={config:"2.19.8-stories",squad:"2.19.6-kit2",sequence:"2.19.8-tied",index:"2.19.8-picker"};
+const lastShotVersions={config:"2.19.8-stories",squad:"2.19.6-kit2",sequence:"2.19.8-win2",index:"2.19.8-result"};
 for(const file of lastShotModules){
   if(!entryHtml.includes(`<script src="src/modes/last-shot/${file}.js?v=${lastShotVersions[file]}"></script>`))fail(`next Last Shot ${file} module missing`);
 }
@@ -161,6 +161,16 @@ if(challengeIds<3)fail("Last Shot needs at least 3 scenarios (found "+challengeI
 if(!/function activeChallenge\(practice/.test(lsCfg))fail("Last Shot activeChallenge(practice) gate missing");
 if(!/practice\?pickedChallenge\(now\):dailyChallenge\(now\)/.test(lsCfg))fail("story picker must not bypass the daily rotation");
 if(!/pickStory/.test(lsIdx))fail("Last Shot story picker missing");
+/* 胜负线必须从分差算,不能写死。三关分差是 1 / 2 / 0,写死 pts>=2 会让
+   GAME SEVEN 三罚中 2(只是打平)判成赢、CORNER BURIED 三罚中 1(其实赢了)判成输。 */
+/* 字典值里写 "\\u201c" 会把转义序列原样显示到界面上(更衣室 Gear Lab 说明踩过)。
+   正则找的是"反斜杠 + 反斜杠 + u四位十六进制"。 */
+const i18nSrc=read("src/i18n.js");
+const literalEsc=i18nSrc.match(/\\\\u[0-9a-fA-F]{4}/g);
+if(literalEsc)fail("i18n dictionary must not contain literal escape sequences: "+literalEsc.slice(0,3).join(","));
+const lsSeq=read("src/modes/last-shot/sequence.js");
+if(!/\(c\.scoreAway-c\.scoreHome\)\+1/.test(lsSeq))fail("Last Shot win threshold must be derived from the score gap");
+if(/pts>=2\)|\bpts>=2\?/.test(lsSeq))fail("Last Shot must not hardcode the 2-point win threshold");
 if(entryHtml.includes("function startRackRush("))fail("next entry still contains inline Rack Rush implementation");
 if(entryHtml.includes("function beginStage(")||entryHtml.includes("function champion("))fail("next entry still contains inline contest implementation");
 if(entryHtml.includes("function startPractice(")||entryHtml.includes("function endPractice("))fail("next entry still contains inline practice implementation");
@@ -196,7 +206,7 @@ if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>'
 for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"],["results","index"]]){
   if(entryHtml.indexOf(`src/modes/percent-battle/${pair[0]}.js`)>entryHtml.indexOf(`src/modes/percent-battle/${pair[1]}.js`))fail(`Percent Battle ${pair[0]} must load before ${pair[1]}`);
 }
-if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js?v=2.19.3-tstage"></script>'))fail("Percent Battle opponent cache version missing");
+if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js?v=2.19.8-firedguard"></script>'))fail("Percent Battle opponent cache version missing");
 if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js?v=refactor4a"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
 for(const token of ["v2.19.8 MODULAR","MODULAR / v2.19.8"])
@@ -255,7 +265,7 @@ if(!entryHtml.includes('<script src="src/share.js?v=2.01"></script>'))fail("shar
 if(!entryHtml.includes('<script src="src/shot-physics.js?v=2.07-late-diag"></script>'))fail("shot physics script missing");
 if(!entryHtml.includes('<script src="src/result-stats.js?v=1.78"></script>'))fail("result stats script missing");
 if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.16-soft-voxel"></script>'))fail("equipment visual script missing");
-if(!entryHtml.includes('<script src="src/gear.js?v=2.15.5-hand-follow"></script>'))fail("gear script missing");
+if(!entryHtml.includes('<script src="src/gear.js?v=2.19.8-rivalgear"></script>'))fail("gear script missing");
 if(!entryHtml.includes('<script src="src/avatar-customizer.js?v=2.15.5-hand-follow"></script>'))fail("avatar customizer script missing");
 if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.19.6-dip10"></script>'))fail("shot motion script missing");
 if(!entryHtml.includes('<script src="src/roster-style.js?v=2.15.5-hand-follow"></script>'))fail("roster style script missing");
@@ -933,7 +943,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.8-tied'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.8-win'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);

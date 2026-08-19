@@ -117,6 +117,8 @@
      zone 是当前难度的甜区半宽，误差落在甜区内说明手感没问题，是被干扰吃掉的。 */
   function missAdvice(reason,diag){
     if(reason==="timeout")return{t:"没能在比赛钟走完前出手",d:"接球就投——这一攻只有两秒出手窗口，犹豫等于放弃。"};
+    /* 罚球刚好追平：不是打铁,是进加时,别用"最后一投偏出"糊弄过去 */
+    if(reason==="overtime")return{t:"追平了,但比赛还没结束",d:"这一攻拿到的分刚好抹平分差——进加时。要直接带走比赛,还差一分。"};
     if(!diag)return{t:"最后一投偏出",d:"再找找出手节奏。"};
     const err=diag.err||0,zone=Math.max(1,diag.zone||8),contest=diag.contest||0,late=diag.late||0;
     /* 过了投篮条顶点还没松手，系统会按"晚出手"扣力度(shot-physics.js releasePower)，
@@ -150,7 +152,10 @@
       <button class="btn sm" onclick="hidePanel();exitLastShot();goDiff('battle')">百分大战 · 练对抗</button>
       <button class="btn sm" onclick="hidePanel();exitLastShot();goDiff('contest')">三分大赛 · 练稳定性</button>`;
   }
-  function showResult(cfg,made,reason,practice,diag){
+  /* pts = 这一攻真正拿到的分(含罚球)。原来结果页自己按 `made?3:0` 重算比分,
+     罚球完全没算进去:and-one 拿 4 分只显示 +3;三罚中 2(打平进加时)显示成没得分;
+     平局关三罚中 1 明明赢了却显示 +3。比分必须用真实得分。 */
+  function showResult(cfg,made,reason,practice,diag,pts){
     G.state="lsend";applyCamMode();
     squadApi.show(false);
     if(made){startConfetti&&startConfetti();cheerSound&&cheerSound(true);airhorn&&airhorn();}
@@ -170,13 +175,14 @@
     }
 
     const s=recordResult(made);
-    const finalHome=cfg.scoreHome+(made?3:0);
-    const won=finalHome>cfg.scoreAway;
+    const gained=typeof pts==="number"?pts:(made?3:0);
+    const finalHome=cfg.scoreHome+gained;
+    const won=!!made;   // 胜负只有一个来源:sequence 的 shotSucceeded()
     paSay(made?"进了!比赛结束!":"没进,比赛结束。",true);
     showPanel(`<h1 class="title" style="font-size:24px">${made?"绝杀命中":"绝杀失手"}</h1>
       <div class="sub">${cfg.title} · ${today()}</div>
       <div class="card"><b>${cfg.homeName} ${finalHome} : ${cfg.scoreAway} ${cfg.awayName}</b>
-        <br><span style="color:${won?"#7CFC6B":"#ff8d7a"};font-size:12px">${won?"你完成了绝杀":(reason==="timeout"?"比赛钟走完,没能出手":"最后一投偏出")}</span></div>
+        <br><span style="color:${won?"#7CFC6B":(reason==="overtime"?"#ffd23f":"#ff8d7a")};font-size:12px">${won?"你完成了绝杀":(reason==="timeout"?"比赛钟走完,没能出手":(reason==="overtime"?"追平了 · 比赛进入加时":"最后一投偏出"))}</span></div>
       <div class="card">连续绝杀 <b class="flame">${s.streak}</b> 天 · 最佳 <b>${s.bestStreak}</b> 天
         <br><span style="color:#9ab;font-size:11px">累计完成 ${s.totalWins} / ${s.totalPlayed} 次</span></div>
       ${made?"":(()=>{const a=missAdvice(reason,diag);

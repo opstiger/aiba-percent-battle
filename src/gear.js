@@ -85,9 +85,18 @@
 
   /* ---------------- 关键时刻判定 ---------------- */
   function gameRef(){return typeof G==="undefined"?null:G;}
-  function playing(g){return !!g&&(g.state==="round"||g.state==="tiebreak"||g.state==="battle"||g.state==="rackrush");}
+  /* lastshot 必须算在内。漏掉它会造成两个看不见的问题:
+     ① 精力不重置 —— 打完百分大战力竭(v=0)直接进绝杀,fatigueFactor 还按 0.85 算,
+        甜区实测从 5.5 掉到 4.675(-15%),而绝杀模式没有精力条,玩家完全看不出来,
+        且 regen 也只在 playing 时跑,等于永远缓不过来。这是每日挑战 + 排行榜模式,
+        不能带着上一局的疲劳去打。
+     ② clutchActive 为 false —— 三件"关键时刻准星"装备在全游戏最关键的一投上失效。 */
+  function playing(g){return !!g&&(g.state==="round"||g.state==="tiebreak"||g.state==="battle"||g.state==="rackrush"||g.state==="lastshot");}
   function clutchActive(){
     const g=gameRef();if(!g||!playing(g))return false;
+    /* 绝杀时刻整个模式就是关键时刻,不能靠 g.timer 判断 —— 它用的是自己的比赛钟,
+       G.timer 是上一个模式留下的旧值。 */
+    if(g.state==="lastshot")return true;
     if(g.state==="tiebreak")return true;
     if(g.mode==="battle")return Math.max(g.score||0,g.battleOppScore||0)>=85;
     return !!g.running&&g.timer<=10;
@@ -362,6 +371,11 @@
   }
 
   /* ---------------- 挂钩游戏全局(在主脚本之后加载) ---------------- */
+  function isRivalModel(guy){
+    if(!guy)return false;
+    try{return typeof rivals!=="undefined"&&Array.isArray(rivals)&&rivals.indexOf(guy)>=0;}
+    catch(e){return false;}
+  }
   function wrapGlobals(){
     const wrap=(name,make)=>{
       const orig=global[name];
@@ -389,8 +403,14 @@
       if(playing(gameRef())){STA.v=Math.max(0,STA.v-SHOT_COST*mods().cost);STA.lastUseAt=performance.now();}
       return orig.apply(this,arguments);
     });
+    /* 只有你自己的模型穿你的装备。applyStarStyle 同样用在电脑身上
+       (pregame.js 的 battleOpp、contest.js 的 finalist),不拦住的话电脑会戴着
+       你的头饰、穿你的球鞋上场 —— 实测:装黑面具+疾风橙后,对手 gearHeadGroup 也在,
+       鞋色同为 #e8771e。绝杀时刻的 9 个人走另一条建模路径,不受影响。 */
     wrap("applyStarStyle",orig=>function(guy,star){
-      const result=orig.apply(this,arguments);applyVisual(guy);return result;
+      const result=orig.apply(this,arguments);
+      if(!isRivalModel(guy))applyVisual(guy);
+      return result;
     });
   }
 

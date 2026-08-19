@@ -319,9 +319,9 @@
     const f=LS.foul;
     G.canShoot=false;
     LS.phase="reaction";
-    const pts=(f.andOne?3:0)+f.made;
-    toast("罚球 "+f.made+"/"+f.shots+" · 本攻共 "+pts+" 分",pts>=2?"#7CFC6B":"#ff8d7a");
-    squadApi.startReaction(pts>=2,P.pos);LS.reactionStarted=true;startPlayerCelebrate(pts>=2);
+    const pts=possessionPoints(),won=shotSucceeded();
+    toast("罚球 "+f.made+"/"+f.shots+" · 本攻共 "+pts+" 分",won?"#7CFC6B":"#ff8d7a");
+    squadApi.startReaction(won,P.pos);LS.reactionStarted=true;startPlayerCelebrate(won);
   }
   /* 全场只在球飞向篮筐的这一段用眼睛跟球。一旦进网、砸框、开始弹跳，或者球已经
      掉到篮筐高度以下(空气球)，结果就已经定了——再跟下去就是十个人跟着球在地上
@@ -450,7 +450,7 @@
       LS.reactionT+=dt;
       if(LS.reactionT>=3.6&&!G.charging){
         const made=shotSucceeded();
-        finish(made,"shot");
+        finish(made,made?"shot":(isOvertime()?"overtime":"shot"));
       }
     }
   }
@@ -644,15 +644,24 @@
   }
 
   /* ---------------- 结算 ---------------- */
-  /* 你落后 1 分，所以"赢"= 这一攻至少拿 2 分。带罚球时要把罚中的分算进去：
-     3+1 命中即赢；三罚至少中 2 个才赢。 */
-  function shotSucceeded(){
-    const base=G.shots.length?!!G.shots[G.shots.length-1].made:(G.score>0);
+  /* 赢下这一攻需要的分数 = 分差 + 1，不能写死。三关的分差不一样：
+       THE LAST SHOT   落后 1 → 要 2 分
+       GAME SEVEN      落后 2 → 要 3 分（三罚中 2 只是打平，进加时，不算赢）
+       CORNER BURIED   平局   → 要 1 分（三罚中 1 就赢了）
+     原来写死 `pts>=2`，在后两关都会判错。 */
+  function pointsToWin(){const c=LS.cfg;return (c.scoreAway-c.scoreHome)+1;}
+  /* 所有出手点都在三分线外（scripts/lastshot-choreo.test.mjs 断言距筐 >=6.75m），
+     所以命中就是 3 分；and-one 是"球进 + 加罚一次"。 */
+  const SHOT_PTS=3;
+  function possessionPoints(){
     const foul=LS.foul;
-    if(!foul)return base;
-    const pts=(foul.andOne?3:0)+(foul.made||0);
-    return pts>=2;
+    if(foul)return (foul.andOne?SHOT_PTS:0)+(foul.made||0);
+    const made=G.shots.length?!!G.shots[G.shots.length-1].made:(G.score>0);
+    return made?SHOT_PTS:0;
   }
+  function shotSucceeded(){return possessionPoints()>=pointsToWin();}
+  /* 刚好追平 = 进加时，既不是赢也不是普通打铁，结果页要分开说 */
+  function isOvertime(){const p=possessionPoints();return p>0&&p===pointsToWin()-1;}
   function finish(made,reason){
     if(LS.resolved)return;
     leaveArenaAudio();
@@ -660,7 +669,7 @@
     hideLastShotHud();
     LS.resolved=true;LS.on=false;LS.phase="done";
     G.running=false;G.canShoot=false;G.passCatch=null;
-    if(global.AIBALastShotResult)global.AIBALastShotResult.show(LS.cfg,made,reason,LS.practice,LS.diag||null);
+    if(global.AIBALastShotResult)global.AIBALastShotResult.show(LS.cfg,made,reason,LS.practice,LS.diag||null,possessionPoints());
   }
 
   function exitLastShot(){
@@ -672,7 +681,9 @@
     hideLastShotHud();
   }
 
-  const api=Object.freeze({beginLastShot,updateLastShot,updateLastShotCam,exitLastShot,finish,state});
+  /* 胜负判定单独导出,方便对着三关的分差跑结果矩阵(见 scripts/lastshot-outcome.test.mjs) */
+  const outcome=Object.freeze({pointsToWin,possessionPoints,shotSucceeded,isOvertime});
+  const api=Object.freeze({beginLastShot,updateLastShot,updateLastShotCam,exitLastShot,finish,state,outcome});
   Object.assign(global,{updateLastShot,updateLastShotCam,beginLastShot,exitLastShot});
   global.AIBALastShotSequence=api;
   runtime.register("mode:last-shot:sequence",api);
