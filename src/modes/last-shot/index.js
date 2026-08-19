@@ -67,9 +67,31 @@
   }
 
   /* ---------------- 入口面板 ---------------- */
+  /* 剧情选择器。正式挑战仍是当天那关（PRD 要求全球同一天一致），
+     所以选中非今日剧情时只开放练习模式，并在按钮上写清楚。 */
+  function pickStory(id){
+    if(cfgApi.pickChallenge)cfgApi.pickChallenge(id);
+    openLastShot();
+  }
+  function storyPicker(cfg){
+    const list=cfgApi.CHALLENGES||[];
+    if(list.length<2)return "";
+    const today=cfgApi.dailyChallenge();
+    return `<div class="card" style="text-align:left">
+      <div style="font-size:11px;color:#9ab;margin-bottom:6px">选择剧情 · 今日正式挑战固定为 <b>${today.title}</b></div>
+      <div style="display:flex;gap:6px;flex-wrap:wrap">${list.map(c=>{
+        const on=c.challengeId===cfg.challengeId;
+        const isToday=c.challengeId===today.challengeId;
+        return `<button class="btn sm" style="flex:1;min-width:92px;${on?"border-color:#ffd23f;color:#ffd23f":""}"
+          onclick="AIBALastShot.pickStory('${c.challengeId}')">${c.title}${isToday?" ·今日":""}</button>`;
+      }).join("")}</div></div>`;
+  }
+
   function openLastShot(){
     settlePending();
-    const cfg=cfgApi.dailyChallenge(),s=store(),used=usedToday();
+    const cfg=(cfgApi.pickedChallenge?cfgApi.pickedChallenge():cfgApi.dailyChallenge()),s=store(),used=usedToday();
+    const today=cfgApi.dailyChallenge();
+    const isToday=cfg.challengeId===today.challengeId;
     G.mode="lastshot";G.state="diff";
     const story=cfg.introText.map(t=>`<div>${t}</div>`).join("");
     showPanel(`<h1 class="title" style="font-size:24px">${cfg.title}</h1>
@@ -81,8 +103,10 @@
         <b>${cfg.timeoutDialogue}</b><br>${cfg.teammateDialogue}</div>
       <div class="card">连续绝杀 <b class="flame">${s.streak}</b> 天 · 最佳 <b>${s.bestStreak}</b> 天
         <br><span style="color:#9ab;font-size:11px">${used?`今日机会已用完 · ${resetLabel()}后刷新`:"今日还有 1 次正式机会"}</span></div>
+      ${storyPicker(cfg)}
       ${typeof global.visionModeMarkup==="function"?global.visionModeMarkup():""}
-      ${used?"":`<button class="btn red" onclick="hidePanel();beginLastShot(false)">开始今日挑战 · 仅此一次</button>`}
+      ${used||!isToday?"":`<button class="btn red" onclick="hidePanel();beginLastShot(false)">开始今日挑战 · 仅此一次</button>`}
+      ${!used&&!isToday?`<div class="card" style="font-size:11px;color:#9ab">这不是今日剧情 —— 正式挑战只能打 <b>${today.title}</b>，这一关可以随便练。</div>`:""}
       ${cfg.practiceEnabled?`<button class="btn sm" onclick="hidePanel();beginLastShot(true)">练习模式 · 不计成绩</button>`:""}
       <button class="btn sm" onclick="exitLastShot();showMenu()">返回封面</button>`);
   }
@@ -173,7 +197,7 @@
   }
 
   global.AIBALastShotResult=Object.freeze({show:showResult});
-  const api=Object.freeze({openLastShot,showResult,onBegin,store,usedToday,resetLabel,settlePending});
+  const api=Object.freeze({openLastShot,showResult,onBegin,store,usedToday,resetLabel,settlePending,pickStory});
   // 包装 sequence 导出的 beginLastShot,把每日闸门挂在开赛之前(项目既定的 wrap 全局函数模式)
   const rawBegin=global.beginLastShot;
   global.beginLastShot=function(practice){
@@ -181,6 +205,8 @@
     rawBegin(practice);
   };
   Object.assign(global,{openLastShot});
+  // 面板按钮的 onclick 走全局名，剧情选择器要能被点到
+  global.AIBALastShot=api;
   runtime.register("mode:last-shot",{
     id:"last-shot",
     enter:openLastShot,

@@ -115,6 +115,32 @@ const DICT={
 "音频未接入":"audio not wired",
 "⚠ 出错了(请把这段发给开发者):":"⚠ Something broke (send this to the developer):",
 /* ---- 每日挑战 · 绝杀时刻 ---- */
+"抢七 · 第四节最后 6 秒":"Game 7 · final 6 seconds of Q4",
+"宿敌":"Rivals",
+"系列赛 3-3 · 抢七第四节最后 6 秒":"Series tied 3-3 · Game 7, final 6 seconds",
+"落后 2 分 —— 两分打平没用,这一球必须是三分":"Down 2 — a two only ties it. This has to be a three.",
+"主场山呼海啸,但对手的包夹只会更凶":"The building is shaking, but the double will only come harder.",
+"教练:落后两分,别贪两分。核心右路强攻吸包夹,球回弧顶,你敢投就投。":"Coach: down two — don't settle for two. Star attacks right and draws the double, ball comes back to the top. If you're open, let it fly.",
+"核心:他们防的是我。球一出去,你别想别的,直接起。":"Star: they're guarding me. The second it leaves my hands, don't think — shoot.",
+"两个人扑上去了!球吊回弧顶 —— 有人空位!":"Two on the ball! Kicked back to the top — someone's open!",
+"客场 · 平局 · 最后 5 秒":"On the road · tied · 5 seconds left",
+"主场球队":"Home team",
+"客场 · 第四节最后 5 秒 · 分差为零":"On the road · final 5 seconds of Q4 · all square",
+"进了直接带走比赛,不进就是加时":"Make it and it's over. Miss and it's overtime.",
+"全场都在喊你们的名字 —— 用最难听的那种喊法":"The whole arena is chanting your name — and not in a nice way.",
+"教练:核心正面强突,他们一定收缩。球出来就是底角,那是全场最空的地方。":"Coach: star drives it straight at them, they'll collapse. The ball comes out to the corner — that's the emptiest spot on the floor.",
+"核心:底角,别退到边线外。脚下留一步,我看得见你。":"Star: corner — don't drift over the line. Leave yourself a step. I can see you.",
+"收缩了!球甩到底角 —— 底角有人!":"They collapsed! Swung to the corner — corner shooter!",
+"选择剧情 · 今日正式挑战固定为":"Choose a scenario · today's official challenge is ",
+"·今日":" ·today",
+/* 下面两条被 <b>剧情名</b> 拆成了两个文本节点,整句的 RULE 匹配不到,只能分段收 */
+"这不是今日剧情 —— 正式挑战只能打":"Not today's scenario — the official challenge is ",
+",这一关可以随便练。":". You can practice this one freely.",
+"平分 · 进了就赢":"All square · make it and you win",
+"开始今日挑战 · 仅此一次":"Start today's challenge · one shot only",
+"连续绝杀":"Buzzer-beater streak ",
+"天 · 最佳":" days · best ",
+"天":" days",
 "每日挑战 · 绝杀时刻":"Daily Challenge · Clutch Shot",
 "绝杀时刻":"Clutch Shot",
 "每天一次":"Once per day",
@@ -1120,6 +1146,8 @@ const DICT={
 };
 
 /* 参数化文案:整节点正则规则 */
+/* 出手点嵌进句子时的写法(词典里的 "Left corner" 是独立标签用的) */
+const SPOT_IN_SENTENCE={"弧顶":"at the top of the arc","左底角":"in the left corner","右底角":"in the right corner","左侧 45°":"on the left wing","右侧 45°":"on the right wing"};
 const RULES=[
 /* ---- v2.19.7:拼接与插值文案 ---- */
 [/^第 ?(\d+) ?关,(.+)。目标 ?(\d+) ?分。$/,m=>"Stage "+m[1]+" — "+t(m[2])+". Target "+m[3]+" pts."],
@@ -1136,6 +1164,15 @@ const RULES=[
 [/^精彩(.+)(预录中|生成中)\.\.\.(.+)$/,
   m=>"Highlight "+m[1]+(m[2]==="预录中"?" pre-recording":" rendering")+"... "+t(m[3])],
 /* ---- 绝杀时刻:带数字/插值的文案 ---- */
+/* 队名带比分:"你的球队 104 : 104 主场球队"。队名走词典,比分原样。 */
+[/^(.+) (\d+) : (\d+) (.+)$/,m=>t(m[1])+" "+m[2]+" : "+m[3]+" "+t(m[4])],
+/* 出手点在句子里要小写带冠词,和榜单上的独立标签("Left corner")不是一个写法 */
+[/^比赛钟 ([\d.]+) 秒 · 你在(.+)三分线外$/,
+  m=>"Game clock "+m[1]+"s · you're "+(SPOT_IN_SENTENCE[m[2]]||t(m[2]))+", behind the three"],
+[/^(.+) ·今日$/,m=>t(m[1])+" ·today"],
+[/^这不是今日剧情 —— 正式挑战只能打 (.+),这一关可以随便练。$/,
+  m=>"Not today's scenario — the official challenge is "+t(m[1])+". You can practice this one freely."],
+[/^今日机会已用完 · (.+)后刷新下一关$/,m=>"No attempts left today · next scenario in "+t(m[1])],
 [/^(\d+) 小时 (\d+) 分$/,m=>m[1]+"h "+m[2]+"m"],
 [/^(\d+) 分$/,m=>m[1]+"m"],
 [/^今日机会已用完 · (.+)后刷新$/,m=>"No attempts left today · resets in "+t(m[1])],

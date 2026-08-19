@@ -39,7 +39,9 @@
     // 窄屏(375px 竖屏)放不下完整队名,拆成短行,否则会折行成乱码样
     $("hudRound").innerHTML=`<b>${cfg.scoreHome} : ${cfg.scoreAway}</b>`
       +`<br><span style='font-size:9px;color:#8894a6'>${cfg.homeName} / ${cfg.awayName}</span>`
-      +`<br><span style='color:#ff8d7a'>落后 ${cfg.scoreAway-cfg.scoreHome} 分</span>`;
+      /* 平局关(CORNER BURIED)差值是 0,不能写成"落后 0 分" */
+      +`<br><span style='color:${cfg.scoreAway>cfg.scoreHome?"#ff8d7a":"#ffd76a"}'>`
+      +`${cfg.scoreAway>cfg.scoreHome?`落后 ${cfg.scoreAway-cfg.scoreHome} 分`:"平分 · 进了就赢"}</span>`;
     $("hudTarget").textContent=LS.practice?"练习模式 · 不计成绩":"每日挑战 · 仅此一次";
     updClock(cfg.gameClock);
   }
@@ -84,7 +86,8 @@
   }
 
   function beginLastShot(practice){
-    const cfg=cfgApi.dailyChallenge();
+    /* 练习用玩家选的剧情，正式永远是当天那关（见 config.js::activeChallenge）。 */
+    const cfg=cfgApi.activeChallenge?cfgApi.activeChallenge(!!practice):cfgApi.dailyChallenge();
     ensureAudio(false);hidePanel();music(false);resetProgressiveSceneForRun();
     resetState(cfg,practice);
     squadApi.build(cfg);

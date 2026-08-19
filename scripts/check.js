@@ -105,7 +105,7 @@ if(!entryHtml.includes('<meta name="aiba-entry" content="main">'))fail("entry ma
 if(!legacyHtml.includes("v1.96-full-en"))fail("legacy entry version token missing");
 if(legacyHtml.includes('location.replace("legacy.html"'))fail("legacy entry must not self-redirect");
 if(!entryHtml.includes("data-aiba-early-errors"))fail("next early error diagnostics missing");
-if(!entryHtml.includes('<script src="src/i18n.js?v=2.19.7-final"></script>'))fail("i18n cache version missing");
+if(!entryHtml.includes('<script src="src/i18n.js?v=2.19.8-stories5"></script>'))fail("i18n cache version missing");
 if(!entryHtml.includes('<script src="src/core/runtime.js?v=refactor7"></script>'))fail("next runtime bridge missing");
 if(entryHtml.includes("player-id-sandbox")||entryHtml.includes("leaderboard-sandbox"))fail("entry must not load sandbox identity/leaderboard");
 if(!entryHtml.includes('<script src="src/recorder.js?v=refactor10"></script>'))fail("next recorder cache version missing");
@@ -137,7 +137,7 @@ for(const [file,version] of Object.entries(percentBattleVersions)){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js?v=${version}"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
 const lastShotModules=["config","squad","sequence","index"];
-const lastShotVersions={config:"2.19.5-roster",squad:"2.19.6-kit2",sequence:"2.19.7-celeb3p",index:"2.19.5-unify3"};
+const lastShotVersions={config:"2.19.8-stories",squad:"2.19.6-kit2",sequence:"2.19.8-tied",index:"2.19.8-picker"};
 for(const file of lastShotModules){
   if(!entryHtml.includes(`<script src="src/modes/last-shot/${file}.js?v=${lastShotVersions[file]}"></script>`))fail(`next Last Shot ${file} module missing`);
 }
@@ -153,6 +153,14 @@ const lastShotInput=read("src/core/input.js");
 if(!/G\.state==="lastshot"/.test(lastShotInput))fail("Last Shot must be able to receive touch/keyboard shot input");
 if(!/G\.state==="lastshot"/.test(read("src/vision.js")))fail("Last Shot must be reachable by vision (体感) control");
 if(!/G\.mode!=="lastshot"/.test(read("src/rendering/props.js")))fail("Last Shot must hide the practice ball racks");
+/* 绝杀剧情选择器:正式挑战必须锁在当天那关,选择器只能改练习模式 */
+const lsCfg=read("src/modes/last-shot/config.js");
+const lsIdx=read("src/modes/last-shot/index.js");
+const challengeIds=(lsCfg.match(/challengeId:"[^"]+"/g)||[]).length;
+if(challengeIds<3)fail("Last Shot needs at least 3 scenarios (found "+challengeIds+")");
+if(!/function activeChallenge\(practice/.test(lsCfg))fail("Last Shot activeChallenge(practice) gate missing");
+if(!/practice\?pickedChallenge\(now\):dailyChallenge\(now\)/.test(lsCfg))fail("story picker must not bypass the daily rotation");
+if(!/pickStory/.test(lsIdx))fail("Last Shot story picker missing");
 if(entryHtml.includes("function startRackRush("))fail("next entry still contains inline Rack Rush implementation");
 if(entryHtml.includes("function beginStage(")||entryHtml.includes("function champion("))fail("next entry still contains inline contest implementation");
 if(entryHtml.includes("function startPractice(")||entryHtml.includes("function endPractice("))fail("next entry still contains inline practice implementation");
@@ -920,7 +928,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.7-celeb3p'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.8-tied'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
