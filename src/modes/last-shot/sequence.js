@@ -113,7 +113,11 @@
     calibrateTilt();
     broadcastSting("danger");
     if(cfg.crowdMood==="away"&&typeof boo==="function")boo();
-    paSay(cfg.commentary,true);
+    if(cfg.commentaryEvent==="lastshot_commentary_finals")playAudioEvent("lastshot_commentary_finals");
+    else if(cfg.commentaryEvent==="lastshot_commentary_g7")playAudioEvent("lastshot_commentary_g7");
+    else if(cfg.commentaryEvent==="lastshot_commentary_corner")playAudioEvent("lastshot_commentary_corner");
+    else if(typeof playAudioEvent==="function")playAudioEvent("lastshot_commentary");
+    else paSay(cfg.commentary,true);
     toast("看球 · 球会分到你手上","#ffd23f");
   }
 
@@ -287,7 +291,15 @@
     balls.slice().forEach(b=>{scene.remove(b.mesh);scene.remove(b.blob);});balls.length=0;
     if(LS.putback){scene.remove(LS.putback.mesh);LS.putback=null;}
     squadApi.lineUpForFreeThrow(spot);
-    paSay(f.andOne?"加罚一次":"三次罚球",true);
+    if(typeof playAudioEvent==="function"){
+      playAudioEvent("lastshot_foul_whistle");
+      setTimeout(()=>{
+        if(f.andOne)playAudioEvent("lastshot_andone");
+        else playAudioEvent("lastshot_freethrow");
+      },450);
+    }else{
+      paSay(f.andOne?"加罚一次":"三次罚球",true);
+    }
     nextFreeThrow();
   }
   function nextFreeThrow(){
@@ -330,6 +342,10 @@
     const pts=possessionPoints(),won=shotSucceeded();
     toast("罚球 "+f.made+"/"+f.shots+" · 本攻共 "+pts+" 分",won?"#7CFC6B":"#ff8d7a");
     squadApi.startReaction(won,P.pos);LS.reactionStarted=true;startPlayerCelebrate(won);
+    if(typeof playAudioEvent==="function"){
+      if(won)playAudioEvent("lastshot_make");
+      else playAudioEvent("lastshot_miss");
+    }
   }
   /* 全场只在球飞向篮筐的这一段用眼睛跟球。一旦进网、砸框、开始弹跳，或者球已经
      掉到篮筐高度以下(空气球)，结果就已经定了——再跟下去就是十个人跟着球在地上
@@ -381,6 +397,7 @@
         if(LS.madeAt==null)LS.madeAt=LS.t;
         if(LS.t-LS.madeAt>=CELEBRATE_DELAY){
           squadApi.startReaction(true,P.pos);LS.reactionStarted=true;LS.phase="reaction";startPlayerCelebrate(true);
+          if(typeof playAudioEvent==="function")playAudioEvent("lastshot_make");
         }
       }
       // 球已经打铁落定：进入抢篮板，不是庆祝
@@ -394,6 +411,10 @@
         if(LS.buzzAt==null)LS.buzzAt=LS.t;
         if(LS.t-LS.buzzAt>=BUZZER_DELAY){
           const _m=shotSucceeded();squadApi.startReaction(_m,P.pos);LS.reactionStarted=true;LS.phase="reaction";startPlayerCelebrate(_m);
+          if(typeof playAudioEvent==="function"){
+            if(_m)playAudioEvent("lastshot_make");
+            else playAudioEvent("lastshot_miss");
+          }
         }
       }
     }else{
@@ -438,6 +459,7 @@
       if(!G.charging&&G.shotIdx===0){
         G.canShoot=false;handBall.visible=false;pBall.visible=false;
         sBuzz();toast("⏱ 没能出手","#ff8d7a");
+        if(typeof playAudioEvent==="function")playAudioEvent("lastshot_timeout");
         finish(false,"timeout");
         return;
       }

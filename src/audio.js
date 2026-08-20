@@ -1336,7 +1336,21 @@ const AUDIO_EVENTS = {
   dna_result_solid: ["dna_result_legend_05_en", "dna_result_legend_06_en"],
   dna_result_brick: ["dna_result_legend_07_en", "dna_result_legend_08_en"],
   pose_ready: ["p_pose_ready_01_en", "p_pose_ready_02_en", "p_pose_ready_03_en"],
-  pose_lost: ["p_pose_lost_01_en", "p_pose_lost_02_en", "p_pose_lost_03_en"]
+  pose_lost: ["p_pose_lost_01_en", "p_pose_lost_02_en", "p_pose_lost_03_en"],
+  lastshot_commentary_finals: ["p_lastshot_choreo1_01_en", "p_lastshot_choreo1_02_en", "p_lastshot_choreo1_03_en"],
+  lastshot_commentary_g7: ["p_lastshot_choreo2_01_en", "p_lastshot_choreo2_02_en", "p_lastshot_choreo2_03_en"],
+  lastshot_commentary_corner: ["p_lastshot_choreo3_01_en", "p_lastshot_choreo3_02_en", "p_lastshot_choreo3_03_en"],
+  lastshot_commentary: [
+    "p_lastshot_choreo1_01_en", "p_lastshot_choreo1_02_en", "p_lastshot_choreo1_03_en",
+    "p_lastshot_choreo2_01_en", "p_lastshot_choreo2_02_en", "p_lastshot_choreo2_03_en",
+    "p_lastshot_choreo3_01_en", "p_lastshot_choreo3_02_en", "p_lastshot_choreo3_03_en"
+  ],
+  lastshot_make: ["p_lastshot_make_01_en", "p_lastshot_make_02_en", "p_lastshot_make_03_en"],
+  lastshot_miss: ["p_lastshot_miss_01_en", "p_lastshot_miss_02_en", "p_lastshot_miss_03_en"],
+  lastshot_timeout: ["p_lastshot_timeout_01_en", "p_lastshot_timeout_02_en", "p_lastshot_timeout_03_en"],
+  lastshot_andone: ["p_lastshot_andone_01_en", "p_lastshot_andone_02_en"],
+  lastshot_freethrow: ["p_lastshot_freethrow_01_en", "p_lastshot_freethrow_02_en"],
+  lastshot_foul_whistle: ["ref_foul_whistle_01"]
 };
 
 function playSFX(name, vol){

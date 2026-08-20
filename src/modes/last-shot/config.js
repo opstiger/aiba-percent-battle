@@ -36,6 +36,7 @@
     timeoutDialogue:"教练:球给核心走弱侧,他被包夹就外弹,右侧 45° 你必须敢投。",
     teammateDialogue:"核心:他们会来两个人。球到你手里,别犹豫。",
     commentary:"包夹上来了!球分出来 —— 三分线外有人!",
+    commentaryEvent:"lastshot_commentary_finals",
     crowdMood:"away",                    // 客场:嘘声为主
     practiceEnabled:true,
     team:{ally:{jersey:0xf2f4f7,shorts:0xc8102e},foe:{jersey:0x2c3550,shorts:0x151b2b}},
@@ -94,6 +95,7 @@
     timeoutDialogue:"教练:落后两分,别贪两分。核心右路强攻吸包夹,球回弧顶,你敢投就投。",
     teammateDialogue:"核心:他们防的是我。球一出去,你别想别的,直接起。",
     commentary:"两个人扑上去了!球吊回弧顶 —— 有人空位!",
+    commentaryEvent:"lastshot_commentary_g7",
     crowdMood:"home",
     practiceEnabled:true,
     team:{ally:{jersey:0xf2f4f7,shorts:0x1d428a},foe:{jersey:0x2b1b3d,shorts:0x1a1028}},
@@ -138,6 +140,7 @@
     timeoutDialogue:"教练:核心正面强突,他们一定收缩。球出来就是底角,那是全场最空的地方。",
     teammateDialogue:"核心:底角，别退到边线外。脚下留一步，我看得见你。",
     commentary:"收缩了!球甩到底角 —— 底角有人!",
+    commentaryEvent:"lastshot_commentary_corner",
     crowdMood:"away",
     practiceEnabled:true,
     team:{ally:{jersey:0xf2f4f7,shorts:0x007a33},foe:{jersey:0x3d1f1f,shorts:0x281414}},
