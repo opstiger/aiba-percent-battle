@@ -187,7 +187,15 @@
          这里只记账，等球落定后进入罚球阶段。 */
       const willMake=b.outcome==="swish"||b.outcome==="rattle"||b.outcome==="bank";
       LS.foul={andOne:willMake,shots:willMake?1:3,made:0,taken:0};
-      whistle();crowdSwell&&crowdSwell(.28,1.2);
+      /* 实测抓到过一次未捕获异常:TypeError: whistle is not a function,
+         直接弹出错误面板("请把这段发给开发者")、这一攻就废了。犯规只有 1/3 概率,
+         又正好落在绝杀这一球上,是最不该崩的时刻。
+         根因没能确定:audio.js(135 行)早于 legacy-adapter(159)和本模块(170)加载,
+         事后查 ctx.whistle 一直是 function,也没有任何地方重新赋值;
+         预览页反复被切到后台导致无法稳定复现。
+         这里按同一行 crowdSwell 已有的写法加守卫 —— 哨音是氛围音,
+         没有它最多少一声,不该让整局挂掉。 */
+      whistle&&whistle();crowdSwell&&crowdSwell(.28,1.2);
       if(willMake){
         toast("🙌 打手犯规 · 3+1！","#7CFC6B");
       }else{

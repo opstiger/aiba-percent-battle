@@ -137,7 +137,7 @@ for(const [file,version] of Object.entries(percentBattleVersions)){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js?v=${version}"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
 const lastShotModules=["config","squad","sequence","index"];
-const lastShotVersions={config:"2.19.8-stories",squad:"2.19.6-kit2",sequence:"2.19.8-win2",index:"2.19.8-result"};
+const lastShotVersions={config:"2.19.8-stories",squad:"2.19.6-kit2",sequence:"2.19.8-whistle",index:"2.19.8-streak"};
 for(const file of lastShotModules){
   if(!entryHtml.includes(`<script src="src/modes/last-shot/${file}.js?v=${lastShotVersions[file]}"></script>`))fail(`next Last Shot ${file} module missing`);
 }
@@ -161,6 +161,10 @@ if(challengeIds<3)fail("Last Shot needs at least 3 scenarios (found "+challengeI
 if(!/function activeChallenge\(practice/.test(lsCfg))fail("Last Shot activeChallenge(practice) gate missing");
 if(!/practice\?pickedChallenge\(now\):dailyChallenge\(now\)/.test(lsCfg))fail("story picker must not bypass the daily rotation");
 if(!/pickStory/.test(lsIdx))fail("Last Shot story picker missing");
+/* 结算必须幂等:同一天重复结算过一次,连胜会被打回 1(streakDate 已是今天,
+   不等于"昨天",旧写法直接 reset),打铁分支还会清零。 */
+if(!/s\.lastDate===today\(\)&&\(s\.lastResult==="made"\|\|s\.lastResult==="miss"\)/.test(lsIdx))
+  fail("Last Shot recordResult must be idempotent per day (or a re-settle wipes the streak)");
 /* 胜负线必须从分差算,不能写死。三关分差是 1 / 2 / 0,写死 pts>=2 会让
    GAME SEVEN 三罚中 2(只是打平)判成赢、CORNER BURIED 三罚中 1(其实赢了)判成输。 */
 /* 字典值里写 "\\u201c" 会把转义序列原样显示到界面上(更衣室 Gear Lab 说明踩过)。
@@ -943,7 +947,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.8-win'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.8-whistle'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1471,7 +1475,9 @@ console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.le
     if(arenaAudio.includes(token))fail("scene audio must stay stopped in result state "+token);
   if(!/const arenaLike=sceneAudioArenaLike\(\);/.test(a))fail("mute/unmute must share the scene audio state list");
   if((lastShot.match(/leaveArenaAudio\(\)/g)||[]).length<2)fail("Last Shot must stop arena audio on finish and exit");
-  if(!/if\(foulDist<=FOUL_RANGE&&Math\.random\(\)<FOUL_CHANCE\)\{[\s\S]{0,260}whistle\(\)/.test(lastShot))fail("Last Shot fouls must trigger a referee whistle");
+  /* 哨音调用现在带 && 守卫(见 sequence.js 注释:实测抓到过 whistle 未定义),
+     窗口也放宽到 900 字符,因为那里加了一段说明注释。 */
+  if(!/if\(foulDist<=FOUL_RANGE&&Math\.random\(\)<FOUL_CHANCE\)\{[\s\S]{0,900}(?:whistle&&)?whistle\(\)/.test(lastShot))fail("Last Shot fouls must trigger a referee whistle");
   if((lastShot.match(/hideLastShotHud\(\)/g)||[]).length<2)fail("Last Shot finish and exit must hide the HUD");
   if(!/if\(G\.mode==="lastshot"&&typeof global\.exitLastShot==="function"\)global\.exitLastShot\(\);/.test(pause))fail("home cleanup must exit Last Shot before returning to menu");
   if(!/function showRackRushResult\(record\)\{\s*G\.state="rushend";\s*leaveArenaAudio\(\);/.test(rush))fail("Rack Rush result must enter result state and stop arena audio");

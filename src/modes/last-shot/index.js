@@ -47,7 +47,15 @@
   }
   function recordResult(made){
     const s=store();
-    s.pending=false;s.lastResult=made?"made":"miss";
+    s.pending=false;
+    /* 一天只结算一次。重复结算会把连胜打回 1 —— streakDate 已经是"今天",
+       不等于 yesterdayOf(today()),旧写法直接走 else 分支 reset 成 1;
+       打铁分支更狠,直接清零。对一个按"连续完成天数"排名的模式,这是会
+       毁掉长连胜的事故,且玩家完全无法解释。所以这里做成幂等。 */
+    if(s.lastDate===today()&&(s.lastResult==="made"||s.lastResult==="miss")){
+      write(s);return s;
+    }
+    s.lastResult=made?"made":"miss";
     if(made){
       // 连续:只有昨天也成功才接上,否则从 1 开始
       s.streak=s.streakDate===yesterdayOf(today())?(s.streak|0)+1:1;
