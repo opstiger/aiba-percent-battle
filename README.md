@@ -11,7 +11,7 @@ A cyberpunk voxel 3D basketball game that runs entirely in your browser — shoo
 - Vercel (auto-deployed): https://aiba-percent-battle.vercel.app/
 - GitHub Pages (mirror): https://opstiger.github.io/aiba-percent-battle/
 
-Current version: `v2.19.8`
+Current version: `v2.19.9`
 
 | Home | Percent Battle | Locker room | Motion control |
 |---|---|---|---|
@@ -82,10 +82,63 @@ await fetch("scripts/silence-browser.js").then(r => r.text()).then(eval);
 
 `scripts/smoke-browser.js`（全模式打完整一局的冒烟）已经内置调用。
 
+## 看外观：viewer + 自动截图
+
+改装备/角色外观时，不要再进游戏、开更衣室、手改 CSS 把试衣镜放大了。
+
+**`viewer.html`** —— 中性背景下单独看一个球员，只加载建模模块，不带游戏逻辑。
+
+```
+viewer.html?band=head-hoodie&angle=side&focus=head
+viewer.html?sheet=band&angle=three-quarter   # 整槽一字排开，一张看完
+```
+
+`angle` = front / three-quarter / side / back，`focus` = full / head / torso / feet，
+`bg` = neutral / white / dark，三个装备槽用 `band=` `shoes=` `sleeve=` 指定。
+状态会写进地址栏，可以直接把链接贴给别人。右上角实时显示 draw call 和三角面。
+
+**`tools/capture.mjs`** —— 固定视口/机位/取景的无头截图台，自带静态服务器：
+
+```bash
+node tools/capture.mjs                 # 拍全套(约 49 张)到 captures/
+node tools/capture.mjs --filter 连帽衫  # 只拍某一件
+node tools/capture.mjs --bench         # 顺带记 draw call / 三角面 / 单帧耗时
+node tools/capture.mjs --out captures/before   # 改动前先存一份，改完对比
+```
+
+**为什么值得**：正面看正常、换个机位就露馅的问题非常多。连帽衫和棒球帽各三处做工
+缺陷（帽子比脑袋宽一圈、椭球切过脸颊、下摆 2.5mm z-fighting 闪黄条）全是这么查出来的。
+`captures/` 不进版本库（一次约 7MB）。
+
+## 复现一局：`?seed=N`
+
+**决定输赢的随机**（出手结果、手抖偏差、绝杀犯规、对手命中）走 `src/core/rng.js`，
+地址栏加 `?seed=12345` 就能把一局钉死重放：同样的操作必得同样的结果。
+不带 `seed` 时用时间播种，正常游玩照样每局不同 —— 只有一条代码路径。
+
+演出用的随机（欢呼台词、镜头抖动、观众反应）**继续用 `Math.random()`**，
+那些每次不一样才对。
+
+```bash
+node scripts/rng-determinism.test.mjs   # 验证同种子逐球一致(无头浏览器跑)
+```
+
+> 必须用无头浏览器：预览标签页一旦切到后台，`requestAnimationFrame` 就冻结，
+> 开场演出走不完、永远进不到可投篮状态（实测 1.5 秒只推进 0.08 秒）。
+
+## 逐模式体检
+
+`scripts/mode-audit.js` 是浏览器里的工具箱：带哨兵自检的中文残留扫描、
+走真实入口进各模式、按住/松手投篮。用法和注意事项写在文件头部注释里，
+两条前提必须遵守——**必须用真实时间跑**（手动逐帧会让 `performance.now()` 相关逻辑卡死），
+**必须走 `pickDiff` 真实入口**（直接 `startBattle()` 会让 `OPP.o` 为 null）。
+
 ## Project layout
 
+- `viewer.html` — 中性背景下单独看角色/装备的看板（见上文「看外观」）。
+- `tools/capture.mjs` — 固定机位自动截图台；产物在 `captures/`（不进版本库）。
 - `index.html` — the playable entry: a ~200-line modular shell that loads the game from `src/` (cutover completed in v2.0).
-- `block-3pt-kingv2.19.8-modular.html` — current versioned snapshot, kept identical to `index.html`.
+- `block-3pt-kingv2.19.9-modular.html` — current versioned snapshot, kept identical to `index.html`.
 - `styles.css` — HUD, home screen, panels and mobile styles.
 - `src/` — the game itself, fully modular:
   - `core/` runtime, state and the migration bridge · `modes/` Percent Battle, Rack Rush, contest, practice · `rendering/` Three.js scene core · `ui/` menus, panels, pre-game flow · `gameplay/`, `presentation/`, `services/`, `data/` supporting layers

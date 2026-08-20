@@ -5,8 +5,8 @@
 ## 接手快照
 
 - 当前项目目录：`projects/fable5测试/篮球游戏/`。相邻的 `篮球游戏-refactor-v2/` 是旧实验工作区，不是当前主线。
-- 当前分支：`main`。`v2.19.8` 已推送到 `origin/main`；`HEAD` 与 `origin/main` 一致。
-- 当前版本：`v2.19.8`。`GAME_VERSION`、`index.html` 三处可见标识、`README.md`、`scripts/check.js` 与快照 `block-3pt-kingv2.19.8-modular.html` 全部对齐（`scripts/check.js` 断言这几处，改一处漏一处会失败）。
+- 当前分支：`main`。`v2.19.9` 待推送(本地已 commit)；`HEAD` 与 `origin/main` 一致。
+- 当前版本：`v2.19.9`。`GAME_VERSION`、`index.html` 三处可见标识、`README.md`、`scripts/check.js` 与快照 `block-3pt-kingv2.19.9-modular.html` 全部对齐（`scripts/check.js` 断言这几处，改一处漏一处会失败）。
 - 注意：`?v=` 缓存 token 是**按文件**的改动标记，不跟随发版号，出现 `2.19.6-kit2` 这类旧 token 是正常的 —— 它只说明那个文件自 v2.19.6 起没再改过。需要保持一致的是上面那五处发版标识。
 - 接球到最高点的手部动作链已按“同族关键帧”重做（见下节），并已通过用户目视验收。
 - `node scripts/check.js` 现在除结构外还断言：T台最高点球心 `1e-3`、持球帧握球四元数与最高点完全一致、抬球段球心单调上升、手腕不离开前臂末端、逐帧角速度上限。它比上一轮强，但仍不能替代人眼。
@@ -43,6 +43,26 @@
 - `v2.19.7` 音频与第一人称收尾（**当时没同步 bump 版本号**，代码已在主线，这里补记）：①天气/环境音从启动清单移到空闲预取，并修掉 `<audio>` 与 WebAudio 两条路重复下载同一批音效；②NBA DNA 入口隐藏，未上线期间不再加载它的 5 个脚本；③庆祝镜头改为过肩第三人称，修掉悬空的手；④排行榜请求加 `AbortController` 6.5s 超时（此前网络不通会一直挂着）；⑤补约 160 条英文词条，并把 i18n `refresh()` 挂到 `G.state` 切换上；⑥新增 `scripts/silence-browser.js`（静音测试，四层：媒体元素 + `speechSynthesis` + `AudioNode.prototype.connect` + `mainGain` 看门狗）与 `scripts/smoke-browser.js`（全流程冒烟）。
 
 - `v2.19.8` 绝杀时刻新增 2 套剧情与开局选择器：①`GAME_SEVEN`（弧顶，主场抢七落后 2 分，6.4 秒，两分打平没用）与 `CORNER_BURIED`（左底角，客场平局，5.4 秒）；②选择器**只作用于练习模式** —— `activeChallenge(practice)` 在正式挑战时强制回到 `dailyChallenge()`，否则选择器就成了绕开“每天全世界同一关、只有一次机会”的后门，连胜和排行榜都失去意义；`scripts/check.js` 有断言守这条，已用变异测试确认改坏会 fail；③新增 `scripts/lastshot-choreo.test.mjs`（9 人路点几何：互相不穿模、不挡视线、传球距离、包夹成立、出手点在三分线外、文案齐全），它在**已验收的老关卡**上查出 3 处穿模（`foe2`/`ally3` 仅 0.63m、`foe4`/`ally3` 0.89m、包夹二人组 0.97m）并一并修掉，现在三关最近的一对是 1.05 / 0.98 / 1.05m；④修掉 i18n 里 `弧顶`/`左底角`/`右侧 45°` 三条被同一个 `DICT` 后面同名 key 覆盖成死代码的词条，句中写法改走 `SPOT_IN_SENTENCE`；⑤平局关的 HUD 原本显示“落后 0 分”，改为“平分 · 进了就赢”。
+
+- `v2.19.9` 工程能力 + 装备外观（借鉴 Pallet Town 3D 的做法：把"看外观"和"复现 bug"
+  从手工操作变成可重复的工程步骤）：
+  ①`viewer.html` 中性背景角色看板，四机位/四取景/三背景，`?sheet=band` 整槽对比图；
+  ②`tools/capture.mjs` 无头固定机位截图台，自带静态服务器，一次约 49 张，
+    输出 draw call / 三角面 / 单帧耗时；`captures/` 已加 .gitignore；
+  ③`src/core/rng.js`(mulberry32)接管**决定输赢的随机**——出手结果、手抖偏差、
+    绝杀犯规、对手命中；`?seed=N` 可复现，不带 seed 用时间播种；演出用随机不动。
+    配 `scripts/rng-determinism.test.mjs`(Playwright 无头)，变异测试确认有效。
+  ④用截图台查出并修掉的做工缺陷：连帽衫球衣穿模/帽壳 1.5 倍大/椭球切脸/下摆
+    2.5mm z-fighting，棒球帽帽冠比脑袋宽一圈像悬空的桶；帽壳改挂 headRoot 跟头转。
+  ⑤`scripts/mode-audit.js` 逐模式体检工具箱(哨兵自检的中文扫描 + 真实入口进模式)。
+
+  **三条踩过的坑记在这里,别再踩**：
+  - 预览标签页切后台 `requestAnimationFrame` 就冻结(实测 1.5 秒只推进 0.08 秒),
+    任何"要跑起来"的验证都必须用无头浏览器,不能用预览页;
+  - 手动逐帧推进(覆盖 `Clock.getDelta` + 屏蔽 rAF)会让基于 `performance.now()` 的
+    逻辑原地不动,对手状态机看起来像卡死 —— 那是测试环境造成的,不是 bug;
+  - 进模式必须走 `pickDiff()` 真实入口,直接 `startBattle()` 会让 `OPP.o` 为 null,
+    `oppFireBall` 抛异常。
 
 ## v2.19.5：接球→最高点手部动作链重做
 
