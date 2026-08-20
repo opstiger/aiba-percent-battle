@@ -159,10 +159,12 @@ function releaseShot(power,shot){
   const isDeep=shot.deep!=null||shot.super;
   const ideal=weatherAdjustedIdeal(shot,true);
   const zone=playerSweetZone();
-  const err=power-ideal, a=Math.abs(err), r=Math.random();
+  /* r 决定这一球是 swish / rattle / bank / miss —— 全游戏最关键的一次随机,
+     走可复现通道(?seed=N 固定)。演出用的随机不动。 */
+  const err=power-ideal, a=Math.abs(err), r=aibaRoll();
   // lateral error = device tilt + hand noise
   const tl=tiltDeg()*DIFFS[G.diff].latK;
-  const latErr=tl+rnd(-0.035,0.035);
+  const latErr=tl+aibaRollRange(-0.035,0.035);   // 手抖也影响结果,一并可复现
   const al=Math.abs(latErr);
   let outcome;
   if(a<=zone*0.5)outcome="swish";

@@ -182,7 +182,7 @@
     /* 极小概率吹犯规：贴防越紧越容易打手。球进了算 3+1，没进就是三罚。
        绝杀模式不做罚球交互(7 秒定生死，插一段交互会毁掉节奏)，按 76% 命中自动结算。 */
     const foulDist=squadApi.defenderDistance?squadApi.defenderDistance(P.pos):99;
-    if(foulDist<=FOUL_RANGE&&Math.random()<FOUL_CHANCE){
+    if(foulDist<=FOUL_RANGE&&aibaRoll()<FOUL_CHANCE){   // 犯规是结果判定,要能复现
       /* 罚球必须由你自己投，不能拿概率算掉——那是这一攻最关键的几下。
          这里只记账，等球落定后进入罚球阶段。 */
       const willMake=b.outcome==="swish"||b.outcome==="rattle"||b.outcome==="bank";

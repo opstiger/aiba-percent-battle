@@ -132,12 +132,12 @@ if(!entryHtml.includes('<script src="src/ui/pause.js?v=1.98"></script>'))fail("n
 if(!entryHtml.includes('<script src="src/core/bootstrap-next.js?v=cutover1"></script>'))fail("next bootstrap module missing");
 if(!entryHtml.includes('<script src="src/modes/percent-battle/state.js?v=refactor4c"></script>'))fail("next Percent Battle state module missing");
 if(!entryHtml.includes('<script src="src/modes/percent-battle/spots.js?v=refactor4b"></script>'))fail("next Percent Battle spots module missing");
-const percentBattleVersions={opponent:"2.19.8-firedguard",results:"2.19.8-finalscore",index:"refactor4a"};
+const percentBattleVersions={opponent:"2.19.9-seed",results:"2.19.8-finalscore",index:"refactor4a"};
 for(const [file,version] of Object.entries(percentBattleVersions)){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js?v=${version}"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
 const lastShotModules=["config","squad","sequence","index"];
-const lastShotVersions={config:"2.19.8-stories",squad:"2.19.6-kit2",sequence:"2.19.8-whistle",index:"2.19.8-streak"};
+const lastShotVersions={config:"2.19.8-stories",squad:"2.19.6-kit2",sequence:"2.19.9-seed",index:"2.19.8-streak"};
 for(const file of lastShotModules){
   if(!entryHtml.includes(`<script src="src/modes/last-shot/${file}.js?v=${lastShotVersions[file]}"></script>`))fail(`next Last Shot ${file} module missing`);
 }
@@ -189,6 +189,20 @@ if(!/view\.focusPart===wanted\)return/.test(lockerPrev))
   fail("locker preview must not re-aim the camera when the gear slot did not change");
 if(!/view\.userPosed\)return/.test(lockerPrev))
   fail("locker preview must not hijack the camera after the user orbited it");
+/* 决定输赢的随机必须走可复现通道(src/core/rng.js),否则 bug 复现不了。
+   演出用的随机不在此列。 */
+const rngSrc=read("src/core/rng.js");
+if(!/function mulberry32/.test(rngSrc))fail("core/rng.js missing the seeded generator");
+if(!entryHtml.includes('<script src="src/core/rng.js?v=2.19.9-seed"></script>'))fail("core/rng.js not loaded");
+if(entryHtml.indexOf("src/core/rng.js")>entryHtml.indexOf("src/gameplay/shots.js"))
+  fail("rng.js must load before shots.js");
+const shotsSrc=read("src/gameplay/shots.js");
+if(!/a=Math\.abs\(err\), r=aibaRoll\(\)/.test(shotsSrc))
+  fail("player shot outcome must use the seeded roll so a run can be reproduced");
+if(!/aibaRollRange\(-0\.035,0\.035\)/.test(shotsSrc))
+  fail("shot lateral noise must use the seeded roll");
+if(!/const made=aibaRoll\(\)<chance/.test(read("src/modes/percent-battle/opponent.js")))
+  fail("opponent make/miss must use the seeded roll");
 const lsSeq=read("src/modes/last-shot/sequence.js");
 if(!/\(c\.scoreAway-c\.scoreHome\)\+1/.test(lsSeq))fail("Last Shot win threshold must be derived from the score gap");
 if(/pts>=2\)|\bpts>=2\?/.test(lsSeq))fail("Last Shot must not hardcode the 2-point win threshold");
@@ -227,7 +241,7 @@ if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>'
 for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"],["results","index"]]){
   if(entryHtml.indexOf(`src/modes/percent-battle/${pair[0]}.js`)>entryHtml.indexOf(`src/modes/percent-battle/${pair[1]}.js`))fail(`Percent Battle ${pair[0]} must load before ${pair[1]}`);
 }
-if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js?v=2.19.8-firedguard"></script>'))fail("Percent Battle opponent cache version missing");
+if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js?v=2.19.9-seed"></script>'))fail("Percent Battle opponent cache version missing");
 if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js?v=refactor4a"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
 for(const token of ["v2.19.8 MODULAR","MODULAR / v2.19.8"])
@@ -964,7 +978,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.5-hand-chain','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.8-whistle'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.9-seed','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.9-seed'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1239,7 +1253,8 @@ if(!lastShotSequence.includes("startPutback")||!lastShotSequence.includes("start
    10 盘一次都碰不到)。同时保留 TEST/LIVE 两档，上线前切回 LIVE。 */
 if(!lastShotSquad.includes("function defenderDistance"))
   fail("squad must expose the nearest-defender distance for foul gating");
-if(!/foulDist<=FOUL_RANGE&&Math\.random\(\)<FOUL_CHANCE/.test(lastShotSequence))
+/* 犯规判定现在走可复现随机(aibaRoll),但"必须由防守人距离把关"这条不变 */
+if(!/foulDist<=FOUL_RANGE&&(?:aibaRoll\(\)|Math\.random\(\))<FOUL_CHANCE/.test(lastShotSequence))
   fail("fouls must be gated by defender distance, not by contestLevel");
 if(/level>=\.5&&Math\.random\(\)<FOUL_CHANCE/.test(lastShotSequence))
   fail("contestLevel is zero beyond 1.9m — gating fouls on it makes them nearly unreachable");
@@ -1338,7 +1353,7 @@ if(!coreLoop.includes('if(VICTORY_CINE.on&&G.state!=="victorycine")stopVictoryCi
   fail("game loop must cancel a stale victory cinematic before camera dispatch");
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.19.5-hand-chain','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=refactor33b','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19-lastshot5','src/core/game-loop.js?v=2.19.7-i18n-refresh','src/core/scene-init.js?v=refactor38'])
+for(const token of ['src/gameplay/shots.js?v=2.19.9-seed','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=refactor33b','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19-lastshot5','src/core/game-loop.js?v=2.19.7-i18n-refresh','src/core/scene-init.js?v=refactor38'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);
@@ -1494,7 +1509,7 @@ console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.le
   if((lastShot.match(/leaveArenaAudio\(\)/g)||[]).length<2)fail("Last Shot must stop arena audio on finish and exit");
   /* 哨音调用现在带 && 守卫(见 sequence.js 注释:实测抓到过 whistle 未定义),
      窗口也放宽到 900 字符,因为那里加了一段说明注释。 */
-  if(!/if\(foulDist<=FOUL_RANGE&&Math\.random\(\)<FOUL_CHANCE\)\{[\s\S]{0,900}(?:whistle&&)?whistle\(\)/.test(lastShot))fail("Last Shot fouls must trigger a referee whistle");
+  if(!/if\(foulDist<=FOUL_RANGE&&(?:aibaRoll\(\)|Math\.random\(\))<FOUL_CHANCE\)\{[\s\S]{0,900}(?:whistle&&)?whistle\(\)/.test(lastShot))fail("Last Shot fouls must trigger a referee whistle");
   if((lastShot.match(/hideLastShotHud\(\)/g)||[]).length<2)fail("Last Shot finish and exit must hide the HUD");
   if(!/if\(G\.mode==="lastshot"&&typeof global\.exitLastShot==="function"\)global\.exitLastShot\(\);/.test(pause))fail("home cleanup must exit Last Shot before returning to menu");
   if(!/function showRackRushResult\(record\)\{\s*G\.state="rushend";\s*leaveArenaAudio\(\);/.test(rush))fail("Rack Rush result must enter result state and stop arena audio");

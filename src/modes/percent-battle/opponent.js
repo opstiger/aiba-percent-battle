@@ -199,7 +199,7 @@
     const spot=BATTLE_SPOTS[OPP.spotIdx],base=(OPP.pos||oppSpotPos(OPP.spotIdx)).clone(),opponent=OPP.o,guy=OPP.guy;
     const probability=aiProb(opponent.r);
     const chance=spot.super?clamp(probability*0.22+0.03,0.08,0.22):clamp(probability*0.58+0.1,0.28,0.6);
-    const made=Math.random()<chance;
+    const made=aibaRoll()<chance;   // 对手命中也是结果判定
     const start=new global.THREE.Vector3();
     if(guy&&guy.g&&guy.ball){guy.g.updateMatrixWorld(true);guy.ball.getWorldPosition(start);}
     else{start.copy(base);start.y=2.05;}
