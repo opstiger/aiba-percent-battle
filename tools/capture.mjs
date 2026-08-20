@@ -115,6 +115,11 @@ function shots(){
     list.push({name:`球鞋-${name}-feet`,url:`${base}&focus=feet&angle=three-quarter&shoes=${id}`});
   for(const [name,id] of SLEEVE)
     list.push({name:`护腕-${name}-torso`,url:`${base}&focus=torso&angle=three-quarter&sleeve=${id}`});
+  // 对比图:整槽一字排开,一张看完
+  for(const slot of ["band","shoes","sleeve"])
+    for(const angle of ["front","three-quarter"])
+      list.push({name:`对比图-${slot}-${angle}`,
+        url:`${base}&sheet=${slot}&focus=full&angle=${angle}`});
   list.push({name:`全身-裸装-front`,url:`${base}&focus=full&angle=front`});
   list.push({name:`全身-裸装-back`,url:`${base}&focus=full&angle=back`});
   return FILTER?list.filter(s=>s.name.includes(FILTER)):list;

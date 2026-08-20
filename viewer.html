@@ -101,7 +101,35 @@ let guy=null;
 
 function bgColor(){return state.bg==="white"?0xe9ecef:state.bg==="dark"?0x101318:0x3a3f47;}
 
+/* 对比图模式:?sheet=band|shoes|sleeve 把整槽装备一字排开,
+   一张截图看完全部,不用一件一件拍再来回翻。 */
+const SHEET=Q.get("sheet")||"";
+function buildSheet(slot){
+  const list=(window.AIBAGear&&AIBAGear.CATALOG&&AIBAGear.CATALOG[slot])||[];
+  const items=[null].concat(list);
+  const gap=1.15, x0=-(items.length-1)*gap/2;
+  const jersey=parseInt(Q.get("jersey")||"0x2e8bff",16);
+  const trim=parseInt(Q.get("trim")||"0xffd23f",16);
+  const skin=parseInt(Q.get("skin")||"0xf4c89c",16);
+  items.forEach(function(item,i){
+    const g=voxelGuy();
+    dressGuy(g,jersey,trim,Q.get("num")||"88");
+    g.mS.color.setHex(skin);
+    g.mFace.map=faceTex(skin);g.mFace.color.setHex(0xffffff);g.mFace.needsUpdate=true;
+    const EV=window.AIBAEquipmentVisuals;
+    if(EV){
+      if(slot==="band")EV.applyHead(g,item,{key:"gearHeadGroup"});
+      if(slot==="shoes")EV.applyShoes(g,item);
+      if(slot==="sleeve")EV.applySleeve(g,item);
+    }
+    g.g.position.x=x0+i*gap;
+    root.add(g.g);
+  });
+  return items.length;
+}
 function build(){
+  root.clear&&root.clear();
+  if(SHEET){window.__sheetCount=buildSheet(SHEET);guy=null;return;}
   if(guy&&guy.g)root.remove(guy.g);
   guy=voxelGuy();
   const jersey=parseInt(Q.get("jersey")||"0x2e8bff",16);
@@ -120,6 +148,7 @@ function itemById(slot,id){
   return list.filter(function(i){return i.id===id;})[0]||null;
 }
 function applyGear(){
+  if(SHEET)return;
   if(!guy||!window.AIBAEquipmentVisuals)return;
   const EV=AIBAEquipmentVisuals;
   EV.applyHead(guy,itemById("band",Q.get("band")),{key:"gearHeadGroup"});
@@ -136,7 +165,8 @@ function resize(){
 }
 function draw(){
   const f=FOCUS[state.focus]||FOCUS.full;
-  const dist=4.25/(f.zoom*state.zoom);
+  let dist=4.25/(f.zoom*state.zoom);
+  if(SHEET)dist=1.15*(window.__sheetCount||1)*1.05/(2*Math.tan(camera.fov*Math.PI/360)*camera.aspect)+1.6;
   const yaw=(ANGLES[state.angle]!==undefined?ANGLES[state.angle]:0)+state.yaw;
   const lookY=f.y;
   camera.position.set(Math.sin(yaw)*dist,lookY+dist*.09+state.pitch*2.2,Math.cos(yaw)*dist);
