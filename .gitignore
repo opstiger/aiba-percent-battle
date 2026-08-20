@@ -47,3 +47,6 @@ block-3pt-kingv1.17.html
 aiba_promo_x_v*.mp4
 /ios/
 ball-line-review.html
+
+# 自动截图产物(每跑一次 ~7MB),不进版本库;要做基线对比就 --out 到别处再手动归档
+captures/

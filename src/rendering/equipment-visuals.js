@@ -128,10 +128,24 @@
        local = (world - 1.45*(1-0.86)) / 0.86 = (world - 0.203) / 0.86
      尺寸同样要除以 0.86,再放大一圈当作布料余量 —— 贴着头皮的壳子看着像头盔,
      不像帽子。 */
+  /* 尺寸对着真实脑袋来:头是 0.34 的圆角方块,中心 y=1.62,半径 0.17(头部局部坐标)。
+     帽壳取 1.2 倍头(0.205)当布料余量 —— 之前写 0.256 是 1.5 倍,侧面看就是脑后
+     顶了个大气球。中心往后挪 0.055,让壳子前沿(-.055+.212=.157)刚好落在
+     脸前面(0.17)之后,脸露出来、后脑被罩住。 */
+  /* 帽子做成"顶+两侧+后背"四片壳,而不是一个实心椭球。
+     椭球无论怎么调都会和脑袋这个方盒子相交 —— 侧面看就是一道斜边切过脸颊。
+     四片壳只包住头的上/后/两侧,前面自然留出脸,永远不会切到脸。
+     坐标是头部局部坐标:头 = 0.34 的方块,中心 y=1.62,半径 0.17。 */
   function buildHoodShell(group,main,trim){
-    ellipsoid(group,.256,.281,.236,0,1.652,-.070,main);   // 罩住整个后脑,比头大一圈
-    ellipsoid(group,.238,.150,.120,0,1.474,-.155,main);   // 后颈那一坨堆布
-    torus(group,.199,.019,0,1.634,.170,trim,1.12,-Math.PI*.10);   // 脸部开口
+    roundedBox(group,.395,.092,.395,.045,0,1.800,-.020,main);   // 顶:压在头顶(1.79)上,别悬空
+    roundedBox(group,.072,.300,.350,.032,-.206,1.632,-.028,main);  // 左侧片
+    roundedBox(group,.072,.300,.350,.032,.206,1.632,-.028,main);   // 右侧片
+    roundedBox(group,.395,.320,.080,.04,0,1.636,-.208,main);   // 后片
+    ellipsoid(group,.196,.112,.100,0,1.474,-.140,main);        // 后颈堆布
+    // 开口滚边:贴在两侧片的前沿,不要用悬在脸前面的圆环
+    roundedBox(group,.030,.300,.045,.014,-.206,1.632,.140,trim);
+    roundedBox(group,.030,.300,.045,.014,.206,1.632,.140,trim);
+    roundedBox(group,.400,.036,.045,.016,0,1.788,.128,trim);   // 额前帽檐滚边
   }
   function buildHoodYoke(group,main,trim){
     ellipsoid(group,.205,.105,.105,0,1.445,-.125,main);
@@ -183,7 +197,12 @@
      两者都比壳子宽,直接从袖子和躯干中间露出来 —— 画面上那两道紫条和黄条就是它们。
      按"材质属于球衣/球裤 + 落在躯干高度带"筛,短裤(y≈.88 及以下)保持可见,
      否则会变成光腿。被收掉的网格记在 <key>HiddenKit 上,脱下时由 clearKey 还原。 */
-  const KIT_HIDE_BOTTOM=.95,KIT_HIDE_TOP=1.45;
+  /* 下沿分两档:
+       普通球衣件从 .95 往上收(再往下就是短裤本体,收了会变光腿);
+       但**薄条**要多收一段到 .86 —— 短裤上沿那条 0.5×0.035×0.29 的滚边,
+       半深 .145,和连帽衫外壳的半深 .1475 只差 2.5mm,两个平面几乎重合,
+       直接 z-fighting,在下摆位置闪出一道黄条。短裤本体半深 .135,差 1.25cm,不受影响。 */
+  const KIT_HIDE_BOTTOM=.95,KIT_TRIM_BOTTOM=.86,KIT_TRIM_MAX_H=.06,KIT_HIDE_TOP=1.45;
   function hideKitUnderHoodie(guy,key){
     const mats=[guy.mJ,guy.mP,guy.bodyF,guy.bodyB].filter(Boolean);
     if(!mats.length||!guy.g)return;
@@ -191,7 +210,9 @@
     (guy.g.children||[]).forEach(child=>{
       if(!child.isMesh||!child.visible)return;
       const y=child.position.y;
-      if(y<KIT_HIDE_BOTTOM||y>KIT_HIDE_TOP)return;
+      const par=child.geometry&&child.geometry.parameters;
+      const thin=par&&par.height&&par.height<=KIT_TRIM_MAX_H;
+      if(y<(thin?KIT_TRIM_BOTTOM:KIT_HIDE_BOTTOM)||y>KIT_HIDE_TOP)return;
       const list=Array.isArray(child.material)?child.material:[child.material];
       if(!list.some(m=>mats.indexOf(m)>=0))return;
       child.visible=false;hidden.push(child);

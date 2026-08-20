@@ -1,0 +1,230 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>aiBA 角色/装备看板 · viewer</title>
+<!-- 中性背景下单独看一个球员和他身上的装备。不加载游戏逻辑,只加载建模需要的那几个模块。
+     存在的理由:改装备外观时,以前只能进游戏、打开更衣室、手改 CSS 把试衣镜放大,
+     每看一件都要来回好几步,还看不到侧面和背面。
+     URL 参数(给 tools/capture.mjs 用,也方便直接贴链接):
+       ?band=head-hoodie&shoes=shoes-blaze&sleeve=sleeve-ice
+       &angle=front|three-quarter|side|back   机位
+       &bg=neutral|white|dark                 背景
+       &jersey=0x2e8bff&trim=0xffd23f&num=88  球衣配色和号码
+       &zoom=1.0&focus=full|head|torso|feet   取景
+       &nohud=1                               隐藏所有 UI(截图用) -->
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;font:13px/1.5 ui-monospace,Menlo,Consolas,monospace;color:#e8ecf2}
+  body{background:#3a3f47}
+  body[data-bg="white"]{background:#e9ecef;color:#1a1d22}
+  body[data-bg="dark"]{background:#101318}
+  #stage{position:fixed;inset:0}
+  #panel{position:fixed;left:12px;top:12px;width:250px;max-height:calc(100% - 24px);overflow:auto;
+    background:rgba(16,19,24,.86);border:1px solid rgba(255,255,255,.14);border-radius:8px;padding:10px;color:#e8ecf2}
+  body[data-nohud="1"] #panel,body[data-nohud="1"] #stats{display:none}
+  h2{font-size:11px;letter-spacing:1.4px;opacity:.62;margin:10px 0 5px;font-weight:600}
+  h2:first-child{margin-top:0}
+  .row{display:flex;flex-wrap:wrap;gap:4px}
+  button{font:inherit;font-size:11px;padding:4px 7px;border-radius:5px;cursor:pointer;
+    background:#1d222b;color:#cfd6e0;border:1px solid #333b47}
+  button:hover{border-color:#5b6675}
+  button.on{background:#ffd23f;color:#191c22;border-color:#ffd23f;font-weight:700}
+  #stats{position:fixed;right:12px;top:12px;background:rgba(16,19,24,.86);border:1px solid rgba(255,255,255,.14);
+    border-radius:8px;padding:8px 10px;font-size:11px;line-height:1.7;color:#cfd6e0;min-width:150px}
+  #stats b{color:#ffd23f;font-weight:700}
+  .hint{font-size:10px;opacity:.5;margin-top:8px;line-height:1.5}
+</style>
+<div id="stage"></div>
+<div id="panel">
+  <h2>机位</h2><div class="row" id="angles"></div>
+  <h2>取景</h2><div class="row" id="focuses"></div>
+  <h2>背景</h2><div class="row" id="bgs"></div>
+  <h2>头部 / BAND</h2><div class="row" id="band"></div>
+  <h2>球鞋 / SHOES</h2><div class="row" id="shoes"></div>
+  <h2>护腕 / SLEEVE</h2><div class="row" id="sleeve"></div>
+  <div class="hint">拖动旋转 · 滚轮缩放 · 键盘 ←→ 转身<br>当前状态会写进地址栏,可直接复制分享。</div>
+</div>
+<div id="stats"></div>
+
+<script src="vendor/three.min.r128.js"></script>
+<script>
+/* 必须早于 materials.js / characters.js:
+   materials.js 在**加载时**就构造 matBall,里面的 pixTex 要读 renderer.capabilities;
+   characters.js 要 V3。晚一步就是两条 ReferenceError。 */
+window.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true});
+window.V3=function(x,y,z){return new THREE.Vector3(x,y,z);};
+</script>
+<!-- materials.js / characters.js 在加载时会 window.AIBA.runtime.register(...),
+     所以真的要把 runtime 加载进来,不能只塞个假对象。 -->
+<script src="src/core/runtime.js"></script>
+<script src="src/config.js"></script>
+<script src="src/rendering/materials.js"></script>
+<script src="src/rendering/characters.js"></script>
+<script src="src/rendering/equipment-visuals.js"></script>
+<script src="src/gear.js"></script>
+<script>
+(function(){
+"use strict";
+const Q=new URLSearchParams(location.search);
+const ANGLES={ "front":0, "three-quarter":Math.PI*.22, "side":Math.PI*.5, "back":Math.PI };
+/* 取景预设和更衣室试衣镜保持同一套口径,免得两处看到的比例不一样 */
+const FOCUS={ full:{y:.94,zoom:1}, head:{y:1.60,zoom:2.35}, torso:{y:1.15,zoom:1.62}, feet:{y:.28,zoom:2.1} };
+
+const state={
+  angle:Q.get("angle")||"front",
+  focus:Q.get("focus")||"full",
+  bg:Q.get("bg")||"neutral",
+  zoom:parseFloat(Q.get("zoom"))||1,
+  yaw:0, pitch:0
+};
+document.body.dataset.bg=state.bg;
+if(Q.get("nohud")==="1")document.body.dataset.nohud="1";
+
+const stage=document.getElementById("stage");
+const renderer=window.renderer;   // 复用上面那个(建模模块加载时就需要它)
+renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+stage.appendChild(renderer.domElement);
+const scene=new THREE.Scene();
+const camera=new THREE.PerspectiveCamera(28,1,.1,60);
+
+/* 中性摄影棚布光:一盏主光 + 一盏补光 + 环境光。刻意不带任何场景色,
+   免得把"装备偏色"和"球场灯偏色"混在一起看不出来。 */
+scene.add(new THREE.AmbientLight(0xffffff,.72));
+const key=new THREE.DirectionalLight(0xffffff,.78);key.position.set(2.4,4.2,3.1);scene.add(key);
+const fill=new THREE.DirectionalLight(0xffffff,.34);fill.position.set(-3,2.1,-2.4);scene.add(fill);
+
+/* 建模模块是从游戏里直接拿来的,它们默认game 的几个全局存在:
+     materials.js 的 pixTex 要 renderer.capabilities 算各向异性;
+     characters.js 要 V3。
+   viewer 不加载游戏运行时,所以在这里补上,必须早于第一次 voxelGuy()。 */
+const root=new THREE.Group();scene.add(root);
+let guy=null;
+
+function bgColor(){return state.bg==="white"?0xe9ecef:state.bg==="dark"?0x101318:0x3a3f47;}
+
+function build(){
+  if(guy&&guy.g)root.remove(guy.g);
+  guy=voxelGuy();
+  const jersey=parseInt(Q.get("jersey")||"0x2e8bff",16);
+  const trim=parseInt(Q.get("trim")||"0xffd23f",16);
+  dressGuy(guy,jersey,trim,Q.get("num")||"88");
+  /* 脸部贴图在游戏里是 applyStarStyle 顺手做的,viewer 不走那条路,
+     不补的话脸是一块白板,看装备时会误判成"脸没了"。固定肤色保证可复现。 */
+  const skin=parseInt(Q.get("skin")||"0xf4c89c",16);
+  guy.mS.color.setHex(skin);
+  guy.mFace.map=faceTex(skin);guy.mFace.color.setHex(0xffffff);guy.mFace.needsUpdate=true;
+  root.add(guy.g);
+  applyGear();
+}
+function itemById(slot,id){
+  const list=(window.AIBAGear&&AIBAGear.CATALOG&&AIBAGear.CATALOG[slot])||[];
+  return list.filter(function(i){return i.id===id;})[0]||null;
+}
+function applyGear(){
+  if(!guy||!window.AIBAEquipmentVisuals)return;
+  const EV=AIBAEquipmentVisuals;
+  EV.applyHead(guy,itemById("band",Q.get("band")),{key:"gearHeadGroup"});
+  EV.applyShoes(guy,itemById("shoes",Q.get("shoes")));
+  EV.applySleeve(guy,itemById("sleeve",Q.get("sleeve")));
+}
+
+function resize(){
+  const w=innerWidth,h=innerHeight;
+  /* 必须让 three 同时设置 canvas 的 CSS 尺寸(第三参不能传 false),
+     否则画布按 pixelRatio 的物理像素铺开,人物会跑到画面外。 */
+  renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();
+  draw();
+}
+function draw(){
+  const f=FOCUS[state.focus]||FOCUS.full;
+  const dist=4.25/(f.zoom*state.zoom);
+  const yaw=(ANGLES[state.angle]!==undefined?ANGLES[state.angle]:0)+state.yaw;
+  const lookY=f.y;
+  camera.position.set(Math.sin(yaw)*dist,lookY+dist*.09+state.pitch*2.2,Math.cos(yaw)*dist);
+  camera.lookAt(0,lookY,0);
+  renderer.setClearColor(bgColor(),1);
+  renderer.render(scene,camera);
+  showStats();
+}
+function showStats(){
+  const el=document.getElementById("stats");if(!el)return;
+  const info=renderer.info;
+  let tris=0;scene.traverse(function(o){if(o.isMesh&&o.geometry&&o.geometry.attributes.position)tris+=o.geometry.attributes.position.count/3;});
+  el.innerHTML="draw calls <b>"+info.render.calls+"</b><br>三角面 <b>"+Math.round(tris).toLocaleString()+"</b><br>"+
+    "机位 <b>"+state.angle+"</b><br>取景 <b>"+state.focus+"</b>";
+}
+
+/* ---- UI ---- */
+function chips(hostId,items,current,onPick){
+  const host=document.getElementById(hostId);if(!host)return;
+  host.innerHTML="";
+  items.forEach(function(it){
+    const b=document.createElement("button");
+    b.textContent=it.label;
+    if(it.value===current)b.className="on";
+    b.onclick=function(){onPick(it.value);};
+    host.appendChild(b);
+  });
+}
+function syncURL(){
+  const q=new URLSearchParams(location.search);
+  q.set("angle",state.angle);q.set("focus",state.focus);q.set("bg",state.bg);
+  history.replaceState(null,"","?"+q.toString());
+}
+function slotChips(slot){
+  const list=(window.AIBAGear&&AIBAGear.CATALOG&&AIBAGear.CATALOG[slot])||[];
+  const items=[{label:"无",value:""}].concat(list.map(function(i){return {label:i.name,value:i.id};}));
+  chips(slot,items,Q.get(slot)||"",function(v){
+    const q=new URLSearchParams(location.search);
+    if(v)q.set(slot,v);else q.delete(slot);
+    location.search=q.toString();
+  });
+}
+function buildUI(){
+  chips("angles",Object.keys(ANGLES).map(function(k){return {label:k,value:k};}),state.angle,function(v){
+    state.angle=v;state.yaw=0;syncURL();buildUI();draw();});
+  chips("focuses",Object.keys(FOCUS).map(function(k){return {label:k,value:k};}),state.focus,function(v){
+    state.focus=v;syncURL();buildUI();draw();});
+  chips("bgs",[{label:"neutral",value:"neutral"},{label:"white",value:"white"},{label:"dark",value:"dark"}],state.bg,function(v){
+    state.bg=v;document.body.dataset.bg=v;syncURL();buildUI();draw();});
+  slotChips("band");slotChips("shoes");slotChips("sleeve");
+}
+
+let dragging=false,lastX=0,lastY=0;
+addEventListener("pointerdown",function(e){if(e.target.closest("#panel"))return;dragging=true;lastX=e.clientX;lastY=e.clientY;});
+addEventListener("pointermove",function(e){
+  if(!dragging)return;
+  state.yaw+=(e.clientX-lastX)*.012;
+  state.pitch=Math.max(-.5,Math.min(.5,state.pitch+(e.clientY-lastY)*.004));
+  lastX=e.clientX;lastY=e.clientY;draw();});
+addEventListener("pointerup",function(){dragging=false;});
+addEventListener("wheel",function(e){if(e.target.closest("#panel"))return;
+  e.preventDefault();state.zoom=Math.max(.4,Math.min(3,state.zoom*Math.exp(-e.deltaY*.0016)));draw();},{passive:false});
+addEventListener("keydown",function(e){
+  if(e.key==="ArrowLeft"){state.yaw-=.18;draw();}
+  if(e.key==="ArrowRight"){state.yaw+=.18;draw();}});
+addEventListener("resize",resize);
+
+build();buildUI();resize();
+/* 给 capture.mjs 一个明确的"画完了"信号,不用靠 sleep 猜 */
+window.__viewerReady=true;
+window.__viewerDraw=draw;
+/* 连画 n 帧测单帧耗时。viewer 平时是按需重绘的,不跑 rAF 循环,
+   所以要测帧率必须显式连画。返回中位数,避免第一帧编译着色器的尖峰污染结果。 */
+window.__viewerBench=function(n){
+  n=n||60;const t=[];
+  const gl=renderer.getContext();
+  for(let i=0;i<n;i++){
+    const s0=performance.now();
+    draw();
+    gl.finish();   // 不等 GPU 画完的话量到的只是 JS 提交耗时,会得出上万 fps 的假数字
+    t.push(performance.now()-s0);
+  }
+  t.sort(function(a,b){return a-b;});
+  const mid=t[Math.floor(t.length/2)];
+  /* 注意:这是 viewer 里画一个球员的成本,不是游戏的帧预算(游戏还有球场/观众/特效)。
+     真正有用的是 calls 和 triangles —— 一件装备加了多少绘制开销,一眼可比。 */
+  return {frames:n,medianMs:+mid.toFixed(3),
+    calls:renderer.info.render.calls,triangles:renderer.info.render.triangles};
+};
+})();
+</script>
