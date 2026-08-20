@@ -121,12 +121,21 @@
     box(group,.034,.038,.032,-.174,1.665,.194,main);
     box(group,.034,.038,.032,.174,1.665,.194,main);
   }
-  function buildHood(group,main,trim){
-    // One low-poly shell wraps the smaller head; the shoulder yoke overlaps both hood and torso.
-    ellipsoid(group,.195,.215,.175,0,1.60,-.045,main);
+  /* 帽子和帽衫身要分开挂:
+       帽壳 -> headRoot,跟着头转(原来整组挂在 guy.g,转头时脸转了帽子不动);
+       肩轭和抽绳 -> 身体,它们本来就该待在肩膀上。
+     headRoot 带 0.86 缩放和 y 偏移,所以帽壳用的是头部局部坐标:
+       local = (world - 1.45*(1-0.86)) / 0.86 = (world - 0.203) / 0.86
+     尺寸同样要除以 0.86,再放大一圈当作布料余量 —— 贴着头皮的壳子看着像头盔,
+     不像帽子。 */
+  function buildHoodShell(group,main,trim){
+    ellipsoid(group,.256,.281,.236,0,1.652,-.070,main);   // 罩住整个后脑,比头大一圈
+    ellipsoid(group,.238,.150,.120,0,1.474,-.155,main);   // 后颈那一坨堆布
+    torus(group,.199,.019,0,1.634,.170,trim,1.12,-Math.PI*.10);   // 脸部开口
+  }
+  function buildHoodYoke(group,main,trim){
     ellipsoid(group,.205,.105,.105,0,1.445,-.125,main);
     ellipsoid(group,.27,.085,.17,0,1.40,-.015,main);
-    torus(group,.158,.014,0,1.60,.151,trim,1.10,-Math.PI*.10);
     box(group,.19,.022,.035,-.082,1.432,.16,trim,0,0,-.42);
     box(group,.19,.022,.035,.082,1.432,.16,trim,0,0,.42);
   }
@@ -214,8 +223,14 @@
     else if(id==="head-cap"||id==="cap"){setHairVisible(guy,false);buildCap(group,main,dark);}
     else if(id==="head-shades"||id==="shades")buildShades(group,main,dark);
     else if(id==="head-hoodie"||id==="hoodie"){
-      if(!opts.outfitOnly){setHairVisible(guy,false);buildHood(group,main,trim);}
-      buildHoodieWear(guy,key,main,trim,seam);
+      if(!opts.outfitOnly){setHairVisible(guy,false);buildHoodYoke(group,main,trim);}
+      buildHoodieWear(guy,key,main,trim,seam);   // 内部会写 guy[key+"WearGroups"],帽壳要在它之后挂
+      if(!opts.outfitOnly){
+        const hoodHead=new THREE.Group();hoodHead.name=key+"Hood";
+        buildHoodShell(hoodHead,main,trim);
+        (guy.headRoot||guy.g).add(hoodHead);
+        (guy[key+"WearGroups"]=guy[key+"WearGroups"]||[]).push(hoodHead);
+      }
     }
     else {setHairVisible(guy,false);if(key==="gearHeadGroup"&&guy.customTopHeadGroup)guy.customTopHeadGroup.visible=false;buildMascot(group,main,dark);}
     disposeUnusedMaterials([group].concat(guy[key+"WearGroups"]||[]),[main,dark,seam,trim]);
