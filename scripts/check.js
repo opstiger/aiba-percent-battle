@@ -172,6 +172,20 @@ if(!/s\.lastDate===today\(\)&&\(s\.lastResult==="made"\|\|s\.lastResult==="miss"
 const i18nSrc=read("src/i18n.js");
 const literalEsc=i18nSrc.match(/\\\\u[0-9a-fA-F]{4}/g);
 if(literalEsc)fail("i18n dictionary must not contain literal escape sequences: "+literalEsc.slice(0,3).join(","));
+/* 装备外观三条守门(都是实测截图确认过的缺陷) */
+const equipVis=read("src/rendering/equipment-visuals.js");
+/* 注意匹配的是调用(带分号),函数定义结尾是 "{",不能拿定义当通过条件 */
+if(!/hideKitUnderHoodie\(guy,key\);/.test(equipVis))
+  fail("hoodie must actually CALL hideKitUnderHoodie (定义还在但没调用一样会露球衣)");
+if(!/HiddenKit/.test(equipVis))
+  fail("hoodie must remember and restore the hidden kit meshes");
+if(/buildShades\(group,trim,dark\)/.test(equipVis))
+  fail("shades must use the item color, not the cyan accent (black shades were rendering cyan)");
+const lockerPrev=read("src/player-locker-preview.js");
+if(!/view\.focusPart===wanted\)return/.test(lockerPrev))
+  fail("locker preview must not re-aim the camera when the gear slot did not change");
+if(!/view\.userPosed\)return/.test(lockerPrev))
+  fail("locker preview must not hijack the camera after the user orbited it");
 const lsSeq=read("src/modes/last-shot/sequence.js");
 if(!/\(c\.scoreAway-c\.scoreHome\)\+1/.test(lsSeq))fail("Last Shot win threshold must be derived from the score gap");
 if(/pts>=2\)|\bpts>=2\?/.test(lsSeq))fail("Last Shot must not hardcode the 2-point win threshold");
@@ -261,14 +275,14 @@ if(/<script src="src\/nba-dna\//.test(entryHtml))
 if(!entryHtml.includes('<script src="src/assets-manifest.js?v=20260726-bkyx1"></script>'))fail("assets manifest script missing");
 if(!entryHtml.includes('<script src="src/config.js?v=2.15.5-hand-follow"></script>'))fail("config script missing");
 if(!entryHtml.includes('<script src="src/player-select.js?v=2.15.5-hand-follow"></script>'))fail("player select script missing");
-if(!entryHtml.includes('<script src="src/player-locker-preview.js?v=2.18.3-locker-hands"></script>'))fail("player locker preview script missing");
+if(!entryHtml.includes('<script src="src/player-locker-preview.js?v=2.19.9-orbit2"></script>'))fail("player locker preview script missing");
 if(!entryHtml.includes('<script src="src/player-id.js?v=2.19.7-timeout"></script>'))fail("player id script missing");
 if(!entryHtml.includes('<script src="src/leaderboard-api.js"></script>'))fail("leaderboard api script missing");
 if(!entryHtml.includes('<script src="src/leaderboard-ui.js?v=1.94"></script>'))fail("leaderboard ui script missing");
 if(!entryHtml.includes('<script src="src/share.js?v=2.01"></script>'))fail("share script missing");
 if(!entryHtml.includes('<script src="src/shot-physics.js?v=2.07-late-diag"></script>'))fail("shot physics script missing");
 if(!entryHtml.includes('<script src="src/result-stats.js?v=1.78"></script>'))fail("result stats script missing");
-if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.16-soft-voxel"></script>'))fail("equipment visual script missing");
+if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.19.9-shades"></script>'))fail("equipment visual script missing");
 if(!entryHtml.includes('<script src="src/gear.js?v=2.19.8-rivalgear"></script>'))fail("gear script missing");
 if(!entryHtml.includes('<script src="src/avatar-customizer.js?v=2.15.5-hand-follow"></script>'))fail("avatar customizer script missing");
 if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.19.6-dip10"></script>'))fail("shot motion script missing");

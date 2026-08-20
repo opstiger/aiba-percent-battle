@@ -68,6 +68,11 @@
   }
   function clearKey(guy,key){
     if(!guy)return;
+    const hiddenKey=key+"HiddenKit";
+    if(guy[hiddenKey]){
+      guy[hiddenKey].forEach(mesh=>{mesh.visible=true;});
+      guy[hiddenKey]=null;
+    }
     const wearKey=key+"WearGroups";
     if(guy[wearKey]){
       guy[wearKey].forEach(disposeGroup);
@@ -100,8 +105,13 @@
     box(group,.035,.038,.055,-.052,1.79,-.218,main);
     box(group,.035,.038,.055,.052,1.79,-.218,main);
   }
+  /* 镜片要用装备自己的颜色。原来这里收到的 main 是 accent(默认青色),
+     于是"太阳镜"(配置色 #111111)渲染成一副发光的青色镜片 ——
+     和黑面具的青色眼缝几乎一模一样,两件装备在试衣镜里分不出来。
+     现在镜片走本色、压低透明度和自发光,只留一点点反光感。 */
   function buildShades(group,main,dark){
-    const lens=material(main.color?main.color.getHex():0x77e7ff,{transparent:true,opacity:.62,depthWrite:false,emissive:main.color?main.color.getHex():0x77e7ff,emissiveIntensity:.10});
+    const hex=main.color?main.color.getHex():0x111111;
+    const lens=material(hex,{transparent:true,opacity:.82,depthWrite:false,emissive:hex,emissiveIntensity:.03});
     box(group,.112,.062,.018,-.072,1.65,.206,lens);
     box(group,.112,.062,.018,.072,1.65,.206,lens);
     box(group,.034,.018,.025,0,1.654,.216,dark);
@@ -155,6 +165,29 @@
       roundedBox(sleeve,.153,.048,.172,.012,0,-.272,0,seam);
     });
     guy[key+"WearGroups"]=groups;
+    hideKitUnderHoodie(guy,key);
+  }
+
+  /* 穿上连帽衫要把里面的球衣收掉,否则会从壳子里穿出来。
+     躯干壳是 roundedBox(.535,.61,.295) 挂在 y=1.10,半宽只有 .2675;
+     而球衣的侧条在 x=±.255(外沿 .275)、外侧薄边在 x=±.285(外沿 .305),
+     两者都比壳子宽,直接从袖子和躯干中间露出来 —— 画面上那两道紫条和黄条就是它们。
+     按"材质属于球衣/球裤 + 落在躯干高度带"筛,短裤(y≈.88 及以下)保持可见,
+     否则会变成光腿。被收掉的网格记在 <key>HiddenKit 上,脱下时由 clearKey 还原。 */
+  const KIT_HIDE_BOTTOM=.95,KIT_HIDE_TOP=1.45;
+  function hideKitUnderHoodie(guy,key){
+    const mats=[guy.mJ,guy.mP,guy.bodyF,guy.bodyB].filter(Boolean);
+    if(!mats.length||!guy.g)return;
+    const hidden=[];
+    (guy.g.children||[]).forEach(child=>{
+      if(!child.isMesh||!child.visible)return;
+      const y=child.position.y;
+      if(y<KIT_HIDE_BOTTOM||y>KIT_HIDE_TOP)return;
+      const list=Array.isArray(child.material)?child.material:[child.material];
+      if(!list.some(m=>mats.indexOf(m)>=0))return;
+      child.visible=false;hidden.push(child);
+    });
+    guy[key+"HiddenKit"]=hidden;
   }
 
   function applyHead(guy,item,opts){
@@ -179,7 +212,7 @@
     const main=material(color),dark=material(shade(color,.20)),seam=material(shade(color,.64)),trim=material(accent,{emissive:accent,emissiveIntensity:.08});
     if(id==="head-mask"||id==="mask")buildMask(group,trim,dark);
     else if(id==="head-cap"||id==="cap"){setHairVisible(guy,false);buildCap(group,main,dark);}
-    else if(id==="head-shades"||id==="shades")buildShades(group,trim,dark);
+    else if(id==="head-shades"||id==="shades")buildShades(group,main,dark);
     else if(id==="head-hoodie"||id==="hoodie"){
       if(!opts.outfitOnly){setHairVisible(guy,false);buildHood(group,main,trim);}
       buildHoodieWear(guy,key,main,trim,seam);

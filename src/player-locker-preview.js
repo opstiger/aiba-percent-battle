@@ -289,15 +289,28 @@
     if(!liveView)return;
     focusTicket++;
     liveView.yaw=0;liveView.pitch=0;liveView.zoom=1;liveView.lookAt.y=liveView.fullLookY;liveView.focusPart="full";
+    liveView.userPosed=false;   // ↺ 是明确的"交还镜头"
     liveView.slot.dataset.orbitFocus="full";
     drawLive(liveView);
   }
-  function focusLive(part){
+  /* 试衣镜自动运镜的两条克制规则(实测反馈:"点击后老是乱跳"):
+     ① 槽位没变就不要重新运镜 —— 连着试同一格里的 4 双鞋是最常见的操作,
+        每点一下都把镜头重新拉一遍,看着就是抖。
+     ② 用户自己拖过/缩放过之后,别再抢镜头 —— 他正对着某个角度看做工,
+        点一下装备就被拽回预设机位。想回默认位有右上角的 ↺ 按钮。 */
+  function focusLive(part,opts){
     if(!liveView)return;
     const view=liveView,preset=FOCUS_PRESETS[part]||FOCUS_PRESETS.full,ticket=++focusTicket;
+    const wanted=FOCUS_PRESETS[part]?part:"full";
+    const forced=!!(opts&&opts.force);
+    if(!forced&&view.focusPart===wanted)return;      // ① 同槽位:不动
+    if(!forced&&view.userPosed)return;               // ② 用户已接管:不动
     const targetY=(part&&part!=="full"?preset.y*view.bodyH:view.fullLookY);
     const start={y:view.lookAt.y,zoom:view.zoom,pitch:view.pitch},started=performance.now();
-    view.focusPart=FOCUS_PRESETS[part]?part:"full";
+    view.focusPart=wanted;
+    /* 立刻写一次:运镜靠 rAF 推进,标签不该等一帧才更新(后台标签页里 rAF 不跑,
+       属性会一直停在旧值)。下面每帧再写是为了动画中途也保持一致。 */
+    view.slot.dataset.orbitFocus=wanted;
     const step=now=>{
       if(ticket!==focusTicket||view!==liveView||!view.slot.isConnected)return;
       const raw=Math.min(1,(now-started)/240),k=raw*raw*(3-2*raw);
@@ -340,7 +353,7 @@
     const body=star&&global.AIBA_CONFIG&&global.AIBA_CONFIG.bodyProfileFor?global.AIBA_CONFIG.bodyProfileFor(star):{h:1,w:1};
     const lookY=.94*(Number(body&&body.h)||1);
     const now=performance.now();
-    const view={slot,ctx,guy,yaw:0,pitch:0,zoom:1,focusPart:"full",bodyH:Number(body&&body.h)||1,fullLookY:lookY,baseAzimuth:Math.atan2(.18,4.25),baseElevation:Math.asin((1.07-.94)/4.25),lookAt:new THREE.Vector3(0,lookY,0),cleanup:[],resizeObserver:null,
+    const view={slot,ctx,guy,yaw:0,pitch:0,zoom:1,focusPart:"full",userPosed:false,bodyH:Number(body&&body.h)||1,fullLookY:lookY,baseAzimuth:Math.atan2(.18,4.25),baseElevation:Math.asin((1.07-.94)/4.25),lookAt:new THREE.Vector3(0,lookY,0),cleanup:[],resizeObserver:null,
       motionEpoch:now,lastMotionFrame:0,motionRaf:0,reducedMotion:!!(global.matchMedia&&global.matchMedia("(prefers-reduced-motion: reduce)").matches),action:null,actionBag:[],lastAction:"",nextActionAt:now+1200+Math.random()*900};
     liveView=view;
     let mouseDragging=false,lastMouseX=0,lastMouseY=0,pinchDistance=0,pinchZoom=1,lastTouchX=0,lastTouchY=0;
@@ -352,7 +365,7 @@
     };
     const mouseMove=e=>{
       if(!mouseDragging)return;
-      e.preventDefault();focusTicket++;
+      e.preventDefault();focusTicket++;view.userPosed=true;
       view.yaw+=(e.clientX-lastMouseX)*.014;
       view.pitch=clampPitch(view.pitch+(e.clientY-lastMouseY)*.012);
       lastMouseX=e.clientX;lastMouseY=e.clientY;drawLive(view);
@@ -368,16 +381,17 @@
       e.preventDefault();
       if(e.touches.length===1){
         const x=e.touches[0].clientX,y=e.touches[0].clientY;
+        focusTicket++;view.userPosed=true;   // 手机上拖动同样要打断在飞的运镜
         view.yaw+=(x-lastTouchX)*.014;view.pitch=clampPitch(view.pitch+(y-lastTouchY)*.012);
         lastTouchX=x;lastTouchY=y;
-      }else if(e.touches.length>=2&&pinchDistance>0)view.zoom=clampZoom(pinchZoom*touchDistance(e.touches)/pinchDistance);
+      }else if(e.touches.length>=2&&pinchDistance>0){focusTicket++;view.userPosed=true;view.zoom=clampZoom(pinchZoom*touchDistance(e.touches)/pinchDistance);}
       drawLive(view);
     };
     const touchEnd=e=>{
       if(e.touches&&e.touches.length===1){lastTouchX=e.touches[0].clientX;lastTouchY=e.touches[0].clientY;}
       else if(!e.touches||!e.touches.length){pinchDistance=0;pinchZoom=view.zoom;slot.classList.remove("dragging");}
     };
-    const wheel=e=>{e.preventDefault();view.zoom=clampZoom(view.zoom*Math.exp(-e.deltaY*.0015));drawLive(view);};
+    const wheel=e=>{e.preventDefault();focusTicket++;view.userPosed=true;view.zoom=clampZoom(view.zoom*Math.exp(-e.deltaY*.0015));drawLive(view);};
     const keys=e=>{
       let handled=true;
       if(e.key==="ArrowLeft")view.yaw-=.16;
