@@ -764,3 +764,38 @@ html[lang="en"] .perfSegBtns button{letter-spacing:0}
 /* 阶段配色本来就挂在 data-phase 上,小条自动跟着变(青→黄→绿),不用另写一套 */
 #visionPreview[data-fold="1"][data-phase="charging"] .visionStrip{animation:visionStripPulse .9s ease-in-out infinite}
 @keyframes visionStripPulse{0%,100%{opacity:.85}50%{opacity:1}}
+
+/* ---- 首屏第一投 ----
+   只有 UI 层:提示文字 + 跳过。球场是游戏本体的 3D 场景,所以这层必须是透明的,
+   不能盖住画面。 */
+#bootShot{position:fixed;inset:0;z-index:70;pointer-events:none;opacity:0;
+  transition:opacity .28s ease;display:grid;place-items:end center;padding-bottom:30vh}
+/* 球馆没有顶,竖屏时画面上方是一片空黑。压一层渐变让它读作刻意的暗角,
+   而不是"模型缺了一块";顺便和随后要切的纯黑衔接得上。 */
+#bootShot::before{content:"";position:absolute;left:0;right:0;top:0;height:42vh;
+  background:linear-gradient(180deg,#04050a 0%,rgba(4,5,10,.72) 46%,transparent 100%);
+  pointer-events:none}
+#bootShot.on{opacity:1}
+.bootShotHint{font-family:"Orbitron","Courier New",monospace;font-size:clamp(13px,3.4vw,17px);
+  letter-spacing:2px;color:#eaf3ff;text-shadow:0 2px 12px rgba(0,0,0,.85),0 0 22px rgba(112,232,255,.35);
+  padding:10px 20px;border-radius:999px;background:rgba(6,10,16,.42);
+  border:1px solid rgba(112,232,255,.32);backdrop-filter:blur(3px);
+  animation:bootShotPulse 1.6s ease-in-out infinite}
+.bootShotHint:empty{display:none}
+.bootShotHint.charging{animation:none;border-color:rgba(124,252,107,.6);color:#d8ffd0;
+  text-shadow:0 2px 12px rgba(0,0,0,.85),0 0 22px rgba(124,252,107,.45)}
+@keyframes bootShotPulse{0%,100%{opacity:.82;transform:translateY(0)}50%{opacity:1;transform:translateY(-3px)}}
+#bootShotSkip{position:fixed;right:max(12px,env(safe-area-inset-right));top:max(12px,env(safe-area-inset-top));
+  pointer-events:auto;font-family:"Orbitron","Courier New",monospace;font-size:11px;letter-spacing:1.5px;
+  padding:7px 13px;border-radius:8px;cursor:pointer;color:#9fb2c6;
+  background:rgba(6,10,16,.55);border:1px solid rgba(255,255,255,.16)}
+#bootShot:not(.on) #bootShotSkip{display:none}
+#bootShotSkip:hover{color:#eaf3ff;border-color:rgba(255,255,255,.36)}
+/* 首屏只留投篮条,比分/计时/球架/连中这些不该在第一屏出现 */
+html[data-boot-shot="1"] #hud>*:not(#playerPower){display:none !important}
+html[data-boot-shot="1"] #camBtn,html[data-boot-shot="1"] #muteBtn,
+html[data-boot-shot="1"] #pauseBtn,html[data-boot-shot="1"] #courtTools{display:none !important}
+
+/* 切黑:首页本身是暗色,所以直接切纯黑再揭开,过渡不会跳 */
+#bootShotBlack{position:fixed;inset:0;z-index:90;background:#04050a;opacity:0;pointer-events:none}
+#bootShotBlack.on{opacity:1;pointer-events:auto}

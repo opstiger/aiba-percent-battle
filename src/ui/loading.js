@@ -81,10 +81,17 @@
   function unlockBoot(event){
     if(!global.BOOT_GATE_ACTIVE)return false;
     if(event&&event.preventDefault)event.preventDefault();if(!global.BOOT_READY)return true;
-    global.BOOT_GATE_ACTIVE=false;ensureAudio(true,true);startCoverVideo();
+    global.BOOT_GATE_ACTIVE=false;
     const gate=$("bootLoad");gate.classList.add("leaving");gate.setAttribute("aria-hidden","true");document.documentElement.dataset.bootStarted="1";
+    /* 首次进入走"第一屏投一球":音频由 boot-shot 在按下那一刻解锁(不带菜单音乐,
+       把留白留给刷网),封面视频等切黑之后再起。分享链接直接进模式时不做这套仪式。 */
+    const shared0=ctx.getSharedRackRush();
+    const intro=!shared0&&global.AIBABootShot&&global.AIBABootShot.shouldRun&&global.AIBABootShot.shouldRun();
+    if(!intro){ensureAudio(true,true);startCoverVideo();}
     setTimeout(()=>{
-      gate.style.display="none";const shared=ctx.getSharedRackRush();
+      gate.style.display="none";
+      if(intro){global.AIBABootShot.start();return;}
+      const shared=ctx.getSharedRackRush();
       if(shared&&!shared.opened){shared.opened=true;ctx.G.mode="rackrush";ctx.pickDiff(shared.diff);}
     },460);return true;
   }

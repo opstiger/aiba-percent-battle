@@ -1,6 +1,9 @@
 /* ---------------- input ---------------- */
 function audioGestureUnlock(e){
   if(BOOT_GATE_ACTIVE)return;
+  /* 首屏第一投期间由 boot-shot.js 自己在按下那一刻解锁(而且刻意不带菜单音乐,
+     要把留白留给刷网声),这里不要抢先把 BGM 放出来。 */
+  if(document.documentElement.dataset.bootShot==="1")return;
   if(e&&e.target&&e.target.id==="muteBtn")return;
   const menuLike=G.state==="menu"||G.state==="diff";
   const arenaLike=G.state==="cinematic"||G.state==="pregame"||G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot"||G.state==="rushintro"||G.state==="rushbetween"||G.state==="victorycine";

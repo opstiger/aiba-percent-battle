@@ -39,7 +39,7 @@ function updatePlayerPowerUI(){
   const fixed=$("powerWrap");if(fixed)fixed.style.display="none";
   const s=curShot();
   const active=G.charging&&s&&!barHiddenFor(s)&&
-    (G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush");
+    (G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="bootshot");
   if(!active){el.style.display="none";return;}
   const W=innerWidth,H=innerHeight;
   if(CAM.mode===0)ballWorldPos(_ppWorld);

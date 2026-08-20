@@ -124,7 +124,7 @@ if(!entryHtml.includes('<script src="src/modes/rack-rush.js?v=refactor5b"></scri
 if(!entryHtml.includes('<script src="src/modes/contest.js?v=refactor5c"></script>'))fail("next contest module missing");
 if(!entryHtml.includes('<script src="src/modes/practice.js?v=refactor5a"></script>'))fail("next practice module missing");
 if(!entryHtml.includes('<script src="src/ui/panels.js?v=refactor7"></script>'))fail("next panels module missing");
-if(!entryHtml.includes('<script src="src/ui/loading.js?v=2.19.7-defer-audio"></script>'))fail("next loading module missing");
+if(!entryHtml.includes('<script src="src/ui/loading.js?v=2.19.9-intro"></script>'))fail("next loading module missing");
 if(!entryHtml.includes('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>'))fail("next menu module missing");
 if(!entryHtml.includes('<script src="src/ui/setup.js?v=refactor13"></script>'))fail("next setup module missing");
 if(!entryHtml.includes('<script src="src/ui/pregame.js?v=2.19.8-quote"></script>'))fail("next pregame module missing");
@@ -215,6 +215,27 @@ if(!/AIBAVisionFold/.test(read("src/recorder.js")))
 const audioSrc=read("src/audio.js");
 if(!/\/\\\.\(wav\|mp3\)\$\/i\.test\(name\)/.test(audioSrc))
   fail("playAudioEvent/playSFX must respect an explicit .mp3/.wav extension on the entry");
+/* 首屏第一投:这是所有人看到的第一屏,几条性质错了就是灾难。 */
+const bootShot=read("src/ui/boot-shot.js");
+if(!/G\.power=ideal;/.test(bootShot))
+  fail("boot shot must release at exactly ideal power (a=0 -> guaranteed swish)");
+if(!/TILT\.on=false/.test(bootShot))
+  fail("boot shot must zero device tilt, or a tilted phone downgrades the swish to a miss");
+if(!/IDLE_MS/.test(bootShot)||!/setTimeout\(\(\)=>fire\("auto"\),IDLE_MS\)/.test(bootShot))
+  fail("boot shot must auto-fire when nobody taps, or the first screen can hang forever");
+if(!/G\.practice=true/.test(bootShot))
+  fail("boot shot needs practice=true so barHiddenFor() keeps the power meter visible");
+if(!/G\.posted=\[\]/.test(bootShot))
+  fail("boot shot must seed G.posted (madeBall -> updTargetUI reads it)");
+if(!/localStorage\.setItem\(SEEN_KEY/.test(bootShot))
+  fail("boot shot must only run on the first visit");
+if(!/camera\.fov=BOOT_FOV/.test(bootShot))
+  fail("boot shot must pin its own fov (portrait clamps to 90 and leaves the frame half empty)");
+/* 只匹配真正的取值代码,别把注释里提到的名字也算进去(上一版就误判了) */
+if(/=\s*global\.camera\b/.test(bootShot))
+  fail("camera is a top-level const and is NOT on window - use the bare reference");
+for(const f of ["src/core/game-loop.js","src/rendering/camera.js","src/ui/battle-controls.js"])
+  if(!/bootshot/.test(read(f)))fail("bootshot state missing from "+f);
 const rngSrc=read("src/core/rng.js");
 if(!/function mulberry32/.test(rngSrc))fail("core/rng.js missing the seeded generator");
 if(!entryHtml.includes('<script src="src/core/rng.js?v=2.19.9-seed"></script>'))fail("core/rng.js not loaded");
@@ -253,8 +274,8 @@ if(entryHtml.indexOf('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai
 if(entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=refactor5b"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Rack Rush module must load before late hooks");
 if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("contest module must load before late hooks");
 if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>')>entryHtml.indexOf('<script src="src/modes/practice.js?v=refactor5a"></script>'))fail("contest module must load before practice module");
-if(entryHtml.indexOf('<script src="src/ui/panels.js?v=refactor7"></script>')>entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.7-defer-audio"></script>'))fail("panels must load before loading module");
-if(entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.7-defer-audio"></script>')>entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>'))fail("loading must load before menu module");
+if(entryHtml.indexOf('<script src="src/ui/panels.js?v=refactor7"></script>')>entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.9-intro"></script>'))fail("panels must load before loading module");
+if(entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.9-intro"></script>')>entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>'))fail("loading must load before menu module");
 if(entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>')>entryHtml.indexOf('<script src="src/ui/setup.js?v=refactor13"></script>'))fail("menu must load before setup module");
 if(entryHtml.indexOf('<script src="src/ui/setup.js?v=refactor13"></script>')>entryHtml.indexOf('<script src="src/ui/pregame.js?v=2.19.8-quote"></script>'))fail("setup must load before pregame module");
 if(entryHtml.indexOf('<script src="src/ui/pregame.js?v=2.19.8-quote"></script>')>entryHtml.indexOf('<script src="src/ui/pause.js?v=1.98"></script>'))fail("pregame must load before pause module");
@@ -282,7 +303,7 @@ if((entryHtml.match(/class="ppSweet"/g)||[]).length!==1)fail("player power must 
 if((entryHtml.match(/class="ppFill"/g)||[]).length!==1)fail("player power must expose one continuous fill path");
 for(const token of ["ppMidClip","ppTopClip","ppFillBase","ppFillMid","ppFillTop"])
   if(entryHtml.includes(token)||read("styles.css").includes(token))fail("player power duplicate fill layer remains "+token);
-if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.19.9-fold">'))fail("stylesheet link missing");
+if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.19.9-intro">'))fail("stylesheet link missing");
 const menuScript=read("src/ui/menu.js");
 const nbaDnaScript=read("src/nba-dna/NBADNA.js");
 const homeMenuSource=menuScript.slice(menuScript.indexOf("function showMenu"),menuScript.indexOf("function showModeInfo"));
@@ -1377,11 +1398,11 @@ if(!coreLoop.includes('if(VICTORY_CINE.on&&G.state!=="victorycine")stopVictoryCi
   fail("game loop must cancel a stale victory cinematic before camera dispatch");
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.19.9-seed','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=refactor33b','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19-lastshot5','src/core/game-loop.js?v=2.19.7-i18n-refresh','src/core/scene-init.js?v=refactor38'])
+for(const token of ['src/gameplay/shots.js?v=2.19.9-seed','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19.9-intro','src/core/game-loop.js?v=2.19.7-i18n-refresh','src/core/scene-init.js?v=refactor38'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);
-if(!(entryHtml.indexOf('src/core/input.js?v=2.19-lastshot5')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot')))fail("input must load before legacy adapter");
+if(!(entryHtml.indexOf('src/core/input.js?v=2.19.9-intro')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot')))fail("input must load before legacy adapter");
 if(!(entryHtml.indexOf('src/core/scene-init.js?v=refactor38')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot')))fail("scene init must load before legacy adapter");
 
 const sandbox={window:{}};

@@ -10,7 +10,7 @@
 <script src="src/i18n.js?v=2.19.8-spothud"></script>
 <script src="src/ui/icons.js?v=1"></script>
 <link rel="preload" href="assets/fonts/orbitron/Orbitron-VariableFont_wght.ttf" as="font" type="font/ttf" crossorigin="anonymous">
-<link rel="stylesheet" href="styles.css?v=2.19.9-fold">
+<link rel="stylesheet" href="styles.css?v=2.19.9-intro">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -80,6 +80,14 @@
   <div class="visionFoot"><span id="visionState">等待启动</span></div>
   <button id="visionStrip" class="visionStrip" type="button" aria-label="展开摄像头预览" onclick="toggleVisionFold(event)"><i></i><b>POSE</b></button>
 </aside>
+
+<!-- 首屏第一投:第一人称弧顶三分,点一下自动蓄力进甜区并出手。
+     这一层只放 UI(提示/跳过/切黑),球场和球都是游戏本体的 3D 场景。 -->
+<div id="bootShot" aria-hidden="true">
+  <div id="bootShotHint" class="bootShotHint">点击投出这一球</div>
+  <button id="bootShotSkip" type="button" onclick="skipBootShot(event)">跳过</button>
+</div>
+<div id="bootShotBlack" aria-hidden="true"></div>
 
 <div id="toast" class="px"></div>
 <div id="pops"></div>
@@ -152,10 +160,10 @@
 <script src="src/presentation/battle.js?v=refactor30"></script>
 <script src="src/gameplay/shots.js?v=2.19.9-seed"></script>
 <script src="src/presentation/replay.js?v=2.15.5-hand-follow"></script>
-<script src="src/ui/battle-controls.js?v=refactor33b"></script>
+<script src="src/ui/battle-controls.js?v=2.19.9-intro"></script>
 <script src="src/gameplay/collisions.js?v=refactor34"></script>
 <script src="src/presentation/win-cinematic.js?v=2.15.5-hand-follow"></script>
-<script src="src/core/input.js?v=2.19-lastshot5"></script>
+<script src="src/core/input.js?v=2.19.9-intro"></script>
 <script src="src/core/game-loop.js?v=2.19.7-i18n-refresh"></script>
 <script src="src/core/scene-init.js?v=refactor38"></script>
 <script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>
@@ -172,7 +180,8 @@
 <script src="src/modes/last-shot/sequence.js?v=2.19.9-lsvoice"></script>
 <script src="src/modes/last-shot/index.js?v=2.19.8-streak"></script>
 <script src="src/ui/panels.js?v=refactor7"></script>
-<script src="src/ui/loading.js?v=2.19.7-defer-audio"></script>
+<script src="src/ui/boot-shot.js?v=2.19.9-intro"></script>
+<script src="src/ui/loading.js?v=2.19.9-intro"></script>
 <script src="src/ui/menu.js?v=2.19-lastshot5"></script>
 <script src="src/ui/setup.js?v=refactor13"></script>
 <script src="src/ui/pregame.js?v=2.19.8-quote"></script>
