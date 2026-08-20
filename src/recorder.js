@@ -193,9 +193,16 @@
     const resultVisible=!!state.resultCard,x=resultVisible?W-w-30:30,y=resultVisible?68:H-154-h;
     ctx.save();ctx.fillStyle="rgba(0,0,0,.62)";roundRect(ctx,x-7,y-28,w+14,h+35,8);ctx.fill();
     ctx.strokeStyle="#70e8ff";ctx.lineWidth=3;roundRect(ctx,x-7,y-28,w+14,h+35,8);ctx.stroke();
-    ctx.fillStyle="#70e8ff";ctx.font="700 13px Orbitron, monospace";ctx.fillText("LOCAL POSE",x,y-9);
-    ctx.beginPath();roundRect(ctx,x,y,w,h,6);ctx.clip();ctx.fillStyle="#050912";ctx.fillRect(x,y,w,h);drawContain(ctx,v,x,y,w,h,true);
-    const overlay=document.getElementById("visionCanvas");if(overlay&&overlay.width){ctx.globalAlpha=.78;drawContain(ctx,overlay,x,y,w,h,true);ctx.globalAlpha=1;}
+    /* 玩家把预览折叠起来时,录像里也不放真人画面 —— 收起来往往就是不想出镜,
+       录出去还带脸是隐私意外。但**保留骨架层**:骨架本身就说明"这动作是真人做的",
+       那是 aiBA 区别于普通手游的地方,不该一起丢掉。(设计里的方案 C) */
+    const folded=!!(global.AIBAVisionFold&&global.AIBAVisionFold.isActive&&global.AIBAVisionFold.isActive());
+    ctx.fillStyle="#70e8ff";ctx.font="700 13px Orbitron, monospace";
+    ctx.fillText(folded?"LOCAL POSE · 骨架":"LOCAL POSE",x,y-9);
+    ctx.beginPath();roundRect(ctx,x,y,w,h,6);ctx.clip();ctx.fillStyle="#050912";ctx.fillRect(x,y,w,h);
+    if(!folded)drawContain(ctx,v,x,y,w,h,true);
+    const overlay=document.getElementById("visionCanvas");
+    if(overlay&&overlay.width){ctx.globalAlpha=folded?1:.78;drawContain(ctx,overlay,x,y,w,h,true);ctx.globalAlpha=1;}
     ctx.restore();
   }
   function draw(ctxObj){

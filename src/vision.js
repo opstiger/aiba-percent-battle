@@ -53,6 +53,10 @@ const VISION={
   body:{samples:[],startedAt:0,ready:false,noseY:.23,shoulderY:.39,hipY:.66,centerX:.5,shoulderW:.22,bodyH:.27,releaseLineY:.32,hipVisible:false,lastAt:0},
   tracking:{left:null,right:null,prevLeft:null,prevRight:null,lastValidAt:0,lastAnyAt:0},
   dock:{name:"",stance:"",lockedUntil:0},
+  /* 折叠态:摄像头照跑、体感照用,只是不显示画面。和"这一局该不该显示预览"
+     (visionSyncPreviewVisibility)是两条正交的轴,别合并 —— 否则"玩家想不想看"
+     会被"当前状态该不该显示"覆盖掉。 */
+  fold:{on:false,forcedBy:"",lastFrameAt:0,stallSince:0},
   readyArea:{x:.5,bottom:1,w:.88,h:.35},releaseLineY:.32,
   frame:{width:0,height:0,aspect:9/16,sourcePortrait:true,displayAspect:9/16,portrait:true,cropPortrait:false,requestedPortrait:false,inferCanvas:null,inferCtx:null,inferWidth:0,inferHeight:0},orientationBlocked:false,
   connections:[[11,12],[11,13],[13,15],[15,17],[15,19],[15,21],[12,14],[14,16],[16,18],[16,20],[16,22],[11,23],[12,24],[23,24]],
@@ -307,9 +311,82 @@ function visionClearPreviewDock(wrap){
 }
 function visionLivePlayState(){return G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot";}
 function visionPreviewPlayState(){return visionLivePlayState()||G.state==="pregame"||G.state==="rushintro"||G.state==="rushbetween";}
+/* ---------------- 摄像头预览折叠 ----------------
+   熟练玩家不想一直被自己的摄像头画面干扰,但仍要用体感。
+   折叠后小条上只保留两件事:还在不在跟踪、当前什么阶段 —— 这两个信息
+   本来就由 data-phase(配色)和 #visionTrackFill(进度)承载,直接复用。 */
+const VISION_FOLD_KEY="aiba_vision_fold";
+/* 折叠态下 video 必须留在布局里。推理循环靠 video.currentTime 往前走判断新帧,
+   一旦 display:none,部分浏览器(iOS Safari 尤其)会停止推进解码 ——
+   画面收起来了、体感也悄悄失灵,而且不报错。这是这套设计最危险的失败模式,
+   所以 CSS 里折叠是把 .visionStage 压成 1×1 + overflow:hidden,绝不 display:none。
+   下面这个看门狗是安全网:折叠时如果帧长时间不推进,强制展开并提示。 */
+const VISION_STALL_MS=1500;
+function visionFoldLoad(){
+  try{return localStorage.getItem(VISION_FOLD_KEY)==="1";}catch(e){return false;}
+}
+function visionFoldSave(on){
+  try{localStorage.setItem(VISION_FOLD_KEY,on?"1":"0");}catch(e){}
+}
+/* 有几种情况必须强制展开,否则玩家会卡住且不知道为什么。
+   返回非空字符串表示"被谁强制展开的",用于展开后不立刻收回。 */
+function visionForceExpandReason(){
+  if(VISION.orientationBlocked)return "orientation";
+  if(!VISION.enabled||VISION.loading)return "starting";
+  const wrap=$("visionPreview");
+  if(wrap&&wrap.dataset.tutorial)return "tutorial";           // 新手引导接管时优先
+  if(wrap&&wrap.dataset.phase==="error")return "error";
+  if(VISION.body&&!VISION.body.ready)return "calibrating";    // 身体标定中
+  if(typeof visionLostPromptActive==="function"&&visionLostPromptActive()
+     &&VISION.tracking&&performance.now()-(VISION.tracking.lastValidAt||0)>1200)return "lost";
+  return "";
+}
+function visionFoldActive(){
+  if(!VISION.fold.on)return false;
+  return !visionForceExpandReason();
+}
+function visionApplyFold(wrap){
+  wrap=wrap||$("visionPreview");
+  if(!wrap)return;
+  const reason=VISION.fold.on?visionForceExpandReason():"";
+  VISION.fold.forcedBy=reason;
+  const folded=VISION.fold.on&&!reason;
+  if(folded)wrap.dataset.fold="1";else delete wrap.dataset.fold;
+  if(reason)wrap.dataset.foldForced=reason;else delete wrap.dataset.foldForced;
+  const btn=$("visionFoldBtn");
+  if(btn){
+    btn.textContent=folded?"⌃":"⌄";
+    btn.setAttribute("aria-label",folded?"展开摄像头预览":"收起摄像头预览");
+    btn.setAttribute("aria-expanded",folded?"false":"true");
+  }
+}
+function setVisionFold(on,event){
+  if(event){event.stopPropagation();event.preventDefault();}
+  VISION.fold.on=!!on;
+  visionFoldSave(VISION.fold.on);
+  VISION.fold.stallSince=0;
+  visionApplyFold();
+  visionClearPreviewDock($("visionPreview"));   // 尺寸变了,停靠要重算
+  return VISION.fold.on;
+}
+function toggleVisionFold(event){return setVisionFold(!VISION.fold.on,event);}
+/* 折叠时盯着帧有没有继续推进。停太久说明浏览器把隐藏的 video 停了,
+   立刻展开 + 提示,免得玩家以为体感坏了。 */
+function visionFoldWatchdog(now,videoTime){
+  if(!VISION.fold.on||!VISION.enabled)return;
+  if(videoTime!==VISION.fold.lastFrameAt){
+    VISION.fold.lastFrameAt=videoTime;VISION.fold.stallSince=0;return;
+  }
+  if(!VISION.fold.stallSince){VISION.fold.stallSince=now;return;}
+  if(now-VISION.fold.stallSince<VISION_STALL_MS)return;
+  VISION.fold.stallSince=0;
+  setVisionFold(false);
+  if(typeof toast==="function")toast("摄像头画面已展开 · 收起状态下取不到画面","#ffd23f");
+}
 function visionSyncPreviewVisibility(wrap){
   if(!wrap)return;
   wrap.style.display=(VISION.desired&&(visionPreviewPlayState()||VISION.orientationBlocked))?"block":"none";
+  visionApplyFold(wrap);
 }
 function visionDockStanceKey(){
   const x=P&&P.pos?Math.round(P.pos.x*10):0,z=P&&P.pos?Math.round(P.pos.z*10):0;
@@ -376,6 +453,8 @@ function visionUpdatePreviewDock(now){
   visionSyncPreviewVisibility(wrap);
   const setup=G.state==="menu"||G.state==="diff";
   if(setup||!visionPreviewPlayState()){visionClearPreviewDock(wrap);return;}
+  /* 折叠成小条之后本来就不会挡住球员,不用每帧再挑停靠位;固定贴边即可。 */
+  if(visionFoldActive()){visionClearPreviewDock(wrap);return;}
   const stance=visionDockStanceKey(),current=wrap.dataset.dock||"";
   if(current&&VISION.dock.stance===stance)return;
   const playerRect=visionPlayerScreenRect();
@@ -437,6 +516,9 @@ function drawVisionReleaseLine(g,lineY,w,h,active){
 }
 function drawVisionPose(lm,handLandmarks,sample,phase){
   const cv=$("visionCanvas"),video=$("visionVideo");if(!cv||!video)return;
+  /* 折叠时预览里看不到这张 canvas,但录像的 PIP 还要用它画骨架(方案 C),
+     所以只有"折叠且没在录制"时才真的跳过绘制。 */
+  if(visionFoldActive()&&!(window.AIBARecorder&&window.AIBARecorder.capturing&&window.AIBARecorder.capturing()))return;
   const frame=visionSyncFrameGeometry(video),w=frame.inferWidth||288,h=frame.inferHeight||512;if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;}
   const g=cv.getContext("2d");g.clearRect(0,0,w,h);
   drawVisionReleaseLine(g,(sample&&sample.releaseLineY)||VISION.releaseLineY,w,h,phase==="charging"||phase==="release");
@@ -530,7 +612,10 @@ function noteVisionInference(start){
 function visionFrame(now){
   if(!VISION.desired)return;VISION.raf=requestAnimationFrame(visionFrame);
   if(!VISION.enabled||!VISION.landmarker)return;
-  const video=$("visionVideo");if(!video||video.readyState<2||video.currentTime===VISION.lastVideoTime)return;
+  const video=$("visionVideo");if(!video)return;
+  /* 看门狗要放在"没有新帧就 return"之前 —— 卡住的时候正是走不到下面的时候 */
+  visionFoldWatchdog(now,video.currentTime);
+  if(video.readyState<2||video.currentTime===VISION.lastVideoTime)return;
   if(visionOrientationInvalid()){
     if(!VISION.orientationBlocked){VISION.orientationBlocked=true;resetVisionGesture(VISION.machine);cancelVisionOwnedCharge();visionResetTracking(true);}
     if(now-(VISION.lastDraw||0)>240){VISION.lastDraw=now;drawVisionPose(VISION.lastPose,[],VISION.lastSample,"idle");visionSetUI("align","请保持手机竖屏",0);}
@@ -649,5 +734,13 @@ function visionModeMarkup(){
     <button class="${active?"":"active"}" onclick="disableVisionControl(event)"><span>触屏控制</span></button>
     <button class="${active?"active":""}" onclick="enableVisionControl(event)" ${VISION.supported?"":"disabled"}><span>体感控制</span><em class="controlRecommend">推荐</em></button></div>`;
 }
+VISION.fold.on=visionFoldLoad();
+Object.assign(window,{toggleVisionFold,setVisionFold});
+window.AIBAVisionFold=Object.freeze({
+  isOn:()=>!!VISION.fold.on,
+  isActive:()=>visionFoldActive(),
+  forcedBy:()=>VISION.fold.forcedBy,
+  set:on=>setVisionFold(on)
+});
 addEventListener("pagehide",()=>{if(VISION.stream)VISION.stream.getTracks().forEach(t=>t.stop());});
 addEventListener("orientationchange",()=>{if(!VISION.enabled)return;setTimeout(()=>{VISION.lastVideoTime=-1;visionResetTracking(true);resetVisionGesture(VISION.machine);visionSyncFrameGeometry($("visionVideo"));},220);});

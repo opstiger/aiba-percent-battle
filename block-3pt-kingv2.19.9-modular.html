@@ -10,7 +10,7 @@
 <script src="src/i18n.js?v=2.19.8-spothud"></script>
 <script src="src/ui/icons.js?v=1"></script>
 <link rel="preload" href="assets/fonts/orbitron/Orbitron-VariableFont_wght.ttf" as="font" type="font/ttf" crossorigin="anonymous">
-<link rel="stylesheet" href="styles.css?v=2.18.5-shared-ai-shot">
+<link rel="stylesheet" href="styles.css?v=2.19.9-fold">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -75,9 +75,10 @@
 </div>
 
 <aside id="visionPreview" data-phase="align" aria-label="体感投篮摄像头预览">
-  <div class="visionHead"><span><b>●</b> LOCAL POSE</span><button class="visionClose" type="button" aria-label="关闭体感控制" onclick="disableVisionControl(event)">×</button></div>
+  <div class="visionHead"><span><b>●</b> LOCAL POSE</span><button id="visionFoldBtn" class="visionFold" type="button" aria-label="收起摄像头预览" aria-expanded="true" onclick="toggleVisionFold(event)">⌄</button><button class="visionClose" type="button" aria-label="关闭体感控制" onclick="disableVisionControl(event)">×</button></div>
   <div class="visionBody"><div class="visionStage"><video id="visionVideo" muted playsinline></video><canvas id="visionCanvas"></canvas><div class="visionScan"></div></div><div class="visionTrack" aria-hidden="true"><i id="visionTrackFill"></i></div></div>
   <div class="visionFoot"><span id="visionState">等待启动</span></div>
+  <button id="visionStrip" class="visionStrip" type="button" aria-label="展开摄像头预览" onclick="toggleVisionFold(event)"><i></i><b>POSE</b></button>
 </aside>
 
 <div id="toast" class="px"></div>
@@ -120,7 +121,7 @@
 <script src="src/leaderboard-api.js"></script>
 <script src="src/leaderboard-ui.js?v=1.94"></script>
 <script src="src/share.js?v=2.01"></script>
-<script src="src/recorder.js?v=refactor10"></script>
+<script src="src/recorder.js?v=2.19.9-fold"></script>
 <script src="src/shot-physics.js?v=2.07-late-diag"></script>
 <script src="src/face-overlays.js?v=1.1-realnames"></script>
 <script src="src/haptics.js?v=1.80"></script>
@@ -132,7 +133,7 @@
 <script src="src/core/state.js?v=2.19.2-fp-lastshot"></script>
 <script src="src/services/audio-cues.js?v=refactor39"></script>
 <script src="src/ui/result-copy.js?v=refactor39"></script>
-<script src="src/vision.js?v=2.19.5-unify"></script>
+<script src="src/vision.js?v=2.19.9-fold"></script>
 <script src="src/audio.js?v=2.19.7-dedupe"></script>
 <script src="src/rendering/core.js?v=2.19.5-hfov"></script>
 <script src="src/rendering/materials.js?v=refactor17h"></script>
@@ -193,7 +194,7 @@
 <script src="src/perf-settings.js?v=1.93b"></script>
 <script src="src/trailer-capture.js?v=trailer1"></script>
 <script src="src/ui/onboarding.js?v=1.96b"></script>
-<script src="src/ui/vision-tutorial.js?v=1.95"></script>
+<script src="src/ui/vision-tutorial.js?v=2.19.9-fold"></script>
 <script src="src/ui/interactive-tutorial.js?v=2.05"></script>
 </body>
 </html>

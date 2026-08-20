@@ -108,8 +108,8 @@ if(!entryHtml.includes("data-aiba-early-errors"))fail("next early error diagnost
 if(!entryHtml.includes('<script src="src/i18n.js?v=2.19.8-spothud"></script>'))fail("i18n cache version missing");
 if(!entryHtml.includes('<script src="src/core/runtime.js?v=refactor7"></script>'))fail("next runtime bridge missing");
 if(entryHtml.includes("player-id-sandbox")||entryHtml.includes("leaderboard-sandbox"))fail("entry must not load sandbox identity/leaderboard");
-if(!entryHtml.includes('<script src="src/recorder.js?v=refactor10"></script>'))fail("next recorder cache version missing");
-if(!entryHtml.includes('<script src="src/vision.js?v=2.19.5-unify"></script>'))fail("next vision cache version missing");
+if(!entryHtml.includes('<script src="src/recorder.js?v=2.19.9-fold"></script>'))fail("next recorder cache version missing");
+if(!entryHtml.includes('<script src="src/vision.js?v=2.19.9-fold"></script>'))fail("next vision cache version missing");
 if(!entryHtml.includes('<script src="src/rendering/core.js?v=2.19.5-hfov"></script>'))fail("next rendering core missing");
 for(const file of ["core/error-boundary","core/foundation","data/dialogue","core/state","services/audio-cues","ui/result-copy"]){
   const version=file==="core/state"?"2.19.2-fp-lastshot":"refactor39";
@@ -191,6 +191,25 @@ if(!/view\.userPosed\)return/.test(lockerPrev))
   fail("locker preview must not hijack the camera after the user orbited it");
 /* 决定输赢的随机必须走可复现通道(src/core/rng.js),否则 bug 复现不了。
    演出用的随机不在此列。 */
+/* 摄像头折叠:最危险的失败模式是"画面收起来了、体感也悄悄失灵且不报错"。
+   推理循环靠 video.currentTime 推进判断新帧,一旦 video 被 display:none,
+   部分浏览器会停止解码。所以折叠只能把 .visionStage 压成 1×1,不能 display:none。 */
+const cssSrc=read("styles.css");
+const foldBlock=(cssSrc.match(/#visionPreview\[data-fold="1"\][\s\S]*?visionStripPulse/)||[""])[0];
+if(!foldBlock)fail("styles.css missing the folded vision-preview rules");
+if(/\.visionStage\{[^}]*display:\s*none/.test(foldBlock))
+  fail("folded vision preview must not display:none the video stage (inference stops silently)");
+if(!/\.visionStage\{[^}]*width:1px/.test(foldBlock))
+  fail("folded vision stage must stay in layout at 1px so the video keeps decoding");
+const visionSrc=read("src/vision.js");
+if(!/function visionFoldWatchdog/.test(visionSrc))fail("vision fold watchdog missing");
+if(!/visionFoldWatchdog\(now,video\.currentTime\);\s*\n\s*if\(video\.readyState<2/.test(visionSrc))
+  fail("fold watchdog must run before the no-new-frame early return, or a stall never reaches it");
+if(!/function visionForceExpandReason/.test(visionSrc))fail("vision fold auto-expand conditions missing");
+for(const reason of ["orientation","tutorial","error","calibrating","lost"])
+  if(!visionSrc.includes('return "'+reason+'"'))fail("fold must auto-expand on: "+reason);
+if(!/AIBAVisionFold/.test(read("src/recorder.js")))
+  fail("recorder must respect the folded state (skeleton-only PIP)");
 const rngSrc=read("src/core/rng.js");
 if(!/function mulberry32/.test(rngSrc))fail("core/rng.js missing the seeded generator");
 if(!entryHtml.includes('<script src="src/core/rng.js?v=2.19.9-seed"></script>'))fail("core/rng.js not loaded");
@@ -258,7 +277,7 @@ if((entryHtml.match(/class="ppSweet"/g)||[]).length!==1)fail("player power must 
 if((entryHtml.match(/class="ppFill"/g)||[]).length!==1)fail("player power must expose one continuous fill path");
 for(const token of ["ppMidClip","ppTopClip","ppFillBase","ppFillMid","ppFillTop"])
   if(entryHtml.includes(token)||read("styles.css").includes(token))fail("player power duplicate fill layer remains "+token);
-if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.18.5-shared-ai-shot">'))fail("stylesheet link missing");
+if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.19.9-fold">'))fail("stylesheet link missing");
 const menuScript=read("src/ui/menu.js");
 const nbaDnaScript=read("src/nba-dna/NBADNA.js");
 const homeMenuSource=menuScript.slice(menuScript.indexOf("function showMenu"),menuScript.indexOf("function showModeInfo"));
@@ -314,7 +333,7 @@ if(!entryHtml.includes('<script src="src/face-overlays.js?v=1.1-realnames"></scr
 if(!entryHtml.includes('<script src="src/haptics.js?v=1.80"></script>'))fail("haptics script missing");
 if(!entryHtml.includes('<script src="src/visual-director.js?v=1.85"></script>'))fail("visual director script missing");
 if(!entryHtml.includes('<script src="src/audio.js?v=2.19.7-dedupe"></script>'))fail("audio script missing");
-if(!entryHtml.includes('<script src="src/vision.js?v=2.19.5-unify"></script>'))fail("vision script missing");
+if(!entryHtml.includes('<script src="src/vision.js?v=2.19.9-fold"></script>'))fail("vision script missing");
 if(!entryHtml.includes('<script src="src/ui/icons.js?v=1"></script>'))fail("local SVG icon script missing");
 if(!entryHtml.includes('<script src="src/ui/interactive-tutorial.js?v=2.05"></script>'))fail("interactive tutorial script missing");
 if(!entryHtml.includes('<script src="src/navigation.js?v=2.19-lastshot5"></script>'))fail("navigation script missing");

@@ -58,6 +58,10 @@
   function start(force){
     if(overlay)return;
     if(!force&&seen.done)return;
+    /* 引导要教的就是怎么看预览,折叠着没法教 —— 先展开。
+       (interactive-tutorial 走的是 dataset.tutorial,由 vision.js 自动强制展开;
+        这条路径没有那个标记,所以显式展开一次。) */
+    if(typeof global.setVisionFold==="function")try{global.setVisionFold(false);}catch(e){}
     if(typeof global.hidePanel==="function"&&force)try{hidePanel();}catch(e){}
     closed=false;stepIdx=0;reps=0;lastPhase="idle";startAt=Date.now();stepEnterAt=Date.now();
     overlay=document.createElement("div");
