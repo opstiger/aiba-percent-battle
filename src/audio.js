@@ -1355,7 +1355,7 @@ const AUDIO_EVENTS = {
 
 function playSFX(name, vol){
   if(MUTED) return;
-  const u = VOICE_BASE + name + ".wav";
+  const u = VOICE_BASE + (/\.(wav|mp3)$/i.test(name) ? name : name + ".wav");
   try {
     audioInit();
     if (!playClip.cache[u]) {
@@ -1383,7 +1383,10 @@ function playAudioEvent(eventId, opt) {
   if (!pool || !pool.length) return false;
   const name = pool[Math.floor(Math.random() * pool.length)];
   if(/^sfx_|^ui_/.test(name))return playSFX(name,opt.volume);
-  const url = voiceUrl(name + ".wav");
+  /* 条目可以自带扩展名。新批语音直接出 .mp3,老的仍是无扩展名(默认补 .wav)——
+     两种格式必须能共存,否则"新的用 mp3"就等于把 262 条老 wav 全部重压一遍。
+     voiceUrl 只把 .wav 映射到 VOICE_EXT,已经是 .mp3 的会原样透传。 */
+  const url = voiceUrl(/\.(wav|mp3)$/i.test(name) ? name : name + ".wav");
   const role = voiceRoleForText("", url, opt.role);
   return playVoiceUrl(url, role, opt);
 }

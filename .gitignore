@@ -6,6 +6,9 @@ docs/*
 !docs/ARCHITECTURE.md
 !docs/MODULAR_REFACTOR_PLAN.md
 !docs/PROJECT_STATE.md
+# 配音需求表要交给别的工具/会话去生成音频,不进库就等于没人看得到
+!docs/需求迭代/
+!docs/需求迭代/音频配音需求表-v2.md
 assets/aiba-covers/*.MOV
 assets/aiba-covers/MJ24.mp4
 assets/aiba-covers/tmac1.mp4
