@@ -57,7 +57,28 @@
   }
   async function bootGame(){
     global.BOOT_COVER=COVER_STARS[(Math.random()*COVER_STARS.length)|0];
-    $("bootLoad").addEventListener("pointerdown",unlockBoot,{passive:false});global.showMenu();
+    global.showMenu();
+
+    /* **不再用模态遮罩挡人。**
+       原来那块面板要等 2.26MB 预载 + 一个写死的 1.1 秒下限,但其中 2.1MB(93%)
+       是 bgm/观众声 —— 而音频在用户做出手势之前根本播不了。
+       等于把人挡在外面,去预载他此刻听不见的东西。
+       现在:首次进入直接进"第一人称投一球",回访直接进首页;
+       资源在后台继续拉,只在顶部留一条细进度线。
+       音频解锁交给那一次点击(首次是投篮那下,回访是任意一次交互 ——
+       input.js 的 audioGestureUnlock 本来就全局监听着,以前只是被这个门挡住了)。 */
+    global.BOOT_GATE_ACTIVE=false;
+    document.documentElement.dataset.bootStarted="1";
+    const gate=$("bootLoad");
+    if(gate){gate.classList.add("slim");gate.setAttribute("aria-hidden","true");}
+
+    const shared0=ctx.getSharedRackRush();
+    const intro=!shared0&&global.AIBABootShot&&global.AIBABootShot.shouldRun&&global.AIBABootShot.shouldRun();
+    if(intro)global.AIBABootShot.start();
+    else{
+      startCoverVideo();   // 静音视频不需要手势,可以直接放
+      if(shared0&&!shared0.opened){shared0.opened=true;ctx.G.mode="rackrush";ctx.pickDiff(shared0.diff);}
+    }
     /* 天气/环境音(rain 731KB + ocean + gull ≈ 796KB)不进启动清单：
        它们是场景条件音 —— rain 只在下雨天气播、ocean 只在海滩场景播 ——
        却占了首屏音频的一大块。移出后在启动完成后的空闲时间后台补拉，
@@ -72,28 +93,22 @@
     ];
     const usable=assets.filter(asset=>asset.url),total=usable.reduce((sum,asset)=>sum+asset.weight,0);
     const state={done:0,finished:0,count:usable.length};$("bootStatus").textContent="正在同步画面与球馆声音";
-    await Promise.all([Promise.all(usable.map(asset=>preloadBootAsset(asset,total,state))),new Promise(resolve=>setTimeout(resolve,1100))]);
+    /* 原来这里还 await 了一个写死的 1100ms —— 那是为遮罩的观感服务的,
+       现在没有遮罩,没有理由再让任何人多等。 */
+    await Promise.all(usable.map(asset=>preloadBootAsset(asset,total,state)));
     await ensureUIFontReady();setBootProgress(total,total,usable.length,usable.length);global.BOOT_READY=true;
-    const gate=$("bootLoad");gate.classList.add("ready");gate.setAttribute("aria-busy","false");
-    $("bootStatus").textContent=bootFailed?"基础资源就绪":"赛场资源就绪";document.documentElement.dataset.bootReady="1";
+    if(gate){gate.classList.add("done");gate.setAttribute("aria-busy","false");}
+    document.documentElement.dataset.bootReady="1";
     prefetchDeferredAudio(deferred);
   }
+  /* 遮罩已经取消,这个函数只剩兼容作用(navigation.js 仍绑着它)。
+     留着它是为了万一有别的路径还在调 —— 现在它什么门都不挡。 */
   function unlockBoot(event){
     if(!global.BOOT_GATE_ACTIVE)return false;
-    if(event&&event.preventDefault)event.preventDefault();if(!global.BOOT_READY)return true;
     global.BOOT_GATE_ACTIVE=false;
-    const gate=$("bootLoad");gate.classList.add("leaving");gate.setAttribute("aria-hidden","true");document.documentElement.dataset.bootStarted="1";
-    /* 首次进入走"第一屏投一球":音频由 boot-shot 在按下那一刻解锁(不带菜单音乐,
-       把留白留给刷网),封面视频等切黑之后再起。分享链接直接进模式时不做这套仪式。 */
-    const shared0=ctx.getSharedRackRush();
-    const intro=!shared0&&global.AIBABootShot&&global.AIBABootShot.shouldRun&&global.AIBABootShot.shouldRun();
-    if(!intro){ensureAudio(true,true);startCoverVideo();}
-    setTimeout(()=>{
-      gate.style.display="none";
-      if(intro){global.AIBABootShot.start();return;}
-      const shared=ctx.getSharedRackRush();
-      if(shared&&!shared.opened){shared.opened=true;ctx.G.mode="rackrush";ctx.pickDiff(shared.diff);}
-    },460);return true;
+    const gate=$("bootLoad");if(gate)gate.classList.add("slim");
+    document.documentElement.dataset.bootStarted="1";
+    return true;
   }
   function stopCoverVideo(){
     clearTimeout(coverVideoTimer);coverVideoTimer=null;const video=document.querySelector(".coverVideo");

@@ -799,3 +799,18 @@ html[data-boot-shot="1"] #pauseBtn,html[data-boot-shot="1"] #courtTools{display:
 /* 切黑:首页本身是暗色,所以直接切纯黑再揭开,过渡不会跳 */
 #bootShotBlack{position:fixed;inset:0;z-index:90;background:#04050a;opacity:0;pointer-events:none}
 #bootShotBlack.on{opacity:1;pointer-events:auto}
+
+/* ---- 加载指示降级成顶部一条细线 ----
+   原来那块全屏模态要等 2.26MB + 1.1 秒硬下限,而其中 93% 是用户还听不见的音频。
+   现在它不再挡路:整块面板的内容全收掉,只留最上面 3px 的进度线。 */
+#bootLoad.slim{position:fixed;left:0;right:0;top:0;bottom:auto;height:3px;
+  background:rgba(4,5,10,.55);backdrop-filter:none;display:block;padding:0;
+  pointer-events:none;z-index:95;opacity:1;transition:opacity .5s ease}
+#bootLoad.slim .bootFrame{all:unset;display:block;height:3px}
+#bootLoad.slim .bootBrand,#bootLoad.slim .bootEdition,#bootLoad.slim .bootRule,
+#bootLoad.slim .bootStatus,#bootLoad.slim .bootMeta,#bootLoad.slim .bootStart{display:none}
+#bootLoad.slim .bootMeter{position:absolute;left:0;right:0;top:0;height:3px;margin:0;
+  border:0;border-radius:0;background:transparent}
+#bootLoad.slim .bootMeter>i{display:block;height:3px;border-radius:0;
+  background:linear-gradient(90deg,#e8771e,#ffd23f);transition:width .25s ease}
+#bootLoad.slim.done{opacity:0}

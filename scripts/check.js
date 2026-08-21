@@ -124,7 +124,7 @@ if(!entryHtml.includes('<script src="src/modes/rack-rush.js?v=refactor5b"></scri
 if(!entryHtml.includes('<script src="src/modes/contest.js?v=refactor5c"></script>'))fail("next contest module missing");
 if(!entryHtml.includes('<script src="src/modes/practice.js?v=refactor5a"></script>'))fail("next practice module missing");
 if(!entryHtml.includes('<script src="src/ui/panels.js?v=refactor7"></script>'))fail("next panels module missing");
-if(!entryHtml.includes('<script src="src/ui/loading.js?v=2.19.9-intro"></script>'))fail("next loading module missing");
+if(!entryHtml.includes('<script src="src/ui/loading.js?v=2.19.9-nogate"></script>'))fail("next loading module missing");
 if(!entryHtml.includes('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>'))fail("next menu module missing");
 if(!entryHtml.includes('<script src="src/ui/setup.js?v=refactor13"></script>'))fail("next setup module missing");
 if(!entryHtml.includes('<script src="src/ui/pregame.js?v=2.19.8-quote"></script>'))fail("next pregame module missing");
@@ -137,7 +137,7 @@ for(const [file,version] of Object.entries(percentBattleVersions)){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js?v=${version}"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
 const lastShotModules=["config","squad","sequence","index"];
-const lastShotVersions={config:"2.19.9-lsvoice",squad:"2.19.6-kit2",sequence:"2.19.9-lsvoice",index:"2.19.8-streak"};
+const lastShotVersions={config:"2.19.9-lsvoice",squad:"2.19.6-kit2",sequence:"2.19.9-otvoice",index:"2.19.8-streak"};
 for(const file of lastShotModules){
   if(!entryHtml.includes(`<script src="src/modes/last-shot/${file}.js?v=${lastShotVersions[file]}"></script>`))fail(`next Last Shot ${file} module missing`);
 }
@@ -215,6 +215,32 @@ if(!/AIBAVisionFold/.test(read("src/recorder.js")))
 const audioSrc=read("src/audio.js");
 if(!/\/\\\.\(wav\|mp3\)\$\/i\.test\(name\)/.test(audioSrc))
   fail("playAudioEvent/playSFX must respect an explicit .mp3/.wav extension on the entry");
+/* 事件名 -> URL 只能走一条路。踩过:条目写了 .mp3,预加载却无条件 +".wav",
+   拼出 xxx.mp3.wav 静默 404(存在性由下面 AUDIO_EVENTS 那轮统一兜)。 */
+if(!/const voiceEntryUrl=/.test(audioSrc))
+  fail("audio.js must funnel event names through voiceEntryUrl (see the .mp3.wav trap)");
+if(/AUDIO_EVENTS\)\.flat\(\)\.map\(n=>voiceUrl\(n\+"\.wav"\)\)/.test(audioSrc))
+  fail("preloadVoiceClips still appends .wav blindly - .mp3 entries would 404");
+/* 新手引导的 coach mark 由一个 350ms 的全局轮询驱动,轮询只读 G 上的字段、
+   不知道自己属于哪个场景。少了场景闸就会乱串 —— 实测出现过"首页飘出投篮甜区提示"
+   (首屏那一投写脏 G.charging / G.shots,回首页后条件立刻成立)。
+   三道闸缺一不可:提示要记住自己在哪一幕弹的、延迟弹出的要重新校验、
+   消耗标记本身也要带场景条件(否则开场那一投会把引导标记提前吃掉)。 */
+{
+  const ob=read("src/ui/onboarding.js");
+  if(!/let tipEl=null,tipTimer=0,tipScene=null;/.test(ob))
+    fail("onboarding tips must remember which scene they were shown in");
+  if(!/function tipLater\(/.test(ob))
+    fail("delayed onboarding tips must re-check the scene before showing");
+  if(/setTimeout\(\(\)=>tip\(/.test(ob))
+    fail("onboarding still shows delayed tips without re-checking the scene - use tipLater");
+  if(!/if\(tipScene!==null&&G\.state!==tipScene\)hideTip\(\);/.test(ob))
+    fail("onboarding must drop a tip when the scene changes");
+  if(!/if\(!seen\.hold&&playing\(\)&&G\.charging\)/.test(ob))
+    fail("the 'hold' coach mark must be gated on playing() - the boot shot charges too");
+  if(!/if\(!seen\.sweet&&seen\.hold&&playing\(\)/.test(ob))
+    fail("the 'sweet' coach mark must be gated on playing() - G.shots survives into the menu");
+}
 /* 首屏第一投:这是所有人看到的第一屏,几条性质错了就是灾难。 */
 const bootShot=read("src/ui/boot-shot.js");
 if(!/G\.power=ideal;/.test(bootShot))
@@ -229,13 +255,65 @@ if(!/G\.posted=\[\]/.test(bootShot))
   fail("boot shot must seed G.posted (madeBall -> updTargetUI reads it)");
 if(!/localStorage\.setItem\(SEEN_KEY/.test(bootShot))
   fail("boot shot must only run on the first visit");
-if(!/camera\.fov=BOOT_FOV/.test(bootShot))
+/* ?new=1 是"当成全新玩家"的调试开关。两条硬要求:
+   ① 清标记必须在模块加载时做 —— onboarding.js / vision-tutorial.js 在各自 IIFE 里
+      一次性读 localStorage,等 shouldRun() 被调用时它们早读完了,清了也白清;
+      因此 index.html 里 boot-shot.js 必须排在这两个之前。
+   ② 只清引导标记,不许扩大到成绩/偏好那类玩家数据上。 */
+{
+  if(!/FIRST_RUN_KEYS/.test(bootShot)||!/q\("new"\)==="1"/.test(bootShot))
+    fail("boot shot must support ?new=1 (fresh-player debug switch)");
+  for(const k of ["aiba_onboard_v2","aiba_vision_tut_v1"])
+    if(!bootShot.includes(k))fail("?new=1 must also clear "+k+", or the first-run flow cannot be replayed");
+  for(const k of ["aiba-scene-preset","aiba-battle-last-v1"])
+    if(bootShot.includes(k))fail("?new=1 must not clear player data ("+k+")");
+  const order=f=>entryHtml.indexOf("src/ui/"+f+".js");
+  for(const later of ["onboarding","vision-tutorial"])
+    if(!(order("boot-shot")>=0&&order(later)>order("boot-shot")))
+      fail("boot-shot.js must load before "+later+".js so ?new=1 clears keys before they are read");
+}
+/* 自动投是兜底,不是主路径 —— 门槛太短会抢在玩家反应过来之前替他投了。 */
+{
+  const m=/const IDLE_MS=(\d+);/.exec(bootShot);
+  if(!m)fail("boot shot IDLE_MS must stay a literal so this check can read it");
+  else if(+m[1]<10000)fail("boot shot auto-fire is "+m[1]+"ms; give the player at least 10s to tap first");
+}
+if(!/camera\.fov=S\.fov/.test(bootShot))
   fail("boot shot must pin its own fov (portrait clamps to 90 and leaves the frame half empty)");
+/* 开场运镜的几条硬约束:
+   - 必须接管 glideCam,否则 updPlayCam 每帧把机位抢回去,运镜完全看不见
+   - 收场必须还回去,否则回首页后没人写 rig,画面定在过肩机位
+   - 必须第三人称,CAM.mode===0 时 player.g.visible=false,人物根本不渲染 */
+if(!/G\.glideCam=true/.test(bootShot))
+  fail("boot shot must take over the camera via G.glideCam, or updPlayCam overwrites the rig every frame");
+if(!/G\.glideCam=S\.savedGlide/.test(bootShot))
+  fail("boot shot must hand the camera back on cleanup");
+if(/ctx\.CAM\.mode=0;/.test(bootShot))
+  fail("boot shot needs third person (CAM.mode!==0) or the player model is hidden and cannot walk in");
+/* 入场走位必须自己插值 + 每帧把朝向锁回篮筐。用 walkTo 的话它会先朝移动方向走、
+   最后 25% 才转向篮筐 —— 人物先正脸对镜头走一段再掉头,"英雄始终面向篮筐"就没了。 */
+if(!/function updWalkIn/.test(bootShot))
+  fail("boot shot opening must drive its own walk-in");
+if(/ctx\.walkTo\(/.test(bootShot))
+  fail("boot shot must not use walkTo - it turns the player away from the hoop mid-walk");
+if(!/ctx\.P\.face=ctx\.faceTo\(ctx\.P\.pos,ctx\.HOOP\)/.test(bootShot))
+  fail("boot shot walk-in must re-lock P.face to the hoop every frame");
 /* 只匹配真正的取值代码,别把注释里提到的名字也算进去(上一版就误判了) */
 if(/=\s*global\.camera\b/.test(bootShot))
   fail("camera is a top-level const and is NOT on window - use the bare reference");
 for(const f of ["src/core/game-loop.js","src/rendering/camera.js","src/ui/battle-controls.js"])
   if(!/bootshot/.test(read(f)))fail("bootshot state missing from "+f);
+/* 火焰轨迹是"这一球投得完美"的奖励,不是"最近手感好"的常驻特效。
+   门槛一旦退回 b.hot(连中>=3),投篮机/百分大战里一烧就停不下来,特殊感就没了。 */
+{
+  const shotsSrc=read("src/gameplay/shots.js");
+  if(!/const perfect=a<=zone\*0\.5;/.test(shotsSrc))
+    fail("shots.js must derive b.perfect from the swish band (a<=zone*0.5)");
+  if(!/if\(b\.perfect&&b\.phase==="fly"\)emitFire/.test(shotsSrc))
+    fail("fire trail must be gated on b.perfect (a perfect release), not on a made streak");
+  if(/if\(b\.hot&&b\.phase==="fly"\)emitFire/.test(shotsSrc))
+    fail("fire trail regressed to the streak gate (b.hot) - it would burn on every shot once hot");
+}
 const rngSrc=read("src/core/rng.js");
 if(!/function mulberry32/.test(rngSrc))fail("core/rng.js missing the seeded generator");
 if(!entryHtml.includes('<script src="src/core/rng.js?v=2.19.9-seed"></script>'))fail("core/rng.js not loaded");
@@ -269,13 +347,13 @@ if(entryHtml.includes("/* Renderer, camera, adaptive quality and base lights are
 if(entryHtml.indexOf('src/core/foundation.js?v=refactor39')>entryHtml.indexOf('src/data/game-config.js?v=2.19.9-release'))fail("foundation must load before game config");
 if(entryHtml.indexOf('src/data/game-config.js?v=2.19.9-release')>entryHtml.indexOf('src/core/state.js?v=2.19.2-fp-lastshot'))fail("game config must load before runtime state");
 if(entryHtml.indexOf('src/core/state.js?v=2.19.2-fp-lastshot')>entryHtml.indexOf('src/services/audio-cues.js?v=refactor39'))fail("runtime state must load before audio cues");
-if(entryHtml.indexOf('src/services/audio-cues.js?v=refactor39')>entryHtml.indexOf('src/audio.js?v=2.19.9-mixext'))fail("audio cues must load before audio engine");
+if(entryHtml.indexOf('src/services/audio-cues.js?v=refactor39')>entryHtml.indexOf('src/audio.js?v=2.19.9-otvoice'))fail("audio cues must load before audio engine");
 if(entryHtml.indexOf('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>')>entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=refactor5b"></script>'))fail("legacy adapter must load before Rack Rush module");
 if(entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=refactor5b"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Rack Rush module must load before late hooks");
 if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("contest module must load before late hooks");
 if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>')>entryHtml.indexOf('<script src="src/modes/practice.js?v=refactor5a"></script>'))fail("contest module must load before practice module");
-if(entryHtml.indexOf('<script src="src/ui/panels.js?v=refactor7"></script>')>entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.9-intro"></script>'))fail("panels must load before loading module");
-if(entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.9-intro"></script>')>entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>'))fail("loading must load before menu module");
+if(entryHtml.indexOf('<script src="src/ui/panels.js?v=refactor7"></script>')>entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.9-nogate"></script>'))fail("panels must load before loading module");
+if(entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.9-nogate"></script>')>entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>'))fail("loading must load before menu module");
 if(entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>')>entryHtml.indexOf('<script src="src/ui/setup.js?v=refactor13"></script>'))fail("menu must load before setup module");
 if(entryHtml.indexOf('<script src="src/ui/setup.js?v=refactor13"></script>')>entryHtml.indexOf('<script src="src/ui/pregame.js?v=2.19.8-quote"></script>'))fail("setup must load before pregame module");
 if(entryHtml.indexOf('<script src="src/ui/pregame.js?v=2.19.8-quote"></script>')>entryHtml.indexOf('<script src="src/ui/pause.js?v=1.98"></script>'))fail("pregame must load before pause module");
@@ -303,7 +381,7 @@ if((entryHtml.match(/class="ppSweet"/g)||[]).length!==1)fail("player power must 
 if((entryHtml.match(/class="ppFill"/g)||[]).length!==1)fail("player power must expose one continuous fill path");
 for(const token of ["ppMidClip","ppTopClip","ppFillBase","ppFillMid","ppFillTop"])
   if(entryHtml.includes(token)||read("styles.css").includes(token))fail("player power duplicate fill layer remains "+token);
-if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.19.9-intro">'))fail("stylesheet link missing");
+if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.19.9-nogate">'))fail("stylesheet link missing");
 const menuScript=read("src/ui/menu.js");
 const nbaDnaScript=read("src/nba-dna/NBADNA.js");
 const homeMenuSource=menuScript.slice(menuScript.indexOf("function showMenu"),menuScript.indexOf("function showModeInfo"));
@@ -352,13 +430,13 @@ if(!entryHtml.includes('<script src="src/roster-style.js?v=2.15.5-hand-follow"><
 if(!entryHtml.includes('<script src="src/rendering/character-visuals.js?v=2.16.2-human-proportion"></script>'))fail("voxel pro character visuals missing");
 if(entryHtml.indexOf('src/roster-style.js?v=2.15.5-hand-follow')>entryHtml.indexOf('src/rendering/character-visuals.js?v=2.16.2-human-proportion'))fail("voxel pro visuals must wrap roster styling");
 if(!entryHtml.includes('<script src="src/hero-moments.js?v=1.80"></script>'))fail("hero moments script missing");
-if(!entryHtml.includes('<script src="src/hot-hand.js?v=1.81"></script>'))fail("hot hand script missing");
+if(!entryHtml.includes('<script src="src/hot-hand.js?v=2.19.9-flame"></script>'))fail("hot hand script missing");
 if(!entryHtml.includes('<script src="src/perf.js?v=1.72"></script>'))fail("perf script missing");
 if(!entryHtml.includes('<script src="src/perf-settings.js?v=1.93b"></script>'))fail("perf settings script missing");
 if(!entryHtml.includes('<script src="src/face-overlays.js?v=1.1-realnames"></script>'))fail("face overlays script missing");
 if(!entryHtml.includes('<script src="src/haptics.js?v=1.80"></script>'))fail("haptics script missing");
 if(!entryHtml.includes('<script src="src/visual-director.js?v=1.85"></script>'))fail("visual director script missing");
-if(!entryHtml.includes('<script src="src/audio.js?v=2.19.9-mixext"></script>'))fail("audio script missing");
+if(!entryHtml.includes('<script src="src/audio.js?v=2.19.9-otvoice"></script>'))fail("audio script missing");
 if(!entryHtml.includes('<script src="src/vision.js?v=2.19.9-fold"></script>'))fail("vision script missing");
 if(!entryHtml.includes('<script src="src/ui/icons.js?v=1"></script>'))fail("local SVG icon script missing");
 if(!entryHtml.includes('<script src="src/ui/interactive-tutorial.js?v=2.05"></script>'))fail("interactive tutorial script missing");
@@ -644,7 +722,9 @@ const voiceFiles=new Set([...audioScript.matchAll(/voiceUrl\("([^"]+\.wav)"\)/g)
 if(!voiceFiles.size)fail("no voiceUrl wav references found in audio script");
 const voiceExt=(audioScript.match(/const VOICE_EXT="([^"]+)"/)||[])[1]||".wav";
 function voiceExists(name){
-  return exists(path.posix.join("assets/aiba-audio/voices",name.replace(/\.wav$/i,voiceExt)));
+  /* 只有 .wav 才跟着 VOICE_EXT 走(压缩成 mp3 后一起改);已经写死 .mp3 的条目原样放行。 */
+  const f=/\.mp3$/i.test(name)?name:name.replace(/\.wav$/i,voiceExt);
+  return exists(path.posix.join("assets/aiba-audio/voices",f));
 }
 for(const file of voiceFiles){
   if(!voiceExists(file))fail("missing referenced voice clip "+file+" (ext "+voiceExt+")");
@@ -666,7 +746,8 @@ const allCode=walkSrc("src").map(read).join("\n");
 for(const ev of audioEvents){
   if(!new RegExp('playAudioEvent\\(\\s*["\\\']'+ev.id+'["\\\']').test(allCode))fail("AUDIO_EVENTS entry has no direct trigger "+ev.id);
   for(const name of ev.files){
-    if(!voiceExists(name+".wav"))fail("missing AUDIO_EVENTS clip "+name+voiceExt);
+    /* 条目可以自带 .mp3/.wav 后缀;没写才默认 wav。直接 +".wav" 会拼出 xxx.mp3.wav。 */
+    if(!voiceExists(/\.(wav|mp3)$/i.test(name)?name:name+".wav"))fail("missing AUDIO_EVENTS clip "+name);
   }
 }
 for(const name of new Set([...allCode.matchAll(/playSFX\(\s*["']([^"']+)["']/g)].map(m=>m[1]))){
@@ -1023,7 +1104,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.9-seed','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.9-lsvoice'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.9-flame','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.9-otvoice'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1398,7 +1479,7 @@ if(!coreLoop.includes('if(VICTORY_CINE.on&&G.state!=="victorycine")stopVictoryCi
   fail("game loop must cancel a stale victory cinematic before camera dispatch");
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.19.9-seed','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19.9-intro','src/core/game-loop.js?v=2.19.7-i18n-refresh','src/core/scene-init.js?v=refactor38'])
+for(const token of ['src/gameplay/shots.js?v=2.19.9-flame','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19.9-intro','src/core/game-loop.js?v=2.19.7-i18n-refresh','src/core/scene-init.js?v=refactor38'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);

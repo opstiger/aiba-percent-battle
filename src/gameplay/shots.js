@@ -204,9 +204,14 @@ function releaseShot(power,shot){
   const blob=new THREE.Mesh(blobGeo,blobMat.clone());
   blob.rotation.x=-Math.PI/2;blob.position.set(p0.x,0.02,p0.z);scene.add(blob);
   const hot=G.streak>=3;
+  /* 火焰轨迹只奖励"这一球投得准",不奖励"最近手感好" ——
+     所以门槛是出手误差落在甜区内圈(和 outcome==="swish" 同一条线),
+     而不是连中数。连中只决定火烧得多旺(hot-hand.js 里按档加粒子)。
+     换句话说:完美出手才点火,热手让火更粗。 */
+  const perfect=a<=zone*0.5;
   const B={mesh,blob,p0:p0.clone(),v0,tf,t:0,phase:"fly",outcome,vel:new THREE.Vector3(),
     val:shot.val,baseVal:shot.baseVal||shot.val,bonus:shot.bonus||0,money:shot.money,deep:isDeep,super:!!shot.super,rush:isRush,made:false,life:3,bounces:0,
-    rec:[],timeLeft:G.timer,hot,startPos:p0.clone(),shooterPos:P.pos.clone(),shooterFace:P.face,superChanceId:shot.superChanceId||0};
+    rec:[],timeLeft:G.timer,hot,perfect,startPos:p0.clone(),shooterPos:P.pos.clone(),shooterFace:P.face,superChanceId:shot.superChanceId||0};
   B.resultClutch=noteResultAttempt(shot);balls.push(B);
   G.lastErr=err;
   // stats
@@ -478,7 +483,7 @@ function updBalls(dt){
         balls.splice(i,1);continue;
       }
     }
-    if(b.hot&&b.phase==="fly")emitFire(b.mesh.position);
+    if(b.perfect&&b.phase==="fly")emitFire(b.mesh.position);
     b.blob.position.set(b.mesh.position.x,0.02,b.mesh.position.z);
     const s=clamp(1.4-b.mesh.position.y*0.12,0.3,1.4);
     b.blob.scale.set(s,s,1);

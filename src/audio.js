@@ -4,6 +4,11 @@ const VOICE_BASE=(typeof EXT_AUDIO!=="undefined"&&EXT_AUDIO&&EXT_AUDIO.voiceBase
    只需要改这一个常量,代码里写死的 ".wav" 会被自动映射过去。 */
 const VOICE_EXT=".wav";
 const voiceUrl=name=>VOICE_BASE+String(name).replace(/\.wav$/i,VOICE_EXT);
+/* 事件表里的条目大多不写后缀(默认 wav),但新批次是 mp3 会把后缀写出来。
+   凡是要把条目名变成 URL 的地方都必须走这里 —— 直接 +".wav" 会拼出
+   "xxx.mp3.wav" 这种 404,而且因为是预加载,报错还很难被注意到。 */
+const voiceEntryUrl=name=>voiceUrl(/\.(wav|mp3)$/i.test(name)?name:name+".wav");
+
 const PREGAME_COUNTDOWN_CLIPS=Object.freeze([
   voiceUrl("pre_countdown_street_03.wav"),
   voiceUrl("pre_countdown_street_04.wav"),
@@ -659,7 +664,7 @@ function voiceClipFor(t){
   return "";
 }
 function preloadVoiceClips(){
-  const eventUrls=typeof AUDIO_EVENTS==="undefined"?[]:Object.values(AUDIO_EVENTS).flat().map(n=>voiceUrl(n+".wav"));
+  const eventUrls=typeof AUDIO_EVENTS==="undefined"?[]:Object.values(AUDIO_EVENTS).flat().map(voiceEntryUrl);
   const sfxUrls=["ui_mode_whoosh_01","ui_start_game_01","ui_roster_lock_01","ui_equip_01","ui_leaderboard_open_01","ui_save_video_01"].map(n=>voiceUrl(n+".wav"));
   const urls=Object.values(VOICE_CLIPS).concat(VOICE_RULES.map(r=>r.url),PREGAME_COUNTDOWN_CLIPS,eventUrls,sfxUrls);
   urls.forEach(u=>{
@@ -1350,7 +1355,12 @@ const AUDIO_EVENTS = {
   lastshot_timeout: ["p_lastshot_timeout_01_en", "p_lastshot_timeout_02_en", "p_lastshot_timeout_03_en"],
   lastshot_andone: ["p_lastshot_andone_01_en", "p_lastshot_andone_02_en"],
   lastshot_freethrow: ["p_lastshot_freethrow_01_en", "p_lastshot_freethrow_02_en"],
-  lastshot_foul_whistle: ["ref_foul_whistle_01"]
+  lastshot_foul_whistle: ["ref_foul_whistle_01"],
+  /* 结算页那一档:出手瞬间的 make/miss 是喊出来的,这三个是落幕时的收口,情绪要沉下来。
+     刚好追平不算赢也不算输,单独一档。 */
+  lastshot_overtime: ["p_lastshot_overtime_01_en.mp3", "p_lastshot_overtime_02_en.mp3", "p_lastshot_overtime_03_en.mp3"],
+  lastshot_result_make: ["p_lastshot_result_make_01_en.mp3", "p_lastshot_result_make_02_en.mp3"],
+  lastshot_result_miss: ["p_lastshot_result_miss_01_en.mp3", "p_lastshot_result_miss_02_en.mp3"]
 };
 
 function playSFX(name, vol){
@@ -1386,7 +1396,7 @@ function playAudioEvent(eventId, opt) {
   /* 条目可以自带扩展名。新批语音直接出 .mp3,老的仍是无扩展名(默认补 .wav)——
      两种格式必须能共存,否则"新的用 mp3"就等于把 262 条老 wav 全部重压一遍。
      voiceUrl 只把 .wav 映射到 VOICE_EXT,已经是 .mp3 的会原样透传。 */
-  const url = voiceUrl(/\.(wav|mp3)$/i.test(name) ? name : name + ".wav");
+  const url = voiceEntryUrl(name);
   const role = voiceRoleForText("", url, opt.role);
   return playVoiceUrl(url, role, opt);
 }

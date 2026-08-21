@@ -699,6 +699,20 @@
     hideLastShotHud();
     LS.resolved=true;LS.on=false;LS.phase="done";
     G.running=false;G.canShoot=false;G.passCatch=null;
+    /* 结算收口音。延后一拍是因为出手瞬间的 lastshot_make/miss 还在响,
+       两条叠在一起就成了互相盖住的噪音。刚好追平走加时那一档。 */
+    if(typeof playAudioEvent==="function"){
+      const ot=isOvertime();
+      setTimeout(()=>{
+        try{
+          /* 三个 id 都要以字面量出现 —— check.js 靠 playAudioEvent("<id>") 判断
+             事件表里的条目有没有真正的触发点,写成三元就绕过去了。 */
+          if(ot)playAudioEvent("lastshot_overtime");
+          else if(made)playAudioEvent("lastshot_result_make");
+          else playAudioEvent("lastshot_result_miss");
+        }catch(e){}
+      },900);
+    }
     if(global.AIBALastShotResult)global.AIBALastShotResult.show(LS.cfg,made,reason,LS.practice,LS.diag||null,possessionPoints());
   }
 

@@ -1,4 +1,6 @@
-/* ---------------- hot hand visualizer: fire trail + crowd heat + player-side HUD ---------------- */
+/* ---------------- hot hand visualizer: crowd heat + player-side HUD + 火焰加粗 ----------------
+   注意:火焰**不是**这里点着的。点火的条件是"这一球出手完美"(shots.js 里的 b.perfect),
+   连中只负责让已经烧起来的火更粗(patchFire 按档补粒子)。改门槛去 shots.js。 */
 (function(global){
   "use strict";
 
