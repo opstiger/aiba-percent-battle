@@ -39,15 +39,29 @@
      真实第一人称视角里本来也看不到自己的肩膀,所以镜像手臂只保留肘部往下。
      注意:只隐藏 fp 镜像体的网格,第三人称的真实球员手臂不受影响。 */
   const FP_HIDDEN_PARTS=["shoulderBlend","upperArm"];
+  /* 第一人称只该看到肘部以下。按网格名字点名隐藏(FP_HIDDEN_PARTS)不够用:
+     护臂/长袖这类装备是**后加**到大臂上的匿名 Group,名字对不上,于是修好镜像同步之后
+     它们就变成一块悬空浮在手边的板子,底下那截前臂还是光的(实测截图确认过)。
+     改成按层级判断:凡是不在肘部子树里的网格,一律不在第一人称出现。
+     找不到 handRig 时退回名字表,至少不比以前差。 */
+  function underNode(node,root){
+    for(let p=node;p;p=p.parent)if(p===root)return true;
+    return false;
+  }
   function mirrorArm(source,name){
     const clone=source.clone(true),sourceNodes=[],cloneNodes=[];
     clone.name=name;
     source.traverse(node=>sourceNodes.push(node));
     clone.traverse(node=>cloneNodes.push(node));
+    // 肘 pivot = handRig 往上走到 clone 的直接子节点
+    let elbowRoot=clone.getObjectByName("handRig");
+    while(elbowRoot&&elbowRoot.parent&&elbowRoot.parent!==clone)elbowRoot=elbowRoot.parent;
     clone.traverse(node=>{
       node.frustumCulled=false;
-      if(node.isMesh){node.castShadow=false;node.receiveShadow=false;}
-      if(node.isMesh&&FP_HIDDEN_PARTS.indexOf(node.name)>=0)node.userData.fpAlwaysHidden=true;
+      if(!node.isMesh)return;
+      node.castShadow=false;node.receiveShadow=false;
+      const hide=elbowRoot?!underNode(node,elbowRoot):(FP_HIDDEN_PARTS.indexOf(node.name)>=0);
+      if(hide)node.userData.fpAlwaysHidden=true;
     });
     return {source,clone,pairs:sourceNodes.map((node,index)=>[node,cloneNodes[index]])};
   }
@@ -62,17 +76,45 @@
     fpBallHome.parent.add(handBall);
     handBall.position.copy(fpBallHome.pos);handBall.quaternion.copy(fpBallHome.quat);handBall.scale.copy(fpBallHome.scale);
   }
+  /* 镜像是**建立那一刻的深拷贝**,pairs 也按当时的遍历顺序固定死了。
+     装备(护臂/长袖/连帽衫)是之后才往 player.arms / player.elbows 里加子节点的,
+     加进去的东西镜像里永远不会出现 —— 实测:穿上护臂后真实手臂 27 个节点、
+     镜像还是 23 个,于是第三人称看得见衣袖、第一人称还是光胳膊。
+     这里记一个结构指纹,每帧比一下,对不上就整体重建。
+     指纹只数节点个数:装备的增删一定会改变节点数,而纯粹的姿态变化不会 ——
+     刚好是"要不要重建"的判据,又不用每帧做深比较。 */
+  function armNodeCount(root){let n=0;root.traverse(()=>n++);return n;}
+  function armStructureSig(){
+    if(!player||!player.arms||!player.arms[0]||!player.arms[1])return "";
+    return armNodeCount(player.arms[0])+":"+armNodeCount(player.arms[1]);
+  }
   function buildFpRig(){
     if(fpRig||typeof hands==="undefined"||typeof THREE==="undefined"||typeof player==="undefined"||!player.arms||!scene)return;
     // 原相机空间手模保留作经典动作兜底；新版只显示真实球员双臂的镜像。
-    fpHidden=hands.children.filter(c=>c!==handBall&&c.visible!==false);
-    fpHidden.forEach(c=>{c.visible=false;});
+    /* 只在第一次采集:重建时这些早就是 visible=false 了,再 filter 一次会得到空数组,
+       经典手模就再也还原不回来。 */
+    if(!fpHidden.length){
+      fpHidden=hands.children.filter(c=>c!==handBall&&c.visible!==false);
+      fpHidden.forEach(c=>{c.visible=false;});
+    }
     const rig=new THREE.Group();rig.name="fpSharedPoseRig";rig.visible=false;
     const shoot=mirrorArm(player.arms[0],"fpShootingArm");
     const guide=mirrorArm(player.arms[1],"fpGuideArm");
     rig.add(shoot.clone,guide.clone);scene.add(rig);
-    fpRig={g:rig,shoot,guide,ballGrip:shoot.clone.getObjectByName("ballGrip")};
+    fpRig={g:rig,shoot,guide,ballGrip:shoot.clone.getObjectByName("ballGrip"),sig:armStructureSig()};
     mountFpBall();
+  }
+  /* 骨架结构变了就重建。几何体和材质都是和真实球员**共用引用**的
+     (Object3D.clone 不复制它们),所以只能把组从场景里摘掉,绝不能 dispose,
+     否则会把第三人称球员的网格一起弄坏。 */
+  function rebuildFpRig(){
+    if(!fpRig)return;
+    const wasVisible=fpRig.g.visible;
+    restoreFpBall();
+    scene.remove(fpRig.g);
+    fpRig=null;
+    buildFpRig();
+    if(fpRig)fpRig.g.visible=wasVisible;
   }
   function syncArmMirror(mirror){
     mirror.pairs.forEach(pair=>{
@@ -85,6 +127,7 @@
   }
   function syncFpRigFromPlayer(){
     if(!fpRig||!player||!player.g)return;
+    if(fpRig.sig!==armStructureSig()){rebuildFpRig();if(!fpRig)return;}
     fpRig.g.position.copy(player.g.position);fpRig.g.quaternion.copy(player.g.quaternion);fpRig.g.scale.copy(player.g.scale);
     syncArmMirror(fpRig.shoot);syncArmMirror(fpRig.guide);
     // handBall 是第一人称显示副本；位置来自真实投篮手的 ballGrip，不再另写一套持球坐标。
@@ -94,6 +137,8 @@
   function setFpRigVisible(v){
     if(!fpRig)return;
     fpRig.g.visible=!!v;
+    /* 这里的 on 是模块级总开关(第一人称新手臂启用与否),**不是**参数 v。
+       只要新版启用着,相机空间那套经典手模就一直藏着;关掉总开关才放它回来。 */
     fpHidden.forEach(c=>{c.visible=!on;});
   }
   function beginFollow(){

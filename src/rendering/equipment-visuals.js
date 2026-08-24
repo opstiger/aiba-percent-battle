@@ -300,12 +300,34 @@
     guy.gearShoeGroups=groups;return true;
   }
 
+  /* 护臂/护腕是角色身上**本来就有**的网格(characters.js 建的 sl / wr),
+     装备只是把它们打开并改色。所以卸下时必须还原成"没有装备时的样子",
+     而不是一律隐藏 —— 有些球星自带袖子/护腕,一刀切会把人家的特征抹掉。
+     第一次改动之前先把原始状态记下来。 */
+  function rememberSleeveBase(guy){
+    if(guy._sleeveBase)return;
+    const snap=list=>(list||[]).map(m=>m?{v:!!m.visible,c:m.material?m.material.color.getHex():null}:null);
+    guy._sleeveBase={sleeves:snap(guy.sleeves),wrists:snap(guy.wrists)};
+  }
+  function restoreSleeveBase(guy){
+    const base=guy._sleeveBase;if(!base)return;
+    const put=(list,saved)=>(list||[]).forEach((m,i)=>{
+      const s=saved&&saved[i];if(!m||!s)return;
+      m.visible=s.v;if(s.c!=null&&m.material)m.material.color.setHex(s.c);
+    });
+    put(guy.sleeves,base.sleeves);put(guy.wrists,base.wrists);
+  }
   function applySleeve(guy,item){
     if(!enabled||!guy)return false;
     clearKey(guy,"gearSleeveGroups");
+    /* 复位必须在 `if(!item)` 之前。原来这两行在下面的分支里,脱下装备走的是
+       上面那条 early return —— 于是 sl 带着上一件的颜色一直挂在手臂上,
+       第一人称低头就看到一截跟身上颜色对不上的深色块。 */
+    rememberSleeveBase(guy);
+    restoreSleeveBase(guy);
     if(!item)return true;
     const id=item.id,color=colorOf(item.color),groups=[];
-    const dark=material(shade(color,.28)),accent=material(shade(color,1.24),{emissive:color,emissiveIntensity:.05});
+    const dark=material(shade(color,.28)),accent=material(shade(color,1.24),{emissive:color,emissiveIntensity:.05}),main=material(color);
     (guy.sleeves||[]).forEach(part=>{part.visible=false;});
     (guy.wrists||[]).forEach(part=>{part.visible=false;});
     const sleeve=guy.sleeves&&guy.sleeves[0],wrist=guy.wrists&&guy.wrists[0];
@@ -318,6 +340,13 @@
       if(sleeve){sleeve.visible=true;sleeve.material.color.setHex(color);}
       const upper=new THREE.Group();guy.arms[0].add(upper);groups.push(upper);
       box(upper,.151,.018,.171,0,-.098,0,id==="sleeve-steady"?dark:accent);
+      /* 护臂必须**往下盖到前臂**。只做大臂的话,第三人称看得见衣袖、
+         第一人称(只看得到肘部以下)还是光胳膊 —— 同一件装备两个视角对不上。
+         尺寸沿用长袖球衣那段的肘部件:.148 宽包得住 .125 的前臂,不会穿模。 */
+      const fore=new THREE.Group();guy.elbows[0].add(fore);groups.push(fore);
+      ellipsoid(fore,.081,.052,.088,0,-.018,0,main);
+      roundedBox(fore,.148,.245,.166,.025,0,-.14,0,main);
+      roundedBox(fore,.153,.048,.172,.012,0,-.272,0,id==="sleeve-steady"?dark:accent);
       if(id==="sleeve-ice"){
         const elbow=new THREE.Group();guy.elbows[0].add(elbow);groups.push(elbow);
         ellipsoid(elbow,.076,.045,.085,0,-.012,.025,dark);
@@ -326,7 +355,7 @@
         box(upper,.018,.20,.174,-.066,-.205,0,accent);
       }
     }
-    disposeUnusedMaterials(groups,[dark,accent]);
+    disposeUnusedMaterials(groups,[dark,accent,main]);
     guy.gearSleeveGroups=groups;return true;
   }
 

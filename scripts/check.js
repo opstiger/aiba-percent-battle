@@ -241,6 +241,27 @@ if(/AUDIO_EVENTS\)\.flat\(\)\.map\(n=>voiceUrl\(n\+"\.wav"\)\)/.test(audioSrc))
   if(!/if\(!seen\.sweet&&seen\.hold&&playing\(\)/.test(ob))
     fail("the 'sweet' coach mark must be gated on playing() - G.shots survives into the menu");
 }
+/* 第一人称手臂是第三人称手臂的**镜像**,不是另一套资产。三个踩过的坑:
+   ① 镜像是 buildFpRig 那一刻的深拷贝,之后加的装备永远不会出现在第一人称;
+   ② 第一人称只看得到肘部以下,按网格名字点名隐藏漏掉了后加的匿名装备 Group,
+      于是出现一块悬空浮在手边的板子;
+   ③ 护臂只做大臂的话,第三人称看得见衣袖、第一人称还是光胳膊。
+   逐条的运行时验证在 scripts/fp-arms.test.mjs。 */
+{
+  const sm=read("src/shot-motion.js");
+  if(!/function armStructureSig/.test(sm)||!/fpRig\.sig!==armStructureSig\(\)/.test(sm))
+    fail("the first-person arm mirror must rebuild when the skeleton changes (gear is added later)");
+  if(!/function rebuildFpRig/.test(sm))
+    fail("shot-motion needs rebuildFpRig for the self-healing mirror");
+  if(!/underNode\(node,elbowRoot\)/.test(sm))
+    fail("first-person must hide everything above the elbow by hierarchy, not by mesh name");
+  const eq=read("src/rendering/equipment-visuals.js");
+  const sleeveFn=(/function applySleeve\([\s\S]*?\n  \}/.exec(eq)||[""])[0];
+  if(!/restoreSleeveBase\(guy\);\s*\n\s*if\(!item\)return true;/.test(sleeveFn))
+    fail("applySleeve must restore the base sleeve/wrist state BEFORE the !item early return");
+  if(!/guy\.elbows\[0\]\.add\(fore\)/.test(sleeveFn))
+    fail("gear sleeves must also cover the forearm, or first person still shows a bare arm");
+}
 /* 首屏第一投:这是所有人看到的第一屏,几条性质错了就是灾难。 */
 const bootShot=read("src/ui/boot-shot.js");
 if(!/G\.power=ideal;/.test(bootShot))
@@ -422,10 +443,10 @@ if(!entryHtml.includes('<script src="src/leaderboard-ui.js?v=1.94"></script>'))f
 if(!entryHtml.includes('<script src="src/share.js?v=2.01"></script>'))fail("share script missing");
 if(!entryHtml.includes('<script src="src/shot-physics.js?v=2.07-late-diag"></script>'))fail("shot physics script missing");
 if(!entryHtml.includes('<script src="src/result-stats.js?v=1.78"></script>'))fail("result stats script missing");
-if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.19.9-hood2"></script>'))fail("equipment visual script missing");
+if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.19.9-fparms"></script>'))fail("equipment visual script missing");
 if(!entryHtml.includes('<script src="src/gear.js?v=2.19.8-rivalgear"></script>'))fail("gear script missing");
 if(!entryHtml.includes('<script src="src/avatar-customizer.js?v=2.15.5-hand-follow"></script>'))fail("avatar customizer script missing");
-if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.19.6-dip10"></script>'))fail("shot motion script missing");
+if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.19.9-fparms"></script>'))fail("shot motion script missing");
 if(!entryHtml.includes('<script src="src/roster-style.js?v=2.15.5-hand-follow"></script>'))fail("roster style script missing");
 if(!entryHtml.includes('<script src="src/rendering/character-visuals.js?v=2.16.2-human-proportion"></script>'))fail("voxel pro character visuals missing");
 if(entryHtml.indexOf('src/roster-style.js?v=2.15.5-hand-follow')>entryHtml.indexOf('src/rendering/character-visuals.js?v=2.16.2-human-proportion'))fail("voxel pro visuals must wrap roster styling");
