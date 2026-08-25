@@ -368,7 +368,7 @@ if(entryHtml.includes("/* Renderer, camera, adaptive quality and base lights are
 if(entryHtml.indexOf('src/core/foundation.js?v=refactor39')>entryHtml.indexOf('src/data/game-config.js?v=2.19.9-release'))fail("foundation must load before game config");
 if(entryHtml.indexOf('src/data/game-config.js?v=2.19.9-release')>entryHtml.indexOf('src/core/state.js?v=2.19.2-fp-lastshot'))fail("game config must load before runtime state");
 if(entryHtml.indexOf('src/core/state.js?v=2.19.2-fp-lastshot')>entryHtml.indexOf('src/services/audio-cues.js?v=refactor39'))fail("runtime state must load before audio cues");
-if(entryHtml.indexOf('src/services/audio-cues.js?v=refactor39')>entryHtml.indexOf('src/audio.js?v=2.19.9-otvoice'))fail("audio cues must load before audio engine");
+if(entryHtml.indexOf('src/services/audio-cues.js?v=refactor39')>entryHtml.indexOf('src/audio.js?v=2.19.9-clutchvoice'))fail("audio cues must load before audio engine");
 if(entryHtml.indexOf('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>')>entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=refactor5b"></script>'))fail("legacy adapter must load before Rack Rush module");
 if(entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=refactor5b"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Rack Rush module must load before late hooks");
 if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("contest module must load before late hooks");
@@ -457,7 +457,7 @@ if(!entryHtml.includes('<script src="src/perf-settings.js?v=1.93b"></script>'))f
 if(!entryHtml.includes('<script src="src/face-overlays.js?v=1.1-realnames"></script>'))fail("face overlays script missing");
 if(!entryHtml.includes('<script src="src/haptics.js?v=1.80"></script>'))fail("haptics script missing");
 if(!entryHtml.includes('<script src="src/visual-director.js?v=1.85"></script>'))fail("visual director script missing");
-if(!entryHtml.includes('<script src="src/audio.js?v=2.19.9-otvoice"></script>'))fail("audio script missing");
+if(!entryHtml.includes('<script src="src/audio.js?v=2.19.9-clutchvoice"></script>'))fail("audio script missing");
 if(!entryHtml.includes('<script src="src/vision.js?v=2.19.9-fold"></script>'))fail("vision script missing");
 if(!entryHtml.includes('<script src="src/ui/icons.js?v=1"></script>'))fail("local SVG icon script missing");
 if(!entryHtml.includes('<script src="src/ui/interactive-tutorial.js?v=2.05"></script>'))fail("interactive tutorial script missing");
