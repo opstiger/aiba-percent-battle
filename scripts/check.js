@@ -105,7 +105,7 @@ if(!entryHtml.includes('<meta name="aiba-entry" content="main">'))fail("entry ma
 if(!legacyHtml.includes("v1.96-full-en"))fail("legacy entry version token missing");
 if(legacyHtml.includes('location.replace("legacy.html"'))fail("legacy entry must not self-redirect");
 if(!entryHtml.includes("data-aiba-early-errors"))fail("next early error diagnostics missing");
-if(!entryHtml.includes('<script src="src/i18n.js?v=2.19.8-spothud"></script>'))fail("i18n cache version missing");
+if(!entryHtml.includes('<script src="src/i18n.js?v=2.19.9-lsflow"></script>'))fail("i18n cache version missing");
 if(!entryHtml.includes('<script src="src/core/runtime.js?v=refactor7"></script>'))fail("next runtime bridge missing");
 if(entryHtml.includes("player-id-sandbox")||entryHtml.includes("leaderboard-sandbox"))fail("entry must not load sandbox identity/leaderboard");
 if(!entryHtml.includes('<script src="src/recorder.js?v=2.19.9-fold"></script>'))fail("next recorder cache version missing");
@@ -137,7 +137,7 @@ for(const [file,version] of Object.entries(percentBattleVersions)){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js?v=${version}"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
 const lastShotModules=["config","squad","sequence","index"];
-const lastShotVersions={config:"2.19.9-lsvoice",squad:"2.19.6-kit2",sequence:"2.19.9-otvoice",index:"2.19.8-streak"};
+const lastShotVersions={config:"2.19.9-lsvoice",squad:"2.19.9-foulreact",sequence:"2.19.9-reactionflow",index:"2.19.9-resultreveal"};
 for(const file of lastShotModules){
   if(!entryHtml.includes(`<script src="src/modes/last-shot/${file}.js?v=${lastShotVersions[file]}"></script>`))fail(`next Last Shot ${file} module missing`);
 }
@@ -402,7 +402,7 @@ if((entryHtml.match(/class="ppSweet"/g)||[]).length!==1)fail("player power must 
 if((entryHtml.match(/class="ppFill"/g)||[]).length!==1)fail("player power must expose one continuous fill path");
 for(const token of ["ppMidClip","ppTopClip","ppFillBase","ppFillMid","ppFillTop"])
   if(entryHtml.includes(token)||read("styles.css").includes(token))fail("player power duplicate fill layer remains "+token);
-if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.19.9-nogate">'))fail("stylesheet link missing");
+if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.19.9-lsflow">'))fail("stylesheet link missing");
 const menuScript=read("src/ui/menu.js");
 const nbaDnaScript=read("src/nba-dna/NBADNA.js");
 const homeMenuSource=menuScript.slice(menuScript.indexOf("function showMenu"),menuScript.indexOf("function showModeInfo"));
@@ -1125,7 +1125,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.9-flame','src/modes/last-shot/squad.js?v=2.19.6-kit2','src/modes/last-shot/sequence.js?v=2.19.9-otvoice'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.9-flame','src/modes/last-shot/squad.js?v=2.19.9-foulreact','src/modes/last-shot/sequence.js?v=2.19.9-reactionflow'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1371,8 +1371,12 @@ if(!lastShotSquad.includes("actor.dribbleHand")||!lastShotSquad.includes("side*0
   }
 }
 const lastShotSequence=read("src/modes/last-shot/sequence.js");
-for(const token of ["G.passCatch={active:true,progress:0,target:to.clone()}","G.passCatch.settling=true","squadApi.startPostShot()","squadApi.updatePostShot","squadApi.startReaction","reactionT>=3.6"])
+for(const token of ["G.passCatch={active:true,progress:0,target:to.clone()}","G.passCatch.settling=true","squadApi.startPostShot()","squadApi.updatePostShot","squadApi.startReaction","advanceResultReaction(dt)"])
   if(!lastShotSequence.includes(token))fail("Last Shot catch/reaction lifecycle token missing "+token);
+for(const token of ["RESULT_REACTION_SECONDS","TIMEOUT_REACTION_SECONDS","startResultReaction(false,\"timeout\""])
+  if(!lastShotSequence.includes(token))fail("Last Shot timeout must hold on arena reactions before results: "+token);
+if(/finish\(false,"timeout"\)/.test(lastShotSequence))
+  fail("Last Shot timeout must not open the result panel in the buzzer frame");
 /* 结果已定(进网/砸框/开始弹跳/掉到筐下)之后不能再让全场用眼睛跟球，
    否则十个人会跟着球在地上反复点头(实测 5 次上下点头，最后低头看地)。 */
 if(!lastShotSequence.includes("function gazeTarget"))fail("Last Shot gaze must stop tracking the ball once the result is settled");
@@ -1408,11 +1412,14 @@ if(/level>=\.5&&Math\.random\(\)<FOUL_CHANCE/.test(lastShotSequence))
 for(const token of ["FOUL_CHANCE_TEST","FOUL_CHANCE_LIVE","FOUL_RANGE"])
   if(!lastShotSequence.includes(token))fail("foul tuning constant missing "+token);
 /* 罚球必须由玩家自己投，不能拿概率算掉。 */
-for(const token of ["function beginFreeThrows","function nextFreeThrow","function updateFreeThrows",'LS.phase==="freethrow"'])
+for(const token of ["function startFoulCall","function updateFoulCall","function beginFreeThrows","function nextFreeThrow","function updateFreeThrows",'LS.phase==="freethrow"',"FT_INTRO_SECONDS","FT_BETWEEN_SECONDS","FT_FINAL_HOLD_SECONDS"])
   if(!lastShotSequence.includes(token))fail("free throws must be shot by the player: "+token);
 if(/for\(let i=0;i<shots;i\+\+\)if\(Math\.random\(\)<FT_RATE\)hit\+\+/.test(lastShotSequence))
   fail("free throws must not be auto-resolved by probability");
 if(!lastShotSquad.includes("function lineUpForFreeThrow"))fail("players must line the lane for free throws");
+if(!lastShotSquad.includes("function startFoulReaction"))fail("foul calls need an arena reaction before the free-throw lineup");
+if(!lsIdx.includes("lastshot-result-reveal")||!cssSrc.includes("lastshotResultPanel"))
+  fail("Last Shot results need a short reveal instead of flashing over the arena");
 /* 罚球必须能收尾：最后一罚落定后要调用 finishFreeThrows，
    否则整个模式永远卡在罚球阶段(曾经就是这样，罚完没有任何后续)。 */
 if(!/if\(f\.taken<f\.shots\)nextFreeThrow\(\);\s*else finishFreeThrows\(\);/.test(lastShotSequence))
@@ -1627,6 +1634,8 @@ console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.le
     fail("i18n 必须暴露 refresh() 作为拼接文案的兜底");
   if(!/AIBAI18N\.refresh\(\)/.test(read("src/core/game-loop.js")))
     fail("切模式时必须重扫 DOM，否则新面板里的拼接文案会漏翻");
+  for(const token of ["⏱ Final buzzer · no shot attempted","At the line · three free throws","Free throw made","Free throw missed"])
+    if(!i.includes(token))fail("绝杀判罚与罚球转场缺少英文文案: "+token);
   // 拼接文案被拆成多个文本节点时，带尾随/前置分隔符的那段也要能单独翻
   if(!/\[\/\^\(\.\+\?\)\\s\*·\\s\*\$\//.test(i))fail("缺少尾随分隔符的分段规则");
 }

@@ -82,7 +82,9 @@
     if(player._celeb)stopCelebrate(player);
     Object.assign(LS,{on:true,t:0,phase:"live",cfg,practice:!!practice,
       passed:false,released:false,resolved:false,pass:null,lookYaw:0,timedOut:false,
-      reactionT:0,reactionStarted:false,celeb:null,madeAt:null,buzzAt:null,boardStarted:false,buzzed:false,foul:null,board:null,ftReady:false,ftBall:null,ftWait:0});
+      reactionT:0,reactionStarted:false,reactionDuration:0,finishMade:false,finishReason:"shot",
+      celeb:null,madeAt:null,buzzAt:null,boardStarted:false,buzzed:false,foul:null,foulCallT:0,
+      board:null,ftReady:false,ftBall:null,ftWait:0,ftIntro:0});
   }
 
   function beginLastShot(practice){
@@ -173,7 +175,10 @@
      FOUL_RANGE 3.4m 刚好覆盖正常节奏出手时防守人还在 2.9m 外的情形。 */
   const FOUL_CHANCE_TEST=.5,FOUL_CHANCE_LIVE=.33;
   const FOUL_CHANCE=FOUL_CHANCE_LIVE,FOUL_RANGE=3.4;
-  const FT_RATE=.76,CELEBRATE_DELAY=.2,BUZZER_DELAY=.2;
+  const CELEBRATE_DELAY=.2,BUZZER_DELAY=.2;
+  const RESULT_REACTION_SECONDS=5.8,TIMEOUT_REACTION_SECONDS=4.6;
+  const FOUL_CALL_MAKE_SECONDS=2.8,FOUL_CALL_SHOTS_SECONDS=4.2;
+  const FT_INTRO_SECONDS=1.15,FT_BETWEEN_SECONDS=1.15,FT_FINAL_HOLD_SECONDS=1.65;
   function applyContest(){
     if(!squadApi.contestLevel)return false;
     const level=squadApi.contestLevel(P.pos);
@@ -184,7 +189,7 @@
          · level ≥ .38 —— 手举在你脸前：按概率把好结果降级，甜区手感被吃掉
        正常节奏出手时他还在两米开外，level 为 0，完全不受影响。 */
     /* 极小概率吹犯规：贴防越紧越容易打手。球进了算 3+1，没进就是三罚。
-       绝杀模式不做罚球交互(7 秒定生死，插一段交互会毁掉节奏)，按 76% 命中自动结算。 */
+       球落定后先保留现场判罚反应，再由玩家逐次完成罚球。 */
     const foulDist=squadApi.defenderDistance?squadApi.defenderDistance(P.pos):99;
     if(foulDist<=FOUL_RANGE&&aibaRoll()<FOUL_CHANCE){   // 犯规是结果判定,要能复现
       /* 罚球必须由你自己投，不能拿概率算掉——那是这一攻最关键的几下。
@@ -199,7 +204,9 @@
          预览页反复被切到后台导致无法稳定复现。
          这里按同一行 crowdSwell 已有的写法加守卫 —— 哨音是氛围音,
          没有它最多少一声,不该让整局挂掉。 */
-      whistle&&whistle();crowdSwell&&crowdSwell(.28,1.2);
+      if(typeof playAudioEvent==="function")playAudioEvent("lastshot_foul_whistle");
+      else if(whistle)whistle();
+      crowdSwell&&crowdSwell(.28,1.2);
       if(willMake){
         toast("🙌 打手犯规 · 3+1！","#7CFC6B");
       }else{
@@ -230,6 +237,21 @@
       }
     }
     return false;
+  }
+
+  function startResultReaction(made,reason,seconds){
+    if(LS.reactionStarted)return false;
+    LS.phase="reaction";LS.reactionT=0;LS.reactionStarted=true;
+    LS.reactionDuration=seconds||RESULT_REACTION_SECONDS;
+    LS.finishMade=!!made;LS.finishReason=reason||"shot";
+    squadApi.startReaction(!!made,P.pos);
+    startPlayerCelebrate(!!made);
+    return true;
+  }
+  function advanceResultReaction(dt){
+    if(LS.resolved||!LS.reactionStarted)return;
+    LS.reactionT+=dt;
+    if(LS.reactionT>=LS.reactionDuration&&!G.charging)finish(LS.finishMade,LS.finishReason);
   }
 
   /* 抢下篮板之后的球权处理：
@@ -280,9 +302,34 @@
      被吹犯规后由你自己站上罚球线一罚一罚投。罚球期间比赛钟停表(真实规则如此)，
      防守人退到禁区两侧不干扰。 */
   const FT_LINE_Z=4.6;
+  function startFoulCall(){
+    const f=LS.foul;if(!f||LS.phase==="foulcall")return;
+    LS.phase="foulcall";LS.foulCallT=0;LS.reactionT=0;
+    G.canShoot=false;G.charging=false;
+    if(squadApi.startFoulReaction)squadApi.startFoulReaction(!!f.andOne,P.pos);
+    else squadApi.startReaction(!!f.andOne,P.pos);
+    startPlayerCelebrate(!!f.andOne);
+    broadcastSting(f.andOne?"score":"danger");
+    crowdSwell&&crowdSwell(f.andOne?.82:.46,f.andOne?2.4:1.8);
+    setTimeout(()=>{
+      if(!LS.on||LS.phase!=="foulcall"||typeof playAudioEvent!=="function")return;
+      if(f.andOne)playAudioEvent("lastshot_andone");
+      else playAudioEvent("lastshot_freethrow");
+    },360);
+  }
+  function updateFoulCall(dt){
+    const f=LS.foul;if(!f)return;
+    LS.foulCallT+=dt;
+    squadApi.updatePostShot(dt,null,P.pos,null);
+    updatePlayerCelebrate(dt);
+    passer.g.visible=false;oppPasser.g.visible=false;
+    const hold=f.andOne?FOUL_CALL_MAKE_SECONDS:FOUL_CALL_SHOTS_SECONDS;
+    if(LS.foulCallT>=hold)beginFreeThrows();
+  }
   function beginFreeThrows(){
     const f=LS.foul;if(!f||LS.phase==="freethrow")return;
-    LS.phase="freethrow";LS.ftReady=false;
+    LS.phase="freethrow";LS.ftReady=false;LS.ftIntro=FT_INTRO_SECONDS;LS.ftWait=0;
+    LS.celeb=null;setCelebrateView(false);G.canShoot=false;
     // 站上罚球线，正对篮筐
     const spot=V3(HOOP.x,0,HOOP.z+FT_LINE_Z);
     P.pos.copy(spot);LS.spot=spot.clone();
@@ -291,16 +338,7 @@
     balls.slice().forEach(b=>{scene.remove(b.mesh);scene.remove(b.blob);});balls.length=0;
     if(LS.putback){scene.remove(LS.putback.mesh);LS.putback=null;}
     squadApi.lineUpForFreeThrow(spot);
-    if(typeof playAudioEvent==="function"){
-      playAudioEvent("lastshot_foul_whistle");
-      setTimeout(()=>{
-        if(f.andOne)playAudioEvent("lastshot_andone");
-        else playAudioEvent("lastshot_freethrow");
-      },450);
-    }else{
-      paSay(f.andOne?"加罚一次":"三次罚球",true);
-    }
-    nextFreeThrow();
+    toast(f.andOne?"站上罚球线 · 加罚一次":"站上罚球线 · 三次罚球","#ffd23f");
   }
   function nextFreeThrow(){
     const f=LS.foul;
@@ -316,19 +354,28 @@
   function updateFreeThrows(dt){
     const f=LS.foul;if(!f||LS.phase!=="freethrow")return;
     squadApi.updatePostShot(dt,null,P.pos,null);
+    if(LS.ftIntro>0){
+      LS.ftIntro=Math.max(0,LS.ftIntro-dt);
+      if(LS.ftIntro===0)nextFreeThrow();
+      return;
+    }
     const b=balls.length?balls[balls.length-1]:null;
     // 出手了：等球落定再记账
     if(LS.ftReady&&G.shotIdx>0){LS.ftReady=false;LS.ftBall=b;}
     if(!LS.ftReady&&LS.ftBall){
       if(ballSettled(LS.ftBall)){
-        if(LS.ftBall.made)f.made++;
+        const made=!!LS.ftBall.made;
+        if(made)f.made++;
         f.taken++;LS.ftBall=null;LS.ftWait=0;
+        toast(made?"罚球命中":"罚球偏出",made?"#7CFC6B":"#ff8d7a");
+        crowdSwell&&crowdSwell(made?.3:.12,made?1.1:.7);
       }
     }else if(!LS.ftReady&&!LS.ftBall){
       /* 罚完最后一球必须收尾。原来这个分支带 f.taken<f.shots 条件，
          最后一罚落定后两个分支都不成立——整个模式永远卡在罚球阶段，没有后续。 */
       LS.ftWait=(LS.ftWait||0)+dt;
-      if(LS.ftWait>=.6){
+      const hold=f.taken<f.shots?FT_BETWEEN_SECONDS:FT_FINAL_HOLD_SECONDS;
+      if(LS.ftWait>=hold){
         LS.ftWait=0;
         if(f.taken<f.shots)nextFreeThrow();
         else finishFreeThrows();
@@ -338,10 +385,9 @@
   function finishFreeThrows(){
     const f=LS.foul;
     G.canShoot=false;
-    LS.phase="reaction";
     const pts=possessionPoints(),won=shotSucceeded();
     toast("罚球 "+f.made+"/"+f.shots+" · 本攻共 "+pts+" 分",won?"#7CFC6B":"#ff8d7a");
-    squadApi.startReaction(won,P.pos);LS.reactionStarted=true;startPlayerCelebrate(won);
+    startResultReaction(won,won?"shot":(isOvertime()?"overtime":"shot"),RESULT_REACTION_SECONDS);
     if(typeof playAudioEvent==="function"){
       if(won)playAudioEvent("lastshot_make");
       else playAudioEvent("lastshot_miss");
@@ -368,8 +414,16 @@
   function updateLastShot(dt){
     if(!LS.on||G.state!=="lastshot")return;
     const cfg=LS.cfg;
+    // 犯规判罚先留在现场，让球员和观众完成反应，再走向罚球线。
+    if(LS.phase==="foulcall"){updateFoulCall(dt);return;}
     // 罚球阶段：比赛钟停表，只跑罚球流程
     if(LS.phase==="freethrow"){updateFreeThrows(dt);return;}
+    // 没能出手时没有飞行球，但仍要完整播放全场反应，而不是继续跑进攻战术。
+    if(LS.phase==="reaction"&&!LS.released){
+      updatePlayerCelebrate(dt);squadApi.updatePostShot(dt,null,P.pos,null);
+      passer.g.visible=false;oppPasser.g.visible=false;
+      advanceResultReaction(dt);return;
+    }
     // 出手之后比赛钟继续走——球在空中时间照跑，这才是真实的最后一攻。
     LS.t+=dt;
     updateBodyState(dt);
@@ -391,12 +445,12 @@
          球没进但时间还有，那是抢篮板的混战，谁也不该在这时候庆祝。 */
       // 有犯规：等这一球落定就去罚球线，不进入常规反应
       if(LS.foul&&!LS.reactionStarted&&(!activeBall||ballSettled(activeBall))){
-        beginFreeThrows();return;
+        startFoulCall();return;
       }
       if(!LS.reactionStarted&&activeBall&&activeBall.made){
         if(LS.madeAt==null)LS.madeAt=LS.t;
         if(LS.t-LS.madeAt>=CELEBRATE_DELAY){
-          squadApi.startReaction(true,P.pos);LS.reactionStarted=true;LS.phase="reaction";startPlayerCelebrate(true);
+          startResultReaction(true,"shot",RESULT_REACTION_SECONDS);
           if(typeof playAudioEvent==="function")playAudioEvent("lastshot_make");
         }
       }
@@ -410,7 +464,8 @@
       if(!LS.reactionStarted&&clock<=0&&(!activeBall||ballSettled(activeBall))){
         if(LS.buzzAt==null)LS.buzzAt=LS.t;
         if(LS.t-LS.buzzAt>=BUZZER_DELAY){
-          const _m=shotSucceeded();squadApi.startReaction(_m,P.pos);LS.reactionStarted=true;LS.phase="reaction";startPlayerCelebrate(_m);
+          const _m=shotSucceeded();
+          startResultReaction(_m,_m?"shot":(isOvertime()?"overtime":"shot"),RESULT_REACTION_SECONDS);
           if(typeof playAudioEvent==="function"){
             if(_m)playAudioEvent("lastshot_make");
             else playAudioEvent("lastshot_miss");
@@ -458,10 +513,10 @@
       if(G.charging)doRelease();
       if(!G.charging&&G.shotIdx===0){
         G.canShoot=false;handBall.visible=false;pBall.visible=false;
-        sBuzz();toast("⏱ 没能出手","#ff8d7a");
+        LS.buzzed=true;sBuzz();toast("⏱ 终场蜂鸣 · 没能出手","#ff8d7a");
+        broadcastSting("danger");crowdSwell&&crowdSwell(.52,2.2);
         if(typeof playAudioEvent==="function")playAudioEvent("lastshot_timeout");
-        finish(false,"timeout");
-        return;
+        startResultReaction(false,"timeout",TIMEOUT_REACTION_SECONDS);
       }
     }
     // 最后 5 秒每秒一响，出手后时钟还在走也继续响到 0
@@ -474,14 +529,10 @@
     // 兜底：球已被移除但反应还没起（正常情况 ballSettled 早就触发了）
     if(LS.released&&!LS.resolved&&!LS.reactionStarted&&!G.charging&&!activeBall){
       const made=shotSucceeded();
-      squadApi.startReaction(made,P.pos);LS.reactionStarted=true;LS.phase="reaction";startPlayerCelebrate(made);
+      startResultReaction(made,made?"shot":(isOvertime()?"overtime":"shot"),RESULT_REACTION_SECONDS);
     }
-    if(LS.released&&!LS.resolved&&LS.reactionStarted){
-      LS.reactionT+=dt;
-      if(LS.reactionT>=3.6&&!G.charging){
-        const made=shotSucceeded();
-        finish(made,made?"shot":(isOvertime()?"overtime":"shot"));
-      }
+    if(!LS.resolved&&LS.reactionStarted){
+      advanceResultReaction(dt);
     }
   }
 

@@ -57,6 +57,10 @@
   const REACTION_FOE_MADE=["fall","head","invalid","kneel","freeze"];
   const REACTION_ALLY_MISS=["sad","head","slow","retrieve"];
   const REACTION_FOE_MISS=["raise","point","rush"];
+  const FOUL_ALLY_MAKE=["raise","point","rush"];
+  const FOUL_FOE_MAKE=["head","invalid","freeze"];
+  const FOUL_ALLY_SHOTS=["point","raise","freeze"];
+  const FOUL_FOE_SHOTS=["invalid","freeze","head"];
   /* 每种反应各自的注视对象与移动目标。球落定之后视线就该散开——冲上来的看你、
      捡球的看球、懊恼的低头看地，而不是十个人继续锁死篮筐。
      带 move 的必须走 poseRunner，否则就是"没有走路动作自己飘过来"。 */
@@ -475,6 +479,22 @@ function foeKit(allyJersey){
       const a=squad.actors[id];
       a.mobSlot=MOB_REACTIONS[a.reaction||""]?mob++:null;
     });
+    IDS.forEach(id=>{squad.actors[id].mobCount=mob;});
+  }
+  /* 犯规不是终局，不能直接套用命中/打铁反应。先让进攻方示意打手、
+     防守方摊手争辩；只有 3+1 才允许队友冲向球员庆祝。罚球站位会在稍后重置。 */
+  function startFoulReaction(andOne,playerPos){
+    if(!squad)return;
+    if(!squad.post)squad.post={active:true,t:0,reaction:null};
+    squad.post.reaction={made:!!andOne,t:0,playerPos:playerPos?playerPos.clone():null,foul:true};
+    IDS.forEach(id=>{
+      const actor=squad.actors[id];
+      const pool=actor.ally?(andOne?FOUL_ALLY_MAKE:FOUL_ALLY_SHOTS):(andOne?FOUL_FOE_MAKE:FOUL_FOE_SHOTS);
+      actor.reaction=pool[(Math.random()*pool.length)|0];
+      actor.reactionT=0;actor.reactionPace=.88+Math.random()*.24;actor.startPos.copy(actor.pos);
+    });
+    let mob=0;
+    IDS.forEach(id=>{const a=squad.actors[id];a.mobSlot=MOB_REACTIONS[a.reaction||""]?mob++:null;});
     IDS.forEach(id=>{squad.actors[id].mobCount=mob;});
   }
   /* 打铁瞬间进入抢篮板：离球最近的三个人冲向落点，够近了就起跳争抢。
@@ -950,7 +970,7 @@ function foeKit(allyJersey){
     IDS.forEach(id=>{squad.actors[id].guy.g.visible=false;});
   }
 
-  const api=Object.freeze({build,place,update,nearestMate,guardArms,startPostShot,updatePostShot,startReaction,show,handler,setHandlerBall,dispose,contestLevel,defenderDistance,triggerContest,startRebound,reboundState,setActorBall,actorHand,startPutback,startOutlet,lineUpForFreeThrow,ALLY_IDS,FOE_IDS,
+  const api=Object.freeze({build,place,update,nearestMate,guardArms,startPostShot,updatePostShot,startReaction,startFoulReaction,show,handler,setHandlerBall,dispose,contestLevel,defenderDistance,triggerContest,startRebound,reboundState,setActorBall,actorHand,startPutback,startOutlet,lineUpForFreeThrow,ALLY_IDS,FOE_IDS,
     get squad(){return squad;}});
   global.AIBALastShotSquad=api;
   runtime.register("mode:last-shot:squad",api);

@@ -160,6 +160,15 @@
       <button class="btn sm" onclick="hidePanel();exitLastShot();goDiff('battle')">百分大战 · 练对抗</button>
       <button class="btn sm" onclick="hidePanel();exitLastShot();goDiff('contest')">三分大赛 · 练稳定性</button>`;
   }
+  function showResultPanel(html){
+    const ov=document.getElementById("ov");
+    if(ov)ov.classList.remove("lastshot-result-reveal");
+    showPanel(html);
+    if(!ov)return;
+    void ov.offsetWidth;
+    ov.classList.add("lastshot-result-reveal");
+    setTimeout(()=>ov.classList.remove("lastshot-result-reveal"),520);
+  }
   /* pts = 这一攻真正拿到的分(含罚球)。原来结果页自己按 `made?3:0` 重算比分,
      罚球完全没算进去:and-one 拿 4 分只显示 +3;三罚中 2(打平进加时)显示成没得分;
      平局关三罚中 1 明明赢了却显示 +3。比分必须用真实得分。 */
@@ -170,7 +179,7 @@
     else if(typeof boo==="function")boo();
 
     if(practice){
-      showPanel(`<h1 class="title" style="font-size:22px">${made?"练习绝杀命中":"练习未命中"}</h1>
+      showResultPanel(`<h1 class="title" style="font-size:22px">${made?"练习绝杀命中":"练习未命中"}</h1>
         <div class="sub">练习模式 · 不计成绩</div>
         ${made?`<div class="card">就是这个感觉。正式挑战每天只有一次。</div>`
           :(()=>{const a=missAdvice(reason,diag);
@@ -187,7 +196,7 @@
     const finalHome=cfg.scoreHome+gained;
     const won=!!made;   // 胜负只有一个来源:sequence 的 shotSucceeded()
     paSay(made?"进了!比赛结束!":"没进,比赛结束。",true);
-    showPanel(`<h1 class="title" style="font-size:24px">${made?"绝杀命中":"绝杀失手"}</h1>
+    showResultPanel(`<h1 class="title" style="font-size:24px">${made?"绝杀命中":"绝杀失手"}</h1>
       <div class="sub">${cfg.title} · ${today()}</div>
       <div class="card"><b>${cfg.homeName} ${finalHome} : ${cfg.scoreAway} ${cfg.awayName}</b>
         <br><span style="color:${won?"#7CFC6B":(reason==="overtime"?"#ffd23f":"#ff8d7a")};font-size:12px">${won?"你完成了绝杀":(reason==="timeout"?"比赛钟走完,没能出手":(reason==="overtime"?"追平了 · 比赛进入加时":"最后一投偏出"))}</span></div>

@@ -202,6 +202,7 @@ const DICT={
 "就是这个感觉。正式挑战每天只有一次。":"That's the feeling. The official challenge is once a day.",
 /* 比赛中提示 */
 "🙌 投篮犯规 · 三次罚球":"🙌 Shooting foul · three free throws",
+"🙌 打手犯规 · 3+1！":"🙌 Shooting foul · AND-ONE!",
 "🚫 被封盖":"🚫 Blocked",
 "✋ 被干扰 · 手感受影响":"✋ Contested · release affected",
 "🔥 前场篮板!":"🔥 Offensive rebound!",
@@ -209,6 +210,11 @@ const DICT={
 "加罚一次":"And-one free throw",
 "三次罚球":"Three free throws",
 "⏱ 没能出手":"⏱ No shot attempted",
+"⏱ 终场蜂鸣 · 没能出手":"⏱ Final buzzer · no shot attempted",
+"站上罚球线 · 加罚一次":"At the line · one bonus free throw",
+"站上罚球线 · 三次罚球":"At the line · three free throws",
+"罚球命中":"Free throw made",
+"罚球偏出":"Free throw missed",
 "出手!":"Shoot!",
 /* ---- 启动 ---- */
 "游戏资源加载":"Loading game assets",

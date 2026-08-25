@@ -189,6 +189,11 @@ html[data-scan-overlay="menu"] #scan{opacity:.018}
   padding:max(14px,env(safe-area-inset-top)) max(14px,env(safe-area-inset-right)) max(14px,env(safe-area-inset-bottom)) max(14px,env(safe-area-inset-left));background:rgba(4,6,12,.72)}
 #ovBox{max-width:560px;width:92%;max-height:100%;overflow-y:auto;touch-action:pan-y;-webkit-overflow-scrolling:touch;background:#1b1b24;border:4px solid #000;
   box-shadow:0 0 0 3px #4a4a5e,0 14px 0 rgba(0,0,0,.5);padding:22px 18px;text-align:center}
+#ov.lastshot-result-reveal{animation:lastshotResultBackdrop .34s ease-out both}
+#ov.lastshot-result-reveal #ovBox{animation:lastshotResultPanel .46s cubic-bezier(.18,.82,.24,1) both}
+@keyframes lastshotResultBackdrop{from{background:rgba(4,6,12,0)}to{background:rgba(4,6,12,.72)}}
+@keyframes lastshotResultPanel{from{opacity:0;transform:translateY(18px) scale(.97)}to{opacity:1;transform:translateY(0) scale(1)}}
+@media (prefers-reduced-motion:reduce){#ov.lastshot-result-reveal,#ov.lastshot-result-reveal #ovBox{animation:none}}
 #ov.cover-menu{align-items:stretch;justify-content:stretch;padding:0;background:#03040a}
 #ov.cover-menu #ovBox{max-width:none;width:100%;max-height:none;height:var(--app-height);overflow-x:hidden;overflow-y:auto;scrollbar-width:none;border:0;box-shadow:none;padding:0;background:#03040a;text-align:left}
 #ov.cover-menu #ovBox::-webkit-scrollbar{display:none}
