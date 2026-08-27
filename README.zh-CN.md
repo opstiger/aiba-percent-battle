@@ -85,4 +85,11 @@ Three.js 按其 MIT License 使用。第三方音频、视觉模型与 Orbitron 
 
 ## License
 
-MIT，见 `LICENSE`。
+**源码**是 MIT，见 `LICENSE`。
+
+**素材不是。** `assets/` 下的配音、音乐、封面图与视频、Logo 与品牌图全部保留权利
+——它们随仓库发布只是为了让项目能构建和运行，不等于授权复用。
+**「aiBA」及其 Logo 属于商标，不在 MIT 授权范围内。**
+
+具体边界见 [`NOTICE`](NOTICE)。如果你要 fork：请保留 `LICENSE` 和 `NOTICE`，
+换成你自己的素材，不要用 aiBA 的名字发布。

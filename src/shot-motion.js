@@ -243,17 +243,21 @@
     player.g.position.set(P.pos.x,0,P.pos.z);
     player.g.rotation.y=P.face+(P.walking?0:SHOT_STANCE_YAW*stance);
     if(P.walking){
-      P.walkT+=dt*9;
-      const sw=Math.sin(P.walkT);
-      player.g.rotation.x=0;
-      player.legs[0].rotation.x=sw*0.7;player.legs[1].rotation.x=-sw*0.7;
-      player.knees[0].rotation.x=Math.max(0,-sw*0.5+0.25);player.knees[1].rotation.x=Math.max(0,sw*0.5+0.25);
-      player.ankles[0].rotation.x=-sw*0.25;player.ankles[1].rotation.x=sw*0.25;
-      player.shoes[0].rotation.x=0;player.shoes[1].rotation.x=0;
-      player.arms[0].rotation.x=-sw*0.45;player.arms[1].rotation.x=sw*0.45;
-      player.elbows[0].rotation.x=-0.4;player.elbows[1].rotation.x=-0.4;
+      /* 走路统一走 poseRunCycle —— 它才是"全项目唯一的一套跑动姿势"(motion.js)。
+         这里原本是另抄的一条正弦:步频写死 dt*9(和真实位移脱钩,脚在地上滑)、
+         shoes 恒为 0(一双完全不动的脚 = 僵)、身体高度压根没设(平移滑过去 = 飘)。
+         NPC 早就走 poseRunCycle 了,所以电脑反而比主角自然。现在两边同源。 */
+      const spd=typeof updWalkSpeed==="function"?updWalkSpeed(dt):0;
+      P.walkRig=P.walkRig||{phase:0,idleT:0,lean:0};
+      if(typeof poseRunCycle==="function")poseRunCycle(player,P.walkRig,spd,dt,{sway:true});
+      player.g.position.y+=P.jump;
       if(typeof poseHandJoints==="function")poseHandJoints(player,shotCurves(0));
     }else{
+      /* 站定:清掉步态专属量并重新采样速度,否则人会一直歪着、
+         下次起步第一帧还会把瞬移当成高速。 */
+      if(typeof resetWalkSpeed==="function")resetWalkSpeed();
+      if(P.walkRig)P.walkRig.phase=0;
+      player.g.rotation.z=0;
       player.g.position.y=poseGuy(player,c,lk)+P.jump;
       const catchState=G.passCatch;
       /* 出手跟随要 0.725 秒，而 Rack Rush 后几关出手 60ms 后就开始传球，两者必然重叠。

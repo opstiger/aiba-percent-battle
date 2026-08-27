@@ -83,7 +83,12 @@
       '<div class="card"><b>体感控制</b><br>难度页切"体感控制"用摄像头投篮:双手入框锁定 → 举高蓄力 → 越线出手。画面只在本机处理,不上传。</div>'+
       '<button class="btn green" data-aiba-icon="rotate-ccw" data-aiba-label="重看新手引导" onclick="AIBAOnboard.replay()">重看新手引导</button>'+
       '<button class="btn" data-aiba-icon="video" data-aiba-label="真实球场互动教学" onclick="AIBAOnboard.startTutorial()">真实球场互动教学</button>'+
-      '<button class="btn gold" data-aiba-icon="arrow-left" data-aiba-label="返回" onclick="AIBAOnboard.closeHelp()">返回</button>'
+      '<button class="btn gold" data-aiba-icon="arrow-left" data-aiba-label="返回" onclick="AIBAOnboard.closeHelp()">返回</button>'+
+      /* 署名行。刻意全用英文/专名,不进 i18n 的中文 key 体系 ——
+         它在中英两种语言下都应该原样显示,翻译反而会把出处译没了。
+         fork 本项目请保留这一行,或换成你自己指回来的可见署名(见 NOTICE)。 */
+      '<div class="aibaCredit">aiBA · built by TigerBro · MIT<br>'+
+      '<a href="https://github.com/opstiger/aiba-percent-battle" target="_blank" rel="noopener">github.com/opstiger/aiba-percent-battle</a></div>'
     );
   }
   function clearHelpState(){

@@ -178,4 +178,13 @@ Three.js is used under its MIT license. Sources and licenses for third-party aud
 
 ## License
 
-MIT. See `LICENSE`.
+**Source code** is MIT. See `LICENSE`.
+
+**Media assets are not.** Voice-over, music, cover art and video, logos and
+brand art under `assets/` are all rights reserved — they ship so the project
+builds and runs as published, not for reuse. **"aiBA" and its logos are
+trademarks and are not granted by the MIT license.**
+
+See [`NOTICE`](NOTICE) for the exact scope. If you fork: keep `LICENSE` and
+`NOTICE` intact, swap in your own assets, and don't ship it under the aiBA
+name.

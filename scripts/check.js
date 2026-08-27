@@ -402,7 +402,7 @@ if((entryHtml.match(/class="ppSweet"/g)||[]).length!==1)fail("player power must 
 if((entryHtml.match(/class="ppFill"/g)||[]).length!==1)fail("player power must expose one continuous fill path");
 for(const token of ["ppMidClip","ppTopClip","ppFillBase","ppFillMid","ppFillTop"])
   if(entryHtml.includes(token)||read("styles.css").includes(token))fail("player power duplicate fill layer remains "+token);
-if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.19.9-lsflow">'))fail("stylesheet link missing");
+if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.19.9-notice">'))fail("stylesheet link missing");
 const menuScript=read("src/ui/menu.js");
 const nbaDnaScript=read("src/nba-dna/NBADNA.js");
 const homeMenuSource=menuScript.slice(menuScript.indexOf("function showMenu"),menuScript.indexOf("function showModeInfo"));
@@ -446,7 +446,7 @@ if(!entryHtml.includes('<script src="src/result-stats.js?v=1.78"></script>'))fai
 if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.19.9-fparms"></script>'))fail("equipment visual script missing");
 if(!entryHtml.includes('<script src="src/gear.js?v=2.19.8-rivalgear"></script>'))fail("gear script missing");
 if(!entryHtml.includes('<script src="src/avatar-customizer.js?v=2.15.5-hand-follow"></script>'))fail("avatar customizer script missing");
-if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.19.9-fparms"></script>'))fail("shot motion script missing");
+if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.19.9-gait"></script>'))fail("shot motion script missing");
 if(!entryHtml.includes('<script src="src/roster-style.js?v=2.15.5-hand-follow"></script>'))fail("roster style script missing");
 if(!entryHtml.includes('<script src="src/rendering/character-visuals.js?v=2.16.2-human-proportion"></script>'))fail("voxel pro character visuals missing");
 if(entryHtml.indexOf('src/roster-style.js?v=2.15.5-hand-follow')>entryHtml.indexOf('src/rendering/character-visuals.js?v=2.16.2-human-proportion'))fail("voxel pro visuals must wrap roster styling");
@@ -742,13 +742,43 @@ for(const key of ["crowdHeat","setCrowdHeat","AIBAAudio"])
 const voiceFiles=new Set([...audioScript.matchAll(/voiceUrl\("([^"]+\.wav)"\)/g)].map(m=>m[1]));
 if(!voiceFiles.size)fail("no voiceUrl wav references found in audio script");
 const voiceExt=(audioScript.match(/const VOICE_EXT="([^"]+)"/)||[])[1]||".wav";
+/* 「磁盘上有」不等于「线上取得到」。voices/ 在 .gitignore 里是黑名单 + 白名单放行,
+   漏掉一类前缀,文件就永远进不了库 —— 本地全绿、线上静默 404。
+   实际踩过:ref_foul_whistle_01 和 6 个 ui_* 音效从来没进过库,
+   于是绝杀模式的犯规哨、装备音、开始游戏音对真实玩家从来没响过,而所有检查都是绿的。
+   所以存在性必须以 **git 跟踪状态** 为准。 */
+const trackedVoices=(()=>{
+  try{
+    return new Set(childProcess.execSync("git ls-files assets/aiba-audio/voices",
+      {cwd:root,encoding:"utf8"}).split("\n").filter(Boolean));
+  }catch(e){return null;}   // 不在 git 仓库里(比如打包后的产物)就退回只查磁盘
+})();
+/* NBA DNA 整个功能锁着(入口锁死 + 脚本不加载),它的配音有意不入库。
+   功能恢复时把这些脚本标签加回 index.html,同时要把音频一并入库。 */
+const VOICE_TRACK_EXEMPT=/^dna_/;
 function voiceExists(name){
   /* 只有 .wav 才跟着 VOICE_EXT 走(压缩成 mp3 后一起改);已经写死 .mp3 的条目原样放行。 */
   const f=/\.mp3$/i.test(name)?name:name.replace(/\.wav$/i,voiceExt);
-  return exists(path.posix.join("assets/aiba-audio/voices",f));
+  const rel=path.posix.join("assets/aiba-audio/voices",f);
+  if(!exists(rel))return false;
+  if(trackedVoices&&!VOICE_TRACK_EXEMPT.test(f)&&!trackedVoices.has(rel))return "untracked";
+  return true;
+}
+/* playSFX 那一批 UI 音效写在一个数组里 .map(),不是 voiceUrl("x.wav") 字面量,
+   所以不会被上面的正则抓到 —— 6 个 ui_* 就是这么漏到线上全 404 的。单独扫一遍。 */
+{
+  const m=/const sfxUrls=\[([^\]]*)\]/.exec(audioScript);
+  if(!m)fail("playSFX preload list not found - the ui_* sfx would go unchecked");
+  else for(const n of [...m[1].matchAll(/"([^"]+)"/g)].map(x=>x[1])){
+    const st=voiceExists(n+".wav");
+    if(st==="untracked")fail("UI sfx "+n+" is on disk but NOT committed - silent 404 in production");
+    else if(!st)fail("missing UI sfx "+n);
+  }
 }
 for(const file of voiceFiles){
-  if(!voiceExists(file))fail("missing referenced voice clip "+file+" (ext "+voiceExt+")");
+  const st=voiceExists(file);
+  if(st==="untracked")fail("voice clip "+file+" exists on disk but is NOT committed - it will 404 in production (check .gitignore allowlist)");
+  else if(!st)fail("missing referenced voice clip "+file+" (ext "+voiceExt+")");
 }
 const audioEventsBlock=(audioScript.match(/const AUDIO_EVENTS = \{([\s\S]*?)\n\};/)||[])[1]||"";
 const audioEvents=[...audioEventsBlock.matchAll(/\n\s*([A-Za-z0-9_]+):\s*\[([^\]]*)\]/g)].map(m=>({id:m[1],files:[...m[2].matchAll(/"([^"]+)"/g)].map(x=>x[1])}));
@@ -768,7 +798,9 @@ for(const ev of audioEvents){
   if(!new RegExp('playAudioEvent\\(\\s*["\\\']'+ev.id+'["\\\']').test(allCode))fail("AUDIO_EVENTS entry has no direct trigger "+ev.id);
   for(const name of ev.files){
     /* 条目可以自带 .mp3/.wav 后缀;没写才默认 wav。直接 +".wav" 会拼出 xxx.mp3.wav。 */
-    if(!voiceExists(/\.(wav|mp3)$/i.test(name)?name:name+".wav"))fail("missing AUDIO_EVENTS clip "+name);
+    const st=voiceExists(/\.(wav|mp3)$/i.test(name)?name:name+".wav");
+    if(st==="untracked")fail("AUDIO_EVENTS clip "+name+" is on disk but NOT committed - silent 404 in production");
+    else if(!st)fail("missing AUDIO_EVENTS clip "+name);
   }
 }
 for(const name of new Set([...allCode.matchAll(/playSFX\(\s*["']([^"']+)["']/g)].map(m=>m[1]))){
@@ -1125,7 +1157,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.6-dip10','src/gameplay/shots.js?v=2.19.9-flame','src/modes/last-shot/squad.js?v=2.19.9-foulreact','src/modes/last-shot/sequence.js?v=2.19.9-reactionflow'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.9-gait','src/gameplay/shots.js?v=2.19.9-flame','src/modes/last-shot/squad.js?v=2.19.9-foulreact','src/modes/last-shot/sequence.js?v=2.19.9-reactionflow'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);

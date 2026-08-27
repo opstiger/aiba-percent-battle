@@ -400,7 +400,12 @@ function poseRunCycle(o,state,speed,dt,opts){
   o.legs[0].rotation.x=hipA;o.legs[1].rotation.x=hipB;
   o.knees[0].rotation.x=kneeA;o.knees[1].rotation.x=kneeB;
   o.ankles[0].rotation.x=ankA;o.ankles[1].rotation.x=ankB;
-  o.shoes[0].rotation.x=0;o.shoes[1].rotation.x=0;
+  /* 脚掌:落跟 → 踏平 → 蹬趾。原来这两行恒为 0 —— 一双完全不动的脚在地上平移,
+     是"走路僵"最直接的来源。幅度必须克制:下面的落地夹 footY 是用髋/膝/踝算的,
+     **不含脚掌旋转**,转多了会穿地板。 */
+  const roll=.20+run*.22;
+  o.shoes[0].rotation.x=clamp(-hipA*.6-kneeA*.3,-1,1)*roll;
+  o.shoes[1].rotation.x=clamp(-hipB*.6-kneeB*.3,-1,1)*roll;
   if(cfg.arms!==false){
     // 防守人张开双臂，进攻人自然摆臂
     if(cfg.defensive){
@@ -417,6 +422,10 @@ function poseRunCycle(o,state,speed,dt,opts){
   }
   state.lean=(state.lean||0)+(run*.16-(state.lean||0))*Math.min(1,dt*6);
   o.g.rotation.x=state.lean;
+  /* 左右摆:重心在两条支撑腿之间来回,频率等于步频。少了它,人像装在轨道上平移。
+     只在调用方明确要的时候开 —— 防守人横向滑步时 rotation.z 另有用途,
+     而且 squad 里有自己写 rotation.z 的地方,不能无条件覆盖。 */
+  if(cfg.sway)o.g.rotation.z=s*(.012+run*.026);
   if(cfg.resetHead!==false&&o.headRoot)o.headRoot.rotation.set(0,0,0);
   const footY=(poseFootBottomY(hipA,kneeA,ankA)+poseFootBottomY(hipB,kneeB,ankB))*.5;
   o.g.position.y=POSE_STAND_FOOT_Y-footY*hs;
@@ -591,21 +600,40 @@ function updPose(dt){
   player.g.position.set(P.pos.x,0,P.pos.z);
   player.g.rotation.y=P.face;
   if(P.walking){
-    P.walkT+=dt*9;
-    const sw=Math.sin(P.walkT);
-    player.g.rotation.x=0;
-    player.legs[0].rotation.x=sw*0.7;player.legs[1].rotation.x=-sw*0.7;
-    player.knees[0].rotation.x=Math.max(0,-sw*0.5+0.25);player.knees[1].rotation.x=Math.max(0,sw*0.5+0.25);
-    player.ankles[0].rotation.x=-sw*0.25;player.ankles[1].rotation.x=sw*0.25;
-    player.shoes[0].rotation.x=0;player.shoes[1].rotation.x=0;
-    player.arms[0].rotation.x=-sw*0.45;player.arms[1].rotation.x=sw*0.45;
-    player.elbows[0].rotation.x=-0.4;player.elbows[1].rotation.x=-0.4;
+    /* 走路统一走 poseRunCycle —— 它才是"全项目唯一的一套跑动姿势"。
+       原来这里是另写的一条正弦(dt*9 写死步频、脚掌恒为 0、身体高度根本没设),
+       所以主角走起来又飘又僵,而场上 NPC 反倒是对的。
+       现在两边同源:改一次,主角和电脑一起变好。 */
+    updWalkSpeed(dt);
+    P.walkRig=P.walkRig||{phase:0,idleT:0,lean:0};
+    poseRunCycle(player,P.walkRig,walkSpeed,dt,{sway:true});
+    player.g.position.y+=P.jump;
     poseHandJoints(player,shotCurves(0));
   }else{
+    /* 下次起步重新采样,免得走位被瞬间摆位时算出一个假的高速。 */
+    walkPrevX=null;
+    if(P.walkRig)P.walkRig.phase=0;
+    player.g.rotation.z=0;          // 清掉步态的左右摆,否则站定还歪着
     player.g.position.y=poseGuy(player,c,lk)+P.jump;
   }
   poseBallPos(pBall.position,c);
 }
+
+/* 主角的走路速度。poseRunCycle 的相位是按**位移**推进的,所以必须喂真实速度;
+   喂错了脚就在地上滑。这里从 P.pos 的逐帧变化反推,不依赖是谁在驱动走位
+   (walkTo 和首屏开场那套自定义走位都能覆盖)。 */
+let walkPrevX=null,walkPrevZ=null,walkSpeed=0;
+function updWalkSpeed(dt){
+  if(walkPrevX==null){walkPrevX=P.pos.x;walkPrevZ=P.pos.z;return;}
+  const d=Math.hypot(P.pos.x-walkPrevX,P.pos.z-walkPrevZ);
+  walkPrevX=P.pos.x;walkPrevZ=P.pos.z;
+  /* 一帧卡顿能算出十几 m/s,直接拿去驱动相位腿会抽一下。夹住再平滑。 */
+  const inst=dt>0?Math.min(6,d/dt):0;
+  walkSpeed+=(inst-walkSpeed)*Math.min(1,dt*8);
+  return walkSpeed;
+}
+/* 走位结束/瞬间摆位后调用,下一帧重新采样,免得把瞬移算成高速。 */
+function resetWalkSpeed(){walkPrevX=null;walkPrevZ=null;walkSpeed=0;}
 
 /* ---------------- passer & pass ----------------
    传球飞行时长。Rack Rush 原本是 .22–.32 秒，5 米传球等于 20m/s，在方块画风下就是

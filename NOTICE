@@ -1,0 +1,68 @@
+aiBA Percent Battle
+Copyright (c) 2026 TigerBro
+
+This NOTICE clarifies the scope of LICENSE. It does not add restrictions to
+the MIT license that covers the source code — it states which parts of this
+repository the MIT license does NOT cover.
+
+
+--------------------------------------------------------------------------
+1. Source code — MIT
+--------------------------------------------------------------------------
+Everything under src/, scripts/, tools/, cloudflare/, trailer/ and the
+HTML/CSS entry points is licensed under the MIT License. See LICENSE.
+
+The MIT License requires that the copyright notice and the permission notice
+be retained in all copies or substantial portions of the Software. Removing
+them — including replacing LICENSE with a different or proprietary notice —
+is not permitted by the license under which you received this code.
+
+
+--------------------------------------------------------------------------
+2. Media assets — all rights reserved
+--------------------------------------------------------------------------
+The MIT grant above does NOT extend to the media assets in this repository,
+including but not limited to:
+
+    assets/aiba-audio/     voice-over, music, sound effects
+    assets/aiba-covers/    cover art and cover videos
+    assets/aiba-brand/     logos, wordmarks, brand art
+    assets/aiba-faces/     character face textures
+    assets/3d model/       3D character and prop assets
+    assets/readme/         screenshots and promotional images
+
+They are included so the project can be built and run as published. They are
+not licensed for redistribution, resale, re-skinning, or use in other
+products. Reuse requires written permission.
+
+
+--------------------------------------------------------------------------
+3. Name and logo — trademark, not granted
+--------------------------------------------------------------------------
+"aiBA", "aiBA Percent Battle", and the aiBA logos and wordmarks are marks of
+the project author. The MIT License covers copyright in the software only;
+it grants no trademark rights.
+
+A fork may state that it is based on aiBA. A fork may not present itself as
+aiBA, or use the aiBA name or logo as its own product brand.
+
+
+--------------------------------------------------------------------------
+4. Third-party components
+--------------------------------------------------------------------------
+    vendor/three.min.r128.js   Three.js — MIT
+    vendor/mediapipe/          MediaPipe — Apache-2.0
+
+These remain under their own licenses.
+
+
+--------------------------------------------------------------------------
+If you fork this project
+--------------------------------------------------------------------------
+  - Keep LICENSE and this NOTICE intact.
+  - Keep the attribution line in the in-game help panel, or replace it with
+    your own visible credit back to this project.
+  - Replace the media assets in section 2 with your own.
+  - Do not use the aiBA name or logo as your fork's brand.
+
+Questions: https://github.com/opstiger/aiba-percent-battle

@@ -21,6 +21,10 @@ assets/aiba-audio/voices/*
 !assets/aiba-audio/voices/dj_c_*.wav
 !assets/aiba-audio/voices/r_*.wav
 !assets/aiba-audio/voices/pre_countdown_*.wav
+# 裁判哨/UI 音效也被代码直接引用,漏掉就是线上静默 404
+# (ref_foul_whistle_01 曾经这样漏了很久:绝杀模式的犯规哨对真实玩家从没响过)
+!assets/aiba-audio/voices/ref_*.wav
+!assets/aiba-audio/voices/ui_*.wav
 assets/3d model/
 block-3pt-king-promo.mp4
 block-3pt-kingv1.40-rack-rush-alpha.html
