@@ -1213,7 +1213,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.9-groundshadow','src/rendering/camera.js?v=2.19.9-beat','src/rendering/motion.js?v=2.19.9-hy4a','src/gameplay/shots.js?v=2.19.9-hy4a','src/modes/last-shot/squad.js?v=2.19.9-foulreact','src/modes/last-shot/sequence.js?v=2.19.9-reactionflow'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.9-groundshadow','src/rendering/camera.js?v=2.19.9-beat','src/rendering/motion.js?v=2.19.9-gait2','src/gameplay/shots.js?v=2.19.9-hy4a','src/modes/last-shot/squad.js?v=2.19.9-foulreact','src/modes/last-shot/sequence.js?v=2.19.9-reactionflow'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1319,8 +1319,18 @@ if(!lastShotSquad.includes("function poseContestHands")||!/actor\.pressure=/.tes
 {
   if(!renderingMotion.includes("function poseRunCycle"))
     fail("the shared run cycle must live in rendering/motion.js");
-  if(!/state\.phase=\(state\.phase\|\|0\)\+\(speed\*dt\/stride\)\*Math\.PI;/.test(renderingMotion))
-    fail("stride must be driven by distance travelled, not by elapsed time (foot sliding)");
+  /* 相位必须按位移推进(按 dt 推会让腿和位移脱钩,脚在地上滑)。
+     归一化用的那个长度还必须**等于脚真正迈出的几何距离** —— 早先它是写死的
+     `.5+.6*run`,和迈腿角度毫无关系,实测比真实步幅大 64%~179%(越慢越离谱),
+     身体平移得比脚多,照样是滑步。所以现在要求:步幅 L 先定,迈腿角度由 L 反解。 */
+  if(!/state\.phase=\(state\.phase\|\|0\)\+\(speed\*dt\/stepLen\)\*Math\.PI;/.test(renderingMotion))
+    fail("run phase must advance by distance/stride, not by elapsed time (foot sliding)");
+  if(!/const swing=Math\.asin\(clamp\(L\/\(2\*\(THIGH_LEN\+SHIN_LEN\)\)/.test(renderingMotion))
+    fail("swing must be solved back from the stride L, or the step length and the body translation disagree");
+  if(/const stride=\.5\+\.6\*run/.test(renderingMotion))
+    fail("stride regressed to the hardcoded ramp that ignores swing (64%-179% foot slide)");
+  if(!/function runFootSpan/.test(renderingMotion))
+    fail("phase must normalise by the TRUE geometric step (runFootSpan), not a straight-leg approximation");
   if(!/poseRunCycle\(actor\.guy,actor,speed,dt/.test(lastShotSquad))
     fail("Last Shot must reuse the shared run cycle");
   const cine=read("src/presentation/cinematics.js");

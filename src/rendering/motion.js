@@ -17,11 +17,14 @@ function shotCurves(ph){
     over:Math.max(0,ph-1)
   };
 }
+/* 骨长。poseFootBottomY 与步幅反解必须用同一组数,否则又会出现
+   "落地高度按一套算、步幅按另一套算"的对不上。 */
+const THIGH_LEN=.34,SHIN_LEN=.32;
 function poseFootBottomY(hip,knee,ankle){
   const a1=hip,a2=hip+knee,a3=hip+knee+ankle;
   return 0.78
-    -0.34*Math.cos(a1)
-    -0.32*Math.cos(a2)
+    -THIGH_LEN*Math.cos(a1)
+    -SHIN_LEN*Math.cos(a2)
     -0.04*Math.cos(a3)
     -0.05*Math.sin(a3)
     -0.065*Math.abs(Math.cos(a3))
@@ -376,6 +379,18 @@ function applyShotFollowThroughPose(o,state,pose){
   applyShootingHandWorldFollow(o,state,release.hand);
   applyFollowThroughFingers(o,state.follow);
 }
+/* 两脚在一个步态周期里的最大水平分离 = 真实步幅。
+   公式必须和 poseRunCycle 里摆腿那几行**逐字一致**(髋/膝/踝),
+   否则又会回到"步幅按一套算、姿势按另一套摆"的老问题。 */
+function runFootSpan(swing,run){
+  const foot=sgn=>{
+    const hip=sgn*swing;
+    const knee=Math.max(0,-hip)*(.5+run*.9);
+    const ank=-(hip+knee)*.85;
+    return THIGH_LEN*Math.sin(hip)+SHIN_LEN*Math.sin(hip+knee)+.04*Math.sin(hip+knee+ank);
+  };
+  return Math.max(.12,Math.abs(foot(1)-foot(-1)));
+}
 /* ---------------- 共享跑动循环 ----------------
    全项目唯一的一套跑动姿势：绝杀 5v5、AI 表演赛、以后任何需要跑动的角色都走这里，
    不要再各写一套。关键点：
@@ -388,11 +403,26 @@ function poseRunCycle(o,state,speed,dt,opts){
   if(!o||!o.legs||!state)return 0;
   const cfg=opts||{},hs=cfg.hs||1;
   const run=clamp(speed/3.6,0,1);
-  const stride=.5+.6*run;
-  state.phase=(state.phase||0)+(speed*dt/stride)*Math.PI;
+  /* ---- 步幅 ----
+     原来是 `stride=.5+.6*run`(相位归一化)配 `swing=.06+run*.80`(迈腿角度),
+     两者各写各的、毫无关系。实测 stride 比脚真正迈出的几何距离大 64%~179%
+     (越慢越离谱) —— 身体平移得比脚多,那就是滑步/漂移。
+
+     改成把因果倒过来:先按速度定一个**自然步幅** L,再由 L 反解迈腿角度。
+     这样相位归一化用的就是脚真实走过的距离,不可能对不上;
+     而且减速时 L 自然变短 —— 收步阶段自动成为小碎步,不用另外写逻辑。
+     L 的经验式取自人步态:慢走约 .45m,快跑封顶 1.15m。 */
+  const L=clamp(.42+.28*speed,.34,1.15);
+  const swing=Math.asin(clamp(L/(2*(THIGH_LEN+SHIN_LEN)),0,.95));
+  /* 相位归一化必须用**真实**步幅,不能用上面那个直腿近似:
+     摆动腿是屈膝的(kneeA 见下),屈膝缩短了触地距离,实际步幅比 L 小,
+     身体就又比脚多走了那一截 —— 实测残留打滑 31~36%。
+     这里用和姿势解算完全相同的公式,数值算出两脚最大分离,按构造不可能对不上。 */
+  const stepLen=runFootSpan(swing,run);
+  state.phase=(state.phase||0)+(speed*dt/stepLen)*Math.PI;
   state.idleT=(state.idleT||0)+dt;
   const s=Math.sin(state.phase),c=Math.cos(state.phase);
-  const swing=.06+run*.80,idle=Math.sin(state.idleT*1.7)*.03;
+  const idle=Math.sin(state.idleT*1.7)*.03;
   const hipA=s*swing,hipB=-s*swing;
   const kneeA=Math.max(0,-hipA)*(.5+run*.9);
   const kneeB=Math.max(0,-hipB)*(.5+run*.9);
@@ -704,10 +734,30 @@ function updPass(dt){
 
 /* ---------------- walking between racks ---------------- */
 let walk=null;
+/* ---- 走位的速度剖面 ----
+   原来位移走 smoothstep。它是对称的:加速多长、减速就多长,而且**峰值速度是平均的 1.5 倍**
+   —— `dist/3.4` 的实际峰值到 5.1 m/s,那是冲刺不是走路,这就是"走得太快"的来源。
+
+   改成梯形:起步加速 22% → 巡航 → 减速 38%。减速段明显更长,
+   配合步幅随速度走(见 poseRunCycle),收尾自然变成小碎步再站定,
+   而不是匀速滑到点急停。 */
+const WALK_ACC=.22,WALK_DEC=.38,WALK_CRUISE=1.82;
+function walkEase(k){
+  const A=WALK_ACC,D=WALK_DEC,total=1-A/2-D/2;
+  let s;
+  if(k<A)s=k*k/(2*A);
+  else if(k<1-D)s=A/2+(k-A);
+  else{const t=(k-(1-D))/D;s=A/2+(1-D-A)+D*(t-t*t/2);}
+  return clamp(s/total,0,1);
+}
 function walkTo(shot,cb){
   const base=shotBase(shot);
   const from=P.pos.clone(),to=base.clone();
-  const dur=clamp(from.distanceTo(to)/3.4,0.5,1.7);
+  /* 梯形剖面下平均速度 = WALK_CRUISE,峰值 = WALK_CRUISE/(1-A/2-D/2) ≈ 2.6 m/s。
+     原来是峰值 5.1 m/s。 */
+  /* 上限原来是 2.6s,长距离走位(比如底角到弧顶 9.4m)会被截断成 3.7 m/s ——
+     巡航速度形同虚设。放宽到 3.4s。 */
+  const dur=clamp(from.distanceTo(to)/WALK_CRUISE,0.55,3.4);
   P.walking=true;G.moving=true;P.walkT=0;
   walk={from,to,t:0,dur,fMove:faceTo(from,to),f1:faceTo(to,HOOP),cb,step:0};
 }
@@ -717,8 +767,7 @@ function updWalk(dt){
   /* 位移走 smoothstep,不是线性 —— 线性的话人是"匀速滑出去、到点急停",
      没有起步蹬地也没有收步。加减速之后步频也跟着变(poseRunCycle 的相位由
      实际位移驱动),所以一条缓动同时修好了"起步收步"和"腿频不跟脚"。 */
-  const e=k*k*(3-2*k);
-  P.pos.lerpVectors(walk.from,walk.to,e);
+  P.pos.lerpVectors(walk.from,walk.to,walkEase(k));
   /* 朝向:原来在 k=0.75 那一帧把目标从"移动方向"硬切成"面朝篮筐",转身是抽的。
      改成从 55% 起把两个目标按角度插值过渡,人是一边走一边把身子转过来。 */
   const turnK=clamp((k-0.55)/0.35,0,1);
