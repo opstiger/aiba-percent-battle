@@ -5,7 +5,8 @@
   const KEY="aiba_onboard_v2";
   let seen={};
   try{seen=JSON.parse(localStorage.getItem(KEY)||"{}")||{};}catch(e){}
-  function mark(k){seen[k]=1;try{localStorage.setItem(KEY,JSON.stringify(seen));}catch(e){}}
+  function persist(){try{localStorage.setItem(KEY,JSON.stringify(seen));}catch(e){}}
+  function mark(k){seen[k]=1;persist();}
   const GG=()=>{try{return typeof G==="undefined"?null:G;}catch(e){return null;}};
   const playing=()=>{const g=GG();return g&&/^(round|tiebreak|battle|rackrush)$/.test(g.state);};
 
@@ -113,7 +114,8 @@
     try{return localStorage.getItem("aiba_boot_shot_seen")==="1";}catch(e){return false;}
   }
 
-  let holdShownAt=0;
+  let holdShownAt=0,holdCounted=false;
+  const HINT_AFTER_SHOTS=12;   // 投满这么多球就认为不需要底部常驻教学了
   function poll(){
     const G=GG();
     if(!G)return;
@@ -132,6 +134,17 @@
     if(!seen.hold&&playing()&&G.canShoot&&!G.charging){
       if(!holdShownAt){holdShownAt=Date.now();tip('<i class="obFinger" data-aiba-icon="hand-pointer" data-aiba-label=""></i> 按住屏幕蓄力 · 松开出手',6000);}
     }
+    /* 底部那行"按住屏幕蓄力 · 松开出手 · 停在绿色甜区"是常驻的。
+       新手需要它,但投过十几球的人每局都盯着一行自己早会了的字 —— 那是常驻噪音,
+       而且和上面这条新手气泡教的是同一件事。
+       用已投球数(持久化)做门槛,到量之后让 CSS 把它淡掉;`重看新手引导`会一并清零。 */
+    if(!seen.hintDone){
+      /* 不能用 mark() 存计数 —— mark 的实现是 seen[k]=1,会把累加值覆盖成 1。 */
+      if(G.charging&&!holdCounted){holdCounted=true;seen.shots=(seen.shots|0)+1;persist();}
+      if(!G.charging)holdCounted=false;
+      if((seen.shots|0)>=HINT_AFTER_SHOTS)mark("hintDone");
+    }
+    try{document.documentElement.dataset.hintLearned=seen.hintDone?"1":"0";}catch(e){}
     /* mark 也要带 playing() 闸 —— 少了它,首屏那一投的 startCharge() 会把这个引导
        标记直接消耗掉,而那一投是"点一下自动蓄力",玩家根本没学会按住,
        结果真正第一局反而不提示了。 */
@@ -154,6 +167,7 @@
     help:showHelp,closeHelp,
     startTutorial(){clearHelpState();global.AIBAInteractiveTutorial&&global.AIBAInteractiveTutorial.start();},
     replay(){clearHelpState();delete seen.welcome;delete seen.hold;delete seen.sweet;
+      delete seen.hintDone;delete seen.shots;
       try{localStorage.setItem(KEY,JSON.stringify(seen));}catch(e){}
       if(typeof global.hidePanel==="function")global.hidePanel();
       const g=GG();if(g&&g.state==="menu")showWelcome();

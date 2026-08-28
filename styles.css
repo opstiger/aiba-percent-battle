@@ -848,3 +848,7 @@ html[data-boot-shot="1"] #pauseBtn,html[data-boot-shot="1"] #courtTools{display:
   letter-spacing:1.5px;color:#cfe0f0;opacity:.9}
 #resultBeat[data-tone="good"] b{color:#7CFC6B;text-shadow:0 4px 0 rgba(0,0,0,.85),0 0 34px rgba(124,252,107,.45)}
 #resultBeat[data-tone="bad"] b{color:#ff8d7a}
+
+/* 底部常驻教学文案:投满一定球数后淡掉(见 onboarding.js 的 HINT_AFTER_SHOTS)。
+   不是删除——「重看新手引导」会把计数清零,它会回来。 */
+html[data-hint-learned="1"] #hint{opacity:0;pointer-events:none;transition:opacity .6s ease}
