@@ -22,6 +22,9 @@
     $("hudTarget").textContent="";$("hud").style.display="block";
     const start=RACKS[2].p;
     P.pos.copy(start);P.face=faceTo(start,HOOP);P.walking=false;P.jump=0;P.eyeDip=0;
+    /* 练习是唯一没做倾角校准的模式,于是这里用的是上一局残留的零点。
+       热身本来就该和正式一致,不然练出来的手感换到正式局就偏了。 */
+    if(typeof calibrateTilt==="function")calibrateTilt();
     G.state="cinematic";rig.pos.set(0,9,6);rig.look.copy(HOOP);
     glideTo(shotEye(G.seq[0]),HOOP.clone().add(V3(0,0.15,0)),1.4,()=>{
       G.state="round";applyCamMode();readyBall();toast("热身 · 按住蓄力,顶点出手!","#ffd23f");

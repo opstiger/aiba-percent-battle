@@ -58,7 +58,10 @@ const page=await browser.newPage({viewport:{width:900,height:1000}});
 const errs=[];
 page.on("pageerror",e=>errs.push(e.message));
 
-await page.goto(`http://127.0.0.1:${port}/index.html?seed=2024`,{waitUntil:"load"});
+/* 必须带 intro=0:首屏开场仪式会把 G.state 设成 "bootshot" 并收起面板,
+   和下面的 goDiff/pickDiff 抢状态,测试会卡在难度页。
+   这条测试关心的是"同一个 seed 结果可复现",开场演出与它无关。 */
+await page.goto(`http://127.0.0.1:${port}/index.html?seed=2024&intro=0`,{waitUntil:"load"});
 await page.evaluate(async()=>{
   await fetch("scripts/silence-browser.js").then(r=>r.text()).then(eval);   // 非音频测试一律静音
   const bl=document.getElementById("bootLoad");if(bl)bl.style.display="none";

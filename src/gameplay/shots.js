@@ -168,9 +168,25 @@ function releaseShot(power,shot){
   const al=Math.abs(latErr);
   let outcome;
   if(a<=zone*0.5)outcome="swish";
-  else if(a<=zone)outcome=r<0.5?"rattle":(r<0.7?"rattleout":(err>0&&r<0.85?"bank":"rimout"));
-  else if(a<=zone*1.8)outcome=r<0.15?"rattle":(r<0.4?"rattleout":(err>0&&r<0.55?"bank":"rimout"));
-  else outcome="miss";
+  else if(a>zone*1.8)outcome="miss";
+  else{
+    /* 原来这里是两行嵌套三元,读不出一件要紧的事:**救回路径只有过蓄有**。
+       `err>0 && r<...` 才走 bank(球太冲、打板落下);欠蓄一律落到 rimout。
+       而新手天然更容易欠蓄 —— 等于系统性地惩罚新手。
+       这里给欠蓄补一条物理上说得通的路:球短了磕前框、涮一下滚进去(rattle)。
+       概率按难度给(config.js 的 underSave):新秀 .22、全明星 .10、名人堂 0 ——
+       所以名人堂的判定和改之前**逐位相同**。
+       注意不是"欠蓄必进":它只把一部分 rimout 变成 rattle,不动 swish 那条线。 */
+    const near=a<=zone;                                   // 甜区边缘 vs 更外圈
+    const pRattle=near?0.5:0.15;                          // 涮筐进
+    const pRattleOut=near?0.7:0.4;                        // 涮出去
+    const saveChance=err>0?0.15:(DIFFS[G.diff]&&DIFFS[G.diff].underSave||0);
+    const pSave=pRattleOut+saveChance;
+    if(r<pRattle)outcome="rattle";
+    else if(r<pRattleOut)outcome="rattleout";
+    else if(r<pSave)outcome=err>0?"bank":"rattle";
+    else outcome="rimout";
+  }
   // tilt drags the ball sideways and downgrades the result
   if(outcome!=="miss"){
     if(al>0.3)outcome="miss";

@@ -415,8 +415,12 @@ function poseRunCycle(o,state,speed,dt,opts){
       o.elbows[0].rotation.x=-.35;o.elbows[1].rotation.x=-.35;
     }else{
       o.arms[0].rotation.z=0;o.arms[1].rotation.z=0;
-      o.arms[0].rotation.x=-.25+c*swing*.75;
-      o.arms[1].rotation.x=-.25-c*swing*.75;
+      /* 必须和**同侧的腿**反相:legs[0] 和 arms[0] 都建在 x 负侧(见 characters.js
+         的 [-HIP_X,HIP_X] / [-SHOULDER_X,SHOULDER_X] 两个循环),而真实步态是
+         右臂前摆配左腿前迈。原来这里用 cos、腿用 sin,整整差了 90° ——
+         单看手或单看腿都对,合起来就是说不出哪里别扭。 */
+      o.arms[0].rotation.x=-.25-s*swing*.75;
+      o.arms[1].rotation.x=-.25+s*swing*.75;
       o.elbows[0].rotation.x=-.55-run*.35;o.elbows[1].rotation.x=-.55-run*.35;
     }
   }

@@ -122,7 +122,7 @@ if(entryHtml.indexOf('<script src="src/rendering/core.js?v=2.19.5-hfov"></script
 if(!entryHtml.includes('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>'))fail("next legacy adapter missing");
 if(!entryHtml.includes('<script src="src/modes/rack-rush.js?v=2.19.9-beat"></script>'))fail("next Rack Rush module missing");
 if(!entryHtml.includes('<script src="src/modes/contest.js?v=2.19.9-beat"></script>'))fail("next contest module missing");
-if(!entryHtml.includes('<script src="src/modes/practice.js?v=refactor5a"></script>'))fail("next practice module missing");
+if(!entryHtml.includes('<script src="src/modes/practice.js?v=2.19.9-hy4a"></script>'))fail("next practice module missing");
 if(!entryHtml.includes('<script src="src/ui/panels.js?v=refactor7"></script>'))fail("next panels module missing");
 if(!entryHtml.includes('<script src="src/ui/loading.js?v=2.19.9-nogate"></script>'))fail("next loading module missing");
 if(!entryHtml.includes('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>'))fail("next menu module missing");
@@ -221,6 +221,39 @@ if(!/const voiceEntryUrl=/.test(audioSrc))
   fail("audio.js must funnel event names through voiceEntryUrl (see the .mp3.wav trap)");
 if(/AUDIO_EVENTS\)\.flat\(\)\.map\(n=>voiceUrl\(n\+"\.wav"\)\)/.test(audioSrc))
   fail("preloadVoiceClips still appends .wav blindly - .mp3 entries would 404");
+/* ---- HY4 第一批:公平性 ----
+   三条都是"玩家会觉得游戏在坑他"的量级,回归了不会报错、只会变难玩。 */
+{
+  const mo=read("src/rendering/motion.js");
+  /* 同侧手腿必须反相。legs[0] 和 arms[0] 都建在 x 负侧,而真实步态是右臂配左腿。
+     原来腿用 sin、手用 cos,整整差 90° —— 单看手或单看腿都对,合起来说不出哪里别扭。 */
+  if(/o\.arms\[0\]\.rotation\.x=-\.25\+c\*swing/.test(mo))
+    fail("run cycle regressed to cos-driven arms - arms must be anti-phase with the SAME-side leg (sin)");
+  if(!/o\.arms\[0\]\.rotation\.x=-\.25-s\*swing/.test(mo))
+    fail("run cycle arms must be driven by -s (anti-phase with legs[0])");
+
+  const inp=read("src/core/input.js");
+  /* 设备绝对倾角不该变成玩家的长期横向误差。三道闸缺一不可。 */
+  if(!/TILT\.on&&TILT\.ready/.test(inp))
+    fail("tiltDeg must stay inert until calibrated, or raw device tilt applies with base=0");
+  if(!/sorted\[sorted\.length>>1\]/.test(inp))
+    fail("tilt calibration must use the window median - a single noisy frame would skew the zero all round");
+  if(!/TILT_CAL_MIN/.test(inp))
+    fail("tilt calibration needs a minimum sample count, or a late first event makes it single-frame again");
+  if(!/TILT_SETTLE/.test(inp))
+    fail("tilt baseline must drift slowly, or a mid-round grip change becomes a permanent bias");
+
+  const cfg=read("src/config.js"),sh=read("src/gameplay/shots.js");
+  /* 欠蓄原本没有任何救回路径(bank 只在 err>0),而新手天然更容易欠蓄。
+     hard 的 underSave 必须是 0 —— 那一档的判定要和改动前逐位相同。 */
+  if(!/underSave/.test(cfg))fail("DIFFS needs underSave (under-charge forgiveness)");
+  if(!/hard:\{[^}]*underSave:0[,}]/.test(cfg))
+    fail("hard difficulty must keep underSave:0 so its shot outcomes stay bit-identical");
+  if(!/const saveChance=err>0\?0\.15:/.test(sh))
+    fail("shot outcome must give under-charge its own save chance");
+  if(/err>0&&r<0\.85\?"bank"/.test(sh))
+    fail("shot outcome regressed to the asymmetric nested-ternary form");
+}
 /* 结果留白:结果出来到弹结算面板之间必须留一拍。
    两条会真的把玩家卡住的性质:
      · onDone 必须恰好一次(留白只是演出,演出出岔子不能让人停在没面板也没 HUD 的中间态)
@@ -395,7 +428,7 @@ if(entryHtml.indexOf('src/services/audio-cues.js?v=refactor39')>entryHtml.indexO
 if(entryHtml.indexOf('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>')>entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=2.19.9-beat"></script>'))fail("legacy adapter must load before Rack Rush module");
 if(entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=2.19.9-beat"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Rack Rush module must load before late hooks");
 if(entryHtml.indexOf('<script src="src/modes/contest.js?v=2.19.9-beat"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("contest module must load before late hooks");
-if(entryHtml.indexOf('<script src="src/modes/contest.js?v=2.19.9-beat"></script>')>entryHtml.indexOf('<script src="src/modes/practice.js?v=refactor5a"></script>'))fail("contest module must load before practice module");
+if(entryHtml.indexOf('<script src="src/modes/contest.js?v=2.19.9-beat"></script>')>entryHtml.indexOf('<script src="src/modes/practice.js?v=2.19.9-hy4a"></script>'))fail("contest module must load before practice module");
 if(entryHtml.indexOf('<script src="src/ui/panels.js?v=refactor7"></script>')>entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.9-nogate"></script>'))fail("panels must load before loading module");
 if(entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.9-nogate"></script>')>entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>'))fail("loading must load before menu module");
 if(entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>')>entryHtml.indexOf('<script src="src/ui/setup.js?v=refactor13"></script>'))fail("menu must load before setup module");
@@ -457,7 +490,7 @@ for(const token of ["const NBA_DNA_ENABLED=false","if(!NBA_DNA_ENABLED)","return
 if(/<script src="src\/nba-dna\//.test(entryHtml))
   fail("NBA DNA 未上线期间不应加载它的脚本（42KB 首屏开销）");
 if(!entryHtml.includes('<script src="src/assets-manifest.js?v=20260726-bkyx1"></script>'))fail("assets manifest script missing");
-if(!entryHtml.includes('<script src="src/config.js?v=2.15.5-hand-follow"></script>'))fail("config script missing");
+if(!entryHtml.includes('<script src="src/config.js?v=2.19.9-hy4a"></script>'))fail("config script missing");
 if(!entryHtml.includes('<script src="src/player-select.js?v=2.15.5-hand-follow"></script>'))fail("player select script missing");
 if(!entryHtml.includes('<script src="src/player-locker-preview.js?v=2.19.9-orbit2"></script>'))fail("player locker preview script missing");
 if(!entryHtml.includes('<script src="src/player-id.js?v=2.19.7-timeout"></script>'))fail("player id script missing");
@@ -1180,7 +1213,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.9-groundshadow','src/rendering/camera.js?v=2.19.9-beat','src/rendering/motion.js?v=2.19.9-anim','src/gameplay/shots.js?v=2.19.9-flame','src/modes/last-shot/squad.js?v=2.19.9-foulreact','src/modes/last-shot/sequence.js?v=2.19.9-reactionflow'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.9-groundshadow','src/rendering/camera.js?v=2.19.9-beat','src/rendering/motion.js?v=2.19.9-hy4a','src/gameplay/shots.js?v=2.19.9-hy4a','src/modes/last-shot/squad.js?v=2.19.9-foulreact','src/modes/last-shot/sequence.js?v=2.19.9-reactionflow'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1562,11 +1595,11 @@ if(!coreLoop.includes('if(VICTORY_CINE.on&&G.state!=="victorycine")stopVictoryCi
   fail("game loop must cancel a stale victory cinematic before camera dispatch");
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.19.9-flame','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19.9-intro','src/core/game-loop.js?v=2.19.9-groundshadow','src/core/scene-init.js?v=2.19.9-ceiling'])
+for(const token of ['src/gameplay/shots.js?v=2.19.9-hy4a','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.19.9-groundshadow','src/core/scene-init.js?v=2.19.9-ceiling'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);
-if(!(entryHtml.indexOf('src/core/input.js?v=2.19.9-intro')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot')))fail("input must load before legacy adapter");
+if(!(entryHtml.indexOf('src/core/input.js?v=2.19.9-hy4a')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot')))fail("input must load before legacy adapter");
 if(!(entryHtml.indexOf('src/core/scene-init.js?v=2.19.9-ceiling')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot')))fail("scene init must load before legacy adapter");
 
 const sandbox={window:{}};
