@@ -118,7 +118,7 @@ for(const file of ["core/error-boundary","core/foundation","data/dialogue","core
 if(!entryHtml.includes('<script src="src/data/game-config.js?v=2.19.9-release"></script>'))fail("next game config cache version missing");
 
 if(entryHtml.indexOf('src/core/runtime.js')>entryHtml.indexOf('src/config.js'))fail("next runtime must load before config");
-if(entryHtml.indexOf('<script src="src/rendering/core.js?v=2.19.5-hfov"></script>')>entryHtml.indexOf('<script src="src/core/scene-init.js?v=refactor38"></script>'))fail("rendering core must load before scene construction");
+if(entryHtml.indexOf('<script src="src/rendering/core.js?v=2.19.5-hfov"></script>')>entryHtml.indexOf('<script src="src/core/scene-init.js?v=2.19.9-ceiling"></script>'))fail("rendering core must load before scene construction");
 if(!entryHtml.includes('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>'))fail("next legacy adapter missing");
 if(!entryHtml.includes('<script src="src/modes/rack-rush.js?v=refactor5b"></script>'))fail("next Rack Rush module missing");
 if(!entryHtml.includes('<script src="src/modes/contest.js?v=refactor5c"></script>'))fail("next contest module missing");
@@ -950,7 +950,7 @@ const renderingEnvironments=read("src/rendering/environments.js");
 for(const token of ['runtime.register("rendering:environments"',"function buildOutdoorPark","function buildFlowerCourt","function buildBeachSunset","function applyScenePreset","function updateEnvironment"])
   if(!renderingEnvironments.includes(token))fail("rendering environments token missing "+token);
 if(renderingEnvironments.includes("const rackBalls="))fail("rendering environments must not own gameplay props");
-for(const token of ['src/rendering/arena.js?v=bake1','src/rendering/spectators.js?v=bake2','src/rendering/hoop.js?v=refactor21','src/rendering/environments.js?v=refactor22a'])
+for(const token of ['src/rendering/arena.js?v=2.19.9-ceiling','src/rendering/spectators.js?v=bake2','src/rendering/hoop.js?v=refactor21','src/rendering/environments.js?v=refactor22a'])
   if(!entryHtml.includes(token))fail("next entry missing court element module "+token);
 for(const token of ["function buildStands(","function buildNearCourtCrowd(","function buildHoop(","function applyScenePreset("])
   if(entryHtml.includes(token))fail("next entry still contains inline court element "+token);
@@ -1539,12 +1539,12 @@ if(!coreLoop.includes('if(VICTORY_CINE.on&&G.state!=="victorycine")stopVictoryCi
   fail("game loop must cancel a stale victory cinematic before camera dispatch");
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.19.9-flame','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19.9-intro','src/core/game-loop.js?v=2.19.7-i18n-refresh','src/core/scene-init.js?v=refactor38'])
+for(const token of ['src/gameplay/shots.js?v=2.19.9-flame','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19.9-intro','src/core/game-loop.js?v=2.19.7-i18n-refresh','src/core/scene-init.js?v=2.19.9-ceiling'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);
 if(!(entryHtml.indexOf('src/core/input.js?v=2.19.9-intro')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot')))fail("input must load before legacy adapter");
-if(!(entryHtml.indexOf('src/core/scene-init.js?v=refactor38')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot')))fail("scene init must load before legacy adapter");
+if(!(entryHtml.indexOf('src/core/scene-init.js?v=2.19.9-ceiling')<entryHtml.indexOf('src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot')))fail("scene init must load before legacy adapter");
 
 const sandbox={window:{}};
 vm.createContext(sandbox);

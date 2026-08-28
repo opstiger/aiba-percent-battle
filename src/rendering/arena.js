@@ -51,6 +51,37 @@ function buildStands(){
   return seats;
 }
 
+/* ---------------- 球馆顶棚 ----------------
+   球馆原本没有顶。相机一仰,画面上方就是一片纯黑 —— 实测占画面高度 34%。
+   那不是"暗",是"空":没有上边界,光也没有可见来源,首屏运镜只能靠压低视线和收 FOV 硬躲。
+
+   补三层:深色顶面(读得出是个面,不是空洞)+ 桁架梁(给纵深和尺度)+ 悬挂灯箱(让光有来源)。
+   全部静态,烘成 2 个网格(结构一个、灯一个),只多 2 个 draw call。
+   挂在 indoorRoot 上,室外场景(environments.js 里 indoorRoot.visible=!outdoor)自动不显示。 */
+const CEIL_Y=15.4;          // 横幅墙顶约 10.1,留出空间,不压迫
+function buildCeiling(){
+  const X=20.5,ZA=COURT.nearBaseline-10.5,ZB=COURT.farBaseline+8.5;
+  const zSpan=ZB-ZA,zMid=(ZA+ZB)/2;
+  const parts=[];
+  /* 顶面不用纯黑:纯黑和"没有东西"在画面上是一样的。带一点蓝的深色才读得出是个面。 */
+  parts.push({color:0x0d111b,pos:[0,CEIL_Y,zMid],scale:[X*2,0.5,zSpan]});
+  for(let i=0;i<9;i++){                                   // 横向桁架
+    const z=ZA+zSpan*(i+0.5)/9;
+    parts.push({color:0x232b3c,pos:[0,CEIL_Y-0.85,z],scale:[X*2,0.34,0.5]});
+    parts.push({color:0x1a2130,pos:[0,CEIL_Y-1.32,z],scale:[X*2,0.16,0.22]});
+  }
+  [-11,0,11].forEach(x=>                                   // 纵向主梁
+    parts.push({color:0x232b3c,pos:[x,CEIL_Y-0.55,zMid],scale:[0.5,0.3,zSpan]}));
+  bakeVoxelMesh(indoorRoot,parts,{materialKey:"ceiling"});
+
+  /* 灯箱自发光。画面里本来就有一道射灯光锥,但看不到灯 —— 补上光源本体,
+     顶部那片区域才从"空洞"变成"有内容的暗部"。 */
+  const lamps=[];
+  for(let r=0;r<2;r++)for(let i=0;i<7;i++)
+    lamps.push({color:0xffffff,pos:[(r?1:-1)*6.2,CEIL_Y-2.0,ZA+zSpan*(i+0.6)/7],scale:[3.0,0.28,1.5]});
+  bakeVoxelMesh(indoorRoot,lamps,{materialKey:"ceilingLamp",material:{emissive:0xffe6b4}});
+}
+
 /* backcourt show: the far half is atmosphere only, shooting stays on the same half */
 const showCrew=[];
 function showBox(parent,geo,mat,x,y,z,sx,sy,sz){

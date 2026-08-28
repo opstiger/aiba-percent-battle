@@ -1,6 +1,7 @@
 /* ---------------- boot ---------------- */
 buildCourt();
 const seatList=buildStands();
+buildCeiling();          // 球馆顶棚:原来相机一仰是 34% 的纯黑空洞
 buildBackcourtShow();
 buildCrowd(seatList);
 buildNearCourtCrowd();
