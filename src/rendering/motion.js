@@ -442,6 +442,8 @@ function poseRunCycle(o,state,speed,dt,opts){
    幅度 DIP_LEAN=0.175，最深处正好 10°（实测 load 峰值到 1.0）。
    原来是 0.12(6.9°)，压下去的感觉不够。 */
 const DIP_LEAN=0.175;
+/* 待机呼吸的频率与幅度。1cm 量级 —— 方块画风下再大就成了喘气。 */
+const BREATH_RATE=1.25,BREATH_AMP=0.010;
 function poseGuy(o,c,lk){
   poseHandJoints(o,c);
   const sh=o.arms[0],gd=o.arms[1]; // arms[0]=x-0.33=角色右手(面朝篮筐时屏幕右侧) 投篮 / arms[1]=左手 护球
@@ -476,7 +478,16 @@ function poseGuy(o,c,lk){
      被 check.js 的球心断言锁着，不能动。 */
   o.g.rotation.x=-DIP_LEAN*load - 0.06*c.over - 0.03*c.jmp + 0.08*land;
   const footY=(poseFootBottomY(hipLead,kneeLead,ankleLead)+poseFootBottomY(hipTrail,kneeTrail,ankleTrail))*0.5;
-  return POSE_STAND_FOOT_Y-footY;
+  /* 待机呼吸:站定时人不该是一尊雕像。用 G.tNow 驱动,不需要额外状态。
+     **只在完全没有投篮动作时生效**:蓄力/举球/起跳/跟随/落地任何一项一介入就退到 0。
+     这条不是保守,是必须的 —— check.js 有几条断言把出手各阶段的球心位置锁到毫米级,
+     呼吸一旦渗进那些帧,断言会直接红。 */
+  const busy=clamp(load+c.lift+c.jmp+(c.over||0)+land,0,1);
+  const breath=(1-busy)&&Math.sin((typeof G!=="undefined"&&G.tNow?G.tNow:0)*BREATH_RATE)*BREATH_AMP*(1-busy);
+  if(breath){
+    sh.rotation.x-=breath*1.5;gd.rotation.x-=breath*1.5;   // 肩胸随呼吸起伏
+  }
+  return POSE_STAND_FOOT_Y-footY+breath;
 }
 function shotStanceBlend(c,ready){
   return clamp(Math.max(ready?0.72:0,c.dip*.55+c.lift*.85+c.jmp*.35),0,1);
@@ -699,8 +710,16 @@ function walkTo(shot,cb){
 function updWalk(dt){
   if(!walk)return;
   walk.t+=dt;const k=Math.min(1,walk.t/walk.dur);
-  P.pos.lerpVectors(walk.from,walk.to,k);
-  const tgt=k<0.75?walk.fMove:walk.f1;
+  /* 位移走 smoothstep,不是线性 —— 线性的话人是"匀速滑出去、到点急停",
+     没有起步蹬地也没有收步。加减速之后步频也跟着变(poseRunCycle 的相位由
+     实际位移驱动),所以一条缓动同时修好了"起步收步"和"腿频不跟脚"。 */
+  const e=k*k*(3-2*k);
+  P.pos.lerpVectors(walk.from,walk.to,e);
+  /* 朝向:原来在 k=0.75 那一帧把目标从"移动方向"硬切成"面朝篮筐",转身是抽的。
+     改成从 55% 起把两个目标按角度插值过渡,人是一边走一边把身子转过来。 */
+  const turnK=clamp((k-0.55)/0.35,0,1);
+  let sweep=walk.f1-walk.fMove;while(sweep>Math.PI)sweep-=2*Math.PI;while(sweep<-Math.PI)sweep+=2*Math.PI;
+  const tgt=walk.fMove+sweep*(turnK*turnK*(3-2*turnK));
   let d=tgt-P.face;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;
   P.face+=d*Math.min(1,dt*8);
   if(((walk.t*3.4)|0)!==walk.step){
