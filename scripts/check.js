@@ -105,7 +105,7 @@ if(!entryHtml.includes('<meta name="aiba-entry" content="main">'))fail("entry ma
 if(!legacyHtml.includes("v1.96-full-en"))fail("legacy entry version token missing");
 if(legacyHtml.includes('location.replace("legacy.html"'))fail("legacy entry must not self-redirect");
 if(!entryHtml.includes("data-aiba-early-errors"))fail("next early error diagnostics missing");
-if(!entryHtml.includes('<script src="src/i18n.js?v=2.19.9-lsflow"></script>'))fail("i18n cache version missing");
+if(!entryHtml.includes('<script src="src/i18n.js?v=2.19.9-beat"></script>'))fail("i18n cache version missing");
 if(!entryHtml.includes('<script src="src/core/runtime.js?v=refactor7"></script>'))fail("next runtime bridge missing");
 if(entryHtml.includes("player-id-sandbox")||entryHtml.includes("leaderboard-sandbox"))fail("entry must not load sandbox identity/leaderboard");
 if(!entryHtml.includes('<script src="src/recorder.js?v=2.19.9-fold"></script>'))fail("next recorder cache version missing");
@@ -120,8 +120,8 @@ if(!entryHtml.includes('<script src="src/data/game-config.js?v=2.19.9-release"><
 if(entryHtml.indexOf('src/core/runtime.js')>entryHtml.indexOf('src/config.js'))fail("next runtime must load before config");
 if(entryHtml.indexOf('<script src="src/rendering/core.js?v=2.19.5-hfov"></script>')>entryHtml.indexOf('<script src="src/core/scene-init.js?v=2.19.9-ceiling"></script>'))fail("rendering core must load before scene construction");
 if(!entryHtml.includes('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>'))fail("next legacy adapter missing");
-if(!entryHtml.includes('<script src="src/modes/rack-rush.js?v=refactor5b"></script>'))fail("next Rack Rush module missing");
-if(!entryHtml.includes('<script src="src/modes/contest.js?v=refactor5c"></script>'))fail("next contest module missing");
+if(!entryHtml.includes('<script src="src/modes/rack-rush.js?v=2.19.9-beat"></script>'))fail("next Rack Rush module missing");
+if(!entryHtml.includes('<script src="src/modes/contest.js?v=2.19.9-beat"></script>'))fail("next contest module missing");
 if(!entryHtml.includes('<script src="src/modes/practice.js?v=refactor5a"></script>'))fail("next practice module missing");
 if(!entryHtml.includes('<script src="src/ui/panels.js?v=refactor7"></script>'))fail("next panels module missing");
 if(!entryHtml.includes('<script src="src/ui/loading.js?v=2.19.9-nogate"></script>'))fail("next loading module missing");
@@ -221,6 +221,29 @@ if(!/const voiceEntryUrl=/.test(audioSrc))
   fail("audio.js must funnel event names through voiceEntryUrl (see the .mp3.wav trap)");
 if(/AUDIO_EVENTS\)\.flat\(\)\.map\(n=>voiceUrl\(n\+"\.wav"\)\)/.test(audioSrc))
   fail("preloadVoiceClips still appends .wav blindly - .mp3 entries would 404");
+/* 结果留白:结果出来到弹结算面板之间必须留一拍。
+   两条会真的把玩家卡住的性质:
+     · onDone 必须恰好一次(留白只是演出,演出出岔子不能让人停在没面板也没 HUD 的中间态)
+     · 留白期间镜头必须还在场上 —— resultbeat 若落进 game-loop 的菜单机位分支,
+       镜头会在蜂鸣器那一帧甩回环绕,正是"像程序在切状态"的来源 */
+{
+  const rb=read("src/presentation/result-beat.js");
+  if(!/S\.failsafe=setTimeout\(finish/.test(rb))
+    fail("result beat needs a failsafe timer, or a stalled beat traps the player with no panel");
+  if(!/if\(S\.on\)finish\(\);/.test(rb))
+    fail("result beat must close a previous beat before starting a new one (double panel otherwise)");
+  const loop=read("src/core/game-loop.js");
+  if(!/G\.state==="resultbeat"\)&&!G\.glideCam\)updPlayCam/.test(loop))
+    fail("resultbeat must keep the in-play camera, or the shot cuts to the menu orbit on the buzzer");
+  const contest=read("src/modes/contest.js");
+  if(!/G\.state="resultbeat"/.test(contest))
+    fail("contest endRound must go through the result beat");
+  if(/applyCamMode\(\);\$\("hud"\)\.style\.display="none";sBuzz\(\)/.test(contest))
+    fail("contest still hides the HUD on the same frame as the buzzer");
+  const rush=read("src/modes/rack-rush.js");
+  if(!/G\.state=completed\?"rushend":"resultbeat"/.test(rush))
+    fail("rack rush failure path must go through the result beat too");
+}
 /* 新手引导的 coach mark 由一个 350ms 的全局轮询驱动,轮询只读 G 上的字段、
    不知道自己属于哪个场景。少了场景闸就会乱串 —— 实测出现过"首页飘出投篮甜区提示"
    (首屏那一投写脏 G.charging / G.shots,回首页后条件立刻成立)。
@@ -369,10 +392,10 @@ if(entryHtml.indexOf('src/core/foundation.js?v=refactor39')>entryHtml.indexOf('s
 if(entryHtml.indexOf('src/data/game-config.js?v=2.19.9-release')>entryHtml.indexOf('src/core/state.js?v=2.19.2-fp-lastshot'))fail("game config must load before runtime state");
 if(entryHtml.indexOf('src/core/state.js?v=2.19.2-fp-lastshot')>entryHtml.indexOf('src/services/audio-cues.js?v=refactor39'))fail("runtime state must load before audio cues");
 if(entryHtml.indexOf('src/services/audio-cues.js?v=refactor39')>entryHtml.indexOf('src/audio.js?v=2.19.9-clutchvoice'))fail("audio cues must load before audio engine");
-if(entryHtml.indexOf('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>')>entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=refactor5b"></script>'))fail("legacy adapter must load before Rack Rush module");
-if(entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=refactor5b"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Rack Rush module must load before late hooks");
-if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("contest module must load before late hooks");
-if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>')>entryHtml.indexOf('<script src="src/modes/practice.js?v=refactor5a"></script>'))fail("contest module must load before practice module");
+if(entryHtml.indexOf('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>')>entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=2.19.9-beat"></script>'))fail("legacy adapter must load before Rack Rush module");
+if(entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=2.19.9-beat"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Rack Rush module must load before late hooks");
+if(entryHtml.indexOf('<script src="src/modes/contest.js?v=2.19.9-beat"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("contest module must load before late hooks");
+if(entryHtml.indexOf('<script src="src/modes/contest.js?v=2.19.9-beat"></script>')>entryHtml.indexOf('<script src="src/modes/practice.js?v=refactor5a"></script>'))fail("contest module must load before practice module");
 if(entryHtml.indexOf('<script src="src/ui/panels.js?v=refactor7"></script>')>entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.9-nogate"></script>'))fail("panels must load before loading module");
 if(entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.9-nogate"></script>')>entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>'))fail("loading must load before menu module");
 if(entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>')>entryHtml.indexOf('<script src="src/ui/setup.js?v=refactor13"></script>'))fail("menu must load before setup module");
@@ -381,7 +404,7 @@ if(entryHtml.indexOf('<script src="src/ui/pregame.js?v=2.19.8-quote"></script>')
 if(entryHtml.indexOf('<script src="src/ui/pause.js?v=1.98"></script>')>entryHtml.indexOf('<script src="src/core/bootstrap-next.js?v=cutover1"></script>'))fail("pause module must load before bootstrap");
 if(!entryHtml.includes('<script src="src/navigation.js?v=2.19-lastshot5"></script>'))fail("next navigation cache version missing");
 if(entryHtml.indexOf('<script src="src/core/bootstrap-next.js?v=refactor12"></script>')>entryHtml.indexOf('<script src="src/navigation.js?v=2.19-lastshot5"></script>'))fail("boot must begin before navigation rewires the loading gate");
-if(entryHtml.indexOf('<script src="src/modes/contest.js?v=refactor5c"></script>')>entryHtml.indexOf('<script src="src/modes/percent-battle/state.js?v=refactor4c"></script>'))fail("contest module must load before Percent Battle modules");
+if(entryHtml.indexOf('<script src="src/modes/contest.js?v=2.19.9-beat"></script>')>entryHtml.indexOf('<script src="src/modes/percent-battle/state.js?v=refactor4c"></script>'))fail("contest module must load before Percent Battle modules");
 for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"],["results","index"]]){
   if(entryHtml.indexOf(`src/modes/percent-battle/${pair[0]}.js`)>entryHtml.indexOf(`src/modes/percent-battle/${pair[1]}.js`))fail(`Percent Battle ${pair[0]} must load before ${pair[1]}`);
 }
@@ -402,7 +425,7 @@ if((entryHtml.match(/class="ppSweet"/g)||[]).length!==1)fail("player power must 
 if((entryHtml.match(/class="ppFill"/g)||[]).length!==1)fail("player power must expose one continuous fill path");
 for(const token of ["ppMidClip","ppTopClip","ppFillBase","ppFillMid","ppFillTop"])
   if(entryHtml.includes(token)||read("styles.css").includes(token))fail("player power duplicate fill layer remains "+token);
-if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.19.9-notice">'))fail("stylesheet link missing");
+if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.19.9-beat">'))fail("stylesheet link missing");
 const menuScript=read("src/ui/menu.js");
 const nbaDnaScript=read("src/nba-dna/NBADNA.js");
 const homeMenuSource=menuScript.slice(menuScript.indexOf("function showMenu"),menuScript.indexOf("function showModeInfo"));
@@ -851,7 +874,7 @@ catch(e){fail("game flow script syntax error: "+e.message);}
 for(const token of ["rookieMeterProgress","G.diff===\"easy\"","updatePregameWarmupShot","updatePregameChalk","updatePlayerLockCamera"])
   if(!gameFlow.includes(token))fail("game flow token missing "+token);
 
-for(const rel of ["src/core/runtime.js","src/core/error-boundary.js","src/core/foundation.js","src/core/state.js","src/core/player-id-sandbox.js","src/core/leaderboard-sandbox.js","src/core/input.js","src/core/game-loop.js","src/core/scene-init.js","src/core/legacy-adapter.js","src/core/bootstrap-next.js","src/data/game-config.js","src/data/dialogue.js","src/services/audio-cues.js","src/rendering/core.js","src/rendering/materials.js","src/rendering/court.js","src/rendering/arena.js","src/rendering/spectators.js","src/rendering/hoop.js","src/rendering/environments.js","src/rendering/props.js","src/rendering/characters.js","src/rendering/camera.js","src/rendering/motion.js","src/rendering/effects.js","src/gameplay/shots.js","src/gameplay/collisions.js","src/presentation/cinematics.js","src/presentation/pregame.js","src/presentation/battle.js","src/presentation/replay.js","src/presentation/win-cinematic.js","src/modes/rack-rush.js","src/modes/contest.js","src/modes/practice.js","src/modes/percent-battle/state.js","src/modes/percent-battle/spots.js","src/modes/percent-battle/opponent.js","src/modes/percent-battle/results.js","src/modes/percent-battle/index.js","src/ui/panels.js","src/ui/loading.js","src/ui/menu.js","src/ui/setup.js","src/ui/pregame.js","src/ui/pause.js","src/ui/battle-controls.js","src/ui/result-copy.js"]){
+for(const rel of ["src/core/runtime.js","src/core/error-boundary.js","src/core/foundation.js","src/core/state.js","src/core/player-id-sandbox.js","src/core/leaderboard-sandbox.js","src/core/input.js","src/core/game-loop.js","src/core/scene-init.js","src/core/legacy-adapter.js","src/core/bootstrap-next.js","src/data/game-config.js","src/data/dialogue.js","src/services/audio-cues.js","src/rendering/core.js","src/rendering/materials.js","src/rendering/court.js","src/rendering/arena.js","src/rendering/spectators.js","src/rendering/hoop.js","src/rendering/environments.js","src/rendering/props.js","src/rendering/characters.js","src/rendering/camera.js","src/rendering/motion.js","src/rendering/effects.js","src/gameplay/shots.js","src/gameplay/collisions.js","src/presentation/cinematics.js","src/presentation/pregame.js","src/presentation/battle.js","src/presentation/replay.js","src/presentation/win-cinematic.js","src/presentation/result-beat.js","src/modes/rack-rush.js","src/modes/contest.js","src/modes/practice.js","src/modes/percent-battle/state.js","src/modes/percent-battle/spots.js","src/modes/percent-battle/opponent.js","src/modes/percent-battle/results.js","src/modes/percent-battle/index.js","src/ui/panels.js","src/ui/loading.js","src/ui/menu.js","src/ui/setup.js","src/ui/pregame.js","src/ui/pause.js","src/ui/battle-controls.js","src/ui/result-copy.js"]){
   try{new Function(read(rel));}
   catch(e){fail(rel+" syntax error: "+e.message);}
 }
@@ -1157,7 +1180,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.5-eyeline2','src/rendering/motion.js?v=2.19.9-gait','src/gameplay/shots.js?v=2.19.9-flame','src/modes/last-shot/squad.js?v=2.19.9-foulreact','src/modes/last-shot/sequence.js?v=2.19.9-reactionflow'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.3-tstage','src/rendering/camera.js?v=2.19.9-beat','src/rendering/motion.js?v=2.19.9-gait','src/gameplay/shots.js?v=2.19.9-flame','src/modes/last-shot/squad.js?v=2.19.9-foulreact','src/modes/last-shot/sequence.js?v=2.19.9-reactionflow'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1539,7 +1562,7 @@ if(!coreLoop.includes('if(VICTORY_CINE.on&&G.state!=="victorycine")stopVictoryCi
   fail("game loop must cancel a stale victory cinematic before camera dispatch");
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.19.9-flame','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19.9-intro','src/core/game-loop.js?v=2.19.7-i18n-refresh','src/core/scene-init.js?v=2.19.9-ceiling'])
+for(const token of ['src/gameplay/shots.js?v=2.19.9-flame','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19.9-intro','src/core/game-loop.js?v=2.19.9-beat','src/core/scene-init.js?v=2.19.9-ceiling'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);

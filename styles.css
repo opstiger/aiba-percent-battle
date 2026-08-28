@@ -825,3 +825,26 @@ html[data-boot-shot="1"] #pauseBtn,html[data-boot-shot="1"] #courtTools{display:
   letter-spacing:.4px;color:#7d8a99;opacity:.72}
 .aibaCredit a{color:inherit;text-decoration:none;border-bottom:1px solid rgba(125,138,153,.35)}
 .aibaCredit a:hover{color:#cfe0f0}
+
+/* ---- 结果留白 ----
+   结果出来到弹结算面板之间的那一拍。压在球场上方,不遮挡比分与球员反应。 */
+#resultBeat{position:fixed;inset:0;z-index:52;display:grid;place-items:center;
+  pointer-events:none;opacity:0;transition:opacity .28s ease}
+#resultBeat.on{opacity:1}
+/* 背板:数字压在看台和横幅上时,纯描边不够读。一层径向暗角把中心压下去,
+   不挡球员反应(它在画面下半部),只给文字腾出对比度。 */
+#resultBeat::before{content:"";position:absolute;inset:0;pointer-events:none;
+  background:radial-gradient(58% 30% at 50% 44%,rgba(4,6,12,.72) 0%,rgba(4,6,12,.45) 55%,transparent 100%)}
+#resultBeat .rbInner{position:relative;text-align:center;transform:translateY(10px) scale(.96);
+  transition:transform .42s cubic-bezier(.16,.8,.28,1);
+  text-shadow:0 4px 0 rgba(0,0,0,.85),0 0 30px rgba(0,0,0,.7)}
+#resultBeat.on .rbInner{transform:translateY(0) scale(1)}
+#resultBeat small{display:block;font-family:"Orbitron","Courier New",monospace;
+  font-size:12px;letter-spacing:4px;color:#9fb2c6;margin-bottom:6px}
+#resultBeat b{display:block;font-family:"Orbitron","Courier New",monospace;
+  font-size:clamp(56px,17vw,96px);line-height:1;font-weight:800;color:#eaf3ff}
+#resultBeat b i{font-style:normal;font-size:.34em;margin-left:.14em;opacity:.72}
+#resultBeat em{display:block;font-style:normal;margin-top:10px;font-size:13px;
+  letter-spacing:1.5px;color:#cfe0f0;opacity:.9}
+#resultBeat[data-tone="good"] b{color:#7CFC6B;text-shadow:0 4px 0 rgba(0,0,0,.85),0 0 34px rgba(124,252,107,.45)}
+#resultBeat[data-tone="bad"] b{color:#ff8d7a}

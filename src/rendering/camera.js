@@ -7,7 +7,7 @@ function cycleCam(){
   applyCamMode();blip(700,0.05,"square",0.06);
 }
 function applyCamMode(){
-  const inPlay=(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="rushintro"||G.state==="rushbetween"||G.state==="pregame"||G.state==="lastshot"||G.state==="bootshot");
+  const inPlay=(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="rushintro"||G.state==="rushbetween"||G.state==="pregame"||G.state==="lastshot"||G.state==="bootshot"||G.state==="resultbeat");
   hands.visible=CAM.mode===0&&inPlay;
   player.g.visible=CAM.mode!==0&&inPlay;
   passer.g.visible=inPlay;

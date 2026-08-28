@@ -246,7 +246,10 @@
   function finishRackRushRun(completed){
     const rush=G.rush;if(!rush)return;rush.completed=!!completed;
     if(global.AIBARecorder)AIBARecorder.mark(isRackRushSpeed(rush)?"百分竞速冲线":"RACK RUSH 最后一球",{postMs:completed?5600:4200});
-    G.running=false;G.canShoot=false;G.state="rushend";applyCamMode();$("hud").style.display="none";
+    G.running=false;G.canShoot=false;applyCamMode();
+    /* 收 HUD 推迟到留白结束。通关走胜利运镜(下面 startVictoryCine),
+       失败原本是 0 秒直接弹面板 —— 而没通关才是常态,那条路径反而最需要收尾。 */
+    G.state=completed?"rushend":"resultbeat";
     const record=saveRackRushRecord(makeRackRushRecord());
     if(isRackRushSpeed(record)){
       const prev=sortRackRushRuns(loadRackRushRuns("speed100").filter(row=>row.completed&&row.completedAt!==record.completedAt));
@@ -258,11 +261,19 @@
     }else if(completed){airhorn();paSay("RACK RUSH完成,总分"+record.total+"分!",true);}
     else if(!playAudioEvent("rack_fail"))paSay("本次挑战结束,总分"+record.total+"分。",true);
     if(completed){
+      $("hud").style.display="none";
       startConfetti();cheerSound(true);G.cheer=1;
       startVictoryCine({hero:player,foil:passer,nextState:"rushend",tag:isRackRushSpeed(record)?"🏁 百分竞速完成":"🏆 RACK RUSH 完成",dur:4.4,onDone:()=>showRackRushResult(record)});
       return;
     }
-    showRackRushResult(record);
+    /* 失败也要给一拍:蜂鸣器、观众的叹息、球员的懊恼走完再进结算。 */
+    const toPanel=()=>{G.state="rushend";$("hud").style.display="none";showRackRushResult(record);};
+    if(global.AIBAResultBeat)global.AIBAResultBeat.play({
+      eyebrow:isRackRushSpeed(record)?"百分竞速结束":"本次挑战结束",
+      score:isRackRushSpeed(record)?formatRackRushClock(record.elapsedMs/1000):record.total,
+      unit:isRackRushSpeed(record)?"":"分",
+      note:"再来一次",tone:"bad",seconds:3.0,onDone:toPanel});
+    else toPanel();
   }
   function showRackRushLeaderboard(){
     const record=G.rushResultRecord,variant=record?record.variant:(G.rush&&G.rush.variant)||"classic",speed=isRackRushSpeed(variant),control=record?record.control:(VISION.enabled?"vision":"touch");

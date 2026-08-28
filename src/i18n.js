@@ -633,6 +633,10 @@ const DICT={
 "🔄 重看新手引导":"🔄 Replay onboarding",
 "🎥 真实球场互动教学":"🎥 Court tutorial (camera)",
 "帮助与引导":"Help & guides",
+/* ---- 结果留白(src/presentation/result-beat.js) ---- */
+"半决赛结束":"Semifinal over","决赛结束":"Final over",
+"全场为你鼓掌":"The whole arena is on its feet","下一轮再来":"Run it back next round",
+"本次挑战结束":"Run complete","百分竞速结束":"Sprint complete","再来一次":"Run it back",
 "玩法说明":"How to play","重看新手引导":"Replay onboarding","真实球场互动教学":"Interactive court tutorial",
 "按住屏幕蓄力 · 松开出手":"Hold to charge · release to shoot",
 "🎯 力量条停在":"🎯 Stop the power bar in the",

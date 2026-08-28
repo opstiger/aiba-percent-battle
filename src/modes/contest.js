@@ -105,12 +105,26 @@
     el.textContent=n;el.style.display="flex";sBeep();setTimeout(()=>countdown(n-1),750);
   }
   function endRound(){
-    G.running=false;G.state="roundend";
+    G.running=false;
     if(global.AIBARecorder)AIBARecorder.mark(G.stage==="final"?"决赛最后一球":"半决赛最后一球",{postMs:4200});
     leaveArenaAudio();endHero();G.cutQ=[];
     if(G.cutAway){G.cutAway=null;$("vsBanner").style.display="none";}
-    applyCamMode();$("hud").style.display="none";sBuzz();G.cheer=.7;cheerSound(true);
+    applyCamMode();sBuzz();G.cheer=.7;cheerSound(true);
     if(G.stage==="semi")G.semiScore=G.score;else G.finalScore=G.score;
+    /* 留白:先别收 HUD、先别弹面板。原来这三件事和蜂鸣器在同一帧发生,
+       玩家连最终比分都来不及看,更别说看球员和观众的反应。
+       resultbeat 这个状态让镜头继续留在场上(见 game-loop 的相机分支)。 */
+    G.state="resultbeat";
+    const strong=G.score>=20;
+    const toPanel=()=>{G.state="roundend";$("hud").style.display="none";showRoundPanel();};
+    if(global.AIBAResultBeat)global.AIBAResultBeat.play({
+      eyebrow:(G.stage==="final"?"决赛":"半决赛")+"结束",
+      score:G.score,unit:"分",
+      note:strong?"全场为你鼓掌":"下一轮再来",
+      tone:strong?"good":"flat",seconds:3.4,onDone:toPanel});
+    else toPanel();
+  }
+  function showRoundPanel(){
     const made=G.shots.filter(shot=>shot.made).length,highlights=pickHighlights();
     showPanel(`<h1 class="title" style="font-size:22px">⏱ ${G.stage==="final"?"决赛":"半决赛"}结束</h1>
       <div style="font-size:54px;color:#7CFC6B;text-shadow:4px 4px 0 #000;font-weight:bold;margin:8px 0">${G.score} 分</div>

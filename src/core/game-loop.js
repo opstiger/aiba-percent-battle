@@ -94,7 +94,9 @@ function animate(){
   }
   // 绝杀时刻:观看阶段由模式接管转头镜头,球一到手就交还 updPlayCam,出手镜头与其他模式一致
   else if(G.state==="lastshot"){if(!(typeof updateLastShotCam==="function"&&updateLastShotCam(dt)))updPlayCam(dt);}
-  else if((G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="bootshot")&&!G.glideCam)updPlayCam(dt);
+  /* resultbeat = 结果留白。必须继续用比赛机位:它如果落进上面那条菜单分支,
+     镜头会在蜂鸣器响的同一帧甩回环绕机位 —— 那正是"像程序在切状态"的来源。 */
+  else if((G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="bootshot"||G.state==="resultbeat")&&!G.glideCam)updPlayCam(dt);
   updateRenderQuality(dt);
   camera.position.copy(rig.pos);
   camera.lookAt(rig.look);
