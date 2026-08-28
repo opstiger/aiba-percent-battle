@@ -31,6 +31,8 @@ function animate(){
   updTweens(dt);
   const frozen=!!G.cutAway||!!G.battleCut;
   if(!frozen){updBalls(dt);updPose(dt);updPass(dt);updWalk(dt);}
+  /* 角色接地影跟位置走,姿势算完再同步。冻结时也要跑一次,否则暂停/回放里影子会留在原地。 */
+  if(typeof updGroundShadows==="function")updGroundShadows();
   if(G.state==="aishow")updShow(dt);
   if(G.state==="battle"&&!G.battleCut)updBattle(dt);
   if(G.state==="rackrush")updateRackRush(dt);

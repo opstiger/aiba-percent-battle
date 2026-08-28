@@ -5,6 +5,54 @@ const VOXEL_HEAD_PIVOT_Y=1.45;
 const VOXEL_SHOULDER_X=.285;
 const VOXEL_HIP_X=.125;
 const CHARACTER_TEXTURE_CACHE=new Map();
+/* ---------------- 角色接地影 ----------------
+   球有 blob 假影,角色一个都没有 —— 人就像贴在地板上,这才是"没有落地感"的直接来源。
+
+   为什么不用真实阴影贴图:试过。这个场景是刻意平光的(ambient .32 + hemi .34 +
+   spot 1.0 压过 sun .8),开了 shadowMap 之后开关两张图的平均像素差只有 1.21/255,
+   等于看不见,却要多付一整个阴影 pass。要让它读出来得把整套灯光配比重做,
+   那会毁掉方块美术现在的干净观感。软影贴图在这种画风下反而更对路,也几乎不要钱。
+
+   影子挂在**场景层**而不是角色下面:角色的 g.position.y 会随呼吸/起伏/起跳变化,
+   做成子节点的话影子会跟着飘起来。 */
+const GROUND_SHADOWS=[];
+let groundShadowGeo=null,groundShadowMat=null;
+function groundShadowAssets(){
+  if(groundShadowMat)return;
+  const c=document.createElement("canvas");c.width=c.height=64;
+  const g2=c.getContext("2d");
+  const grd=g2.createRadialGradient(32,32,2,32,32,31);
+  grd.addColorStop(0,"rgba(0,0,0,0.62)");
+  grd.addColorStop(0.55,"rgba(0,0,0,0.28)");
+  grd.addColorStop(1,"rgba(0,0,0,0)");
+  g2.fillStyle=grd;g2.fillRect(0,0,64,64);
+  const tex=new THREE.CanvasTexture(c);
+  groundShadowGeo=new THREE.PlaneGeometry(1,1);
+  groundShadowMat=new THREE.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false});
+}
+function attachGroundShadow(o){
+  groundShadowAssets();
+  const m=new THREE.Mesh(groundShadowGeo,groundShadowMat);
+  m.rotation.x=-Math.PI/2;m.position.y=0.014;m.renderOrder=-1;
+  scene.add(m);
+  o.groundShadow=m;GROUND_SHADOWS.push(o);
+  return m;
+}
+/* 逐帧同步。离地越高影子摊得越大 —— 起跳时这是"高度"唯一的视觉线索。
+   材质是所有角色共用的一份,所以淡化只能靠缩放(摊大 = 单位面积更淡),
+   不能逐个改 opacity。 */
+function updGroundShadows(){
+  for(let i=0;i<GROUND_SHADOWS.length;i++){
+    const o=GROUND_SHADOWS[i],m=o.groundShadow;
+    if(!m)continue;
+    if(!o.g||!o.g.visible){m.visible=false;continue;}
+    m.visible=true;
+    const k=1+Math.max(0,o.g.position.y)*0.85;
+    m.position.set(o.g.position.x,0.014,o.g.position.z);
+    m.scale.set(1.16*k,1.16*k,1);
+  }
+}
+
 function voxelGuy(){
   const g=new THREE.Group();
   const mS=new THREE.MeshLambertMaterial({color:0xf4c89c});  // 皮肤
@@ -182,6 +230,7 @@ function voxelGuy(){
     hipBlends,kneeBlends,ankleBlends,elbowBlends,wristBlends,neckBlend,headband,
     hair:hairGrp,hairGrp,hairMat,beardGrp,beardMat,mJ,mP,mS,bodyF,bodyB,mFace,hairStyle:"short"};
   setHair(o,"short");
+  attachGroundShadow(o);
   return o;
 }
 /* 发型:清空 hairGrp 重建,所有发块共享 hairMat */
@@ -429,6 +478,6 @@ function benchVis(){
 
 window.AIBA.runtime.register("rendering:characters",Object.freeze({
   voxelGuy,setHair,setBeard,faceTex,jerseyTex,dressGuy,applyStarStyle,randomizeOutfit,bakeActorSegments,
-  buildCharacters,rivalFor,benchSetup,benchVis,
+  buildCharacters,rivalFor,benchSetup,benchVis,updGroundShadows,
   getActors:()=>({player,playerBall:pBall,passer,passerBall,oppPasser,oppPasserBall,rivals})
 }));
