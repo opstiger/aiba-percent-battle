@@ -75,7 +75,7 @@
     const next=battleNearestAvailable(G.battleSpot);
     if(next<0){toast("所有点位恢复中,稍等一下","#9fd1ff");setTimeout(()=>{if(G.state==="battle"&&!G.battleOver)readyBall();},420);return true;}
     G.battleSpot=next;G.canShoot=false;handBall.visible=false;pBall.visible=false;
-    battle.updBattleUI();updDotsUI();walkTo(curShot(),()=>readyBall());return true;
+    battle.updBattleUI();updDotsUI();walkTo(curShot(),readyBall,{overlapPass:true});return true;
   }
   function updBattleUI(){
     const on=G.mode==="battle"&&(G.state==="battle"||G.state==="cinematic");
@@ -102,7 +102,7 @@
     const spot=BATTLE_SPOTS[next];
     if(spot.super&&CAM.mode===0){G._preSuperCam=0;CAM.mode=1;global.AIBASetIcon("camBtn","camera",CAM.names[1]);applyCamMode();}
     else if(!spot.super&&G._preSuperCam===0){G._preSuperCam=null;CAM.mode=0;global.AIBASetIcon("camBtn","camera",CAM.names[0]);applyCamMode();}
-    updBattleUI();updDotsUI();walkTo(curShot(),()=>readyBall());
+    updBattleUI();updDotsUI();walkTo(curShot(),readyBall,{overlapPass:true});
   }
 
   Object.assign(battle,{battleRefreshSpot,battleRefreshAll,battleSpotStatus,battleSpotAvailable,battleUseSpot,battleConsumeSuperChance,battleAddSuperChance,battleCheckSuperMilestones,battleNearestAvailable,battleAutoMoveIfNeeded,updBattleUI,battleSetSpot});

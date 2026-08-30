@@ -33,6 +33,17 @@ function poseFootBottomY(hip,knee,ankle){
 const POSE_STAND_FOOT_Y=poseFootBottomY(0,0,0);
 const HAND_FINGER_REST=-.08;
 const HAND_FINGER_FOLLOW=[.14,.38,Math.PI/6,.16];
+/* handRoot 的 local -Z 是掌心。日常跑动时绕 local Y 转向身体中线，
+   所以两只掌心相对、手指仍然自然朝下；投篮/接球关键帧随后会明确覆盖这组默认姿势。 */
+const RUN_PALM_YAW=[-Math.PI*.5,Math.PI*.5];
+/* 非接球站定：上臂自然下垂，小臂只从肘部松弛地弯约 5°。
+   跑动和迎球会在各自状态里覆盖这组基线。 */
+const IDLE_ARM_X=-.03,IDLE_ELBOW_BEND=-Math.PI/36;
+function poseRunPalms(o){
+  (o&&o.handRoots||[]).forEach((hand,index)=>{
+    if(hand)hand.rotation.y=RUN_PALM_YAW[index];
+  });
+}
 /* v2.19.5 手部动作链：整段投篮只有两个关键帧、一个相位、一种坐标空间。
    SHOT_READY_POSE = 接球到手后的胸前持球(逐项就是 T台导入前的旧版持球姿势)，
    SHOT_SET_POSE   = T台导入的满蓄力最高点(常量原封不动)。
@@ -214,17 +225,148 @@ function resetArmGeometry(o){
 function poseHandJoints(o,c){
   if(!o||!o.handRoots)return;
   resetArmGeometry(o);
+  poseRunPalms(o);
   const lift=c&&c.lift||0;
   o.handRoots.forEach((hand,index)=>{
     if(!hand)return;
     if(hand.position)hand.position.set(HAND_ROOT_BASE.x,HAND_ROOT_BASE.y,HAND_ROOT_BASE.z);
     hand.rotation.x=(index===0?.08:0)*lift;
-    hand.rotation.y=0;
     hand.rotation.z=(index===0?-.025:0)*lift;
   });
   (o.fingerJoints||[]).forEach(fingers=>fingers.forEach(finger=>{
     finger.rotation.x=HAND_FINGER_REST;finger.rotation.y=0;finger.rotation.z=0;
   }));
+}
+/* ---------------- T台 animation clips ----------------
+   T台负责可编辑的上肢极限姿势，游戏负责位移、脚底、球和状态切换。
+   导入器已经把 actor-space 的肩/肘/腕点转换成 game parent-local 四元数；
+   这里每帧只做轻量的两关键帧插值，不在 render loop 里重新解 IK。 */
+let tstageMotionPackRef=null,tstageMotionClips=null;
+let _tstageQuatA=null,_tstageQuatB=null;
+function ensureTstageMotionTemps(){
+  if(_tstageQuatA||typeof THREE==="undefined")return;
+  _tstageQuatA=new THREE.Quaternion();
+  _tstageQuatB=new THREE.Quaternion();
+}
+function tstageMotionClip(name){
+  const pack=typeof globalThis!=="undefined"?globalThis.AIBA_TSTAGE_MOTION_PACK:null;
+  if(!pack||pack.schema!=="aiba-motion-pack/1"||!pack.clips)return null;
+  if(pack!==tstageMotionPackRef){tstageMotionPackRef=pack;tstageMotionClips=pack.clips||{};}
+  return tstageMotionClips&&tstageMotionClips[name]||null;
+}
+function tstageFramePair(clip,normalized){
+  const frames=clip&&Array.isArray(clip.keyframes)?clip.keyframes:null;
+  if(!frames||frames.length<2)return null;
+  const u=clamp(normalized,0,1);
+  const first=frames[0],last=frames[frames.length-1];
+  if(u<=first.t)return {a:first,b:first,k:0};
+  if(u>=last.t){
+    if(!clip.loop)return {a:last,b:last,k:0};
+    const span=Math.max(.0001,1-last.t);
+    return {a:last,b:first,k:ease01((u-last.t)/span)};
+  }
+  for(let i=0;i<frames.length-1;i++){
+    const a=frames[i],b=frames[i+1];
+    if(u>=a.t&&u<=b.t)return {a,b,k:ease01((u-a.t)/Math.max(.0001,b.t-a.t))};
+  }
+  return {a:first,b:first,k:0};
+}
+function tstageRunPhaseNormalized(phase){
+  return ((phase/(Math.PI*2)+.75)%1+1)%1;
+}
+function tstageRunBodyBob(state,hs){
+  const config=tstageMotionClip("run")&&tstageMotionClip("run").bodyBob;
+  const amplitude=Number(config&&config.amplitude);
+  if(!config||!Number.isFinite(amplitude)||amplitude<=0)return 0;
+  const frequency=clamp(Number.isFinite(config.frequency)?Number(config.frequency):2,.5,4);
+  const phase=Number.isFinite(config.phase)?Number(config.phase):0;
+  const normalized=tstageRunPhaseNormalized((state&&state.phase)||0);
+  /* T台 run 的 bodyBob 是每个左右换步一次压缩/提起，
+     与同一条 run 时间轴上的手臂关键帧保持同相。 */
+  return -Math.cos((normalized+phase)*Math.PI*2*frequency)*amplitude*(hs||1);
+}
+function tstageBlendQuat(node,a,b,k,weight){
+  if(!node||!a||!b||!Array.isArray(a)||!Array.isArray(b)||a.length!==4||b.length!==4)return false;
+  ensureTstageMotionTemps();
+  if(!_tstageQuatA||!_tstageQuatB)return false;
+  _tstageQuatA.set(a[0],a[1],a[2],a[3]).normalize();
+  _tstageQuatB.set(b[0],b[1],b[2],b[3]).normalize();
+  _tstageQuatA.slerp(_tstageQuatB,clamp(k,0,1)).normalize();
+  if(weight==null)node.quaternion.copy(_tstageQuatA);
+  else node.quaternion.slerp(_tstageQuatA,clamp(weight,0,1)).normalize();
+  return true;
+}
+function tstageLimbValue(a,b,key,k,fallback){
+  const av=Number.isFinite(a&&a[key])?a[key]:fallback;
+  const bv=Number.isFinite(b&&b[key])?b[key]:av;
+  return mixN(av,bv,k);
+}
+function applyTstageRunPose(o,state){
+  const clip=tstageMotionClip("run");
+  if(!clip||!o||!o.arms||!o.elbows||!o.handRoots)return false;
+  /* T台的 run_left_front 是 phase=pi/2 时的同侧脚后摆帧，
+     run_right_front 是 phase=3pi/2 时的对侧脚后摆帧；用相位直接映射，
+     不再用 cos 产生四分之一周期错位。这样同侧脚向后时同侧手向前。 */
+  const phase=state.phase||0;
+  const u=tstageRunPhaseNormalized(phase);
+  const pair=tstageFramePair(clip,u);
+  if(!pair||!pair.a.shooting||!pair.a.guide)return false;
+  [pair.a.shooting,pair.a.guide].forEach((from,index)=>{
+    const to=pair.b[index===0?"shooting":"guide"]||from;
+    const upper=tstageLimbValue(from,to,"upperLength",pair.k,.32);
+    const lower=tstageLimbValue(from,to,"lowerLength",pair.k,.29);
+    setArmSegmentLength(o,index,upper,lower);
+    tstageBlendQuat(o.arms[index],from.armQuat,to.armQuat,pair.k);
+    tstageBlendQuat(o.elbows[index],from.elbowQuat,to.elbowQuat,pair.k);
+    tstageBlendQuat(o.handRoots[index],from.handQuat,to.handQuat,pair.k);
+    const curl=tstageLimbValue(from,to,"curl",pair.k,HAND_FINGER_REST);
+    const splay=Array.isArray(from.fingerSplays)?from.fingerSplays:null;
+    (o.fingerJoints&&o.fingerJoints[index]||[]).forEach((finger,fingerIndex)=>{
+      finger.rotation.x=curl;
+      finger.rotation.y=0;
+      finger.rotation.z=splay&&Number.isFinite(splay[fingerIndex])?splay[fingerIndex]:0;
+    });
+  });
+  if(o.g){
+    o.g.userData.tstageAnimation="run";
+    o.g.userData.tstageRunSource=pair.k<.5?pair.a.sourcePose:pair.b.sourcePose;
+    o.g.userData.tstageRunPhase=u;
+  }
+  return true;
+}
+function applyTstageCatchPose(o,normalized,weight){
+  const clip=tstageMotionClip("catching");
+  if(!clip||!o||!o.arms||!o.elbows||!o.handRoots)return false;
+  const pair=tstageFramePair(clip,normalized);
+  if(!pair||!pair.a.shooting||!pair.a.guide)return false;
+  [pair.a.shooting,pair.a.guide].forEach((from,index)=>{
+    const to=pair.b[index===0?"shooting":"guide"]||from;
+    const targetUpper=tstageLimbValue(from,to,"upperLength",pair.k,.32);
+    const targetLower=tstageLimbValue(from,to,"lowerLength",pair.k,.29);
+    const currentUpper=Math.max(.08,-(o.elbows[index]&&o.elbows[index].position.y||.32));
+    const currentLower=Math.max(.08,-(o.handRoots[index]&&o.handRoots[index].position.y||.29));
+    setArmSegmentLength(o,index,mixN(currentUpper,targetUpper,weight),mixN(currentLower,targetLower,weight));
+    tstageBlendQuat(o.arms[index],from.armQuat,to.armQuat,pair.k,weight);
+    tstageBlendQuat(o.elbows[index],from.elbowQuat,to.elbowQuat,pair.k,weight);
+    tstageBlendQuat(o.handRoots[index],from.handQuat,to.handQuat,pair.k,weight);
+    const curl=tstageLimbValue(from,to,"curl",pair.k,HAND_FINGER_REST);
+    const splay=Array.isArray(from.fingerSplays)?from.fingerSplays:null;
+    (o.fingerJoints&&o.fingerJoints[index]||[]).forEach((finger,fingerIndex)=>{
+      finger.rotation.x=mixN(finger.rotation.x,curl,weight);
+      finger.rotation.y=0;
+      if(splay&&Number.isFinite(splay[fingerIndex]))finger.rotation.z=mixN(finger.rotation.z,splay[fingerIndex],weight);
+    });
+  });
+  if(o.g){
+    o.g.userData.tstageAnimation="catching";
+    o.g.userData.catchPoseSource=pair.k<.5?pair.a.sourcePose:pair.b.sourcePose;
+  }
+  return true;
+}
+function tstageCatchEndpoint(){
+  const clip=tstageMotionClip("catching");
+  const pair=tstageFramePair(clip,1);
+  return pair&&pair.a&&pair.a.shooting&&pair.a.guide?pair.a:null;
 }
 function poseShootingHandToBall(o,c){
   // 兼容旧调用名；最终双手 transform 只由 applyShotSetPose() 写入。
@@ -401,6 +543,9 @@ function runFootSpan(swing,run){
    state 由调用方持有，需要 phase / idleT / lean / face 四个字段。 */
 function poseRunCycle(o,state,speed,dt,opts){
   if(!o||!o.legs||!state)return 0;
+  /* NPC/绝杀队员也会直接调用这个共享跑动循环，不能只依赖主角后续的 poseHandJoints；
+     否则主角掌心相对、其他跑动角色却仍然掌心朝地。投篮/接球关键帧在后续阶段覆盖它。 */
+  poseRunPalms(o);
   const cfg=opts||{},hs=cfg.hs||1;
   const run=clamp(speed/3.6,0,1);
   /* ---- 步幅 ----
@@ -444,16 +589,22 @@ function poseRunCycle(o,state,speed,dt,opts){
       o.arms[0].rotation.x=-.5-idle;o.arms[1].rotation.x=-.5+idle;
       o.elbows[0].rotation.x=-.35;o.elbows[1].rotation.x=-.35;
     }else{
-      o.arms[0].rotation.z=0;o.arms[1].rotation.z=0;
+      /* 小跑摆臂：同侧脚向前时，同侧大臂向后、对侧大臂向前。
+         肘部只保持一个接近 80° 的弯折，不再反解成固定世界前臂角；
+         这样小臂会跟着大臂一起前后摆，不会整段锁成“接球手”。 */
+      const armSwing=.14+run*.20,armBase=-.20;
+      const armA=armBase-s*armSwing,armB=armBase+s*armSwing;
+      o.arms[0].rotation.set(armA,0,0);o.arms[1].rotation.set(armB,0,0);
       /* 必须和**同侧的腿**反相:legs[0] 和 arms[0] 都建在 x 负侧(见 characters.js
          的 [-HIP_X,HIP_X] / [-SHOULDER_X,SHOULDER_X] 两个循环),而真实步态是
          右臂前摆配左腿前迈。原来这里用 cos、腿用 sin,整整差了 90° ——
          单看手或单看腿都对,合起来就是说不出哪里别扭。 */
-      o.arms[0].rotation.x=-.25-s*swing*.75;
-      o.arms[1].rotation.x=-.25+s*swing*.75;
-      o.elbows[0].rotation.x=-.55-run*.35;o.elbows[1].rotation.x=-.55-run*.35;
+      const elbowBend=-1.28-run*.12;
+      o.elbows[0].rotation.set(elbowBend,0,0);
+      o.elbows[1].rotation.set(elbowBend,0,0);
     }
   }
+  if(cfg.arms!==false&&!cfg.defensive)applyTstageRunPose(o,state);
   state.lean=(state.lean||0)+(run*.16-(state.lean||0))*Math.min(1,dt*6);
   o.g.rotation.x=state.lean;
   /* 左右摆:重心在两条支撑腿之间来回,频率等于步频。少了它,人像装在轨道上平移。
@@ -462,7 +613,9 @@ function poseRunCycle(o,state,speed,dt,opts){
   if(cfg.sway)o.g.rotation.z=s*(.012+run*.026);
   if(cfg.resetHead!==false&&o.headRoot)o.headRoot.rotation.set(0,0,0);
   const footY=(poseFootBottomY(hipA,kneeA,ankA)+poseFootBottomY(hipB,kneeB,ankB))*.5;
-  o.g.position.y=POSE_STAND_FOOT_Y-footY*hs;
+  const bodyBob=tstageRunBodyBob(state,hs);
+  o.g.position.y=POSE_STAND_FOOT_Y-footY*hs+bodyBob;
+  o.g.userData.tstageRunBodyBob=bodyBob;
   return footY;
 }
 /* ⚠ 这个骨架里 g.rotation.x 的正号是【后仰】，不是前倾。
@@ -478,14 +631,17 @@ function poseRunCycle(o,state,speed,dt,opts){
 const DIP_LEAN=0.175;
 /* 待机呼吸的频率与幅度。1cm 量级 —— 方块画风下再大就成了喘气。 */
 const BREATH_RATE=1.25,BREATH_AMP=0.010;
+/* 投篮后的 ready bounce：不改 P.pos，只让脚下有一点持续的踝/膝弹性。
+   只在真实比赛站定时启用，蓄力、起跳、走位和过场仍由各自姿势完全接管。 */
+const READY_BOUNCE_RATE=4.8,READY_BOUNCE_AMP=.012,READY_KNEE_FLEX=.060,READY_ANKLE_FLEX=.075,READY_TOE_LIFT=.022;
+const READY_PLAY_STATES=Object.freeze({round:1,tiebreak:1,battle:1,rackrush:1,lastshot:1});
 function poseGuy(o,c,lk){
   poseHandJoints(o,c);
   const sh=o.arms[0],gd=o.arms[1]; // arms[0]=x-0.33=角色右手(面朝篮筐时屏幕右侧) 投篮 / arms[1]=左手 护球
-  sh.rotation.x=-0.35-0.25*c.dip-1.55*c.lift-0.9*c.jmp;
-  o.elbows[1].rotation.x=-(0.45+1.2*c.lift)*(1-c.jmp*0.92)-0.4*c.over;
-  gd.rotation.x=-0.35-0.2*c.dip-1.1*c.lift-0.5*c.jmp+0.55*c.over;
-  o.elbows[0].rotation.x=-(0.4+0.85*c.lift)*(1-c.jmp*0.6);
-  sh.rotation.z=-0.12*c.lift;gd.rotation.z=0.18*c.lift;
+  sh.rotation.set(IDLE_ARM_X-0.25*c.dip-1.55*c.lift-0.9*c.jmp,0,-0.12*c.lift);
+  o.elbows[1].rotation.set(IDLE_ELBOW_BEND-1.2*c.lift*(1-c.jmp*0.92)-0.4*c.over,0,0);
+  gd.rotation.set(IDLE_ARM_X-0.2*c.dip-1.1*c.lift-0.5*c.jmp+0.55*c.over,0,0.18*c.lift);
+  o.elbows[0].rotation.set(IDLE_ELBOW_BEND-0.85*c.lift*(1-c.jmp*0.6),0,0);
   // 所有普通姿势完成后，唯一一次写入控制台给出的松手前双手姿势。
   applyShotSetPose(o,c);
   // Real-shot leg chain: knees load forward, calves fold back into a V, soles stay planted until takeoff.
@@ -505,23 +661,45 @@ function poseGuy(o,c,lk){
   o.ankles[1].rotation.x=ankleTrail;
   o.shoes[0].rotation.x=0;
   o.shoes[1].rotation.x=0;
+  const busy=clamp(load+c.lift+c.jmp+(c.over||0)+land,0,1);
+  const isReadyPlayer=typeof player!=="undefined"&&o===player&&typeof G!=="undefined"&&
+    READY_PLAY_STATES[G.state]&&!G.charging&&!G.moving&&!G.buzzed&&busy<.12;
+  const readyClock=isReadyPlayer&&Number.isFinite(G.tNow)?G.tNow:0;
+  const readyWave=isReadyPlayer?Math.sin(readyClock*READY_BOUNCE_RATE):0;
+  const readyPulse=readyWave>0?readyWave*readyWave:0;
+  if(isReadyPlayer){
+    o.g.rotation.z=readyPulse?(0.5+0.16*Math.sin(readyClock*READY_BOUNCE_RATE+Math.PI*.5)-.5)*.018:0;
+  }
+  if(readyPulse){
+    /* 一只脚稍多承重，另一只脚随 beat 轻轻卸力；幅度很小，观感是踝关节有弹性，
+       不是原地踏步，也不产生水平位移。 */
+    const weight=0.5+0.16*Math.sin(readyClock*READY_BOUNCE_RATE+Math.PI*.5);
+    const lead=weight*2,trail=(1-weight)*2;
+    o.knees[0].rotation.x+=readyPulse*READY_KNEE_FLEX*lead;
+    o.knees[1].rotation.x+=readyPulse*READY_KNEE_FLEX*trail;
+    o.ankles[0].rotation.x+=readyPulse*READY_ANKLE_FLEX*lead;
+    o.ankles[1].rotation.x+=readyPulse*READY_ANKLE_FLEX*trail;
+    o.shoes[0].rotation.x=readyPulse*READY_TOE_LIFT*lead;
+    o.shoes[1].rotation.x=readyPulse*READY_TOE_LIFT*trail;
+    o.g.rotation.z=(weight-.5)*.018;
+  }
   // 上身前倾:蓄力约10°(0.17rad),起跳回正并略后仰送球
   /* 接球前倾，随 lift 让位给蓄力/最高点的躯干角。
      -0.12*load：蓄力也翻成前倾（原来是 +，实际是后仰，和注释相反）。
      over/jmp/land 三项维持原样 —— 最高点的 -0.03*jmp 是 T台导入姿势的一部分，
      被 check.js 的球心断言锁着，不能动。 */
   o.g.rotation.x=-DIP_LEAN*load - 0.06*c.over - 0.03*c.jmp + 0.08*land;
-  const footY=(poseFootBottomY(hipLead,kneeLead,ankleLead)+poseFootBottomY(hipTrail,kneeTrail,ankleTrail))*0.5;
+  const footY=(poseFootBottomY(o.legs[0].rotation.x,o.knees[0].rotation.x,o.ankles[0].rotation.x)+
+    poseFootBottomY(o.legs[1].rotation.x,o.knees[1].rotation.x,o.ankles[1].rotation.x))*.5;
   /* 待机呼吸:站定时人不该是一尊雕像。用 G.tNow 驱动,不需要额外状态。
      **只在完全没有投篮动作时生效**:蓄力/举球/起跳/跟随/落地任何一项一介入就退到 0。
      这条不是保守,是必须的 —— check.js 有几条断言把出手各阶段的球心位置锁到毫米级,
      呼吸一旦渗进那些帧,断言会直接红。 */
-  const busy=clamp(load+c.lift+c.jmp+(c.over||0)+land,0,1);
   const breath=(1-busy)&&Math.sin((typeof G!=="undefined"&&G.tNow?G.tNow:0)*BREATH_RATE)*BREATH_AMP*(1-busy);
   if(breath){
     sh.rotation.x-=breath*1.5;gd.rotation.x-=breath*1.5;   // 肩胸随呼吸起伏
   }
-  return POSE_STAND_FOOT_Y-footY+breath;
+  return POSE_STAND_FOOT_Y-footY+readyPulse*READY_BOUNCE_AMP+breath;
 }
 function shotStanceBlend(c,ready){
   return clamp(Math.max(ready?0.72:0,c.dip*.55+c.lift*.85+c.jmp*.35),0,1);
@@ -541,6 +719,7 @@ function poseCatchHands(o,state,dt){
   const shoot=o.arms[0],guide=o.arms[1],shootEl=o.elbows[0],guideEl=o.elbows[1];
   const shootHand=o.handRoots[0],guideHand=o.handRoots[1];
   const settling=!!(state&&state.settling);
+  const tstageCatch=tstageCatchEndpoint();
   // 一次接球只抽一次变体：progress 归零那一帧重抽
   if(!settling&&state&&(state.progress||0)<.02&&!state._variantPicked){
     state._variantPicked=true;pickCatchVariant();
@@ -555,11 +734,15 @@ function poseCatchHands(o,state,dt){
       _shotPoseBaseQuat.copy(node.quaternion);
       node.quaternion.copy(targetQuat(values)).slerp(_shotPoseBaseQuat,t).normalize();
     };
+    if(tstageCatch){
+      setArmSegmentLength(o,0,mixN(tstageCatch.shooting.upperLength,.32,t),mixN(tstageCatch.shooting.lowerLength,.29,t));
+      setArmSegmentLength(o,1,mixN(tstageCatch.guide.upperLength,.32,t),mixN(tstageCatch.guide.lowerLength,.29,t));
+    }
     // 当前 node transform 是 applyShotSetPose 写好的持球帧；从迎球帧向它收敛。
-    fromCatch(shoot,SHOT_CATCH_POSE.shooting.armQuat);
-    fromCatch(shootEl,SHOT_CATCH_POSE.shooting.elbowQuat);
-    fromCatch(guide,SHOT_CATCH_POSE.guide.armQuat);
-    fromCatch(guideEl,SHOT_CATCH_POSE.guide.elbowQuat);
+    fromCatch(shoot,(tstageCatch&&tstageCatch.shooting||SHOT_CATCH_POSE.shooting).armQuat);
+    fromCatch(shootEl,(tstageCatch&&tstageCatch.shooting||SHOT_CATCH_POSE.shooting).elbowQuat);
+    fromCatch(guide,(tstageCatch&&tstageCatch.guide||SHOT_CATCH_POSE.guide).armQuat);
+    fromCatch(guideEl,(tstageCatch&&tstageCatch.guide||SHOT_CATCH_POSE.guide).elbowQuat);
     [shootHand,guideHand].forEach(hand=>{
       if(!hand||!_catchTargetPos||!_catchStartPos)return;
       _catchTargetPos.copy(hand.position);
@@ -567,8 +750,8 @@ function poseCatchHands(o,state,dt){
       hand.position.copy(_catchStartPos).lerp(_catchTargetPos,t);
     });
     // 腕部一并从迎球掌面收回到持球握法(球已在手上，这一步就是"接住后调整握球")。
-    fromCatch(shootHand,SHOT_CATCH_POSE.shooting.handQuat);
-    fromCatch(guideHand,SHOT_CATCH_POSE.guide.handQuat);
+    fromCatch(shootHand,(tstageCatch&&tstageCatch.shooting||SHOT_CATCH_POSE.shooting).handQuat);
+    fromCatch(guideHand,(tstageCatch&&tstageCatch.guide||SHOT_CATCH_POSE.guide).handQuat);
     (o.fingerJoints||[]).forEach((fingers,handIndex)=>fingers.forEach(finger=>{
       const targetX=finger.rotation.x;
       finger.rotation.x=mixN(handIndex===0?HAND_FINGER_REST-.16:HAND_FINGER_REST-.10,targetX,t);
@@ -579,11 +762,17 @@ function poseCatchHands(o,state,dt){
   }
 
   // 传球飞行段：从 poseGuy 给出的站姿逐步伸手迎球，终点就是迎球帧。
-  const k=ease01(clamp(state&&state.progress||0,0,1));
-  blendNodeQuat(shoot,SHOT_CATCH_POSE.shooting.armQuat,k);
-  blendNodeQuat(shootEl,SHOT_CATCH_POSE.shooting.elbowQuat,k);
-  blendNodeQuat(guide,SHOT_CATCH_POSE.guide.armQuat,k);
-  blendNodeQuat(guideEl,SHOT_CATCH_POSE.guide.elbowQuat,k);
+  const progress=clamp(state&&state.progress||0,0,1);
+  const k=ease01(progress);
+  /* T台片段内部负责姿势曲线，外层只负责从当前跑姿接入一次；
+     传 raw progress，避免把缓动曲线套两层导致伸手太晚。 */
+  const tstageCatchApplied=applyTstageCatchPose(o,progress,k);
+  if(!tstageCatchApplied){
+    blendNodeQuat(shoot,SHOT_CATCH_POSE.shooting.armQuat,k);
+    blendNodeQuat(shootEl,SHOT_CATCH_POSE.shooting.elbowQuat,k);
+    blendNodeQuat(guide,SHOT_CATCH_POSE.guide.armQuat,k);
+    blendNodeQuat(guideEl,SHOT_CATCH_POSE.guide.elbowQuat,k);
+  }
   /* 个体变化：本次接球抽到的变体让"非主手"那侧略低/略高，或两只手都再抬一点，
      这样每次接球的手型不会一模一样。偏移在 parent 空间叠加，不破坏掌心朝向。 */
   const cv=catchVariant||CATCH_VARIANTS[0],offArm=cv.off.arm*k,offEl=cv.off.elbow*k;
@@ -596,16 +785,19 @@ function poseCatchHands(o,state,dt){
   /* 迎球手型只写 parent-local：掌心随肩肘一起伸出去朝向来球，不做世界朝向锁定。
      绝对不能在这里把腕部重置成 identity —— 传球常常在出手跟随没走完时就开始，
      重置会一帧抹掉压腕姿势(实测 105°/帧)。和肩肘一样，从本帧已有姿势 slerp 过去。 */
-  [shootHand,guideHand].forEach((hand,index)=>{
-    if(!hand||!_readyHandPos)return;
-    _readyHandPos.set(HAND_ROOT_BASE.x,HAND_ROOT_BASE.y,HAND_ROOT_BASE.z);
-    hand.position.lerp(_readyHandPos,k);
-    blendNodeQuat(hand,(index===0?SHOT_CATCH_POSE.shooting:SHOT_CATCH_POSE.guide).handQuat,k);
-  });
-  (o.fingerJoints||[]).forEach((fingers,handIndex)=>fingers.forEach((finger,index)=>{
-    finger.rotation.x=handIndex===0?HAND_FINGER_REST-(.16*k):HAND_FINGER_REST-(.10*k);
-    finger.rotation.z=(handIndex===0?SHOOT_FINGER_SPLAY[index]:GUIDE_FINGER_SPLAY[index])*k;
-  }));
+  if(!tstageCatchApplied){
+    [shootHand,guideHand].forEach((hand,index)=>{
+      if(!hand||!_readyHandPos)return;
+      _readyHandPos.set(HAND_ROOT_BASE.x,HAND_ROOT_BASE.y,HAND_ROOT_BASE.z);
+      hand.position.lerp(_readyHandPos,k);
+      blendNodeQuat(hand,(index===0?SHOT_CATCH_POSE.shooting:SHOT_CATCH_POSE.guide).handQuat,k);
+    });
+    (o.fingerJoints||[]).forEach((fingers,handIndex)=>fingers.forEach((finger,index)=>{
+      finger.rotation.x=handIndex===0?HAND_FINGER_REST-(.16*k):HAND_FINGER_REST-(.10*k);
+      finger.rotation.z=(handIndex===0?SHOOT_FINGER_SPLAY[index]:GUIDE_FINGER_SPLAY[index])*k;
+    }));
+    if(o.g)o.g.userData.catchPoseSource="legacy";
+  }
   if(o.g)o.g.userData.catchPosePhase="incoming";
 }
 function poseBallPos(v,c){
@@ -691,13 +883,21 @@ function passFlightSeconds(distance){
   const p=G.mode==="rackrush"?PASS_FLIGHT_RUSH:PASS_FLIGHT_NORMAL;
   return clamp(p.base+distance*p.perMeter,p.min,p.max);
 }
+function passCatchPointAt(pos,face){
+  const d=V3(Math.sin(face),0,Math.cos(face));
+  return V3(pos.x-d.x*.25,EYE+P.eyeDip+P.jump-.3,pos.z-d.z*.25);
+}
 let passing=null;
-function startPass(){
+function startPass(targetPos,face){
   const s=curShot();if(!s||G.buzzed)return;
-  passer.g.rotation.y=faceTo(passer.g.position,P.pos);
+  const hasTarget=!!(targetPos&&typeof targetPos.clone==="function");
+  const target=hasTarget?targetPos.clone():P.pos.clone();
+  const targetFace=Number.isFinite(face)?face:P.face;
+  passer.g.rotation.y=faceTo(passer.g.position,hasTarget?target:P.pos);
   passerBall.visible=false;
   const from=V3(passer.g.position.x,1.25,passer.g.position.z);
-  const catchP=eyePos();catchP.y-=0.3;
+  const catchP=hasTarget?passCatchPointAt(target,targetFace):eyePos();
+  if(!hasTarget)catchP.y-=0.3;
   const dur=passFlightSeconds(from.distanceTo(catchP));
   const mesh=new THREE.Mesh(ballGeo,shotMat(s));
   mesh.position.copy(from);scene.add(mesh);
@@ -742,6 +942,7 @@ let walk=null;
    配合步幅随速度走(见 poseRunCycle),收尾自然变成小碎步再站定,
    而不是匀速滑到点急停。 */
 const WALK_ACC=.22,WALK_DEC=.38,WALK_CRUISE=1.82;
+const WALK_TURN_START=.40,WALK_TURN_END=.84,WALK_TURN_RATE=16;
 function walkEase(k){
   const A=WALK_ACC,D=WALK_DEC,total=1-A/2-D/2;
   let s;
@@ -750,7 +951,7 @@ function walkEase(k){
   else{const t=(k-(1-D))/D;s=A/2+(1-D-A)+D*(t-t*t/2);}
   return clamp(s/total,0,1);
 }
-function walkTo(shot,cb){
+function walkTo(shot,cb,opts){
   const base=shotBase(shot);
   const from=P.pos.clone(),to=base.clone();
   /* 梯形剖面下平均速度 = WALK_CRUISE,峰值 = WALK_CRUISE/(1-A/2-D/2) ≈ 2.6 m/s。
@@ -758,8 +959,19 @@ function walkTo(shot,cb){
   /* 上限原来是 2.6s,长距离走位(比如底角到弧顶 9.4m)会被截断成 3.7 m/s ——
      巡航速度形同虚设。放宽到 3.4s。 */
   const dur=clamp(from.distanceTo(to)/WALK_CRUISE,0.55,3.4);
+  const overlapPass=!!(opts&&opts.overlapPass);
+  let passStartK=1;
+  if(overlapPass){
+    /* 让球的飞行时间正好填满最后一段走位:球员在收碎步/转身时迎球,
+       不再是到点后先空等一拍再开始传球。短距离不足一段飞行时则立即起传。 */
+    const passTarget=passCatchPointAt(to,faceTo(to,HOOP));
+    const passFrom=V3(passer.g.position.x,1.25,passer.g.position.z);
+    const passDur=passFlightSeconds(passFrom.distanceTo(passTarget));
+    passStartK=clamp((dur-passDur+.03)/dur,0,.98);
+  }
   P.walking=true;G.moving=true;P.walkT=0;
-  walk={from,to,t:0,dur,fMove:faceTo(from,to),f1:faceTo(to,HOOP),cb,step:0};
+  walk={from,to,t:0,dur,fMove:faceTo(from,to),f1:faceTo(to,HOOP),cb,step:0,
+    overlapPass,passStartK,passStarted:false,callbackCalled:false};
 }
 function updWalk(dt){
   if(!walk)return;
@@ -768,13 +980,17 @@ function updWalk(dt){
      没有起步蹬地也没有收步。加减速之后步频也跟着变(poseRunCycle 的相位由
      实际位移驱动),所以一条缓动同时修好了"起步收步"和"腿频不跟脚"。 */
   P.pos.lerpVectors(walk.from,walk.to,walkEase(k));
-  /* 朝向:原来在 k=0.75 那一帧把目标从"移动方向"硬切成"面朝篮筐",转身是抽的。
-     改成从 55% 起把两个目标按角度插值过渡,人是一边走一边把身子转过来。 */
-  const turnK=clamp((k-0.55)/0.35,0,1);
+  /* 朝向:转身从巡航末段就开始,并在减速碎步期间完成,避免到点后从静止慢慢转身。 */
+  const turnK=clamp((k-WALK_TURN_START)/(WALK_TURN_END-WALK_TURN_START),0,1);
   let sweep=walk.f1-walk.fMove;while(sweep>Math.PI)sweep-=2*Math.PI;while(sweep<-Math.PI)sweep+=2*Math.PI;
   const tgt=walk.fMove+sweep*(turnK*turnK*(3-2*turnK));
   let d=tgt-P.face;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;
-  P.face+=d*Math.min(1,dt*8);
+  P.face+=d*Math.min(1,dt*WALK_TURN_RATE);
+  if(walk.overlapPass&&!walk.passStarted&&k>=walk.passStartK){
+    walk.passStarted=true;walk.callbackCalled=true;
+    const cb=walk.cb;
+    if(cb)cb({phase:"approach",target:walk.to.clone(),face:walk.f1});
+  }
   if(((walk.t*3.4)|0)!==walk.step){
     walk.step=(walk.t*3.4)|0;
     blipBus(playerBus||master,150,0.04,"sine",0.035,90);
@@ -787,7 +1003,9 @@ function updWalk(dt){
     player.ankles[0].rotation.x=0;player.ankles[1].rotation.x=0;
     player.shoes[0].rotation.x=0;player.shoes[1].rotation.x=0;
     player.g.rotation.x=0;
-    const cb=walk.cb;walk=null;if(cb)cb();
+    const cb=walk.cb,called=walk.callbackCalled;
+    const info={phase:"arrived",target:walk.to.clone(),face:walk.f1};
+    walk=null;if(!called&&cb)cb(info);
   }
 }
 

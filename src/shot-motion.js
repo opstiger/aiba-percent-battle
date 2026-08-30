@@ -242,6 +242,7 @@
     // 第三人称
     player.g.position.set(P.pos.x,0,P.pos.z);
     player.g.rotation.y=P.face+(P.walking?0:SHOT_STANCE_YAW*stance);
+    const catchState=G.passCatch;
     if(P.walking){
       /* 走路统一走 poseRunCycle —— 它才是"全项目唯一的一套跑动姿势"(motion.js)。
          这里原本是另抄的一条正弦:步频写死 dt*9(和真实位移脱钩,脚在地上滑)、
@@ -249,9 +250,13 @@
          NPC 早就走 poseRunCycle 了,所以电脑反而比主角自然。现在两边同源。 */
       const spd=typeof updWalkSpeed==="function"?updWalkSpeed(dt):0;
       P.walkRig=P.walkRig||{phase:0,idleT:0,lean:0};
+      /* 先清理默认手部几何，再让 T台 run clip 最后写入上肢四元数；否则
+         poseHandJoints 会把 T台手腕重新改成站姿，表现为跑动时手掌丢失/朝地。 */
+      if(typeof poseHandJoints==="function")poseHandJoints(player,shotCurves(0));
       if(typeof poseRunCycle==="function")poseRunCycle(player,P.walkRig,spd,dt,{sway:true});
       player.g.position.y+=P.jump;
-      if(typeof poseHandJoints==="function")poseHandJoints(player,shotCurves(0));
+      // 最后几步仍保持步态，但接球手势提前覆盖上肢，形成“转身收步同时迎球”。
+      if(catchState&&catchState.active)poseCatchHands(player,catchState,dt);
     }else{
       /* 站定:清掉步态专属量并重新采样速度,否则人会一直歪着、
          下次起步第一帧还会把瞬移当成高速。 */
@@ -259,7 +264,6 @@
       if(P.walkRig)P.walkRig.phase=0;
       player.g.rotation.z=0;
       player.g.position.y=poseGuy(player,c,lk)+P.jump;
-      const catchState=G.passCatch;
       /* 出手跟随要 0.725 秒，而 Rack Rush 后几关出手 60ms 后就开始传球，两者必然重叠。
          这里必须叠加而不是二选一：先让跟随继续写它的收手姿势，poseCatchHands 再用
          blendNodeQuat 从"本帧已有姿势"往迎球帧插值(progress 小的时候 k≈0)。

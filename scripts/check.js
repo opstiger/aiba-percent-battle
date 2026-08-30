@@ -77,6 +77,8 @@ const requiredFiles=[
   "src/ui/pause.js",
   "src/ui/icons.js",
   "src/ui/result-copy.js",
+  "src/data/tstage-motion-pack.js",
+  "scripts/import-tstage-animations.mjs",
   "assets/aiba-brand/aiba-percent-battle-logo-v3.png",
   "assets/aiba-brand/aiba-percent-battle-logo-v3.webp",
   "docs/ARCHITECTURE.md",
@@ -116,6 +118,7 @@ for(const file of ["core/error-boundary","core/foundation","data/dialogue","core
   if(!entryHtml.includes(`<script src="src/${file}.js?v=${version}"></script>`))fail(`next shell module missing ${file}`);
 }
 if(!entryHtml.includes('<script src="src/data/game-config.js?v=2.19.9-release"></script>'))fail("next game config cache version missing");
+if(!entryHtml.includes('<script src="src/data/tstage-motion-pack.js?v=2.19.9-tstage1"></script>'))fail("T台 motion pack missing");
 
 if(entryHtml.indexOf('src/core/runtime.js')>entryHtml.indexOf('src/config.js'))fail("next runtime must load before config");
 if(entryHtml.indexOf('<script src="src/rendering/core.js?v=2.19.5-hfov"></script>')>entryHtml.indexOf('<script src="src/core/scene-init.js?v=2.19.9-ceiling"></script>'))fail("rendering core must load before scene construction");
@@ -225,12 +228,25 @@ if(/AUDIO_EVENTS\)\.flat\(\)\.map\(n=>voiceUrl\(n\+"\.wav"\)\)/.test(audioSrc))
    三条都是"玩家会觉得游戏在坑他"的量级,回归了不会报错、只会变难玩。 */
 {
   const mo=read("src/rendering/motion.js");
-  /* 同侧手腿必须反相。legs[0] 和 arms[0] 都建在 x 负侧,而真实步态是右臂配左腿。
-     原来腿用 sin、手用 cos,整整差 90° —— 单看手或单看腿都对,合起来说不出哪里别扭。 */
+  /* 同侧手腿必须反相。legs[0] 和 arms[0] 都建在 x 负侧,而真实步态要求同侧大臂反摆。
+     站定、跑动、迎球三种状态的手臂参数必须分开,跑动小臂不能锁成接球角度。 */
   if(/o\.arms\[0\]\.rotation\.x=-\.25\+c\*swing/.test(mo))
     fail("run cycle regressed to cos-driven arms - arms must be anti-phase with the SAME-side leg (sin)");
-  if(!/o\.arms\[0\]\.rotation\.x=-\.25-s\*swing/.test(mo))
-    fail("run cycle arms must be driven by -s (anti-phase with legs[0])");
+  for(const token of [
+    "const IDLE_ARM_X=-.03,IDLE_ELBOW_BEND=-Math.PI/36;",
+    "const armSwing=.14+run*.20,armBase=-.20;",
+    "const armA=armBase-s*armSwing,armB=armBase+s*armSwing;",
+    "const elbowBend=-1.28-run*.12;",
+    "o.elbows[0].rotation.set(elbowBend,0,0);",
+    "o.elbows[1].rotation.set(elbowBend,0,0);",
+    "function poseRunPalms(o)",
+    "const RUN_PALM_YAW=[-Math.PI*.5,Math.PI*.5];",
+    "hand.rotation.y=RUN_PALM_YAW[index];"
+  ]) if(!mo.includes(token))fail("run cycle arm bend guard missing "+token);
+  if((mo.match(/poseRunPalms\(o\);/g)||[]).length<2)
+    fail("run cycle must apply the inward palm pose to both shared-run and player paths");
+  for(const token of ["READY_BOUNCE_RATE","READY_ANKLE_FLEX","READY_PLAY_STATES","readyPulse"])
+    if(!mo.includes(token))fail("standing shot recovery bounce token missing "+token);
 
   const inp=read("src/core/input.js");
   /* 设备绝对倾角不该变成玩家的长期横向误差。三道闸缺一不可。 */
@@ -317,6 +333,18 @@ if(/AUDIO_EVENTS\)\.flat\(\)\.map\(n=>voiceUrl\(n\+"\.wav"\)\)/.test(audioSrc))
     fail("applySleeve must restore the base sleeve/wrist state BEFORE the !item early return");
   if(!/guy\.elbows\[0\]\.add\(fore\)/.test(sleeveFn))
     fail("gear sleeves must also cover the forearm, or first person still shows a bare arm");
+}
+/* 走位手臂的专项回归必须和结构检查一起存在:它覆盖真实出手→长距离走位→
+   传球飞行→到手的连续帧,不能只靠人工记得运行。 */
+{
+  const walkArmsTest=path.join(root,"scripts/walk-arms.test.mjs");
+  if(!fs.existsSync(walkArmsTest))fail("walk arm runtime regression script missing");
+  else{
+    const src=fs.readFileSync(walkArmsTest,"utf8");
+    for(const token of ["G.passCatch.active","00-idle-no-catch","upperTilt","lowerAngularRanges","pairedPhase",
+      "球未到手时仍禁止投篮/换点","连续跑动采样手臂始终可见且保持弯肘","palmInward","page.screenshot"])
+      if(!src.includes(token))fail("walk arm regression coverage missing "+token);
+  }
 }
 /* 首屏第一投:这是所有人看到的第一屏,几条性质错了就是灾难。 */
 const bootShot=read("src/ui/boot-shot.js");
@@ -1036,6 +1064,19 @@ for(const token of ['runtime.register("rendering:camera"',"const P=","const CAM=
 if(!/function ballWorldPos\(out\)\{[^]*pBall\.getWorldPosition\(out\);[^]*return out;[^]*\}/.test(renderingCamera))fail("all cameras must release from the real player ball grip");
 if(/function ballWorldPos\(out\)\{[^}]*CAM\.mode/.test(renderingCamera)||/function ballWorldPos\(out\)\{[^}]*handBall\.getWorldPosition/.test(renderingCamera))fail("camera mode must not change the shot release origin");
 const renderingMotion=read("src/rendering/motion.js");
+const tstagePackScript=read("src/data/tstage-motion-pack.js");
+try{new Function(tstagePackScript);}
+catch(e){fail("T-stage motion pack syntax error: "+e.message);}
+for(const token of ["aiba-motion-pack/1","AIBA_TSTAGE_MOTION_PACK","\"run\"","\"catching\"","sourcePose","handQuat","\"bodyBob\""])
+  if(!tstagePackScript.includes(token))fail("T-stage motion pack token missing "+token);
+for(const token of ["AIBA_TSTAGE_MOTION_PACK","function applyTstageRunPose","function applyTstageCatchPose","function tstageCatchEndpoint","function tstageRunBodyBob"])
+  if(!renderingMotion.includes(token))fail("T-stage runtime adapter token missing "+token);
+const tstageImporter=read("scripts/import-tstage-animations.mjs");
+for(const token of ["basketball-pose-lab","setFromUnitVectors","HAND_BASIS","parent-local","required of [","clips[required]","CHECK_ONLY","must close at t=1","fs.renameSync","function importBodyBob"])
+  if(!tstageImporter.includes(token))fail("T-stage importer token missing "+token);
+if(!tstagePackScript.includes('"run-left-return"'))fail("T-stage run loop closure missing");
+if(!/poseHandJoints\(player,shotCurves\(0\)\);[\s\S]{0,180}poseRunCycle\(player,P\.walkRig/.test(read("src/shot-motion.js")))
+  fail("T-stage run pose must be applied after the walking hand reset");
 for(const token of ['runtime.register("rendering:motion"',"function shotCurves","function poseGuy","function updPose","function startPass","function updWalk"])
   if(!renderingMotion.includes(token))fail("rendering motion token missing "+token);
 for(const token of ["SHOT_STANCE_YAW","function shotStanceBlend","function tuneGuideHandPose"])
@@ -1234,6 +1275,10 @@ if(/applyShotSetPose\(g|tuneGuideHandPose\(g/.test(presentationCinematics))fail(
 const presentationPregame=read("src/presentation/pregame.js");
 for(const token of ['runtime.register("presentation:pregame"',"const PREGAME=","function startPreGameShow","function updPreGameShow"])
   if(!presentationPregame.includes(token))fail("presentation pregame token missing "+token);
+for(const token of ["guy.arms.forEach(a=>a.rotation.set(-.03,0,0));",
+  "guy.elbows.forEach(e=>e.rotation.set(-Math.PI/36,0,0));",
+  "hand.rotation.set(0,index===0?-Math.PI*.5:Math.PI*.5,0)"])
+  if(!presentationPregame.includes(token))fail("pregame neutral arm pose missing "+token);
 for(const token of ["function pregameSmoothPose","pregameSmoothPose(a.guy,dt)","const dunkArc=","const hangRise=","PREGAME.poseCache.clear()"])
   if(!presentationPregame.includes(token))fail("pregame fluidity fix missing "+token);
 const presentationBattle=read("src/presentation/battle.js");
@@ -1261,7 +1306,17 @@ if(!gameplayShots.includes('G.mode!=="lastshot"&&!G.practice'))fail("Last Shot m
 if(!renderingMotion.includes("G.passCatch={active:true,progress:0,target:catchP.clone()}")||
   !renderingMotion.includes("G.passCatch.active=k<1")||!renderingMotion.includes("G.passCatch.settling=true"))
   fail("shared pass must drive incoming catch and the catch-to-ready bridge");
-if(!read("src/shot-motion.js").includes("poseCatchHands(player,catchState,dt)"))fail("shared shot loop must advance the catch settle bridge");
+if(!renderingMotion.includes("function passCatchPointAt")||
+  !renderingMotion.includes("passStartK")||!renderingMotion.includes("overlapPass"))
+  fail("walk arrival must overlap the turn, final steps, and incoming pass");
+if(!gameplayShots.includes("function readyBall(walkInfo)")||
+  !gameplayShots.includes("startPass(walkInfo&&walkInfo.target,walkInfo&&walkInfo.face)"))
+  fail("readyBall must preserve the final walk target for an overlapping pass");
+if((battleSpots.match(/overlapPass:true/g)||[]).length<2||
+  !gameplayShots.includes("walkTo(nxt,readyBall,{overlapPass:true})"))
+  fail("all cross-spot walks must start the pass during the final approach");
+if((shotMotionScript.match(/poseCatchHands\(player,catchState,dt\)/g)||[]).length<2)
+  fail("shared shot loop must advance catch hands during the final walk and settle bridge");
 const lastShotSquad=read("src/modes/last-shot/squad.js");
 for(const token of ["function startPostShot","function updatePostShot","function startReaction","poseWatcher","headTrack","REACTION_ALLY_MADE","REACTION_FOE_MADE"])
   if(!lastShotSquad.includes(token))fail("Last Shot post-shot reaction token missing "+token);

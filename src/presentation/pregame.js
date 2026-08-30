@@ -33,8 +33,11 @@ function pregameRestoreGuy(s){
 }
 function pregameNeutral(guy){
   guy.g.rotation.x=0;guy.g.position.y=0;
-  guy.arms.forEach(a=>a.rotation.set(-0.32,0,0));
-  guy.elbows.forEach(e=>e.rotation.set(-0.28,0,0));
+  /* 无球站定也使用主比赛的自然下垂基线：上臂接近垂直，肘部只留约 5° 松弛弯曲。
+     预热的投篮/挥手动作随后会显式覆盖它，避免把接球姿势带进日常站姿。 */
+  guy.arms.forEach(a=>a.rotation.set(-.03,0,0));
+  guy.elbows.forEach(e=>e.rotation.set(-Math.PI/36,0,0));
+  (guy.handRoots||[]).forEach((hand,index)=>{hand.rotation.set(0,index===0?-Math.PI*.5:Math.PI*.5,0);});
   guy.legs.forEach(l=>l.rotation.set(0,0,0));
   guy.knees.forEach(k=>k.rotation.set(0,0,0));
   guy.ankles.forEach(a=>a.rotation.set(0,0,0));

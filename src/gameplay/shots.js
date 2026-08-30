@@ -264,9 +264,9 @@ function releaseShot(power,shot){
   if(G.mode!=="lastshot"&&!G.practice&&(isLast||G.state==="tiebreak"||(G.state==="round"&&G.timer<=3)))startHero(B);
   // advance
   G.shotIdx++;G.canShoot=false;
-  const nxt=curShot();if(nxt){if(G.mode==="contest"&&shot&&nxt.rack!==shot.rack&&shot.rack!==null){if(nxt.rack===G.moneyRack)playAudioEvent("contest_moneyrack");else if(nxt.rack===4)playAudioEvent("contest_finalrack");}const samePos=isSameShotSpot(nxt,shot);afterPlayerLands(samePos?260:200,()=>{if(G.state!=="round"&&G.state!=="tiebreak")return;if(samePos){readyBall();}else{walkTo(nxt,()=>readyBall());}});}
+  const nxt=curShot();if(nxt){if(G.mode==="contest"&&shot&&nxt.rack!==shot.rack&&shot.rack!==null){if(nxt.rack===G.moneyRack)playAudioEvent("contest_moneyrack");else if(nxt.rack===4)playAudioEvent("contest_finalrack");}const samePos=isSameShotSpot(nxt,shot);afterPlayerLands(samePos?260:200,()=>{if(G.state!=="round"&&G.state!=="tiebreak")return;if(samePos){readyBall();}else{walkTo(nxt,readyBall,{overlapPass:true});}});}
 }
-function readyBall(){
+function readyBall(walkInfo){
   if(G.buzzed)return;
   if(G.mode==="battle"&&G.battleOver)return;
   if(!curShot())return;
@@ -275,7 +275,7 @@ function readyBall(){
   }
   handBall.visible=false;pBall.visible=false;
   updDotsUI();
-  startPass();
+  startPass(walkInfo&&walkInfo.target,walkInfo&&walkInfo.face);
 }
 function playRimImpactSound(b,made){
   if(!b||b.rimSoundPlayed)return false;

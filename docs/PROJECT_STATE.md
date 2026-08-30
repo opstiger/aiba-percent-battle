@@ -1,11 +1,11 @@
 # aiBA 项目状态
 
-> 更新于 2026-08-19。修改代码前先读本文件。完整功能历史仍放在 `docs/需求迭代/`；这里只记录当前交接必需的信息。
+> 更新于 2026-08-30。修改代码前先读本文件。完整功能历史仍放在 `docs/需求迭代/`；这里只记录当前交接必需的信息。
 
 ## 接手快照
 
 - 当前项目目录：`projects/fable5测试/篮球游戏/`。相邻的 `篮球游戏-refactor-v2/` 是旧实验工作区，不是当前主线。
-- 当前分支：`main`。`v2.19.9` 待推送(本地已 commit)；`HEAD` 与 `origin/main` 一致。
+- 当前分支：`main`。`v2.19.9` 主线已包含截至 2026-08-30 的已验收动作优化；本次内容由选择性 stage 组成。
 - 当前版本：`v2.19.9`。`GAME_VERSION`、`index.html` 三处可见标识、`README.md`、`scripts/check.js` 与快照 `block-3pt-kingv2.19.9-modular.html` 全部对齐（`scripts/check.js` 断言这几处，改一处漏一处会失败）。
 - 注意：`?v=` 缓存 token 是**按文件**的改动标记，不跟随发版号，出现 `2.19.6-kit2` 这类旧 token 是正常的 —— 它只说明那个文件自 v2.19.6 起没再改过。需要保持一致的是上面那五处发版标识。
 - 接球到最高点的手部动作链已按“同族关键帧”重做（见下节），并已通过用户目视验收。
@@ -15,6 +15,7 @@
 - 工作区仍有宣传视频、Agent 配置、调试页面和 iOS 实验文件未跟踪；它们未进入主线，后续仍应逐项 stage，禁止直接 `git add .`。中间 HTML 入口已归档到 `backup/version-entries-pre-v2.18/`。
 - 最近回滚副本：`backup/20260813-v2.19.2-before-3d-pose-integration/`（T台导入前）、`backup/20260813-v2.19.3-before-hold-release-restore/`（持球/出手衔接前）、`backup/20260813-v2.19.3-before-wrist-axis-fix/`（压腕空间轴修复前）与 `backup/20260813-v2.19.3-before-catch-charge-bridge-fix/`（本轮接球/蓄力修复前）。更早的 v2.17/v2.18 基线备份也在 `backup/` 同目录。
 - 配套工具：T台（`projects/fable5测试/basketball-pose-lab/`，原姿势台）；动作导入技能 `~/.codex/skills/aiba-tstage-pose/`；工作区 SOP `docs/SOP-T台动作导入.md`。
+- 本轮已验收并纳入主线的动作改动：T台 `run` 增加 `bodyBob`（默认 2.2cm、每左右交替周期两次起伏），由 `scripts/import-tstage-animations.mjs` 同步到动作包；游戏在保持真实位移步相和脚底修正的同时应用重心升降，并统一了站定下垂手、跑动弯肘摆臂、掌心相对、接球迎球、收步转身重叠传球和投后 ready bounce。回滚副本为 `backup/20260830-v2.19.9-before-mainline-animation-sync.tar`。`GAME_VERSION` 仍为 `v2.19.9`；真机回归由游戏侧人工完成。
 
 ## 近期已完成
 
