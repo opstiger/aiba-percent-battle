@@ -114,9 +114,9 @@
     /* 留白:先别收 HUD、先别弹面板。原来这三件事和蜂鸣器在同一帧发生,
        玩家连最终比分都来不及看,更别说看球员和观众的反应。
        resultbeat 这个状态让镜头继续留在场上(见 game-loop 的相机分支)。 */
-    G.state="resultbeat";
+    if(typeof transitionState==="function")transitionState("resultbeat","contest-round-result-beat");else G.state="resultbeat";
     const strong=G.score>=20;
-    const toPanel=()=>{G.state="roundend";$("hud").style.display="none";showRoundPanel();};
+    const toPanel=()=>{if(typeof transitionState==="function")transitionState("roundend","contest-round-result-panel");else G.state="roundend";$("hud").style.display="none";showRoundPanel();};
     if(global.AIBAResultBeat)global.AIBAResultBeat.play({
       eyebrow:(G.stage==="final"?"决赛":"半决赛")+"结束",
       score:G.score,unit:"分",

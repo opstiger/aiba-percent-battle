@@ -12,6 +12,9 @@ const COURT={
 };
 const COURT_ATTACK_DIR=V3(0,0,-1);
 const HOOP=V3(0,3.05,COURT.nearHoopZ);
+/* 球的碰撞半径统一从真实球网格的量级开始，篮板/篮筐判断不能只看球心。 */
+const BALL_RADIUS=.16;
+const RIM_RADIUS=.30;
 const EYE=1.78;
 const RACKS=[
   {p:V3(-7.2,0,-6.15),n:"左底角"},

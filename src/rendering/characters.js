@@ -32,24 +32,41 @@ function groundShadowAssets(){
 }
 function attachGroundShadow(o){
   groundShadowAssets();
-  const m=new THREE.Mesh(groundShadowGeo,groundShadowMat);
+  /* 几个角色共用同一张软影贴图，但材质必须各自一份：起跳时每个人的
+     透明度要按自己的高度衰减，不能再用“只摊大、不变淡”的假反馈。 */
+  const m=new THREE.Mesh(groundShadowGeo,groundShadowMat.clone());
+  m.userData.groundShadowBaseOpacity=groundShadowMat.opacity;
   m.rotation.x=-Math.PI/2;m.position.y=0.014;m.renderOrder=-1;
   scene.add(m);
   o.groundShadow=m;GROUND_SHADOWS.push(o);
   return m;
 }
-/* 逐帧同步。离地越高影子摊得越大 —— 起跳时这是"高度"唯一的视觉线索。
-   材质是所有角色共用的一份,所以淡化只能靠缩放(摊大 = 单位面积更淡),
-   不能逐个改 opacity。 */
+/* 逐帧同步。离地越高影子越摊开、越淡，并沿主光相反方向轻微偏移。
+   这是轻量的方向性假影，不打开 shadowMap，不增加额外阴影 pass。 */
 function updGroundShadows(){
   for(let i=0;i<GROUND_SHADOWS.length;i++){
     const o=GROUND_SHADOWS[i],m=o.groundShadow;
     if(!m)continue;
     if(!o.g||!o.g.visible){m.visible=false;continue;}
     m.visible=true;
-    const k=1+Math.max(0,o.g.position.y)*0.85;
-    m.position.set(o.g.position.x,0.014,o.g.position.z);
-    m.scale.set(1.16*k,1.16*k,1);
+    const height=Math.max(0,Number(o.g.position.y)||0);
+    const k=1+height*0.85;
+    const lightX=typeof sun!=="undefined"&&sun&&Number.isFinite(sun.position.x)?sun.position.x:7;
+    const lightZ=typeof sun!=="undefined"&&sun&&Number.isFinite(sun.position.z)?sun.position.z:8;
+    const lightLen=Math.hypot(lightX,lightZ)||1;
+    const shadowLength=Math.min(.42,height*.12);
+    const shadowX=-lightX/lightLen*shadowLength;
+    const shadowZ=-lightZ/lightLen*shadowLength;
+    m.position.set(o.g.position.x+shadowX,0.014,o.g.position.z+shadowZ);
+    /* 影子纵向比横向多拉开一点，配合光源偏移读出“跳起来了”，但仍保持
+       体素风的软圆轮廓。 */
+    m.scale.set(1.16*k,1.16*(1+height*.98),1);
+    const baseOpacity=Number(m.userData.groundShadowBaseOpacity)||.35;
+    const fade=Math.max(.18,1-height/3.4);
+    m.material.opacity=baseOpacity*(.30+.70*fade);
+    m.userData.groundShadowHeight=height;
+    m.userData.groundShadowOpacity=m.material.opacity;
+    m.userData.groundShadowOffset=[shadowX,shadowZ];
   }
 }
 
@@ -155,6 +172,12 @@ function voxelGuy(){
   add(g,0.12,0.055,0.215,mP, -0.19,1.385,0);                 // 左肩滚边
   add(g,0.12,0.055,0.215,mP,  0.19,1.385,0);                 // 右肩滚边
   add(g,0.50,0.035,0.29,mP,0,0.88,0);                        // 球衣下摆压线
+  /* 下摆单独留一层很薄的布片，跑动时做低幅度二级弹簧；不参与身体/脚底解算，
+     站定时回到零，避免把整件球衣当硬板。前后各一片是为了转身时仍能读到摆动。 */
+  const jerseyHem=new THREE.Group();jerseyHem.name="jerseyHem";jerseyHem.position.y=.895;
+  const jerseyHemFront=addSoft(jerseyHem,.46,.045,.018,mJ,0,0,.143,.010,2);
+  const jerseyHemBack=addSoft(jerseyHem,.46,.045,.018,mJ,0,0,-.143,.010,2);
+  jerseyHemFront.name="jerseyHemFront";jerseyHemBack.name="jerseyHemBack";g.add(jerseyHem);
   // ---- 脖子 + 头 ----
   const neckBlend=addSoft(g,0.155,0.12,0.155,mS,0,1.445,0,.036,3);
   neckBlend.name="neckBlend";                                // 与躯干和头部轻微重叠
@@ -185,6 +208,15 @@ function voxelGuy(){
   add(headband,.035,.064,.31,headbandMat,-.174,1.70,0);
   add(headband,.035,.064,.31,headbandMat,.174,1.70,0);
   headRoot.add(headband);
+  /* Last Shot 的反应不再只有身体动作，给脸留一个轻量的可控覆盖层。
+     默认隐藏，不改现有角色脸贴图；只在反应阶段显示“专注/惊讶/庆祝”眉眼嘴型，
+     这样不会把普通站立和跑动状态染成夸张表情。 */
+  const expressionInk=new THREE.MeshLambertMaterial({color:0x21150d});
+  const faceExpressionRoot=new THREE.Group();faceExpressionRoot.name="faceExpression";faceExpressionRoot.visible=false;
+  const expressionBrowL=add(faceExpressionRoot,.09,.018,.026,expressionInk,-.085,1.67,.196);
+  const expressionBrowR=add(faceExpressionRoot,.09,.018,.026,expressionInk,.085,1.67,.196);
+  const expressionMouth=add(faceExpressionRoot,.095,.018,.026,expressionInk,0,1.555,.196);
+  headRoot.add(faceExpressionRoot);
   // ---- 手臂 ----
   [-VOXEL_SHOULDER_X,VOXEL_SHOULDER_X].forEach(x=>{
     const sh2=new THREE.Group();sh2.position.set(x,1.36,0);  // 肩 pivot
@@ -264,13 +296,30 @@ function voxelGuy(){
     arms.push(sh2);elbows.push(el);upperArms.push(up);forearms.push(fo);wrists.push(wr);sleeves.push(sl);palms.push(palm);thumbs.push(thumb);thumbRoots.push(thumbRoot);thumbTips.push(thumbTipRoot);handRoots.push(handRoot);fingerJoints.push(fingerRoots);fingerPipJoints.push(pipRoots);fingerDipJoints.push(dipRoots);ballGrips.push(ballGrip);
     elbowBlends.push(elbowBlend);wristBlends.push(wristBlend);
   });
-  const o={g,headRoot,headScale:VOXEL_HEAD_SCALE,baseShoulderX:VOXEL_SHOULDER_X,baseHipX:VOXEL_HIP_X,
+  const o={g,headRoot,jerseyHem,faceExpression:{root:faceExpressionRoot,brows:[expressionBrowL,expressionBrowR],mouth:expressionMouth},headScale:VOXEL_HEAD_SCALE,baseShoulderX:VOXEL_SHOULDER_X,baseHipX:VOXEL_HIP_X,
     legs,knees,ankles,footRoots,toeRoots,arms,elbows,upperArms,forearms,shoes,wrists,sleeves,palms,thumbs,thumbRoots,thumbTips,handRoots,fingerJoints,fingerPipJoints,fingerDipJoints,ballGrips,
     hipBlends,kneeBlends,ankleBlends,elbowBlends,wristBlends,neckBlend,headband,
     hair:hairGrp,hairGrp,hairMat,beardGrp,beardMat,mJ,mP,mS,bodyF,bodyB,mFace,hairStyle:"short"};
   setHair(o,"short");
   attachGroundShadow(o);
   return o;
+}
+function setFaceExpression(o,mode){
+  const fx=o&&o.faceExpression;if(!fx||!fx.root)return false;
+  const name=String(mode||"neutral").toLowerCase();
+  if(name==="neutral"||name==="none"){
+    fx.root.visible=false;
+    return true;
+  }
+  fx.root.visible=true;
+  const browY=name==="shock"?.018:(name==="joy"?.006:-.006);
+  const browTilt=name==="joy"?.12:(name==="shock"?-.04:-.10);
+  fx.brows[0].position.y=1.67+browY;fx.brows[1].position.y=1.67+browY;
+  fx.brows[0].rotation.z=browTilt;fx.brows[1].rotation.z=-browTilt;
+  const mouth=fx.mouth;
+  mouth.position.y=name==="shock"?1.545:1.555;
+  mouth.scale.set(name==="shock"?1.18:(name==="joy"?1.25:1),name==="shock"?1.65:1,1);
+  return true;
 }
 /* 发型:清空 hairGrp 重建,所有发块共享 hairMat */
 function setHair(o,style,colorHex){
@@ -463,6 +512,15 @@ function bakeActorSegments(guy){
   const keep=new Set();
   [guy.shoes,guy.wrists,guy.sleeves].forEach(arr=>(arr||[]).forEach(m=>m&&keep.add(m)));
   if(guy.headband)keep.add(guy.headband);
+  if(guy.jerseyHem){
+    keep.add(guy.jerseyHem);
+    guy.jerseyHem.children.forEach(m=>m&&keep.add(m));
+  }
+  if(guy.faceExpression){
+    if(guy.faceExpression.root)keep.add(guy.faceExpression.root);
+    (guy.faceExpression.brows||[]).forEach(m=>m&&keep.add(m));
+    if(guy.faceExpression.mouth)keep.add(guy.faceExpression.mouth);
+  }
   const segments=[];
   (function collect(node){
     segments.push(node);
@@ -515,7 +573,7 @@ function benchVis(){
 /* player world state */
 
 window.AIBA.runtime.register("rendering:characters",Object.freeze({
-  voxelGuy,setHair,setBeard,faceTex,jerseyTex,dressGuy,applyStarStyle,randomizeOutfit,bakeActorSegments,
+  voxelGuy,setHair,setBeard,faceTex,jerseyTex,dressGuy,applyStarStyle,randomizeOutfit,setFaceExpression,bakeActorSegments,
   buildCharacters,rivalFor,benchSetup,benchVis,updGroundShadows,
   getActors:()=>({player,playerBall:pBall,passer,passerBall,oppPasser,oppPasserBall,rivals})
 }));

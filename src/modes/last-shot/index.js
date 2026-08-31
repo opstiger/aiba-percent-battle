@@ -172,8 +172,9 @@
   /* pts = 这一攻真正拿到的分(含罚球)。原来结果页自己按 `made?3:0` 重算比分,
      罚球完全没算进去:and-one 拿 4 分只显示 +3;三罚中 2(打平进加时)显示成没得分;
      平局关三罚中 1 明明赢了却显示 +3。比分必须用真实得分。 */
-  function showResult(cfg,made,reason,practice,diag,pts){
-    G.state="lsend";applyCamMode();
+  function renderResult(cfg,made,reason,practice,diag,pts){
+    if(typeof transitionState==="function")transitionState("lsend","last-shot-result-panel");else G.state="lsend";
+    applyCamMode();
     squadApi.show(false);
     if(made){startConfetti&&startConfetti();cheerSound&&cheerSound(true);airhorn&&airhorn();}
     else if(typeof boo==="function")boo();
@@ -219,6 +220,23 @@
     return true;
   }
 
+  function showResult(cfg,made,reason,practice,diag,pts){
+    const beat=global.AIBAResultBeat;
+    if(!beat){renderResult(cfg,made,reason,practice,diag,pts);return;}
+    if(G.state==="resultbeat"&&beat.active())return;
+    if(typeof transitionState==="function")transitionState("resultbeat","last-shot-result-beat");else G.state="resultbeat";
+    applyCamMode();squadApi.show(false);hideLastShotHud();
+    const points=typeof pts==="number"?pts:(made?3:0);
+    beat.play({
+      eyebrow:practice?"LAST SHOT · PRACTICE":"LAST SHOT",
+      score:made?"+"+points:"0",
+      unit:"分",
+      tone:made?"good":(reason==="overtime"?"flat":"bad"),
+      seconds:practice?1.8:2.6,
+      note:practice?(made?"练习命中 · 保持这个节奏":"练习结束 · 看看出手时机"):(made?"绝杀命中 · 比赛结束":(reason==="overtime"?"追平 · 比赛进入加时":"最后一投偏出")),
+      onDone:()=>renderResult(cfg,made,reason,practice,diag,pts)
+    });
+  }
   global.AIBALastShotResult=Object.freeze({show:showResult});
   const api=Object.freeze({openLastShot,showResult,onBegin,store,usedToday,resetLabel,settlePending,pickStory});
   // 包装 sequence 导出的 beginLastShot,把每日闸门挂在开赛之前(项目既定的 wrap 全局函数模式)

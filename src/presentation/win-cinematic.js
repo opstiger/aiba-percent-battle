@@ -140,7 +140,7 @@ function updWinCine(dt){
     if(!w.heroStarted){startCelebrate(w.shooter,w.heroType);w.heroStarted=true;}
     if(!w.ballHitFx){
       w.ballHitFx=true;
-      netPulse=1;sSwish();G.cheer=1;
+      pulseNet(1,w.ball&&w.ball.netDir);sSwish();G.cheer=1;
       if(w.win){cheerSound(true);}else{boo(1.0);}
     }
     updateCelebrate(w.shooter,dt);
@@ -154,7 +154,7 @@ function updWinCine(dt){
   }else if(tt<WC_T2+0.75){
     // 全场沸腾·观众视角:从篮筐后方看台俯视,人群在前景
     if(!w.fxCrowd){
-      w.fxCrowd=true;netPulse=1;G.cheer=1;
+      w.fxCrowd=true;pulseNet(1,w.ball&&w.ball.netDir);G.cheer=1;
       if(w.win){airhorn();cheerSound(true);}else{boo(1.0);}
     }
     updateCelebrate(w.shooter,dt);

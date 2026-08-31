@@ -1,5 +1,58 @@
 /* hoop & net */
-let netMesh,netPulse=0;
+let netMesh,farNet,netPulse=0,netPulseAge=99,netPulseDir=0,lastNetPulse=0;
+const NET_HEIGHT=.45;
+const netEase=t=>{t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);};
+function prepareNet(mesh){
+  if(!mesh||!mesh.geometry||!mesh.geometry.attributes||!mesh.geometry.attributes.position)return;
+  const attr=mesh.geometry.attributes.position;
+  mesh.userData.aibaNetBase=new Float32Array(attr.array);
+  mesh.userData.aibaNetHeight=NET_HEIGHT;
+}
+/* 网不是一块整体缩放的方柱：进球时上沿先收紧，下面的网条向下/向侧面拖，
+   随后反弹一次再回到原位。保留线框体素风，但让球穿网这一刻有真实的软体响应。 */
+function deformNet(mesh,level,age,dir){
+  if(!mesh||!mesh.geometry||!mesh.geometry.attributes||!mesh.geometry.attributes.position)return;
+  const attr=mesh.geometry.attributes.position,base=mesh.userData&&mesh.userData.aibaNetBase;
+  if(!base||base.length!==attr.array.length)return;
+  const attack=netEase(Math.min(1,age/.065));
+  const rebound=netEase(Math.max(0,Math.min(1,(age-.09)/.24)));
+  const wave=Math.max(0,level)*(age<.09?attack:(.76*(1-rebound)+.18*rebound));
+  for(let i=0;i<attr.count;i++){
+    const bi=i*3,x=base[bi],y=base[bi+1],z=base[bi+2];
+    const lower=Math.max(0,Math.min(1,(.225-y)/NET_HEIGHT));
+    const radius=Math.hypot(x,z)||.001;
+    const radialX=x/radius,radialZ=z/radius;
+    const sag=wave*(.095*lower*lower+.018*lower);
+    const side=wave*(Number(dir)||0)*.065*lower;
+    attr.setXYZ(i,x+radialX*sag*.38+side,y-sag,z+radialZ*sag*.38-side*.32);
+  }
+  attr.needsUpdate=true;
+  mesh.geometry.computeBoundingSphere();
+}
+function pulseNet(value,dir){
+  const amount=Math.max(0,Math.min(1.4,Number(value)||0));
+  if(amount<=0){netPulse=0;netPulseAge=99;netPulseDir=0;return;}
+  netPulse=Math.max(netPulse,amount);netPulseAge=0;
+  if(Number.isFinite(Number(dir)))netPulseDir=Math.max(-1,Math.min(1,Number(dir)));
+}
+function updateNetPulse(dt){
+  const safeDt=Math.max(0,Math.min(.08,Number(dt)||0));
+  if(netPulse>0){
+    if(netPulse>lastNetPulse+.05)netPulseAge=0; /* 兼容仍直接写 netPulse=1 的旧过场调用 */
+    netPulseAge+=safeDt;netPulse=Math.max(0,netPulse-safeDt*2.35);
+  }else netPulseAge=99;
+  deformNet(netMesh,netPulse,netPulseAge,netPulseDir);
+  deformNet(farNet,netPulse*.72,netPulseAge,netPulseDir);
+  if(netMesh){
+    const s=1+netPulse*.04;
+    netMesh.scale.set(s,1+netPulse*.06,s);
+  }
+  if(farNet){
+    const s=1+netPulse*.028;
+    farNet.scale.set(s,1+netPulse*.04,s);
+  }
+  lastNetPulse=netPulse;
+}
 function buildHoop(){
   const grp=new THREE.Group();
   // stanchion
@@ -34,6 +87,7 @@ function buildHoop(){
     new THREE.CylinderGeometry(0.28,0.16,0.45,8,3,true),
     new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:0.75}));
   netMesh.position.set(HOOP.x,HOOP.y-0.26,HOOP.z);grp.add(netMesh);
+  prepareNet(netMesh);
   scene.add(grp);
 
   // 远端装饰篮筐：让场馆在俯拍/回放里真正读成一块全场。
@@ -53,10 +107,11 @@ function buildHoop(){
   }
   const farConn=new THREE.Mesh(new THREE.BoxGeometry(.12,.07,.32),rimM);
   farConn.position.set(0,HOOP.y,COURT.farHoopZ+.42);farGrp.add(farConn);
-  const farNet=new THREE.Mesh(
+  farNet=new THREE.Mesh(
     new THREE.CylinderGeometry(.28,.16,.45,8,3,true),
     new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:.6}));
   farNet.position.set(0,HOOP.y-.26,COURT.farHoopZ);farGrp.add(farNet);
+  prepareNet(farNet);
   scene.add(farGrp);
 }
 /* light cones + jumbotron */
@@ -101,8 +156,7 @@ function updJumbo(){
 
 
 window.AIBA.runtime.register("rendering:hoop",Object.freeze({
-  buildHoop,buildAtmos,updJumbo,
+  buildHoop,buildAtmos,updJumbo,pulseNet,updateNetPulse,
   getNet:()=>netMesh,
   getJumbotron:()=>({canvas:jumboCv,texture:jumboTex})
 }));
-

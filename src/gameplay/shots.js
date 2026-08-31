@@ -1,4 +1,22 @@
 const balls=[];
+/* legacy 入口下不要依赖另一个 classic script 的顶层 lexical binding；保留
+   与 game-config.js 相同的几何量，避免某个入口漏载配置时 updBalls 整场崩溃。 */
+const SHOT_BALL_RADIUS=.16,SHOT_RIM_RADIUS=.30;
+function postNetVelocity(ball,vy){
+  if(!ball)return new THREE.Vector3(0,Math.min(-.45,vy||-.8),0);
+  const retention=clamp(Number(ball.postNetRetention)||.2,.16,.30);
+  const drop=Math.min(-.45,(Number(vy)||-.8)*(.34+(ball.backspin||0)*.035));
+  return new THREE.Vector3(ball.v0.x*retention,drop,ball.v0.z*retention);
+}
+/* 后旋既要看得出来，也要在进网后被网/空气阻尼掉；它不改命中判定，只负责球的
+   飞行姿态和落网后的速度连续性。 */
+function spinBall(ball,dt,damping){
+  if(!ball||!ball.mesh)return;
+  const k=damping==null?1:damping,back=Number(ball.backspin)||.65,side=Number(ball.sideSpin)||0;
+  ball.mesh.rotation.x-=Math.max(0,dt||0)*(3.3+back*5.6)*k;
+  ball.mesh.rotation.y+=(Number(dt)||0)*side*2.2*k;
+  ball.mesh.rotation.z+=(Number(dt)||0)*(.7+Math.abs(side)*.35)*k;
+}
 const BALL_FLOOR_PHYSICS=Object.freeze({
   y:.16,
   restitution:[.77,.67,.54],
@@ -128,6 +146,11 @@ function startCharge(){
   }
   G.charging=true;G.power=0;G.apexed=false;
   const chargeShot=curShot();
+  /* 这一球的姿势微扰用“模式 + 球序”作 key：同一个 ?seed 的重试/回放保持一致，
+     不把 Math.random 的演出噪声混进用户调好的 T台关键帧。 */
+  const poseKey=G.mode==="battle"?1000+(G.battleSpot||0):
+    G.mode==="rackrush"?2000+((G.rush&&G.rush.shotNo)||G.shotIdx):G.shotIdx;
+  G.shotPoseNoiseKey=Number(poseKey)||0;
   G.battleChargeSuperChanceId=G.mode==="battle"&&chargeShot&&chargeShot.super?(G.superChanceId||0):0;
   if(Math.random()<0.35)shoeSqueak(true);
   if(!G.practice&&G.seq&&G.shotIdx===G.seq.length-1&&G.mode==="contest")playAudioEvent("final_shot");else if(Math.random()<0.28)playerEffort("load");
@@ -194,6 +217,9 @@ function releaseShot(power,shot){
     else if(al>0.12&&outcome==="swish")outcome=r<0.5?"rattle":"rattleout";
     else if(al>0.12&&outcome==="bank")outcome="rattleout";
   }
+  /* 大横向误差仍然是失手，但不再把球发到篮筐旁边很远的冷冰冰 miss。
+     把它落到篮筐外缘，给玩家一个可读的擦框/砸框反馈，结果仍然严格算 miss。 */
+  const dramaticMiss=outcome==="miss"&&al>.3;
   // hide rack ball in contest mode; battle mode has infinite balls at each spot.
   if(!isBattle&&!isRush){
     if(shot.deep!=null)deepBalls[shot.deep].visible=false;
@@ -208,7 +234,8 @@ function releaseShot(power,shot){
   if(outcome==="swish"){depth=rnd(-0.03,0.03);lat=clamp(latErr*0.5,-0.06,0.06)+rnd(-0.02,0.02);}
   else if(outcome==="rattle"||outcome==="rattleout"){depth=0.17*Math.sign(err||1);lat=clamp(latErr,-0.12,0.12)+rnd(-0.05,0.05);}
   else if(outcome==="bank"){depth=0.55;lat=clamp(latErr*0.5,-0.1,0.1);}
-  else if(outcome==="rimout"){depth=0.27*Math.sign(err||1);lat=clamp(latErr*1.2,-0.2,0.2)+rnd(-0.07,0.07);}
+  else if(outcome==="rimout"){depth=0.27*Math.sign(err||1);lat=clamp(latErr*1.2,-Math.max(.08,SHOT_RIM_RADIUS-SHOT_BALL_RADIUS*.58),Math.max(.08,SHOT_RIM_RADIUS-SHOT_BALL_RADIUS*.58))+rnd(-0.07,0.07);}
+  else if(dramaticMiss){depth=0.16*Math.sign(err||1);lat=clamp(latErr*1.12,-.42,.42)+rnd(-.05,.05);}
   else{depth=err>0?0.58:clamp(err*0.055,-1.5,-0.55);lat=clamp(latErr*2,-0.9,0.9)+rnd(-0.2,0.2);}
   let T;
   if(outcome==="bank")T=V3(clamp(lat*4,-0.55,0.55)+rnd(-0.08,0.08),3.45+rnd(0,0.25),-8.42);
@@ -225,9 +252,14 @@ function releaseShot(power,shot){
      而不是连中数。连中只决定火烧得多旺(hot-hand.js 里按档加粒子)。
      换句话说:完美出手才点火,热手让火更粗。 */
   const perfect=a<=zone*0.5;
+  const postNetRetention=clamp(.17+dist*.004+(isDeep?.04:0)+(perfect?.025:0),.17,.27);
+  const backspin=clamp(.68+(perfect?.42:0)+(isDeep?.10:0)+(err<0?.10:0),.48,1.65);
+  const sideSpin=clamp(latErr*1.8,-.85,.85);
   const B={mesh,blob,p0:p0.clone(),v0,tf,t:0,phase:"fly",outcome,vel:new THREE.Vector3(),
     val:shot.val,baseVal:shot.baseVal||shot.val,bonus:shot.bonus||0,money:shot.money,deep:isDeep,super:!!shot.super,rush:isRush,made:false,life:3,bounces:0,
-    rec:[],timeLeft:G.timer,hot,perfect,startPos:p0.clone(),shooterPos:P.pos.clone(),shooterFace:P.face,superChanceId:shot.superChanceId||0};
+    rec:[],timeLeft:G.timer,hot,perfect,dramaticMiss,lateralError:latErr,postNetRetention,backspin,sideSpin,netDir:clamp(lat/.42,-1,1),
+    startPos:p0.clone(),shooterPos:P.pos.clone(),shooterFace:P.face,poseNoiseKey:G.shotPoseNoiseKey,
+    superChanceId:shot.superChanceId||0};
   B.resultClutch=noteResultAttempt(shot);balls.push(B);
   G.lastErr=err;
   // stats
@@ -293,7 +325,7 @@ function madeBall(b){
   b.made=true;
   triggerStreetCrowdReaction("make",b.val);
   if(G.practice){
-    netPulse=1;madeShotSound(b);cheerSound(false);G.cheer=Math.min(1,G.cheer+0.4);
+    pulseNet(1,b.netDir);madeShotSound(b);cheerSound(false);G.cheer=Math.min(1,G.cheer+0.4);
     if(navigator.vibrate)navigator.vibrate(18);
     popScore("✔ 命中","#7CFC6B");toast(CHEERS[(Math.random()*CHEERS.length)|0]);
     return;
@@ -302,7 +334,7 @@ function madeBall(b){
     if(!G.rush||G.state!=="rackrush")return;
     const rush=G.rush,cfg=RACK_RUSH_LEVELS[rush.level],target=isRackRushSpeed(rush)?RACK_RUSH_SPEED_TARGET:rackRushTarget(rush.level);
     const prevTotal=rush.total;rush.levelScore+=b.val;rush.total+=b.val;rush.makes++;rush.levelMakes++;if(isRackRushSpeed(rush)){if(prevTotal<25&&rush.total>=25)playAudioEvent("speed100_25");else if(prevTotal<50&&rush.total>=50)playAudioEvent("speed100_50");else if(prevTotal<75&&rush.total>=75)playAudioEvent("speed100_75");else if(prevTotal<90&&rush.total>=90)playAudioEvent("speed100_90");}G.score=rush.total;G.streak++;G.missRun=0;rush.bestStreak=Math.max(rush.bestStreak,G.streak);
-    bloomOnScore(b.val);netPulse=1;madeShotSound(b);
+    bloomOnScore(b.val);pulseNet(1,b.netDir);madeShotSound(b);
     const big=b.money||b.bonus||G.streak>=5;
     cheerSound(big);G.cheer=Math.min(1,G.cheer+(big ? .8 : .45));
     if(navigator.vibrate)navigator.vibrate(big?[16,24,16]:12);
@@ -326,7 +358,7 @@ function madeBall(b){
     G.stats.best=Math.max(G.stats.best,G.streak);
     if(b.super)G.stats.deepM++;
     $("scoreNum").textContent=Math.min(G.score,BATTLE_TARGET);
-    netPulse=1;madeShotSound(b);
+    pulseNet(1,b.netDir);madeShotSound(b);
     const special=b.deep&&!b.super;
     const big=b.super||special||G.streak>=5;
     if(big)broadcastSting((b.super||special)?"danger":"score");
@@ -360,7 +392,7 @@ function madeBall(b){
     });
   }
   updTargetUI();
-  netPulse=1;madeShotSound(b);
+  pulseNet(1,b.netDir);madeShotSound(b);
   const big=b.deep||b.val>=2||G.streak>=5;
   if(big)broadcastSting(b.deep?"danger":"score");
   cheerSound(big);G.cheer=Math.min(1,G.cheer+(big?1:0.6));
@@ -412,7 +444,7 @@ function updBalls(dt){
     if(b.phase==="fly"){
       const t=Math.min(b.t,b.tf);
       b.mesh.position.set(b.p0.x+b.v0.x*t,b.p0.y+b.v0.y*t-4.9*t*t,b.p0.z+b.v0.z*t);
-      b.mesh.rotation.x-=dt*9;b.mesh.rotation.z+=dt*2;
+      spinBall(b,dt,1);
       if(b.t>=b.tf){
         const vy=b.v0.y-9.8*b.tf;
         if(b.outcome==="swish"){
@@ -420,14 +452,14 @@ function updBalls(dt){
             oppScore(b);b.made=true;
           }else if(b.silent){
             triggerStreetCrowdReaction("make",b.val);
-            netPulse=1;sSwish();applause(0.3,1.2);if(Math.random()<0.22)boo(1.2);G.cheer=Math.min(1,G.cheer+0.4);
+            pulseNet(1,b.netDir);sSwish();applause(0.3,1.2);if(Math.random()<0.22)boo(1.2);G.cheer=Math.min(1,G.cheer+0.4);
             show.score+=b.val;$("showScore").textContent=show.score;
             popScore("+"+b.val,b.deep?"#54e05a":(b.money?"#ffd23f":"#7CFC6B"));
             if(typeof announceAIShowResult==="function")announceAIShowResult(b,true);
             b.made=true;
           }else madeBall(b);
           b.phase="fall";
-          b.vel.set(b.v0.x*0.12,vy,b.v0.z*0.12);
+          b.vel.copy(postNetVelocity(b,vy));
           b.mesh.position.set(HOOP.x+rnd(-.04,.04),HOOP.y-0.05,HOOP.z+rnd(-.04,.04));
         }else if(b.outcome==="bank"){
           sBoard();b.phase="bankdrop";b.bt=0;
@@ -441,8 +473,18 @@ function updBalls(dt){
           const d=V3(b.mesh.position.x-HOOP.x,0,b.mesh.position.z-HOOP.z).normalize();
           b.vel.set(d.x*rnd(1.2,2.2)+rnd(-.6,.6),rnd(2.4,3.6),d.z*rnd(1.2,2.2)+rnd(-.6,.6));
         }else{
-          if(b.opp)triggerStreetCrowdReaction("oppMiss",0);else if(b.silent){if(typeof announceAIShowResult==="function")announceAIShowResult(b,false);}else missBall();b.phase="free";
-          b.vel.set(b.v0.x,vy,b.v0.z);
+          if(b.dramaticMiss){
+            playerRimHaptic(b);playRimImpactSound(b,false);
+            if(b.opp)triggerStreetCrowdReaction("oppMiss",0);
+            else if(b.silent){if(typeof announceAIShowResult==="function")announceAIShowResult(b,false);}
+            else{missBall();toast("🫳 偏出擦框!","#ff8d7a");}
+            b.phase="free";
+            const d=V3(b.mesh.position.x-HOOP.x,0,b.mesh.position.z-HOOP.z).normalize();
+            b.vel.set(d.x*rnd(1.4,2.4),rnd(2.2,3.2),d.z*rnd(1.4,2.4));
+          }else{
+            if(b.opp)triggerStreetCrowdReaction("oppMiss",0);else if(b.silent){if(typeof announceAIShowResult==="function")announceAIShowResult(b,false);}else missBall();b.phase="free";
+            b.vel.set(b.v0.x,vy,b.v0.z);
+          }
         }
       }
     }else if(b.phase==="rattle"){
@@ -450,7 +492,7 @@ function updBalls(dt){
       const sink=b.rin?0.45*k*k:0.18*k;
       const ang=b.ra+b.rt*9*b.rdir,rad=b.rin?0.2*(1-k):0.2;
       b.mesh.position.set(HOOP.x+Math.cos(ang)*rad,HOOP.y+0.08-sink,HOOP.z+Math.sin(ang)*rad);
-      b.mesh.rotation.y+=dt*8;
+          spinBall(b,dt,.62);b.mesh.rotation.y+=dt*3.5;
       if(k>=1){
         if(b.rin){madeBall(b);b.phase="fall";b.vel.set(0,-1.6,0);}
         else{
@@ -465,13 +507,13 @@ function updBalls(dt){
         b.bFrom.x+(HOOP.x-b.bFrom.x)*k,
         b.bFrom.y+(HOOP.y-0.05-b.bFrom.y)*(k*k),
         b.bFrom.z+(HOOP.z-b.bFrom.z)*k);
-      b.mesh.rotation.x+=dt*6;
+          spinBall(b,dt,.58);
       if(k>=1){madeBall(b);toast("🔨 打板入网!","#ffd23f");b.phase="fall";b.vel.set(0,-1.8,0);}
     }else if(b.phase==="roll"){
       const p=b.mesh.position,drag=Math.exp(-BALL_FLOOR_PHYSICS.rollDrag*dt);
       p.x+=b.vel.x*dt;p.z+=b.vel.z*dt;p.y=BALL_FLOOR_PHYSICS.y;
       b.vel.x*=drag;b.vel.z*=drag;b.vel.y=0;
-      b.mesh.rotation.x-=b.vel.z*dt*3;b.mesh.rotation.z+=b.vel.x*dt*3;
+      spinBall(b,dt,.42);b.mesh.rotation.x-=b.vel.z*dt*3;b.mesh.rotation.z+=b.vel.x*dt*3;
       b.rollT=(b.rollT||0)+dt;b.life-=dt;
       if(b.life<=0||(b.rollT>=BALL_FLOOR_PHYSICS.rollLife&&Math.hypot(b.vel.x,b.vel.z)<.12)){
         scene.remove(b.mesh);scene.remove(b.blob);
@@ -481,10 +523,10 @@ function updBalls(dt){
     }else{ // fall / free
       b.vel.y-=9.8*dt;
       b.mesh.position.addScaledVector(b.vel,dt);
-      b.mesh.rotation.x-=b.vel.z*dt*3;b.mesh.rotation.z+=b.vel.x*dt*3;
+      spinBall(b,dt,.42);b.mesh.rotation.x-=b.vel.z*dt*3;b.mesh.rotation.z+=b.vel.x*dt*3;
       const p=b.mesh.position;
       // backboard
-      if(b.phase==="free"&&b.vel.z<0&&p.z<-8.5&&p.z>-8.78&&Math.abs(p.x)<0.98&&p.y>2.9&&p.y<4.1){
+      if(b.phase==="free"&&b.vel.z<0&&p.z<(-8.5+SHOT_BALL_RADIUS)&&p.z>(-8.78-SHOT_BALL_RADIUS)&&Math.abs(p.x)<(.98+SHOT_BALL_RADIUS)&&p.y>(2.9-SHOT_BALL_RADIUS)&&p.y<(4.1+SHOT_BALL_RADIUS)){
         p.z=-8.5;b.vel.z*=-0.45;sBoard();
       }
       // floor

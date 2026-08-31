@@ -1,17 +1,19 @@
 /* ---------------- shot jump timing physics ---------------- */
 (function(global){
   "use strict";
-  const S={t:0,lastCharging:false,apexed:false,late:0,releaseLate:0,airborne:false,justLanded:false,releaseJump:0,lastJump:0};
+  const S={t:0,lastCharging:false,apexed:false,late:0,releaseLate:0,airborne:false,justLanded:false,releaseJump:0,lastJump:0,landingImpact:0};
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   const ease=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
   function params(ideal,rate){
-    const peak=clamp(ideal/Math.max(1,rate)+.08,.72,1.12);
+    /* 不同球员/球种的出手节奏要有可读差异；过窄的 clamp 会把所有人
+       压成同一拍，超远球也会被迫在同一个时刻离手。 */
+    const peak=clamp(ideal/Math.max(1,rate)+.08,.68,1.24);
     // 方块人跳跃高度较低,顶点后的落地时间收至约 .36s,避免空中漂浮。
     const land=peak+.36;
     return {peak,land,auto:land-.07};
   }
   function reset(){
-    S.t=0;S.lastCharging=false;S.apexed=false;S.late=0;S.releaseLate=0;S.airborne=false;S.justLanded=false;S.releaseJump=0;S.lastJump=0;
+    S.t=0;S.lastCharging=false;S.apexed=false;S.late=0;S.releaseLate=0;S.airborne=false;S.justLanded=false;S.releaseJump=0;S.lastJump=0;S.landingImpact=0;
   }
   function update(opts){
     opts=opts||{};
@@ -19,7 +21,7 @@
     const p=params(ideal,rate),takeoff=p.peak-.22;
     S.justLanded=false;
     if(charging){
-      if(!S.lastCharging){S.t=0;S.releaseLate=0;S.releaseJump=0;S.lastJump=0;}
+      if(!S.lastCharging){S.t=0;S.releaseLate=0;S.releaseJump=0;S.lastJump=0;S.landingImpact=0;}
       if(!paused)S.t+=dt;
     }else{
       if(S.lastCharging){
@@ -30,8 +32,14 @@
       }
       if(S.airborne){
         S.t+=dt;
-        if(S.t>=p.land){S.t=0;S.airborne=false;S.justLanded=true;}
-      }else S.t=Math.max(0,S.t-dt*4);
+        if(S.t>=p.land){
+          S.landingImpact=clamp((S.lastJump||S.releaseJump||0)/.55,.42,1);
+          S.t=0;S.airborne=false;S.justLanded=true;
+        }
+      }else{
+        S.t=Math.max(0,S.t-dt*4);
+        S.landingImpact=Math.max(0,S.landingImpact-dt*7);
+      }
     }
     S.lastCharging=charging;
     const base=opts.curve||{};
@@ -58,7 +66,7 @@
     const apexCue=charging&&!paused&&!S.apexed&&S.t>=p.peak;
     if(apexCue)S.apexed=true;
     S.lastJump=jump;
-    return {curve,jump,late,apexCue,autoRelease:charging&&!paused&&S.t>=p.auto,airborne:S.airborne,justLanded:S.justLanded,t:S.t,params:p};
+    return {curve,jump,late,landingImpact:S.landingImpact,apexCue,autoRelease:charging&&!paused&&S.t>=p.auto,airborne:S.airborne,justLanded:S.justLanded,t:S.t,params:p};
   }
   function releasePower(power,ideal){
     const late=S.late||0;

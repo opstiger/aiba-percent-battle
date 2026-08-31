@@ -208,7 +208,7 @@ const inspect=()=>page.evaluate(()=>{
     legs,feet,arms,fingerCurl,fingerJointCount,thumbCurl,thumbJointCount};
 });
 
-const capture=async(name,distance=3.45,sideOffset=.82,lookY=1.02)=>{
+const capture=async(name,distance=3.45,sideOffset=.82,lookY=1.02,waitMs=80)=>{
   /* 审计机位只改变截图，不改变游戏的动作/状态：放到球员正前方侧一点，
      否则正常的球员跟随机位从背后看不到肘部，截图无法审手臂。 */
   await page.evaluate(({distance,sideOffset,lookY})=>{
@@ -217,7 +217,7 @@ const capture=async(name,distance=3.45,sideOffset=.82,lookY=1.02)=>{
     g.rig.pos.copy(g.P.pos).addScaledVector(d,distance).addScaledVector(side,sideOffset);g.rig.pos.y=1.38;
     g.rig.look.copy(g.P.pos);g.rig.look.y=lookY;
   },{distance,sideOffset,lookY});
-  await page.waitForTimeout(80);
+  await page.waitForTimeout(waitMs);
   const info=await inspect();
   await page.screenshot({path:path.join(OUT,name+".png")});
   fs.writeFileSync(path.join(OUT,name+".json"),JSON.stringify(info,null,2));
@@ -264,6 +264,7 @@ const landingProbe=await page.evaluate(()=>{
     footDelta:landingFoot.map((v,i)=>v-flatFoot[i]),toeDelta:landingToe.map((v,i)=>v-flatToe[i])};
 });
 console.log("  METRIC landing-ankle-pitch="+JSON.stringify(landingProbe.delta.map(v=>+v.toFixed(3))));
+console.log("  METRIC landing-foot-roll="+JSON.stringify({foot:landingProbe.footDelta.map(v=>+v.toFixed(3)),toe:landingProbe.toeDelta.map(v=>+v.toFixed(3))}));
 assert(landingProbe.delta.every(v=>Math.abs(v)>.06),"投后落地会让真实踝关节出现前脚掌承接/回落动作");
 assert(landingProbe.footDelta.every(v=>Math.abs(v)>=.02)&&landingProbe.toeDelta.every(v=>Math.abs(v)>.04),"投后落地会让真实 foot/toe 关节参与前脚掌承接");
 const chargeProbe=await page.evaluate(()=>{
@@ -325,9 +326,26 @@ assert(walkClose.thumbCurl.every(v=>Number.isFinite(v)&&v>.75),"近景小跑近�
 assert(walkClose.fingerJointCount.every(hand=>hand.every(count=>count===3)),"近景小跑每根手指仍是三节关节链");
 assert(walkClose.thumbJointCount.every(count=>count===2),"近景小跑拇指仍是两节关节链");
 assert(walkClose.feet.every(f=>f.hasFoot&&f.hasToe&&Number.isFinite(f.runPitch)&&Number.isFinite(f.runToePitch)&&f.shoe===0),"近景小跑由真实 foot/toe group 驱动脚跟/前掌滚动");
+/* 侧面和脚部截图必须在传球事件前完成；否则进入迎球 pose 后，侧面检查
+   会把合法的 catching 手臂误判成“跑姿丢失”。 */
+const profile=await capture("02-walk-profile",2.8,1.75,1.02,30);
+assert(profile.arms.every(a=>a.meshes>0&&a.bend>=35&&a.bend<=135),"侧面跑动截图两侧手臂仍保持弯肘");
+assert(profile.arms.every(a=>a.palmInward),"侧面跑动截图两只掌心仍相对");
+assert(profile.arms.every(a=>a.shoulder.inside&&a.elbow.inside&&a.wrist.inside),"侧面跑动截图肩-肘-腕均可见");
+await capture("02-walk-feet",1.65,.48,.42,30);
 const walkSamples=[];
-for(let i=0;i<10;i++){await page.waitForTimeout(55);await followAuditCamera();walkSamples.push(await inspect());}
-assert(walkSamples.every(info=>info.walking&&info.moving),"连续跑动采样始终保持走位状态");
+let catchInfo=null;
+for(let i=0;i<12;i++){
+  await page.waitForTimeout(55);await followAuditCamera();
+  const info=await inspect();
+  const incoming=info.pass&&info.pass.progress<.82&&info.catch&&info.catch.active&&!info.catch.settling;
+  if(incoming){catchInfo=await capture("03-walk-while-ball-in-flight",3.45,.82,1.02,35);break;}
+  /* 纯跑步指标只收集没有传球/接球覆盖的帧，避免把状态切换帧
+     错当成“跑步姿势不连续”。 */
+  if(info.walking&&info.moving&&!info.pass&&!(info.catch&&info.catch.active))walkSamples.push(info);
+}
+assert(walkSamples.length>=4,"连续跑动采样至少覆盖 4 帧纯跑步状态");
+assert(walkSamples.every(info=>info.walking&&info.moving),"连续跑动纯跑步采样始终保持走位状态");
 assert(walkSamples.every(info=>info.arms.every(a=>a.meshes>0&&a.bend>=35&&a.bend<=135)),"连续跑动采样手臂始终可见且保持弯肘");
 assert(walkSamples.every(info=>info.arms.every(a=>a.palmInward)),"连续跑动采样掌心始终相对");
 assert(walkSamples.every(info=>info.arms.every(a=>a.shoulder.inside&&a.elbow.inside&&a.wrist.inside)),"连续跑动采样肩-肘-腕始终在画面内");
@@ -376,14 +394,19 @@ const pairedPhase=walkSamples.flatMap(info=>info.arms.map((arm,i)=>({upper:arm.u
   .filter(pair=>Math.abs(pair.upper)>.025&&Math.abs(pair.leg)>.025);
 assert(pairedPhase.length>=4&&pairedPhase.filter(pair=>pair.upper*pair.leg<0).length>=pairedPhase.length*.75,
   "左右脚前跨时同侧大臂反向摆动、对侧大臂同步前摆");
-const profile=await capture("02-walk-profile",2.8,1.75);
-assert(profile.arms.every(a=>a.meshes>0&&a.bend>=35&&a.bend<=135),"侧面跑动截图两侧手臂仍保持弯肘");
-assert(profile.arms.every(a=>a.palmInward),"侧面跑动截图两只掌心仍相对");
-assert(profile.arms.every(a=>a.shoulder.inside&&a.elbow.inside&&a.wrist.inside),"侧面跑动截图肩-肘-腕均可见");
-await capture("02-walk-feet",1.65,.48,.42);
-
-await page.waitForFunction("G.moving===true&&P.walking===true&&G.passCatch&&G.passCatch.active&&G.passCatch.settling!==true&&AIBA.runtime.service('legacy').getPassing()",{timeout:20000});
-const catchInfo=await capture("03-walk-while-ball-in-flight");
+if(!catchInfo){
+  try{
+    await page.waitForFunction("G.moving===true&&P.walking===true&&G.passCatch&&G.passCatch.active&&G.passCatch.settling!==true&&AIBA.runtime.service('legacy').getPassing()",{timeout:5000});
+    catchInfo=await capture("03-walk-while-ball-in-flight",3.45,.82,1.02,35);
+  }catch(e){
+    check(false,"在跑步采样窗口内捕获到传球飞行状态");
+  }
+}
+if(!catchInfo){
+  console.log("  FAIL  未捕获到 incoming 传球帧，提前结束专项回归以确保浏览器被关闭");
+  await browser.close();server.close();
+  process.exit(1);
+}
 assert(catchInfo.moving&&catchInfo.walking,"球未到手时仍处于碎步走位");
 assert(catchInfo.tstage.catch,"未到手的迎球状态使用 T台 catching 动作片段");
 assert(catchInfo.tstage.catchSource,"迎球状态记录当前 T台关键帧来源");

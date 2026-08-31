@@ -5,6 +5,31 @@ const CUSTOM_CAMERA_KEY="aiba_custom_camera_views_v1",CUSTOM_CAMERA_COUNT=2;
 const CUSTOM_CAMERA_DEFAULT=Object.freeze({yaw:Math.PI,pitch:.22,distance:4.4,targetY:1.12});
 const customCameraSlots=[null,null];
 let cameraEditor=null;
+const cameraFovStack=new Map();
+function applyCameraFovStack(){
+  if(typeof camera==="undefined")return 0;
+  let winner=null;
+  cameraFovStack.forEach((entry,owner)=>{
+    if(!entry)return;
+    if(!winner||entry.priority>winner.priority||(entry.priority===winner.priority&&entry.seq>winner.seq))
+      winner={owner,priority:entry.priority,seq:entry.seq,fov:entry.fov};
+  });
+  const target=winner?winner.fov:fovForAspect(camera.aspect||1);
+  if(Number.isFinite(target)&&Math.abs(camera.fov-target)>.01){
+    camera.fov=target;camera.updateProjectionMatrix();
+  }
+  return target;
+}
+let cameraFovSeq=0;
+function requestCameraFov(owner,fov,priority){
+  if(!owner||!Number.isFinite(Number(fov)))return false;
+  cameraFovStack.set(String(owner),{fov:Number(fov),priority:Number(priority)||0,seq:++cameraFovSeq});
+  applyCameraFovStack();return true;
+}
+function releaseCameraFov(owner){
+  if(owner!=null)cameraFovStack.delete(String(owner));
+  applyCameraFovStack();return true;
+}
 const CAM={mode:0,names:CAM_BASE_NAMES.concat(["自定义视角 1","自定义视角 2"])};
 function cameraInPlay(){
   return G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||
@@ -351,6 +376,35 @@ function updPlayCam(dt){
     }
   }
 }
+/* CameraDirector：所有镜头的唯一调度入口。镜头优先级固定为
+   调试编辑器 > 回放/胜利/英雄演出 > 过场接管 > 模式专属镜头 > 常规跟随。
+   具体镜头仍由各演出模块提供，这里只决定本帧谁拥有 rig，避免 game-loop
+   里不断增长的 if/else 互相抢写相机。 */
+function updateCameraDirector(dt){
+  if(window.AIBACamera&&AIBACamera.isEditing&&AIBACamera.isEditing()){
+    AIBACamera.updateEditor(dt);return "editor";
+  }
+  if(VICTORY_CINE.on&&G.state!=="victorycine")stopVictoryCine();
+  if(rep.on){updReplay(dt);return "replay";}
+  if(VICTORY_CINE.on){updVictoryCine(dt);return "victory";}
+  if(winCine.on){updWinCine(dt);return "win";}
+  if(hero.on){updHero(dt);return "hero";}
+  if(G.cutAway||G.battleCut||G.state==="pregame")return "takeover";
+  if(G.state==="aishow"){updShowCam();return "show";}
+  if(["menu","diff","intro","roundend","sim","bracket","champion","runnerup","eliminated","battleend","rushend","lsend"].includes(G.state)){
+    const a=G.tNow*0.1;
+    rig.pos.set(Math.cos(a)*18,8+Math.sin(G.tNow*0.3)*0.5,COURT.midZ+Math.sin(a)*20);
+    rig.look.set(0,2.2,COURT.midZ);
+    return "menu";
+  }
+  /* 绝杀观看阶段由模式接管转头镜头；球到手后再回到常规跟随。 */
+  if(G.state==="lastshot"&&typeof updateLastShotCam==="function"&&updateLastShotCam(dt))return "lastshot";
+  if((G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="bootshot"||G.state==="resultbeat")&&!G.glideCam){
+    updPlayCam(dt);return "play";
+  }
+  if(G.state==="lastshot")updPlayCam(dt);
+  return "idle";
+}
 function ballWorldPos(out){
   // Camera mode is presentation only. Shot physics always starts at the real
   // player skeleton's ball grip so first/third person produce the same shot.
@@ -360,9 +414,11 @@ function ballWorldPos(out){
 
 
 window.AIBA.runtime.register("rendering:camera",Object.freeze({
-  P,CAM,faceTo,cycleCam,setCameraMode,applyCamMode,eyePos,autoFrameCam,updPlayCam,ballWorldPos,
+  P,CAM,faceTo,cycleCam,setCameraMode,applyCamMode,eyePos,autoFrameCam,updPlayCam,updateCameraDirector,ballWorldPos,
+  requestCameraFov,releaseCameraFov,applyCameraFovStack,
   customCameraSlots,availableCameraModes,customCameraSettingsMarkup,beginCustomCameraEdit,saveEditing,cancelEditing,
-  useCustomCameraSlot,clearCustomCameraSlot,isEditing:()=>!!cameraEditor,updateEditor:()=>!!cameraEditor&&updateCustomCamera(0)
+  useCustomCameraSlot,clearCustomCameraSlot,
+  isEditing:()=>!!cameraEditor,updateEditor:()=>!!cameraEditor&&updateCustomCamera(0)
 }));
 
 window.AIBACameraBeginEdit=beginCustomCameraEdit;
@@ -375,3 +431,4 @@ window.AIBACamera=Object.freeze({
   beginEdit:beginCustomCameraEdit,saveEditing,cancelEditing,useSlot:useCustomCameraSlot,clearSlot:clearCustomCameraSlot,
   isEditing:()=>!!cameraEditor,updateEditor:()=>!!cameraEditor&&updateCustomCamera(0)
 });
+window.AIBACameraFov=Object.freeze({request:requestCameraFov,release:releaseCameraFov,apply:applyCameraFovStack});

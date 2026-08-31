@@ -102,7 +102,9 @@ function resize(){
   const h=Math.max(1,Math.round(vv?vv.height:innerHeight));
   document.documentElement.style.setProperty("--app-height",h+"px");
   RENDER_QUALITY.w=w;RENDER_QUALITY.h=h;applyRenderScale(true);
-  camera.aspect=w/h;camera.fov=fovForAspect(camera.aspect);camera.updateProjectionMatrix();
+  camera.aspect=w/h;camera.fov=fovForAspect(camera.aspect);
+  if(window.AIBACameraFov&&AIBACameraFov.apply)AIBACameraFov.apply();
+  camera.updateProjectionMatrix();
 }
 let _resizeT=0;
 function debouncedResize(){clearTimeout(_resizeT);_resizeT=setTimeout(resize,120);}

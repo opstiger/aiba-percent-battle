@@ -161,6 +161,6 @@
     refreshBench:()=>benchVis(),
     getJumboAcc:()=>jumboAcc,
     setJumboAcc:value=>{jumboAcc=value;},
-    setNetPulse:value=>{netPulse=value;}
+    setNetPulse:value=>{if(typeof pulseNet==="function")pulseNet(value);else netPulse=value;}
   });
 })(window);

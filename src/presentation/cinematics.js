@@ -388,6 +388,13 @@ function updateCelebrate(o,dt){
   o.g.rotation.y=c.baseY;
   o.g.rotation.z=c.baseZ;
   o.g.position.y=c.basePosY;
+  /* 庆祝从投篮/落地接管时，先清掉上一动作残留的二级旋转；下面的统一时间层
+     会在动作真正开始后再让它们晚半拍跟随。 */
+  if(o.headRoot)o.headRoot.rotation.set(0,0,0);
+  if(o.hairGrp)o.hairGrp.rotation.set(0,0,0);
+  if(o.headband)o.headband.rotation.set(0,0,0);
+  (o.wrists||[]).forEach(wrist=>{if(wrist)wrist.rotation.set(0,0,0);});
+  if(o.jerseyHem)o.jerseyHem.rotation.set(0,0,0);
   if(c.type===0){ // 双臂振举欢呼，脚底保持贴地
     const pump=Math.abs(Math.sin(t*6));
     o.arms.forEach(a=>a.rotation.x=-2.6-pump*0.4);o.elbows.forEach(e=>e.rotation.x=-0.3);
@@ -428,6 +435,7 @@ function updateCelebrate(o,dt){
     o.g.rotation.y=c.baseY+Math.sin(t*2.8)*0.12;
     o.g.position.y=c.basePosY;
   }
+  if(typeof applyActionTimingPose==="function")applyActionTimingPose(o,t,"celebrate-"+c.type,c.baseY);
   // 以当前帧真实鞋底再次收口，防止投篮/起跳遗留的根高度让人物悬空。
   groundCelebrateRoot(o);
 }

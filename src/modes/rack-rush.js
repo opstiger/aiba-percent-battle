@@ -249,7 +249,8 @@
     G.running=false;G.canShoot=false;applyCamMode();
     /* 收 HUD 推迟到留白结束。通关走胜利运镜(下面 startVictoryCine),
        失败原本是 0 秒直接弹面板 —— 而没通关才是常态,那条路径反而最需要收尾。 */
-    G.state=completed?"rushend":"resultbeat";
+    if(typeof transitionState==="function")transitionState(completed?"rushend":"resultbeat",completed?"rack-rush-victory":"rack-rush-result-beat");
+    else G.state=completed?"rushend":"resultbeat";
     const record=saveRackRushRecord(makeRackRushRecord());
     if(isRackRushSpeed(record)){
       const prev=sortRackRushRuns(loadRackRushRuns("speed100").filter(row=>row.completed&&row.completedAt!==record.completedAt));
@@ -267,7 +268,7 @@
       return;
     }
     /* 失败也要给一拍:蜂鸣器、观众的叹息、球员的懊恼走完再进结算。 */
-    const toPanel=()=>{G.state="rushend";$("hud").style.display="none";showRackRushResult(record);};
+    const toPanel=()=>{if(typeof transitionState==="function")transitionState("rushend","rack-rush-result-panel");else G.state="rushend";$("hud").style.display="none";showRackRushResult(record);};
     if(global.AIBAResultBeat)global.AIBAResultBeat.play({
       eyebrow:isRackRushSpeed(record)?"百分竞速结束":"本次挑战结束",
       score:isRackRushSpeed(record)?formatRackRushClock(record.elapsedMs/1000):record.total,

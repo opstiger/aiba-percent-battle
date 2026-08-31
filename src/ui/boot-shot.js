@@ -305,7 +305,8 @@ function armShot(){
 function pinFov(){
   if(!S.on)return;
   try{
-    if(Math.abs(camera.fov-S.fov)>0.01){camera.fov=S.fov;camera.updateProjectionMatrix();}
+    if(window.AIBACameraFov&&AIBACameraFov.request)AIBACameraFov.request("boot-shot",S.fov,100);
+    else if(Math.abs(camera.fov-S.fov)>0.01){camera.fov=S.fov;camera.updateProjectionMatrix();}
   }catch(e){}
   S.fovRaf=requestAnimationFrame(pinFov);
 }
@@ -462,7 +463,9 @@ function cleanup(){
     while(balls&&balls.length){const b=balls.pop();ctx.scene.remove(b.mesh);ctx.scene.remove(b.blob);}
   }catch(e){}
   try{
-    if(S.savedFov){camera.fov=S.savedFov;camera.updateProjectionMatrix();S.savedFov=0;}
+    if(window.AIBACameraFov&&AIBACameraFov.release)AIBACameraFov.release("boot-shot");
+    else if(S.savedFov){camera.fov=S.savedFov;camera.updateProjectionMatrix();}
+    S.savedFov=0;
   }catch(e){}
   ctx.CAM.mode=S.savedCam;
   try{ctx.resetRackBalls();}catch(e){}

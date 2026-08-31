@@ -150,17 +150,24 @@
   function beginFollow(){
     followAge=0;followActive=true;
   }
+  function followForce(){
+    if(typeof G!=="undefined"&&Number.isFinite(Number(G.lastShotFollowForce)))
+      return clampN(Number(G.lastShotFollowForce),.86,1.18);
+    const shot=typeof curShot==="function"?curShot():null;
+    return shot&&shot.super?1.15:(shot&&shot.deep!=null?1.08:1);
+  }
   function followState(dt){
-    if(!followActive)return {active:false,extend:0,follow:0,recover:1,age:followAge};
+    const force=followForce();
+    if(!followActive)return {active:false,extend:0,follow:0,recover:1,age:followAge,force};
     followAge+=Math.max(0,Math.min(.08,dt||0));
     const extend=ease01(followAge/FOLLOW_EXTEND);
     const recover=ease01((followAge-FOLLOW_EXTEND-FOLLOW_HOLD)/FOLLOW_FADE);
     const follow=extend*(1-recover);
     if(followAge>=FOLLOW_EXTEND+FOLLOW_HOLD+FOLLOW_FADE){
       followActive=false;
-      return {active:false,extend:1,follow:0,recover:1,age:followAge};
+      return {active:false,extend:1,follow:0,recover:1,age:followAge,force};
     }
-    return {active:true,extend,follow,recover,age:followAge};
+    return {active:true,extend,follow,recover,age:followAge,force};
   }
   /* T台 shot_cycle 用自己的 duration 走完整时间轴；游戏仍掌管蓄力判定、出手
      时刻和落地物理。正常力度下 1.8s 时间轴会在约 0.8s 的出手点落到 T台
@@ -313,6 +320,7 @@
     if(phys.justLanded)landT=0.3;
     if(landT>0)landT-=dt;
     const lk=landT>0?Math.sin((0.3-landT)/0.3*Math.PI):0;
+    const landingImpact=phys&&Number.isFinite(phys.landingImpact)?phys.landingImpact:1;
     const follow=followState(dt);
     const c=visualReleaseCurve(rawCurve,follow);
     const catchState=G.passCatch;
@@ -337,6 +345,7 @@
       if(typeof poseHandJoints==="function")poseHandJoints(player,shotCurves(0));
       if(typeof poseRunCycle==="function")poseRunCycle(player,P.walkRig,spd,dt,{sway:true});
       player.g.position.y+=P.jump;
+      if(typeof regroundRunPose==="function")regroundRunPose(player);
       // 最后几步仍保持步态，但接球手势提前覆盖上肢，形成“转身收步同时迎球”。
       if(catchState&&catchState.active)poseCatchHands(player,catchState,dt);
     }else{
@@ -345,7 +354,7 @@
       if(typeof resetWalkSpeed==="function")resetWalkSpeed();
       if(P.walkRig)P.walkRig.phase=0;
       player.g.rotation.z=0;
-      const gamePoseY=poseGuy(player,c,lk);
+      const gamePoseY=poseGuy(player,c,lk,landingImpact);
       const gameRootLean=player.g&&player.g.rotation?player.g.rotation.x:0;
       const gameFootY=(poseFootBottomY(player.legs[0].rotation.x+gameRootLean,player.knees[0].rotation.x,player.ankles[0].rotation.x)+
         poseFootBottomY(player.legs[1].rotation.x+gameRootLean,player.knees[1].rotation.x,player.ankles[1].rotation.x))*.5;
@@ -399,6 +408,8 @@
     /* 必须在 releasePower 扣力度之前把 late 记下来。扣完之后的 power 拿去算的
        err 符号已经不可信了(晚出手也可能被扣成 err<0，看着像蓄力不够)，
        下游(绝杀模式失手诊断)要靠这个原始信号才能分清"没蓄够"和"蓄太久"。 */
+    G.lastShotFollowForce=clampN((shot&&shot.super?1.15:(shot&&shot.deep!=null?1.08:1))+
+      (shot&&shot.money?.025:0),.86,1.18);
     G.lastReleaseLate=AIBAShotPhysics.lastLate?AIBAShotPhysics.lastLate():0;
     const adj=AIBAShotPhysics.releasePower(power,ideal); // 下落中出手→明显偏短
     pendingRelease={ctx:this,power:adj,shot};
@@ -407,13 +418,15 @@
   }
 
   /* ================= updBalls V2：实体篮板(线段穿越) ================= */
+  const MOTION_BALL_RADIUS=.16;
   const origUpdBalls=global.updBalls;
   function boardHit(px,py,pz,qx,qy,qz){
-    // 从篮板前方(-z 方向)穿越正面平面,且穿越点落在板面矩形内
-    if(!(pz>BOARD_Z&&qz<=BOARD_Z))return null;
-    const k=(pz-BOARD_Z)/Math.max(1e-6,pz-qz);
+    // 球是有体积的：球心还没到板面，但球壳已经擦到板时也要算碰撞。
+    const face=BOARD_Z+MOTION_BALL_RADIUS;
+    if(!(pz>face&&qz<=face))return null;
+    const k=(pz-face)/Math.max(1e-6,pz-qz);
     const hx=px+(qx-px)*k,hy=py+(qy-py)*k;
-    if(Math.abs(hx)>BOARD_HALF_W||hy<BOARD_Y_MIN||hy>BOARD_Y_MAX)return null;
+    if(Math.abs(hx)>BOARD_HALF_W+MOTION_BALL_RADIUS||hy<BOARD_Y_MIN-MOTION_BALL_RADIUS||hy>BOARD_Y_MAX+MOTION_BALL_RADIUS)return null;
     return {x:hx,y:hy};
   }
   function updBallsV2(dt){
@@ -441,7 +454,7 @@
         b.vel.z=Math.abs(b.vel.z)*BOUNCE_K;
         b.vel.x*=0.8;
       }
-      p.set(hit.x,hit.y,BOARD_Z+0.02);
+      p.set(hit.x,hit.y,BOARD_Z+MOTION_BALL_RADIUS+0.02);
       if(typeof playerRimHaptic==="function")playerRimHaptic(b);
       sBoard();
     }

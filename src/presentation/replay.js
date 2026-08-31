@@ -55,6 +55,8 @@ function updReplay(dt){
     const c=shotCurves(ph);
     const y=poseGuy(player,c,0)+Math.max(0,c.jmp*0.55-c.over*0.55);
     applyHandFollowThroughPose(player,ease01((ph-.94)/.12));
+    if(typeof applyShotPoseNoise==="function")
+      applyShotPoseNoise(player,Math.min(1,Math.max(0,ph)),h.poseNoiseKey!=null?h.poseNoiseKey:rep.idx);
     const s=h.shooterPos||V3(h.startPos.x,0,h.startPos.z);
     player.g.position.set(s.x,y,s.z);
     player.g.rotation.y=h.shooterFace!=null?h.shooterFace:faceTo(s,HOOP);
@@ -82,7 +84,7 @@ function updReplay(dt){
   }
   if(!photo)rig.look.copy(rep.ghost.position);
   if(!rep.scoredFx&&t>=h.tf*0.98){
-    rep.scoredFx=true;netPulse=1;sSwish();cheerSound(true);G.cheer=1;
+    rep.scoredFx=true;pulseNet(1,rep.ball&&rep.ball.netDir);sSwish();cheerSound(true);G.cheer=1;
   }
   if(rep.t>REPLAY_PHOTO_DUR+rep.end+0.35){
     rep.idx++;

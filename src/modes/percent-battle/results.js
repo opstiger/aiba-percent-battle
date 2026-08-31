@@ -14,8 +14,10 @@
     if(G.battleOver||(winCine&&winCine.on))return;
     startWinCine(win,ball);
   }
-  function showBattleResult(win){
-    leaveArenaAudio();G.state="battleend";OPP.on=false;if(typeof battle.cancelOppPass==="function")battle.cancelOppPass(true);
+  function renderBattleResult(win){
+    leaveArenaAudio();
+    if(typeof transitionState==="function")transitionState("battleend","percent-battle-result-panel");else G.state="battleend";
+    OPP.on=false;if(typeof battle.cancelOppPass==="function")battle.cancelOppPass(true);
     balls.slice().forEach(ball=>{scene.remove(ball.mesh);scene.remove(ball.blob);});balls.length=0;
     $("spotDots").style.display="none";$("edgeArrows").style.display="none";
     $("battleScore").style.display="none";$("midBtn").style.display="none";
@@ -45,5 +47,31 @@
       <button class="btn green" onclick="showOnlineLeaderboardForRecord(G.battleResultRecord)">全球排行榜</button><button class="btn green" onclick="location.reload()">回主菜单</button>`);
   }
 
+  function clearBattleForResultBeat(){
+    leaveArenaAudio();
+    if(typeof transitionState==="function")transitionState("resultbeat","percent-battle-result-beat");else G.state="resultbeat";
+    OPP.on=false;
+    if(typeof battle.cancelOppPass==="function")battle.cancelOppPass(true);
+    balls.slice().forEach(ball=>{scene.remove(ball.mesh);scene.remove(ball.blob);});balls.length=0;
+    $("spotDots").style.display="none";$("edgeArrows").style.display="none";
+    $("battleScore").style.display="none";$("midBtn").style.display="none";
+    const spotRing=ctx.getCurSpotRing();if(spotRing)spotRing.visible=false;
+    handBall.visible=false;pBall.visible=false;$("battleControls").style.display="none";$("hud").style.display="none";
+    endHero();applyCamMode();
+  }
+  function showBattleResult(win){
+    if(G.state==="resultbeat"&&global.AIBAResultBeat&&global.AIBAResultBeat.active())return;
+    const record=G.battleResultRecord||battle.makeBattleRecord(win,battle.battleElapsedMs());
+    if(!global.AIBAResultBeat){renderBattleResult(win);return;}
+    clearBattleForResultBeat();
+    global.AIBAResultBeat.play({
+      eyebrow:"PERCENT BATTLE",
+      score:record.score+" : "+record.opponentScore,
+      tone:win?"good":"bad",
+      seconds:2.6,
+      note:win?"率先破百 · 全场反应":"对手率先破百 · 重新组织节奏",
+      onDone:()=>renderBattleResult(win)
+    });
+  }
   Object.assign(battle,{finishBattle,showBattleResult});
 })(window);

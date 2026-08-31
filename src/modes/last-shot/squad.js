@@ -299,6 +299,11 @@ function foeKit(allyJersey){
     guy.arms[0].rotation.x=-.42+breath;guy.arms[1].rotation.x=-.42-breath;
     guy.arms[0].rotation.z=-.08;guy.arms[1].rotation.z=.08;
     guy.elbows[0].rotation.x=-.42;guy.elbows[1].rotation.x=-.42;
+    if(guy.hairGrp)guy.hairGrp.rotation.set(0,0,0);
+    if(guy.headband)guy.headband.rotation.set(0,0,0);
+    (guy.wrists||[]).forEach(wrist=>{if(wrist)wrist.rotation.set(0,0,0);});
+    if(guy.jerseyHem)guy.jerseyHem.rotation.set(0,0,0);
+    if(typeof chars.setFaceExpression==="function")chars.setFaceExpression(guy,"neutral");
     guy.g.position.y=STAND_FOOT_Y-poseFootBottomY(0,.12,-.1)*(actor.hs||1);
     if(target)headTrack(actor,target,dt);
     else if(guy.headRoot){
@@ -444,6 +449,14 @@ function foeKit(allyJersey){
     }else if(action==="freeze"){
       guy.arms[0].rotation.x=-.34;guy.arms[1].rotation.x=-.34;
     }
+    /* 反应动作也要有“先蓄一下、再跟随收回”的时间层；只叠上肢与二级部件，
+       不碰 poseRunner 已经算好的脚底和位移，避免冲刺演员又变成飘着跑。 */
+    if(typeof applyActionTimingPose==="function")applyActionTimingPose(guy,t,action,actor.phase);
+    /* 反应阶段给九名演员一个低幅度的脸部二级反馈：庆祝偏 joy，失误/懊恼偏
+       shock，其余保持专注。覆盖层默认隐藏，不影响普通比赛与玩家脸贴图。 */
+    const faceMode=(action==="raise"||action==="point"||action==="rush"||action==="push"||action==="hug"||action==="crash")
+      ?"joy":(action==="fall"||action==="head"||action==="kneel"||action==="sad"||action==="slow"?"shock":"focus");
+    if(typeof chars.setFaceExpression==="function")chars.setFaceExpression(guy,faceMode);
   }
 
   function startPostShot(){
