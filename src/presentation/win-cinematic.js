@@ -79,12 +79,14 @@ function updWinCine(dt){
   if(w.loser)w.loser.g.visible=true;
 
   /* ---- 投篮者姿态:出手→跟随动作定格 ---- */
-  let ph=tt<WC_T0?(0.82+0.26*(tt/WC_T0)):1.08;
-  const sc=shotCurves(ph);
-  const sy=poseGuy(w.shooter,sc,0)+Math.max(0,sc.jmp*0.55-sc.over*0.55);
-  applyHandFollowThroughPose(w.shooter,ease01((ph-.94)/.12));
-  w.shooter.g.position.set(w.sPos.x,sy,w.sPos.z);
-  w.shooter.g.rotation.y=w.sFace;w.shooter.g.rotation.x=0;
+  if(tt<WC_T1){
+    let ph=tt<WC_T0?(0.82+0.26*(tt/WC_T0)):1.08;
+    const sc=shotCurves(ph);
+    const sy=poseGuy(w.shooter,sc,0)+Math.max(0,sc.jmp*0.55-sc.over*0.55);
+    applyHandFollowThroughPose(w.shooter,ease01((ph-.94)/.12));
+    w.shooter.g.position.set(w.sPos.x,sy,w.sPos.z);
+    w.shooter.g.rotation.y=w.sFace;w.shooter.g.rotation.x=0;
+  }
 
   /* ---- 失败者姿态:震惊前保持站立,T2 起慢慢举手后仰 ---- */
   if(tt<WC_T2){

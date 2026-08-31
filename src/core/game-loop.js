@@ -80,25 +80,29 @@ function animate(){
     const _ph=Math.round(G.power)+"%";if($("pFill").style.height!==_ph)$("pFill").style.height=_ph;
   }else hidePlayerPowerUI();
   // cameras
-  if(VICTORY_CINE.on&&G.state!=="victorycine")stopVictoryCine();
-  if(rep.on)updReplay(dt);
-  else if(VICTORY_CINE.on)updVictoryCine(dt);
-  else if(winCine.on)updWinCine(dt);
-  else if(hero.on)updHero(dt);
-  else if(G.cutAway){/* updCutAway 已控制镜头 */}
-  else if(G.battleCut){/* updBattleCut 已控制镜头 */}
-  else if(G.state==="pregame"){/* updPreGameShow 已控制镜头 */}
-  else if(G.state==="aishow")updShowCam();
-  else if(["menu","diff","intro","roundend","sim","bracket","champion","runnerup","eliminated","battleend","rushend","lsend"].includes(G.state)){
-    const a=G.tNow*0.1;
-    rig.pos.set(Math.cos(a)*18,8+Math.sin(G.tNow*0.3)*0.5,COURT.midZ+Math.sin(a)*20);
-    rig.look.set(0,2.2,COURT.midZ);
+  if(window.AIBACamera&&AIBACamera.isEditing&&AIBACamera.isEditing()){
+    AIBACamera.updateEditor(dt);
+  }else{
+    if(VICTORY_CINE.on&&G.state!=="victorycine")stopVictoryCine();
+    if(rep.on)updReplay(dt);
+    else if(VICTORY_CINE.on)updVictoryCine(dt);
+    else if(winCine.on)updWinCine(dt);
+    else if(hero.on)updHero(dt);
+    else if(G.cutAway){/* updCutAway 已控制镜头 */}
+    else if(G.battleCut){/* updBattleCut 已控制镜头 */}
+    else if(G.state==="pregame"){/* updPreGameShow 已控制镜头 */}
+    else if(G.state==="aishow")updShowCam();
+    else if(["menu","diff","intro","roundend","sim","bracket","champion","runnerup","eliminated","battleend","rushend","lsend"].includes(G.state)){
+      const a=G.tNow*0.1;
+      rig.pos.set(Math.cos(a)*18,8+Math.sin(G.tNow*0.3)*0.5,COURT.midZ+Math.sin(a)*20);
+      rig.look.set(0,2.2,COURT.midZ);
+    }
+    // 绝杀时刻:观看阶段由模式接管转头镜头,球一到手就交还 updPlayCam,出手镜头与其他模式一致
+    else if(G.state==="lastshot"){if(!(typeof updateLastShotCam==="function"&&updateLastShotCam(dt)))updPlayCam(dt);}
+    /* resultbeat = 结果留白。必须继续用比赛机位:它如果落进上面那条菜单分支,
+       镜头会在蜂鸣器响的同一帧甩回环绕机位 —— 那正是"像程序在切状态"的来源。 */
+    else if((G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="bootshot"||G.state==="resultbeat")&&!G.glideCam)updPlayCam(dt);
   }
-  // 绝杀时刻:观看阶段由模式接管转头镜头,球一到手就交还 updPlayCam,出手镜头与其他模式一致
-  else if(G.state==="lastshot"){if(!(typeof updateLastShotCam==="function"&&updateLastShotCam(dt)))updPlayCam(dt);}
-  /* resultbeat = 结果留白。必须继续用比赛机位:它如果落进上面那条菜单分支,
-     镜头会在蜂鸣器响的同一帧甩回环绕机位 —— 那正是"像程序在切状态"的来源。 */
-  else if((G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="bootshot"||G.state==="resultbeat")&&!G.glideCam)updPlayCam(dt);
   updateRenderQuality(dt);
   camera.position.copy(rig.pos);
   camera.lookAt(rig.look);

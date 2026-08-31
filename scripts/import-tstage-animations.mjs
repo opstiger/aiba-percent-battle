@@ -105,6 +105,89 @@ function importLimb(raw, label) {
   return imported;
 }
 
+/* T台下肢点是 actor-space 的 hip/knee/ankle，游戏下肢是
+   legs -> knees -> ankles 的嵌套 X 轴旋转链。只把 release pose 的下肢
+   目标预计算成这条链的相对角度；root/骨盆高度仍由游戏投篮物理控制，
+   避免把 T台静态姿势的身体高度直接带进游戏。 */
+function importLeg(raw, label) {
+  const hip = vector(raw?.hip, `${label}.hip`);
+  const knee = vector(raw?.knee, `${label}.knee`);
+  const ankle = vector(raw?.ankle, `${label}.ankle`);
+  const upper = knee.clone().sub(hip);
+  const lower = ankle.clone().sub(knee);
+  if (upper.length() < 0.05 || lower.length() < 0.05) throw new Error(`${label} has an invalid leg segment`);
+
+  /* game 的 -Y 骨段绕本地 X 旋转后，z = -sin(x)。先求两段在 actor
+     空间的绝对俯仰，再相减得到 knee/ankle 的 parent-local 旋转。 */
+  const absoluteX = (direction, part) => {
+    const v = direction.clone().normalize();
+    if (Math.hypot(v.y, v.z) < 0.2) throw new Error(`${label}.${part} is not a usable vertical leg direction`);
+    return Math.atan2(-v.z, -v.y);
+  };
+  const hipX = absoluteX(upper, "upper");
+  const lowerX = absoluteX(lower, "lower");
+  const footQuat = quaternion(raw?.quaternion || raw?.ankleQuat, `${label}.ankleQuat`);
+  const forward = new THREE.Vector3(0, 0, 1).applyQuaternion(footQuat);
+  /* 游戏鞋只有 X 轴脚掌俯仰；把 T台鞋的 forward 向量投影到 YZ，
+     保留 release pose 的脚跟/脚尖方向，忽略不能落进游戏骨架的偏航滚转。 */
+  const footX = Math.atan2(-forward.y, Math.max(0.001, Math.hypot(forward.x, forward.z)));
+  return {
+    hip: round(hipX),
+    knee: round(lowerX - hipX),
+    ankle: round(footX - lowerX),
+    ankleWorldQuat: array4(footQuat),
+    source: { hip: array3(hip), knee: array3(knee), ankle: array3(ankle) },
+  };
+}
+
+function importLowerBody(pose, label) {
+  const body = pose?.body;
+  if (!body?.leftLeg || !body?.rightLeg) throw new Error(`${label} has no complete body leg data`);
+  return {
+    left: importLeg(body.leftLeg, `${label}.leftLeg`),
+    right: importLeg(body.rightLeg, `${label}.rightLeg`),
+  };
+}
+
+function importBodyPose(pose, label) {
+  const body = pose?.body;
+  if (!body?.pelvis?.quaternion || !body?.spine?.quaternion || !body?.neck?.quaternion || !body?.head?.quaternion) {
+    throw new Error(`${label} has no complete body quaternion data`);
+  }
+  return {
+    pelvisQuat: array4(quaternion(body.pelvis.quaternion, `${label}.pelvisQuat`)),
+    spineQuat: array4(quaternion(body.spine.quaternion, `${label}.spineQuat`)),
+    neckQuat: array4(quaternion(body.neck.quaternion, `${label}.neckQuat`)),
+    headQuat: array4(quaternion(body.head.quaternion, `${label}.headQuat`)),
+  };
+}
+
+/* 单个静态 T台姿势也走同一条导入链。热身扣篮的水平位移、起跳弧线和球何时
+   脱手仍归游戏；这里只把 Air Jordan 姿势的骨骼目标和球相对位置落成动作包。 */
+function importStaticPose(name) {
+  const pose = readPose(name);
+  const shooting = pose.shootingHand || pose.shooting;
+  const guide = pose.guideHand || pose.guide;
+  const sourceShoulder = vector(shooting?.shoulder, `${name}.shooting.shoulder`);
+  const ball = vector(pose.ball?.position, `${name}.ball.position`);
+  const gameShoulder = new THREE.Vector3(-0.285, 1.36, 0);
+  return {
+    name,
+    sourcePose: name,
+    shooting: importLimb(shooting, `${name}.shooting`),
+    guide: importLimb(guide, `${name}.guide`),
+    lowerBody: importLowerBody(pose, name),
+    body: importBodyPose(pose, name),
+    ball: {
+      position: array3(ball),
+      quaternion: array4(quaternion(pose.ball?.quaternion || [0, 0, 0, 1], `${name}.ballQuat`)),
+    },
+    /* 将 T台球心从投篮肩锚点平移到游戏的 actor-local 肩锚点，便于任意预热
+       角色共享同一套 pose，而不把 T台的绝对腾空高度硬写进根节点。 */
+    ballLocal: array3(ball.clone().sub(sourceShoulder).add(gameShoulder)),
+  };
+}
+
 function importBodyBob(animation, file) {
   if (animation.bodyBob == null) return null;
   if (typeof animation.bodyBob !== "object") throw new Error(`animation ${file} bodyBob must be an object`);
@@ -157,6 +240,7 @@ function importClip(file) {
         label: frame.label || frame.pose,
         shooting: importLimb(pose.shootingHand || pose.shooting, `${frame.pose}.shooting`),
         guide: importLimb(pose.guideHand || pose.guide, `${frame.pose}.guide`),
+        ...(animation.name === "shot_cycle" ? { lowerBody: importLowerBody(pose, frame.pose) } : {}),
       };
     });
   return {
@@ -182,12 +266,16 @@ for (const required of ["run", "catching"]) {
   if (!clips[required]) throw new Error(`required T台 clip missing: ${required}`);
 }
 
+const STATIC_POSE_NAMES = ["dunk_air_jordan"];
+const poses = Object.fromEntries(STATIC_POSE_NAMES.map((name) => [name, importStaticPose(name)]));
+
 const pack = {
   schema: "aiba-motion-pack/1",
   editorVersion: "0.1.0",
   generatedAt: new Date().toISOString(),
   source: "basketball-pose-lab",
   clips,
+  poses,
 };
 
 const output = [
@@ -197,7 +285,7 @@ const output = [
   "",
 ].join("\n");
 if (CHECK_ONLY) {
-  console.log(`checked ${Object.entries(clips).map(([name, clip]) => `${name}(${clip.keyframes.length} frames)`).join(", ")}`);
+  console.log(`checked ${Object.entries(clips).map(([name, clip]) => `${name}(${clip.keyframes.length} frames)`).join(", ")} and poses ${Object.keys(poses).join(", ")}`);
 } else {
   const tempFile = `${OUT_FILE}.tmp`;
   fs.writeFileSync(tempFile, output, "utf8");

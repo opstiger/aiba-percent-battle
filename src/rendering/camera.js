@@ -1,13 +1,219 @@
 const P={pos:V3(0,0,-0.6),face:0,walking:false,walkT:0,jump:0,eyeDip:0};
 function faceTo(from,to){return Math.atan2(to.x-from.x,to.z-from.z);}
-const CAM={mode:0,names:["第一人称","球员跟随","转播视角"]};
+const CAM_BASE_NAMES=["第一人称","球员跟随","转播视角"];
+const CUSTOM_CAMERA_KEY="aiba_custom_camera_views_v1",CUSTOM_CAMERA_COUNT=2;
+const CUSTOM_CAMERA_DEFAULT=Object.freeze({yaw:Math.PI,pitch:.22,distance:4.4,targetY:1.12});
+const customCameraSlots=[null,null];
+let cameraEditor=null;
+const CAM={mode:0,names:CAM_BASE_NAMES.concat(["自定义视角 1","自定义视角 2"])};
+function cameraInPlay(){
+  return G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||
+    G.state==="rushintro"||G.state==="rushbetween"||G.state==="pregame"||G.state==="lastshot"||
+    G.state==="bootshot"||G.state==="resultbeat"||G.state==="victorycine"||G.state==="wincine";
+}
+function cameraNum(v,f){return Number.isFinite(Number(v))?Number(v):f;}
+function cameraAngle(v){
+  const a=cameraNum(v,0),tau=Math.PI*2;
+  return ((a+Math.PI)%tau+tau)%tau-Math.PI;
+}
+function normalizeCustomCameraView(view){
+  view=view||{};
+  return {
+    yaw:cameraAngle(view.yaw),
+    pitch:clamp(cameraNum(view.pitch,CUSTOM_CAMERA_DEFAULT.pitch),-.28,1.12),
+    distance:clamp(cameraNum(view.distance,CUSTOM_CAMERA_DEFAULT.distance),2.0,12),
+    targetY:clamp(cameraNum(view.targetY,CUSTOM_CAMERA_DEFAULT.targetY),.72,2.15)
+  };
+}
+function copyCustomCameraView(view){return view?normalizeCustomCameraView(view):null;}
+function loadCustomCameraSlots(){
+  try{
+    const raw=JSON.parse(localStorage.getItem(CUSTOM_CAMERA_KEY)||"[]");
+    if(Array.isArray(raw))raw.slice(0,CUSTOM_CAMERA_COUNT).forEach((v,i)=>{if(v)customCameraSlots[i]=normalizeCustomCameraView(v);});
+    else if(raw&&Array.isArray(raw.slots))raw.slots.slice(0,CUSTOM_CAMERA_COUNT).forEach((v,i)=>{if(v)customCameraSlots[i]=normalizeCustomCameraView(v);});
+  }catch(e){}
+}
+function persistCustomCameraSlots(){
+  try{localStorage.setItem(CUSTOM_CAMERA_KEY,JSON.stringify(customCameraSlots));}catch(e){}
+}
+loadCustomCameraSlots();
+function customCameraSlotIndex(mode){
+  const i=(mode|0)-3;
+  return i>=0&&i<CUSTOM_CAMERA_COUNT?i:-1;
+}
+function activeCustomCameraView(mode){
+  const i=customCameraSlotIndex(mode);
+  if(i<0)return null;
+  if(cameraEditor&&cameraEditor.mode===mode)return cameraEditor.draft;
+  return customCameraSlots[i];
+}
+function availableCameraModes(){
+  const modes=[0,1,2];
+  customCameraSlots.forEach((v,i)=>{if(v||cameraEditor&&cameraEditor.slot===i)modes.push(3+i);});
+  return modes;
+}
+function cameraModeLabel(mode){
+  const i=customCameraSlotIndex(mode);
+  return i>=0?"自定义视角 "+(i+1):(CAM_BASE_NAMES[mode]||CAM_BASE_NAMES[1]);
+}
+function setCameraIcon(){
+  if(typeof AIBASetIcon==="function")AIBASetIcon("camBtn","camera",cameraModeLabel(CAM.mode));
+}
+function setCameraMode(mode,options){
+  const modes=availableCameraModes();
+  CAM.mode=modes.includes(mode)?mode:1;
+  setCameraIcon();
+  applyCamMode();
+  if(!(options&&options.silent)&&typeof blip==="function")blip(700,0.05,"square",0.06);
+  return CAM.mode;
+}
 function cycleCam(){
-  CAM.mode=(CAM.mode+1)%3;
-  AIBASetIcon("camBtn","camera",CAM.names[CAM.mode]);
-  applyCamMode();blip(700,0.05,"square",0.06);
+  const modes=availableCameraModes(),at=Math.max(0,modes.indexOf(CAM.mode));
+  setCameraMode(modes[(at+1)%modes.length]);
+}
+function captureCustomCameraView(){
+  const base=P.pos||V3(0,0,0),face=cameraNum(P.face,0);
+  const dx=rig.pos.x-base.x,dz=rig.pos.z-base.z;
+  const dist=Math.hypot(dx,dz);
+  if(!Number.isFinite(dist)||dist<1.55)return copyCustomCameraView(CUSTOM_CAMERA_DEFAULT);
+  const targetY=clamp(cameraNum(rig.look.y-base.y,1.12),.72,2.15);
+  return normalizeCustomCameraView({
+    yaw:Math.atan2(dx,dz)-face,
+    pitch:Math.atan2(rig.pos.y-(base.y+targetY),Math.max(.25,dist)),
+    distance:dist,
+    targetY
+  });
+}
+function customCameraTarget(view){
+  const v=normalizeCustomCameraView(view),base=P.pos||V3(0,0,0),face=cameraNum(P.face,0);
+  const angle=face+v.yaw,h=Math.cos(v.pitch)*v.distance;
+  return {
+    x:base.x+Math.sin(angle)*h,
+    y:base.y+v.targetY+Math.sin(v.pitch)*v.distance,
+    z:base.z+Math.cos(angle)*h,
+    lx:base.x,ly:base.y+v.targetY+P.jump*.22,lz:base.z
+  };
+}
+function updateCustomCamera(dt){
+  const view=activeCustomCameraView(CAM.mode);
+  if(!view)return false;
+  const t=customCameraTarget(view);
+  camTarget.pos.set(t.x,t.y,t.z);camTarget.look.set(t.lx,t.ly,t.lz);
+  if(cameraEditor)rig.pos.copy(camTarget.pos),rig.look.copy(camTarget.look),camSnap=false;
+  else dampRig(dt,6.5);
+  return true;
+}
+function editorReadout(){
+  if(!cameraEditor)return;
+  const v=cameraEditor.draft,el=document.getElementById("customCameraEditorReadout");
+  if(!el)return;
+  const deg=n=>Math.round(n*180/Math.PI);
+  el.textContent="水平 "+deg(v.yaw)+"° · 俯仰 "+deg(v.pitch)+"° · 距离 "+v.distance.toFixed(1);
+}
+function applyEditorCamera(){
+  if(!cameraEditor)return;
+  updateCustomCamera(0);editorReadout();
+}
+function removeCameraEditor(){
+  const el=document.getElementById("customCameraEditor");if(el)el.remove();
+}
+function reopenSettingsAfterCameraEdit(edit){
+  if(edit&&edit.returnToSettings&&window.AIBAPerfSettings&&AIBAPerfSettings.reopen)AIBAPerfSettings.reopen();
+}
+function finishCustomCameraEdit(saved){
+  const edit=cameraEditor;if(!edit)return;
+  if(saved){
+    customCameraSlots[edit.slot]=normalizeCustomCameraView(edit.draft);persistCustomCameraSlots();
+    cameraEditor=null;removeCameraEditor();
+    CAM.mode=3+edit.slot;setCameraIcon();applyCamMode();
+  }else{
+    cameraEditor=null;removeCameraEditor();
+    const modes=availableCameraModes();
+    CAM.mode=modes.includes(edit.previousMode)?edit.previousMode:1;
+    setCameraIcon();applyCamMode();
+  }
+  camSnap=true;reopenSettingsAfterCameraEdit(edit);
+}
+function beginCustomCameraEdit(slot,returnToSettings){
+  slot=Math.max(0,Math.min(CUSTOM_CAMERA_COUNT-1,slot|0));
+  if(cameraEditor)finishCustomCameraEdit(false);
+  if(typeof hidePanel==="function")hidePanel();
+  const previousMode=CAM.mode;
+  const initialView=customCameraSlots[slot]||(cameraInPlay()?captureCustomCameraView():CUSTOM_CAMERA_DEFAULT);
+  cameraEditor={slot,mode:3+slot,draft:copyCustomCameraView(initialView),previousMode,
+    returnToSettings:returnToSettings!==false,dragging:false,pointerId:null,lastX:0,lastY:0};
+  CAM.mode=3+slot;setCameraIcon();applyCamMode();
+  // 菜单/难度页没有 inPlay 标记，调镜时仍要让人物作为真实取景对象出现。
+  if(player&&player.g)player.g.visible=true;
+  if(hands)hands.visible=false;
+  mountCameraEditor(slot);applyEditorCamera();
+}
+function mountCameraEditor(slot){
+  removeCameraEditor();
+  const el=document.createElement("div");el.id="customCameraEditor";el.innerHTML=`
+    <div class="customCameraEditorSurface" aria-label="自定义视角拖动区域">
+      <div class="customCameraEditorHint"><small>CUSTOM CAMERA ${slot+1}</small><b>拖动屏幕旋转视角</b><span>水平拖动可 360° 环绕；上下拖动调整俯仰，滚轮调整距离。</span><em id="customCameraEditorReadout"></em></div>
+      <div class="customCameraEditorActions">
+        <button class="btn gold" type="button" onclick="AIBACameraSaveEditing()">保存到视角 ${slot+1}</button>
+        <button class="btn" type="button" onclick="AIBACameraCancelEditing()">取消</button>
+      </div>
+    </div>`;
+  document.body.appendChild(el);
+  const surface=el.querySelector(".customCameraEditorSurface");
+  const stopDrag=event=>{
+    if(!cameraEditor)return;
+    if(cameraEditor.pointerId!=null&&event.pointerId!=null&&event.pointerId!==cameraEditor.pointerId)return;
+    cameraEditor.dragging=false;cameraEditor.pointerId=null;
+  };
+  surface.addEventListener("pointerdown",event=>{
+    if(event.target.closest("button"))return;
+    cameraEditor.dragging=true;cameraEditor.pointerId=event.pointerId;cameraEditor.lastX=event.clientX;cameraEditor.lastY=event.clientY;
+    if(surface.setPointerCapture)surface.setPointerCapture(event.pointerId);event.preventDefault();
+  });
+  surface.addEventListener("pointermove",event=>{
+    if(!cameraEditor||!cameraEditor.dragging||event.pointerId!==cameraEditor.pointerId)return;
+    const dx=event.clientX-cameraEditor.lastX,dy=event.clientY-cameraEditor.lastY;
+    cameraEditor.lastX=event.clientX;cameraEditor.lastY=event.clientY;
+    cameraEditor.draft.yaw=cameraAngle(cameraEditor.draft.yaw+dx*.012);
+    cameraEditor.draft.pitch=clamp(cameraEditor.draft.pitch-dy*.009,-.28,1.12);
+    applyEditorCamera();event.preventDefault();
+  });
+  surface.addEventListener("pointerup",stopDrag);surface.addEventListener("pointercancel",stopDrag);surface.addEventListener("pointerleave",event=>{if(!surface.hasPointerCapture||!surface.hasPointerCapture(event.pointerId))stopDrag(event);});
+  surface.addEventListener("wheel",event=>{
+    if(!cameraEditor)return;
+    cameraEditor.draft.distance=clamp(cameraEditor.draft.distance+event.deltaY*.006,2,12);applyEditorCamera();event.preventDefault();
+  },{passive:false});
+}
+function saveEditing(){finishCustomCameraEdit(true);}
+function cancelEditing(){finishCustomCameraEdit(false);}
+function refreshCameraSettings(){
+  if(document.querySelector(".perfPanel")&&window.AIBAPerfSettings&&AIBAPerfSettings.reopen)AIBAPerfSettings.reopen();
+}
+function useCustomCameraSlot(slot){
+  slot=Math.max(0,Math.min(CUSTOM_CAMERA_COUNT-1,slot|0));
+  if(!customCameraSlots[slot])return false;
+  setCameraMode(3+slot);refreshCameraSettings();return true;
+}
+function clearCustomCameraSlot(slot){
+  slot=Math.max(0,Math.min(CUSTOM_CAMERA_COUNT-1,slot|0));
+  customCameraSlots[slot]=null;persistCustomCameraSlots();
+  if(CAM.mode===3+slot)setCameraMode(1,{silent:true});
+  if(typeof toast==="function")toast("已清除自定义视角 "+(slot+1),"#9fb4cd");
+  refreshCameraSettings();
+}
+function customCameraSettingsMarkup(){
+  const cards=customCameraSlots.map((view,i)=>{
+    const saved=!!view,active=CAM.mode===3+i;
+    return `<div class="customCameraSlot ${saved?"saved":""} ${active?"active":""}">
+      <div class="customCameraSlotHead"><b>视角 ${i+1}</b><span>${active?"当前使用":(saved?"已保存":"空槽位")}</span></div>
+      <p>${saved?"已记住水平、俯仰、距离，可随时切换。":"保存一个跟随球员的环绕视角。"}</p>
+      <div class="customCameraSlotActions"><button class="btn sm gold" type="button" onclick="AIBACameraBeginEdit(${i})">${saved?"重新调整":"调整并保存"}</button>${saved?`<button class="btn sm" type="button" onclick="AIBACameraUse(${i})">使用</button><button class="btn sm danger" type="button" onclick="AIBACameraClear(${i})">清除</button>`:""}</div>
+    </div>`;
+  }).join("");
+  return `<section class="customCameraSettings"><div class="customCameraSettingsHead"><b>自定义视角</b><span>自由 360° 拖动，最多记住 2 个</span></div><div class="customCameraSlotGrid">${cards}</div><p class="customCameraSettingsNote">进入调镜后直接拖动比赛画面；保存后会加入右上角镜头切换循环，并随球员位置跟随。</p></section>`;
 }
 function applyCamMode(){
-  const inPlay=(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="rushintro"||G.state==="rushbetween"||G.state==="pregame"||G.state==="lastshot"||G.state==="bootshot"||G.state==="resultbeat");
+  const inPlay=cameraInPlay();
   hands.visible=CAM.mode===0&&inPlay;
   player.g.visible=CAM.mode!==0&&inPlay;
   passer.g.visible=inPlay;
@@ -129,6 +335,8 @@ function updPlayCam(dt){
       camTarget.look.set(P.pos.x+d.x*2.45,1.66+P.jump*0.5,P.pos.z+d.z*2.45);
       dampRig(dt,6);
     }
+  }else if(CAM.mode>=3&&CAM.mode<3+CUSTOM_CAMERA_COUNT&&activeCustomCameraView(CAM.mode)){
+    updateCustomCamera(dt);
   }else{
     if(isBattle){
       autoFrameCam(camTarget,P.pos,P.jump,COURT_ATTACK_DIR,{broadcast:true,marginX:1.46,marginY:1.34,minDist:6,maxDist:34,lookLift:0.18,pad:.62});
@@ -152,5 +360,18 @@ function ballWorldPos(out){
 
 
 window.AIBA.runtime.register("rendering:camera",Object.freeze({
-  P,CAM,faceTo,cycleCam,applyCamMode,eyePos,autoFrameCam,updPlayCam,ballWorldPos
+  P,CAM,faceTo,cycleCam,setCameraMode,applyCamMode,eyePos,autoFrameCam,updPlayCam,ballWorldPos,
+  customCameraSlots,availableCameraModes,customCameraSettingsMarkup,beginCustomCameraEdit,saveEditing,cancelEditing,
+  useCustomCameraSlot,clearCustomCameraSlot,isEditing:()=>!!cameraEditor,updateEditor:()=>!!cameraEditor&&updateCustomCamera(0)
 }));
+
+window.AIBACameraBeginEdit=beginCustomCameraEdit;
+window.AIBACameraSaveEditing=saveEditing;
+window.AIBACameraCancelEditing=cancelEditing;
+window.AIBACameraUse=useCustomCameraSlot;
+window.AIBACameraClear=clearCustomCameraSlot;
+window.AIBACamera=Object.freeze({
+  CAM,slots:customCameraSlots,cycle:cycleCam,setMode:setCameraMode,settingsMarkup:customCameraSettingsMarkup,
+  beginEdit:beginCustomCameraEdit,saveEditing,cancelEditing,useSlot:useCustomCameraSlot,clearSlot:clearCustomCameraSlot,
+  isEditing:()=>!!cameraEditor,updateEditor:()=>!!cameraEditor&&updateCustomCamera(0)
+});

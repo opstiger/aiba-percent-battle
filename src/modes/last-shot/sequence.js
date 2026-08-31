@@ -547,7 +547,7 @@
      第一人称下"你"只剩两条手臂和一颗镜头，所以庆祝必须靠三样东西表达：
        1) 手臂 —— 挥拳 / 双手高举 / 单手挥手，三选一，幅度与频率每局随机；
           姿势写完照样过 squad 的 guardArms，绝不允许出现单臂斜前方伸直；
-       2) 身体 —— 原地小跳 + 左右走动，通过 P.jump / P.pos 反映到镜头的起伏位移；
+     2) 身体 —— 原地轻微节奏 + 左右走动，脚底始终留在地面，不把庆祝做成离地跳跃；
        3) 队友 —— 冲过来庆祝的人真的跑到你身边时才触发一次推搡冲击，
           镜头侧向被撞开再缓和回正(不是定时器假装的晃动)。
      没进球时走另一套：双手抱头、不跳、镜头几乎不动。 */
@@ -562,16 +562,18 @@
       walkRate:.62+Math.random()*.5,walkDir:Math.random()<.5?-1:1,
       bump:0,bumpDir:0,bumped:{}
     };
+    // 投篮起跳的 P.jump 不能带进胜利/结果庆祝，否则第三人称会看到整个人悬空。
+    P.jump=0;
   }
   function updatePlayerCelebrate(dt){
     const c=LS.celeb;if(!c)return;
     c.t+=dt;
-    // 小跳：hop 从 1 线性衰减到 0，sin(π·hop) 就是一次完整的起落
+    // 保留 hop 计时供节奏变化使用，但庆祝根节点不再离地。
     if(c.made){
       if(c.hop>0)c.hop=Math.max(0,c.hop-dt/HOP_SECONDS);
       else{c.hopGap-=dt;if(c.hopGap<=0){c.hop=1;c.hopGap=.5+Math.random()*.9;}}
     }
-    const hopY=c.hop>0?Math.sin(c.hop*Math.PI)*.30:0;
+    const hopY=0;
     // 队友撞上来：每人只撞一次，触发条件是他真的挤到 BUMP_RANGE 以内
     const mate=squadApi.nearestMate?squadApi.nearestMate(P.pos):null;
     if(c.made&&mate&&mate.dist<BUMP_RANGE&&!c.bumped[mate.id]){

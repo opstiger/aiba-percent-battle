@@ -29,7 +29,7 @@ function updatePregameChalk(actor,u,t){
   cloud.mat.opacity=0.22+show*0.68;cloud.points.visible=true;
 }
 
-function updatePregameWarmupShot(actor,guy,ball,u){
+function updatePregameWarmupShot(actor,guy,ball,u,seg){
   const releaseAt=.54,landAt=.91;
   // 热身投篮也走完整的起球→出手→下落,不在出手顶点停住。
   const phase=u<releaseAt?ease01(clamp(u/releaseAt,0,1)):
@@ -37,14 +37,10 @@ function updatePregameWarmupShot(actor,guy,ball,u){
   const curve=shotCurves(phase);
   guy.g.position.y=poseGuy(guy,curve,0)+Math.max(0,curve.jmp*.55-curve.over*.55);
   if(!ball)return;
-  ball.visible=true;ball.material=actor.role==="hero"?shotMat(curShot()):matBall;
-  if(u<releaseAt){poseBallPos(ball.position,curve);return;}
-  const flight=ease01(clamp((u-releaseAt)/(landAt-releaseAt),0,1));
-  const release=poseBallPos(V3(),shotCurves(1));
-  guy.g.updateMatrixWorld(true);
-  const rimLocal=guy.g.worldToLocal(HOOP.clone());
-  ball.position.lerpVectors(release,rimLocal,flight);
-  ball.position.y+=Math.sin(flight*Math.PI)*1.12;
+  /* 球的父节点/出手时机由 pregameSyncBallAfterPose 统一处理；这里仅负责
+     复用正式投篮的身体时间轴，避免在目标姿势尚未平滑完成时提前取球心。 */
+  ball.material=actor.role==="hero"?shotMat(curShot()):matBall;
+  if(seg)seg._pregameWarmupPhase=phase;
 }
 
 function rookieMeterProgress(){

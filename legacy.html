@@ -119,7 +119,7 @@
 <script src="src/share.js"></script>
 <script src="src/recorder.js?v=1.94"></script>
 <script src="src/shot-physics.js?v=1.99"></script>
-<script src="src/face-overlays.js?v=1.1-realnames"></script>
+<script src="src/face-overlays.js?v=1.2-disabled"></script>
 <script src="src/haptics.js?v=1.80"></script>
 <script src="src/visual-director.js?v=1.85"></script>
 <script>
@@ -1953,7 +1953,6 @@ function applyStarStyle(guy,star){
   const hc=star.hair!=null?star.hair:0x141414;
   setHair(guy, star.hairStyle||"short", hc);
   setBeard(guy, !!star.beard, (typeof star.beard==="number")?star.beard:hc);
-  if(window.AIBAFaceOverlays)AIBAFaceOverlays.apply(guy,star);
 }
 function randomizeOutfit(o){
   const pick=a=>a[(Math.random()*a.length)|0];

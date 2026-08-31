@@ -83,7 +83,6 @@ const requiredFiles=[
   "assets/aiba-brand/aiba-percent-battle-logo-v3.webp",
   "docs/ARCHITECTURE.md",
   "docs/MODULAR_REFACTOR_PLAN.md",
-  "assets/aiba-faces/curry-smile-pixel-128.png",
   "vendor/three.min.r128.js",
   "assets/aiba-vision/pose_landmarker_lite.task"
 ];
@@ -118,7 +117,7 @@ for(const file of ["core/error-boundary","core/foundation","data/dialogue","core
   if(!entryHtml.includes(`<script src="src/${file}.js?v=${version}"></script>`))fail(`next shell module missing ${file}`);
 }
 if(!entryHtml.includes('<script src="src/data/game-config.js?v=2.19.9-release"></script>'))fail("next game config cache version missing");
-if(!entryHtml.includes('<script src="src/data/tstage-motion-pack.js?v=2.19.9-tstage1"></script>'))fail("T台 motion pack missing");
+if(!entryHtml.includes('<script src="src/data/tstage-motion-pack.js?v=2.19.9-tstage2-airjordan"></script>'))fail("T台 motion pack missing");
 
 if(entryHtml.indexOf('src/core/runtime.js')>entryHtml.indexOf('src/config.js'))fail("next runtime must load before config");
 if(entryHtml.indexOf('<script src="src/rendering/core.js?v=2.19.5-hfov"></script>')>entryHtml.indexOf('<script src="src/core/scene-init.js?v=2.19.9-ceiling"></script>'))fail("rendering core must load before scene construction");
@@ -135,7 +134,7 @@ if(!entryHtml.includes('<script src="src/ui/pause.js?v=1.98"></script>'))fail("n
 if(!entryHtml.includes('<script src="src/core/bootstrap-next.js?v=cutover1"></script>'))fail("next bootstrap module missing");
 if(!entryHtml.includes('<script src="src/modes/percent-battle/state.js?v=refactor4c"></script>'))fail("next Percent Battle state module missing");
 if(!entryHtml.includes('<script src="src/modes/percent-battle/spots.js?v=refactor4b"></script>'))fail("next Percent Battle spots module missing");
-const percentBattleVersions={opponent:"2.19.9-seed",results:"2.19.8-finalscore",index:"refactor4a"};
+const percentBattleVersions={opponent:"2.19.9-footroll1",results:"2.19.8-finalscore",index:"refactor4a"};
 for(const [file,version] of Object.entries(percentBattleVersions)){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js?v=${version}"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
@@ -234,7 +233,7 @@ if(/AUDIO_EVENTS\)\.flat\(\)\.map\(n=>voiceUrl\(n\+"\.wav"\)\)/.test(audioSrc))
     fail("run cycle regressed to cos-driven arms - arms must be anti-phase with the SAME-side leg (sin)");
   for(const token of [
     "const IDLE_ARM_X=-.03,IDLE_ELBOW_BEND=-Math.PI/36;",
-    "const armSwing=.14+run*.20,armBase=-.20;",
+    "const armSwing=.24+run*.30,armBase=-.20;",
     "const armA=armBase-s*armSwing,armB=armBase+s*armSwing;",
     "const elbowBend=-1.28-run*.12;",
     "o.elbows[0].rotation.set(elbowBend,0,0);",
@@ -341,7 +340,9 @@ if(/AUDIO_EVENTS\)\.flat\(\)\.map\(n=>voiceUrl\(n\+"\.wav"\)\)/.test(audioSrc))
   if(!fs.existsSync(walkArmsTest))fail("walk arm runtime regression script missing");
   else{
     const src=fs.readFileSync(walkArmsTest,"utf8");
-    for(const token of ["G.passCatch.active","00-idle-no-catch","upperTilt","lowerAngularRanges","pairedPhase",
+    for(const token of ["G.passCatch.active","00-idle-no-catch","00-idle-feet","gait-cadence","ready-ankle-range",
+      "landing-ankle-pitch","run-ankle-range","footForwardY","worldBox","run-foot-ground","run-support-ground",
+      "upperTilt","lowerAngularRanges","pairedPhase",
       "球未到手时仍禁止投篮/换点","连续跑动采样手臂始终可见且保持弯肘","palmInward","page.screenshot"])
       if(!src.includes(token))fail("walk arm regression coverage missing "+token);
   }
@@ -454,8 +455,8 @@ if(entryHtml.indexOf('src/data/game-config.js?v=2.19.9-release')>entryHtml.index
 if(entryHtml.indexOf('src/core/state.js?v=2.19.2-fp-lastshot')>entryHtml.indexOf('src/services/audio-cues.js?v=refactor39'))fail("runtime state must load before audio cues");
 if(entryHtml.indexOf('src/services/audio-cues.js?v=refactor39')>entryHtml.indexOf('src/audio.js?v=2.19.9-clutchvoice'))fail("audio cues must load before audio engine");
 if(entryHtml.indexOf('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>')>entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=2.19.9-beat"></script>'))fail("legacy adapter must load before Rack Rush module");
-if(entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=2.19.9-beat"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Rack Rush module must load before late hooks");
-if(entryHtml.indexOf('<script src="src/modes/contest.js?v=2.19.9-beat"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("contest module must load before late hooks");
+if(entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=2.19.9-beat"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.19.9-pregame-dunk-hang1"></script>'))fail("Rack Rush module must load before late hooks");
+if(entryHtml.indexOf('<script src="src/modes/contest.js?v=2.19.9-beat"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.19.9-pregame-dunk-hang1"></script>'))fail("contest module must load before late hooks");
 if(entryHtml.indexOf('<script src="src/modes/contest.js?v=2.19.9-beat"></script>')>entryHtml.indexOf('<script src="src/modes/practice.js?v=2.19.9-hy4a"></script>'))fail("contest module must load before practice module");
 if(entryHtml.indexOf('<script src="src/ui/panels.js?v=refactor7"></script>')>entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.9-nogate"></script>'))fail("panels must load before loading module");
 if(entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.9-nogate"></script>')>entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>'))fail("loading must load before menu module");
@@ -469,8 +470,8 @@ if(entryHtml.indexOf('<script src="src/modes/contest.js?v=2.19.9-beat"></script>
 for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"],["results","index"]]){
   if(entryHtml.indexOf(`src/modes/percent-battle/${pair[0]}.js`)>entryHtml.indexOf(`src/modes/percent-battle/${pair[1]}.js`))fail(`Percent Battle ${pair[0]} must load before ${pair[1]}`);
 }
-if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js?v=2.19.9-seed"></script>'))fail("Percent Battle opponent cache version missing");
-if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js?v=refactor4a"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("Percent Battle module must load before late hooks");
+if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js?v=2.19.9-footroll1"></script>'))fail("Percent Battle opponent cache version missing");
+if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js?v=refactor4a"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.19.9-pregame-dunk-hang1"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
 for(const token of ["v2.19.9 MODULAR","MODULAR / v2.19.9"])
   if(!entryHtml.includes(token))fail("visible version token missing "+token);
@@ -486,7 +487,7 @@ if((entryHtml.match(/class="ppSweet"/g)||[]).length!==1)fail("player power must 
 if((entryHtml.match(/class="ppFill"/g)||[]).length!==1)fail("player power must expose one continuous fill path");
 for(const token of ["ppMidClip","ppTopClip","ppFillBase","ppFillMid","ppFillTop"])
   if(entryHtml.includes(token)||read("styles.css").includes(token))fail("player power duplicate fill layer remains "+token);
-if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.19.9-hintfade">'))fail("stylesheet link missing");
+if(!entryHtml.includes('<link rel="stylesheet" href="styles.css?v=2.19.9-customcam1">'))fail("stylesheet link missing");
 const menuScript=read("src/ui/menu.js");
 const nbaDnaScript=read("src/nba-dna/NBADNA.js");
 const homeMenuSource=menuScript.slice(menuScript.indexOf("function showMenu"),menuScript.indexOf("function showModeInfo"));
@@ -520,7 +521,7 @@ if(/<script src="src\/nba-dna\//.test(entryHtml))
 if(!entryHtml.includes('<script src="src/assets-manifest.js?v=20260726-bkyx1"></script>'))fail("assets manifest script missing");
 if(!entryHtml.includes('<script src="src/config.js?v=2.19.9-hy4a"></script>'))fail("config script missing");
 if(!entryHtml.includes('<script src="src/player-select.js?v=2.15.5-hand-follow"></script>'))fail("player select script missing");
-if(!entryHtml.includes('<script src="src/player-locker-preview.js?v=2.19.9-orbit2"></script>'))fail("player locker preview script missing");
+if(!entryHtml.includes('<script src="src/player-locker-preview.js?v=2.19.9-humanfingers1"></script>'))fail("player locker preview script missing");
 if(!entryHtml.includes('<script src="src/player-id.js?v=2.19.7-timeout"></script>'))fail("player id script missing");
 if(!entryHtml.includes('<script src="src/leaderboard-api.js"></script>'))fail("leaderboard api script missing");
 if(!entryHtml.includes('<script src="src/leaderboard-ui.js?v=1.94"></script>'))fail("leaderboard ui script missing");
@@ -530,15 +531,15 @@ if(!entryHtml.includes('<script src="src/result-stats.js?v=1.78"></script>'))fai
 if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.19.9-fparms"></script>'))fail("equipment visual script missing");
 if(!entryHtml.includes('<script src="src/gear.js?v=2.19.8-rivalgear"></script>'))fail("gear script missing");
 if(!entryHtml.includes('<script src="src/avatar-customizer.js?v=2.15.5-hand-follow"></script>'))fail("avatar customizer script missing");
-if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.19.9-gait"></script>'))fail("shot motion script missing");
+if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.19.9-foot-kick1"></script>'))fail("shot motion script missing");
 if(!entryHtml.includes('<script src="src/roster-style.js?v=2.15.5-hand-follow"></script>'))fail("roster style script missing");
 if(!entryHtml.includes('<script src="src/rendering/character-visuals.js?v=2.16.2-human-proportion"></script>'))fail("voxel pro character visuals missing");
 if(entryHtml.indexOf('src/roster-style.js?v=2.15.5-hand-follow')>entryHtml.indexOf('src/rendering/character-visuals.js?v=2.16.2-human-proportion'))fail("voxel pro visuals must wrap roster styling");
 if(!entryHtml.includes('<script src="src/hero-moments.js?v=1.80"></script>'))fail("hero moments script missing");
 if(!entryHtml.includes('<script src="src/hot-hand.js?v=2.19.9-flame"></script>'))fail("hot hand script missing");
 if(!entryHtml.includes('<script src="src/perf.js?v=1.72"></script>'))fail("perf script missing");
-if(!entryHtml.includes('<script src="src/perf-settings.js?v=1.93b"></script>'))fail("perf settings script missing");
-if(!entryHtml.includes('<script src="src/face-overlays.js?v=1.1-realnames"></script>'))fail("face overlays script missing");
+if(!entryHtml.includes('<script src="src/perf-settings.js?v=2.19.9-customcam1"></script>'))fail("perf settings script missing");
+if(!entryHtml.includes('<script src="src/face-overlays.js?v=1.2-disabled"></script>'))fail("face overlays retirement shim missing");
 if(!entryHtml.includes('<script src="src/haptics.js?v=1.80"></script>'))fail("haptics script missing");
 if(!entryHtml.includes('<script src="src/visual-director.js?v=1.85"></script>'))fail("visual director script missing");
 if(!entryHtml.includes('<script src="src/audio.js?v=2.19.9-clutchvoice"></script>'))fail("audio script missing");
@@ -546,7 +547,7 @@ if(!entryHtml.includes('<script src="src/vision.js?v=2.19.9-fold"></script>'))fa
 if(!entryHtml.includes('<script src="src/ui/icons.js?v=1"></script>'))fail("local SVG icon script missing");
 if(!entryHtml.includes('<script src="src/ui/interactive-tutorial.js?v=2.05"></script>'))fail("interactive tutorial script missing");
 if(!entryHtml.includes('<script src="src/navigation.js?v=2.19-lastshot5"></script>'))fail("navigation script missing");
-if(!entryHtml.includes('<script src="src/game-flow.js?v=2.12.4-prewarm"></script>'))fail("game flow script missing");
+if(!entryHtml.includes('<script src="src/game-flow.js?v=2.19.9-pregame-dunk-hang1"></script>'))fail("game flow script missing");
 if(/<style>[\s\S]*?<\/style>/.test(entryHtml))fail("inline style block should stay split out");
 if(/const COVER_STARS=\[/.test(entryHtml)||/const EXT_AUDIO=\{/.test(entryHtml))fail("asset manifest data leaked back into html");
 if(/assets\/aiba-covers\/[^"')]+\.png/.test(entryHtml))fail("runtime should not reference png cover assets");
@@ -775,6 +776,8 @@ try{new Function(perfSettingsScript);}
 catch(e){fail("perf settings script syntax error: "+e.message);}
 for(const key of ["AIBAPerfSettings","aiba_perf_settings_v1","meterTick","applyLowRes","autoSample","recorderBusy","autoPerfTier"])
   if(!perfSettingsScript.includes(key))fail("perf settings script missing "+key);
+for(const token of ["function customCameraRow","AIBACamera.settingsMarkup"])
+  if(!perfSettingsScript.includes(token))fail("perf settings custom camera hook missing "+token);
 if(/HandLandmarker|minPoseDetectionConfidence|detectForVideo/.test(perfSettingsScript))fail("perf settings must not touch pose detection");
 const iconScript=read("src/ui/icons.js"),i18nScript=read("src/i18n.js");
 try{new Function(iconScript);new Function(i18nScript);}
@@ -791,7 +794,8 @@ try{new Function(hapticsScript);}
 catch(e){fail("haptics script syntax error: "+e.message);}
 for(const key of ["HAPTIC_PATTERNS","clutchMake","heroShot","victory","wireHapticMoments","playerRimHaptic"])
   if(!hapticsScript.includes(key))fail("haptics script missing "+key);
-if(!faceOverlaysScript.includes("curry-smile-pixel-128.png"))fail("curry face overlay asset not referenced");
+if(faceOverlaysScript.includes("curry-smile-pixel-128.png")||faceOverlaysScript.includes("FACE_BY_NAME"))fail("retired face overlays still map a named player");
+if(!faceOverlaysScript.includes('function pathFor(){return "";}')||!faceOverlaysScript.includes("function apply(){return false;}"))fail("face overlays must be disabled");
 const configSandbox={window:{}};
 vm.createContext(configSandbox);
 try{vm.runInContext(configScript,configSandbox,{filename:"src/config.js"});}
@@ -1050,7 +1054,7 @@ for(const token of ["VOXEL_HEAD_SCALE","headRoot.name=\"headRoot\"","headScale:V
   if(!renderingCharacters.includes(token))fail("smaller head rig token missing "+token);
 for(const token of ['shoulder.name="shoulderBlend"','up.name="upperArm"','roundedBoxGeometry(.152,.17,.172,.052,3)','roundedBoxGeometry(.14,.265,.16,.018,2)','up.position.y=-.1775'])
   if(!renderingCharacters.includes(token))fail("integrated shoulder-arm blend missing "+token);
-for(const token of ['handRoot.name="handRig"','roundedBoxGeometry(.145,.135,.058,.024,3)','fingerRoot.name="fingerJoint"','ballGrip.name="ballGrip"','handRoots,fingerJoints,ballGrips'])
+for(const token of ['handRoot.name="handRig"','roundedBoxGeometry(.145,.135,.058,.024,3)','fingerRoot.name="fingerMcp"','thumbRoot.name="thumbMcp"','thumbTipRoot.name="thumbIp"','ballGrip.name="ballGrip"','handRoots,fingerJoints,fingerPipJoints,fingerDipJoints,ballGrips'])
   if(!renderingCharacters.includes(token))fail("articulated rounded palm rig missing "+token);
 for(const token of ['const soft=(w,h,d,m,r,segments)','const addSoft=','const VOXEL_SHOULDER_X=.285','const VOXEL_HIP_X=.125','roundedBoxGeometry(0.5,0.52,0.27,.048,3)','addSoft(g,0.50,0.22,0.27,mP,0,0.88','add(g,0.52,0.05,0.29,mJ,0,0.98','baseShoulderX:VOXEL_SHOULDER_X','baseHipX:VOXEL_HIP_X','soft(0.125,0.27,0.145,mS,.026,2)','soft(0.19,0.11,0.23','addSoft(kn,0.15,0.22,0.165'])
   if(!renderingCharacters.includes(token))fail("soft voxel body token missing "+token);
@@ -1059,24 +1063,33 @@ for(const token of ['hipBlend.name="hipBlend"','kneeBlend.name="kneeBlend"','ank
 for(const token of ["oppPasser=voxelGuy()","oppPasserBall","bakeActorSegments(oppPasser)"])
   if(!renderingCharacters.includes(token))fail("opponent passer actor missing "+token);
 const renderingCamera=read("src/rendering/camera.js");
-for(const token of ['runtime.register("rendering:camera"',"const P=","const CAM=","function autoFrameCam","function updPlayCam"])
+for(const token of ['runtime.register("rendering:camera"',"const P=","const CAM=","function autoFrameCam","function updPlayCam","aiba_custom_camera_views_v1","function beginCustomCameraEdit","function customCameraSettingsMarkup","function updateCustomCamera"])
   if(!renderingCamera.includes(token))fail("rendering camera token missing "+token);
+if(!renderingCamera.includes("CUSTOM_CAMERA_COUNT=2")||!renderingCamera.includes("localStorage.setItem(CUSTOM_CAMERA_KEY"))
+  fail("custom camera must persist two local view slots");
 if(!/function ballWorldPos\(out\)\{[^]*pBall\.getWorldPosition\(out\);[^]*return out;[^]*\}/.test(renderingCamera))fail("all cameras must release from the real player ball grip");
 if(/function ballWorldPos\(out\)\{[^}]*CAM\.mode/.test(renderingCamera)||/function ballWorldPos\(out\)\{[^}]*handBall\.getWorldPosition/.test(renderingCamera))fail("camera mode must not change the shot release origin");
 const renderingMotion=read("src/rendering/motion.js");
 const tstagePackScript=read("src/data/tstage-motion-pack.js");
 try{new Function(tstagePackScript);}
 catch(e){fail("T-stage motion pack syntax error: "+e.message);}
-for(const token of ["aiba-motion-pack/1","AIBA_TSTAGE_MOTION_PACK","\"run\"","\"catching\"","sourcePose","handQuat","\"bodyBob\""])
+for(const token of ["aiba-motion-pack/1","AIBA_TSTAGE_MOTION_PACK","\"run\"","\"catching\"","\"shot_cycle\"","\"shot_release\"","\"release_keep_land\"","lowerBody","sourcePose","handQuat","\"bodyBob\"","\"poses\"","\"dunk_air_jordan\"","ballLocal","spineQuat","headQuat"])
   if(!tstagePackScript.includes(token))fail("T-stage motion pack token missing "+token);
-for(const token of ["AIBA_TSTAGE_MOTION_PACK","function applyTstageRunPose","function applyTstageCatchPose","function tstageCatchEndpoint","function tstageRunBodyBob"])
+for(const token of ["AIBA_TSTAGE_MOTION_PACK","function applyTstageRunPose","function applyTstageCatchPose","function tstageCatchEndpoint","function catchCompatibleHandValues","CATCH_RIGHT_HAND_PREP_ROLL=-Math.PI/18","function tstageRunBodyBob","function applyTstageShotCyclePose","function tstageShotCycleDuration","function tstageShotLowerBody","function applyReleaseFeetPose","function runFootGroundY","function runLiftFootSole","RUN_GROUND_SUPPORT_THRESHOLD","function tstageStaticPose","function tstageDunkBallLocal","function applyTstageDunkPose","function setShotAnimationMode","function isTstageShotAnimation","function isReleaseFeetShotAnimation"])
   if(!renderingMotion.includes(token))fail("T-stage runtime adapter token missing "+token);
 const tstageImporter=read("scripts/import-tstage-animations.mjs");
-for(const token of ["basketball-pose-lab","setFromUnitVectors","HAND_BASIS","parent-local","required of [","clips[required]","CHECK_ONLY","must close at t=1","fs.renameSync","function importBodyBob"])
+for(const token of ["basketball-pose-lab","setFromUnitVectors","HAND_BASIS","parent-local","required of [","clips[required]","CHECK_ONLY","must close at t=1","fs.renameSync","function importBodyBob","function importLeg","function importLowerBody","function importBodyPose","function importStaticPose","STATIC_POSE_NAMES","animation.name === \"shot_cycle\""])
   if(!tstageImporter.includes(token))fail("T-stage importer token missing "+token);
 if(!tstagePackScript.includes('"run-left-return"'))fail("T-stage run loop closure missing");
 if(!/poseHandJoints\(player,shotCurves\(0\)\);[\s\S]{0,180}poseRunCycle\(player,P\.walkRig/.test(read("src/shot-motion.js")))
   fail("T-stage run pose must be applied after the walking hand reset");
+const shotMotionForAnimation=read("src/shot-motion.js");
+for(const token of ["shotCycleClock","function resetShotCycle","function markShotCycleReleased","function updateShotCycle","tstageShotPhase","applyTstageShotCyclePose(player,tstageShotPhase)","releaseFeetClock","releaseFeetAirClock","function resetReleaseFeet","function markReleaseFeetReleased","function updateReleaseFeet","releaseFeetPhase","applyReleaseFeetPose(player,releaseFeetPhase"])
+  if(!shotMotionForAnimation.includes(token))fail("T-stage shot cycle token missing "+token);
+if(!renderingMotion.includes('const SHOT_ANIMATION_GAME="game",SHOT_ANIMATION_TSTAGE="tstage",SHOT_ANIMATION_RELEASE_FEET="release-feet"')||
+   !renderingMotion.includes('new URLSearchParams(location.search).get("shotAnim")')||
+   !renderingMotion.includes('return raw==null||value===""?SHOT_ANIMATION_RELEASE_FEET:SHOT_ANIMATION_GAME'))
+  fail("shot animation mode must default to release-feet and accept the shotAnim query switch");
 for(const token of ['runtime.register("rendering:motion"',"function shotCurves","function poseGuy","function updPose","function startPass","function updWalk"])
   if(!renderingMotion.includes(token))fail("rendering motion token missing "+token);
 for(const token of ["SHOT_STANCE_YAW","function shotStanceBlend","function tuneGuideHandPose"])
@@ -1113,14 +1126,25 @@ try{
   motionSandbox.globalThis=motionSandbox;
   vm.runInNewContext(renderingMotion,motionSandbox);
   if(!motionApi)fail("rendering motion runtime API did not register");
-  const actor={g:new THREE.Group(),baseShoulderX:.285,arms:[],elbows:[],handRoots:[],fingerJoints:[],ballGrips:[],legs:[],knees:[],ankles:[],shoes:[]};
+  const actor={g:new THREE.Group(),baseShoulderX:.285,arms:[],elbows:[],handRoots:[],fingerJoints:[],thumbRoots:[],thumbTips:[],fingerPipJoints:[],fingerDipJoints:[],ballGrips:[],legs:[],knees:[],ankles:[],footRoots:[],toeRoots:[],shoes:[]};
   for(let i=0;i<2;i++){
     const arm=new THREE.Group(),elbow=new THREE.Group(),hand=new THREE.Group(),grip=new THREE.Group();
     actor.g.add(arm);arm.add(elbow);elbow.add(hand);hand.add(grip);
     actor.arms.push(arm);actor.elbows.push(elbow);actor.handRoots.push(hand);actor.ballGrips.push(grip);
-    actor.fingerJoints.push(Array.from({length:4},()=>{const finger=new THREE.Group();hand.add(finger);return finger;}));
+    const thumbRoot=new THREE.Group(),thumbTip=new THREE.Group();
+    thumbRoot.userData.aibaThumbChain={tip:thumbTip};thumbRoot.add(thumbTip);hand.add(thumbRoot);
+    actor.thumbRoots.push(thumbRoot);actor.thumbTips.push(thumbTip);
+    const fingerRoots=[],pipRoots=[],dipRoots=[];
+    for(let fingerIndex=0;fingerIndex<4;fingerIndex++){
+      const finger=new THREE.Group(),pip=new THREE.Group(),dip=new THREE.Group();
+      finger.userData.aibaFingerChain={pip,dip};finger.add(pip);pip.add(dip);hand.add(finger);
+      fingerRoots.push(finger);pipRoots.push(pip);dipRoots.push(dip);
+    }
+    actor.fingerJoints.push(fingerRoots);actor.fingerPipJoints.push(pipRoots);actor.fingerDipJoints.push(dipRoots);
     grip.position.set(.012341,-.108954,-.193745);
-    actor.legs.push(new THREE.Group());actor.knees.push(new THREE.Group());actor.ankles.push(new THREE.Group());actor.shoes.push(new THREE.Group());
+    const leg=new THREE.Group(),knee=new THREE.Group(),ankle=new THREE.Group(),foot=new THREE.Group(),toe=new THREE.Group(),shoe=new THREE.Group();
+    actor.g.add(leg);leg.add(knee);knee.add(ankle);ankle.add(foot);foot.add(toe);foot.add(shoe);
+    actor.legs.push(leg);actor.knees.push(knee);actor.ankles.push(ankle);actor.footRoots.push(foot);actor.toeRoots.push(toe);actor.shoes.push(shoe);
   }
   const resetSet=()=>{
     motionApi.poseHandJoints(actor,{lift:1});
@@ -1170,6 +1194,16 @@ try{
   if(wristOff>.02)fail(`wrist left the forearm end by ${wristOff.toFixed(3)} (no world-space IK on the hold phase)`);
   if(ballReach>.75)fail(`ball swings ${ballReach.toFixed(2)} in front of the body during the lift`);
   motionSandbox.G.charging=false;
+
+  /* 真屈髋回归：蓄力时 torsoLean 前倾，但大腿世界角度不应跟着根节点
+     再额外倒下；这说明躯干和下肢之间确实产生了髋部折叠。 */
+  motionApi.poseGuy(actor,{dip:1,lift:0,rise:0,jmp:0,over:0},0);
+  const shotHinge=actor.g.userData.shotHipHinge;
+  const worldHip=actor.g.rotation.x+actor.legs[0].rotation.x;
+  const localHip=actor.legs[0].rotation.x;
+  const expectedHip=actor.g.userData.shotHipFlex&&actor.g.userData.shotHipFlex[0];
+  if(!(Number.isFinite(shotHinge)&&shotHinge<-.12&&Number.isFinite(expectedHip)&&Math.abs(worldHip-expectedHip)<1e-6&&Math.abs(localHip-worldHip)>.12))
+    fail("蓄力必须出现躯干前倾与下肢承重之间的真实髋部折叠");
 
   motionSandbox.G.charging=false;motionSandbox.G.canShoot=false;
   motionApi.poseGuy(actor,curve(0),0);
@@ -1254,7 +1288,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.9-groundshadow','src/rendering/camera.js?v=2.19.9-beat','src/rendering/motion.js?v=2.19.9-gait2','src/gameplay/shots.js?v=2.19.9-hy4a','src/modes/last-shot/squad.js?v=2.19.9-foulreact','src/modes/last-shot/sequence.js?v=2.19.9-reactionflow'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.9-gait2','src/rendering/camera.js?v=2.19.9-customcam1','src/rendering/motion.js?v=2.19.9-foot-kick1','src/shot-motion.js?v=2.19.9-foot-kick1','src/gameplay/shots.js?v=2.19.9-hy4a','src/modes/last-shot/squad.js?v=2.19.9-foulreact','src/modes/last-shot/sequence.js?v=2.19.9-reactionflow'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1266,6 +1300,8 @@ for(const token of ['runtime.register("presentation:cinematics"',"function start
   if(!presentationCinematics.includes(token))fail("presentation cinematics token missing "+token);
 for(const token of ['if(G.state!=="victorycine"){stopVictoryCine();return;}','setVictoryTag(v,"crowd","全场欢呼")'])
   if(!presentationCinematics.includes(token))fail("victory cinematic state/DOM guard missing "+token);
+for(const token of ["function groundCelebrateRoot","function prepareCelebrateGround","groundCelebrateRoot(o)"])
+  if(!presentationCinematics.includes(token))fail("celebration grounding token missing "+token);
 const percentBattleState=read("src/modes/percent-battle/state.js");
 if(!percentBattleState.includes("function resetBattleState(){\n    stopVictoryCine();"))
   fail("Percent Battle reset must cancel stale victory cinematics");
@@ -1273,18 +1309,27 @@ for(const token of ["function attachShowBall","getWorldPosition(_showReleasePos)
   if(!presentationCinematics.includes(token))fail("contest opponent presentation fix missing "+token);
 if(/applyShotSetPose\(g|tuneGuideHandPose\(g/.test(presentationCinematics))fail("contest presentation must not overwrite poseGuy hand transforms");
 const presentationPregame=read("src/presentation/pregame.js");
-for(const token of ['runtime.register("presentation:pregame"',"const PREGAME=","function startPreGameShow","function updPreGameShow"])
+for(const token of ['runtime.register("presentation:pregame"',"const PREGAME=","function startPreGameShow","function updPreGameShow","PREGAME_DUNK_STYLE_AIR_JORDAN","function setPregameDunkStyle"])
   if(!presentationPregame.includes(token))fail("presentation pregame token missing "+token);
 for(const token of ["guy.arms.forEach(a=>a.rotation.set(-.03,0,0));",
   "guy.elbows.forEach(e=>e.rotation.set(-Math.PI/36,0,0));",
   "hand.rotation.set(0,index===0?-Math.PI*.5:Math.PI*.5,0)"])
   if(!presentationPregame.includes(token))fail("pregame neutral arm pose missing "+token);
-for(const token of ["function pregameSmoothPose","pregameSmoothPose(a.guy,dt)","const dunkArc=","const hangRise=","PREGAME.poseCache.clear()"])
+for(const token of ["function pregameSmoothPose","pregameSmoothPose(a.guy,dt)","const PREGAME_DUNK_TIMING=","function pregameDunkAir","function pregameDunkPhase","function pregamePinDunkHand","const airJordanWeight=","applyTstageDunkPose(guy,airJordanWeight)","pregameDunk","PREGAME.poseCache.clear()"])
   if(!presentationPregame.includes(token))fail("pregame fluidity fix missing "+token);
+for(const token of ["function pregameBallGrip","function pregameHoldBall","function pregameHoldBallAtPose","function pregameReleaseBall","function pregameSyncBallAfterPose","ball.parent!==grip","ballThrough","pregameDunkBallPhase","setNetPulse","let face=actor.face","headYaw"])
+  if(!presentationPregame.includes(token))fail("pregame ball/camera sync missing "+token);
+if(presentationPregame.includes("ball.position.copy(legacyBall)"))fail("pregame ball must not use a detached legacy position");
+if(presentationPregame.includes("const dunkReleaseAt=.78")||presentationPregame.includes("target.y-=.28"))fail("pregame dunk must not release below the rim");
+for(const token of ["const entry=V3(HOOP.x,HOOP.y+.24","center=V3(HOOP.x,HOOP.y+.015","exit=V3(HOOP.x,HOOP.y-.46","if(u<t.hangEnd)return \"hang\""])
+  if(!presentationPregame.includes(token))fail("pregame dunk rim/hang path missing "+token);
+const pregameGameFlow=read("src/game-flow.js");
+if(!pregameGameFlow.includes("function updatePregameWarmupShot(actor,guy,ball,u,seg)"))fail("pregame warmup shot must expose its segment state");
+if(pregameGameFlow.includes("poseBallPos(ball.position,curve)"))fail("pregame warmup shot must use ballGrip rather than detached ball coordinates");
 const presentationBattle=read("src/presentation/battle.js");
 for(const token of ['runtime.register("presentation:battle"',"function updBattleCut","function checkBattleOvertake","function battleScoreCallout"])
   if(!presentationBattle.includes(token))fail("presentation battle token missing "+token);
-for(const token of ['src/rendering/effects.js?v=refactor27','src/presentation/cinematics.js?v=2.19.5-unify2','src/presentation/pregame.js?v=refactor29c','src/presentation/battle.js?v=refactor30'])
+for(const token of ['src/rendering/effects.js?v=refactor27','src/presentation/cinematics.js?v=2.19.5-unify2','src/presentation/pregame.js?v=2.19.9-pregame-dunk-hang1','src/presentation/battle.js?v=refactor30'])
   if(!entryHtml.includes(token))fail("next entry missing presentation module "+token);
 for(const token of ["function startHero(","function startAIShow(","function startVictoryCine(","function startPreGameShow(","function battleScoreCallout(","function startConfetti("])
   if(entryHtml.includes(token))fail("next entry still contains inline presentation "+token);
@@ -1380,18 +1425,39 @@ if(!lastShotSquad.includes("function poseContestHands")||!/actor\.pressure=/.tes
      身体平移得比脚多,照样是滑步。所以现在要求:步幅 L 先定,迈腿角度由 L 反解。 */
   if(!/state\.phase=\(state\.phase\|\|0\)\+\(speed\*dt\/stepLen\)\*Math\.PI;/.test(renderingMotion))
     fail("run phase must advance by distance/stride, not by elapsed time (foot sliding)");
-  if(!/const swing=Math\.asin\(clamp\(L\/\(2\*\(THIGH_LEN\+SHIN_LEN\)\)/.test(renderingMotion))
+  if(!/const solvedSwing=solveRunSwing\(L,run\);/.test(renderingMotion))
     fail("swing must be solved back from the stride L, or the step length and the body translation disagree");
   if(/const stride=\.5\+\.6\*run/.test(renderingMotion))
     fail("stride regressed to the hardcoded ramp that ignores swing (64%-179% foot slide)");
   if(!/function runFootSpan/.test(renderingMotion))
     fail("phase must normalise by the TRUE geometric step (runFootSpan), not a straight-leg approximation");
+  for(const token of ["function runCadence(speed)","function runLegAngles(legSign,swing,run,phaseValue,activity)",
+    "function solveRunSwing(stepLength,run)","function solveRunLegTarget(z,lift,anklePitch,run,activity)",
+    "function runFootPhase(index,phase,stepLength,run)","function runLegFromFoot(foot,run,activity)",
+    "const cadence=runCadence(speed);","setFootRoll(o,0,legA.footPitch,legA.toePitch)",
+    "o.g.userData.runFootContact=","o.g.userData.runToePitch="])
+    if(!renderingMotion.includes(token))fail("run gait foot/cadence guard missing "+token);
+  if(/o\.shoes\[0\]\.rotation\.x=clamp\(-hipA/.test(renderingMotion))
+    fail("run foot roll must rotate the ankle group, not only the shoe upper mesh");
+  if(!renderingMotion.includes("function poseRunFingers")||
+     !renderingMotion.includes("const FINGER_BEND_PROFILE=Object.freeze([.18,.52,.30])")||
+     !renderingMotion.includes("const RUN_FINGER_CURL=1.55")||
+     !renderingMotion.includes("function setFingerChainPose")||
+     !renderingMotion.includes("function poseThumbJoints")||
+     !renderingMotion.includes("poseRunFingers(o,state,speed,dt)"))
+    fail("run cycle must use human-like multi-joint fingers, a closed thumb and speed-based relax");
+  const characters=read("src/rendering/characters.js");
+  for(const token of ["thumbIp","fingerPip","fingerDip","aibaFingerChain","thumbRoots","fingerPipJoints","fingerDipJoints","footRig","toeJoint","footRoots","toeRoots"])
+    if(!characters.includes(token))fail("character hand rig missing human finger joint token "+token);
   if(!/poseRunCycle\(actor\.guy,actor,speed,dt/.test(lastShotSquad))
     fail("Last Shot must reuse the shared run cycle");
   const cine=read("src/presentation/cinematics.js");
   if(!cine.includes("poseRunCycle("))fail("AI show must reuse the shared run cycle");
   if(/g\.legs\[0\]\.rotation\.x=sw\*0\.6/.test(cine))
     fail("AI show must not keep its own time-driven leg swing");
+  const battleOpponent=read("src/modes/percent-battle/opponent.js");
+  if(!/motion\.poseRunCycle\(guy,OPP\.gait/.test(battleOpponent)||/const swing=Math\.sin\(OPP\.t\*15\)/.test(battleOpponent))
+    fail("Percent Battle opponent walk must reuse the shared foot-roll gait");
 }
 // 你出手时没人反应是最假的：近处大概率起跳，其余至少举手
 if(!lastShotSquad.includes("CONTEST_JUMP_CHANCE")||!/actor\.handsUp/.test(lastShotSquad))
@@ -1656,11 +1722,13 @@ for(const token of ['runtime.register("core:input"',"function onDown","function 
   if(!coreInput.includes(token))fail("core input token missing "+token);
 for(const token of ['runtime.register("core:game-loop"',"function animate","window.animate=animate","updatePractice(dt)"])
   if(!coreLoop.includes(token))fail("core game-loop token missing "+token);
+for(const token of ["AIBACamera.isEditing","AIBACamera.updateEditor"])
+  if(!coreLoop.includes(token))fail("core game-loop camera editor hook missing "+token);
 if(!coreLoop.includes('if(VICTORY_CINE.on&&G.state!=="victorycine")stopVictoryCine();'))
   fail("game loop must cancel a stale victory cinematic before camera dispatch");
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.19.9-hy4a','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.19.9-groundshadow','src/core/scene-init.js?v=2.19.9-ceiling'])
+for(const token of ['src/gameplay/shots.js?v=2.19.9-hy4a','src/presentation/replay.js?v=2.15.5-hand-follow','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.19.9-customcam1','src/core/scene-init.js?v=2.19.9-ceiling'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);
@@ -1751,9 +1819,12 @@ console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.le
     fail("接球不应再有独立的前倾层，前倾只由 load 驱动");
   if(/catchTurnAmount|rotation\.y\+=twist/.test(m))
     fail("绕垂直轴转体那一版是理解错的，应已移除");
-  // 下半身屈膝链路不动
+  /* 下半身仍保留原有屈膝基础，但 ready_pose1 的髋/膝/踝目标要在 load 窗口
+     渐入；腿根反向抵消 torsoLean，才能证明这次是髋折叠而不是整个人一起倾斜。 */
   if(!/const kneeBase=Math\.max\(0,0\.98\*load/.test(m))
-    fail("下半身屈膝链路不应被改动");
+    fail("下半身屈膝基础链路缺失");
+  for(const token of ["const torsoLean=-DIP_LEAN*load","const lowerBodyHingeComp=-torsoLean;","function shotReadyLowerTarget(index)","READY_LOWER_HIP_BLEND","o.legs[0].rotation.x=hipLead+lowerBodyHingeComp","o.legs[1].rotation.x=hipTrail+lowerBodyHingeComp","o.g.userData.shotHipHinge=torsoLean"])
+    if(!m.includes(token))fail("蓄力真屈髋融合守卫缺失 "+token);
 }
 
 /* ---------------- 绝杀时刻队服 ---------------- */

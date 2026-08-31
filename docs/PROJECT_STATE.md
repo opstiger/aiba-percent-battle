@@ -16,6 +16,16 @@
 - 最近回滚副本：`backup/20260813-v2.19.2-before-3d-pose-integration/`（T台导入前）、`backup/20260813-v2.19.3-before-hold-release-restore/`（持球/出手衔接前）、`backup/20260813-v2.19.3-before-wrist-axis-fix/`（压腕空间轴修复前）与 `backup/20260813-v2.19.3-before-catch-charge-bridge-fix/`（本轮接球/蓄力修复前）。更早的 v2.17/v2.18 基线备份也在 `backup/` 同目录。
 - 配套工具：T台（`projects/fable5测试/basketball-pose-lab/`，原姿势台）；动作导入技能 `~/.codex/skills/aiba-tstage-pose/`；工作区 SOP `docs/SOP-T台动作导入.md`。
 - 本轮已验收并纳入主线的动作改动：T台 `run` 增加 `bodyBob`（默认 2.2cm、每左右交替周期两次起伏），由 `scripts/import-tstage-animations.mjs` 同步到动作包；游戏在保持真实位移步相和脚底修正的同时应用重心升降，并统一了站定下垂手、跑动弯肘摆臂、掌心相对、接球迎球、收步转身重叠传球和投后 ready bounce。回滚副本为 `backup/20260830-v2.19.9-before-mainline-animation-sync.tar`。`GAME_VERSION` 仍为 `v2.19.9`；真机回归由游戏侧人工完成。
+- 当前工作区新增待验收：共享跑动把最快段的步频控制在约 3.6 步/秒，速度优先由真实腿部几何步幅承担；跑动、原地垫步和投后落地均使用真实 `ankle → foot → toe` 层级，让脚跟—前掌、鞋底、鞋面和脚腕一起变化；百分大战对手复用同一套步态。回滚副本为 `backup/20260830-v2.19.9-before-foot-roll-cadence/`。
+- 当前工作区新增待验收：T台 `poses/dunk_air_jordan.md` 已经由导入器落进动作包，热身 `dunk` 默认在起跳空中渐入 Air Jordan 姿势，助跑/落回仍由游戏弧线驱动；原程序扣篮保留，可用 `?pregameDunk=legacy` 回退。回滚副本为 `backup/20260830-v2.19.9-before-air-jordan-warmup-dunk/`。
+- 当前工作区新增待验收：角色手模已从单段手指扩展为拟人分节骨骼——四指各有 MCP/PIP/DIP 三个弯曲关节，拇指有根部/IP 两个关节；跑动用分配到三节的柔和握拳曲线，站定/接球/投篮仍分别使用各自手型。`scripts/check.js`、静音走位/接球回归和投篮动画回归均已通过；回滚副本为 `backup/20260830-v2.19.9-before-human-finger-rig/`。
+- 当前工作区新增待验收：停用 Curry 的特殊脸部贴图映射，角色统一回到程序化基础脸；保留空兼容 API 但不再加载任何特殊脸部纹理。回滚副本为 `backup/20260830-v2.19.9-before-remove-curry-face/`。
+- 投篮动作版本采用追加式备份：每次改动前新建唯一的 `backup/日期-用途/` 目录并追加 `docs/投篮动作版本记录.md`，不得覆盖旧投篮动作；本轮基线为 `backup/20260830-v2.19.9-before-shot-hip-hinge/`。
+- 当前工作区新增待验收：蓄力下蹲融合 T台 `ready_pose1` 的髋/膝/踝目标，并用独立躯干前倾与下肢反向补偿形成真实屈髋；此前 `shot-hip1` 基线现由本轮 `foot-kick1` 缓存串继续承接。冻结蓄力帧实测 `shotHipHinge=-0.175rad`、`readyLowerBlend=1`，静音结构/走位/投篮回归通过。回滚副本为 `backup/20260830-v2.19.9-before-shot-hip-hinge/`。
+- 当前工作区新增待验收：跑动改为按真实鞋底网格逐脚接地，承重脚不再因换步平均高度悬空；投篮无参数入口默认启用 `release-feet` 的空中出手踢腿，显式 `?shotAnim=game` 仍可回到原版动作库。空中踢腿只在物理 `airborne` 后进入，落地按 `landBlend` 回收。缓存串更新为 `2.19.9-foot-kick1`；静音跑动/投篮回归通过，回滚副本为 `backup/20260830-v2.19.9-before-run-foot-kick-fix/`。
+- 当前工作区新增待验收：赛前热身的 `shoot`/`dunk` 球体统一挂到真实 `ballGrip`，仅在投篮出手或扣篮接近篮筐时脱离到世界飞行；`orbit` 镜头不再让球员根节点追着镜头旋转，`finger`/`wave` 只做小幅抬头看镜头。静音无头回归与无遮挡截图已通过；回滚副本为 `backup/20260830-v2.19.9-before-pregame-ball-sync/`。
+- 当前工作区新增待验收：热身 `dunk` 改为完整的“起跳持球 → 篮圈上方释放 → 球穿过网心 → 单手挂框小幅摆动 → 松手落地”时序；挂框阶段以 `handRig` 锚在近侧篮圈前沿，球网只触发视觉 `netPulse`，不调用音频。无声关键帧回归与截图已通过；回滚副本为 `backup/20260830-v2.19.9-before-dunk-hang/`。
+- 当前工作区新增待验收：胜利/反超/绝杀庆祝统一按真实鞋底包围盒重新接地，避免继承投篮滞空根高度；设置新增两个可自由 360° 拖动并持久化的自定义视角槽位，已加入镜头切换循环，视角参数相对球员位置跟随。回滚副本为 `backup/20260830-v2.19.9-before-celebration-custom-camera/`；无声回归脚本为 `node scripts/custom-camera-victory.test.mjs`。
 
 ## 近期已完成
 

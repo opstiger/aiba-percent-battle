@@ -72,7 +72,11 @@
       guy.handRoots[0]&&guy.handRoots[0].rotation.set(-.025,0,-.035);
       guy.handRoots[1]&&guy.handRoots[1].rotation.set(-.025,0,.035);
     }
-    if(guy.fingerJoints)guy.fingerJoints.forEach(hand=>hand&&hand.forEach(finger=>finger.rotation.set(-.08,0,0)));
+    if(guy.fingerJoints)guy.fingerJoints.forEach((hand,handIndex)=>hand&&hand.forEach((finger,fingerIndex)=>{
+      if(typeof setFingerChainPose==="function")setFingerChainPose(finger,-.08,0);
+      else finger.rotation.set(-.08,0,0);
+    }));
+    if(typeof poseThumbJoints==="function")poseThumbJoints(guy,0);
     if(guy.legs&&guy.knees&&guy.ankles){
       const leftHip=-.012+sway*.010,rightHip=-.012-sway*.010;
       const leftKnee=.028-sway*.008,rightKnee=.028+sway*.008;
@@ -122,7 +126,9 @@
     blendRotation(guy.handRoots&&guy.handRoots[0],1.02*release,0,-.04,k);
     blendRotation(guy.handRoots&&guy.handRoots[1],-.18,-1.05,.04,k);
     if(guy.fingerJoints&&guy.fingerJoints[0])guy.fingerJoints[0].forEach((finger,index)=>{
-      finger.rotation.x=-.08+release*([.12,.30,.42,.18][index]||.12);
+      const curl=-.08+release*([.12,.30,.42,.18][index]||.12);
+      if(typeof setFingerChainPose==="function")setFingerChainPose(finger,curl,0);
+      else finger.rotation.set(curl,0,0);
     });
     if(guy.legs&&guy.knees&&guy.ankles){
       guy.legs[0].rotation.x=mix(guy.legs[0].rotation.x,legX-.012*load,k);

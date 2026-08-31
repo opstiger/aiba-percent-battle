@@ -32,6 +32,12 @@
   let fpRig=null,fpHidden=[],fpBallHome=null,followAge=0,followActive=false;
   let releasePose=null;
   let releaseCurve={dip:0,lift:1,rise:1,jmp:1,over:0},lastPoseCurve=releaseCurve,pendingRelease=null;
+  let shotCycleClock=0,shotCycleActive=false,shotCycleReleased=false,shotCycleWasCharging=false;
+  let releaseFeetClock=0,releaseFeetLandClock=0,releaseFeetAirClock=0,releaseFeetActive=false,releaseFeetReleased=false,
+    releaseFeetLanded=false,releaseFeetAirborne=false,releaseFeetWasCharging=false;
+  /* 踢腿峰值与真正球脱手的 BALL_RELEASE_AT 对齐：起跳后开始，球离手时达到最大。 */
+  const RELEASE_FEET_KICK_BLEND=BALL_RELEASE_AT,RELEASE_FEET_KICK_WEIGHT=.62,RELEASE_FEET_LAND_BLEND=.18,
+    RELEASE_FEET_LAND_HOLD=.18,RELEASE_FEET_RECOVER=.28,RELEASE_FEET_EARLY_RELEASE_LIMIT=.72;
   const ease01=t=>{t=clampN(t,0,1);return t*t*(3-2*t);};
   const mixN=(a,b,k)=>a+(b-a)*k;
   /* 第一人称相机在眼睛后方 0.85,所以自己的肩和上臂会正对镜头。
@@ -156,6 +162,80 @@
     }
     return {active:true,extend,follow,recover,age:followAge};
   }
+  /* T台 shot_cycle 用自己的 duration 走完整时间轴；游戏仍掌管蓄力判定、出手
+     时刻和落地物理。正常力度下 1.8s 时间轴会在约 0.8s 的出手点落到 T台
+     release 标记，出手后继续走落地/恢复；若用户把动作切回 game，这个时钟
+     立即清零，原有动作不留下半帧残影。 */
+  function resetReleaseFeet(){
+    releaseFeetClock=0;releaseFeetLandClock=0;releaseFeetAirClock=0;releaseFeetActive=false;releaseFeetReleased=false;
+    releaseFeetLanded=false;releaseFeetAirborne=false;releaseFeetWasCharging=false;
+  }
+  function resetTstageShotCycle(){
+    shotCycleClock=0;shotCycleActive=false;shotCycleReleased=false;shotCycleWasCharging=false;
+  }
+  function resetShotCycle(){resetTstageShotCycle();resetReleaseFeet();}
+  function markShotCycleReleased(){
+    if(typeof isTstageShotAnimation!=="function"||!isTstageShotAnimation())return;
+    if(!shotCycleActive){shotCycleClock=0;shotCycleActive=true;}
+    shotCycleReleased=true;
+  }
+  function markReleaseFeetReleased(){
+    if(typeof isReleaseFeetShotAnimation!=="function"||!isReleaseFeetShotAnimation())return;
+    if(!releaseFeetActive){releaseFeetClock=0;releaseFeetActive=true;}
+    releaseFeetReleased=true;
+  }
+  function updateShotCycle(dt,walking){
+    if(typeof isTstageShotAnimation!=="function"||!isTstageShotAnimation()||walking){resetTstageShotCycle();return null;}
+    const charging=!!G.charging,safeDt=Math.max(0,Math.min(.08,dt||0));
+    if(charging&&!shotCycleWasCharging){
+      shotCycleClock=0;shotCycleActive=true;shotCycleReleased=false;
+    }
+    /* 取消蓄力没有 releaseShotV2 标记，不能把半截投篮动作留在身上。 */
+    if(!charging&&shotCycleWasCharging&&!shotCycleReleased){resetShotCycle();return null;}
+    if(shotCycleActive&&(charging||shotCycleReleased))shotCycleClock+=safeDt;
+    shotCycleWasCharging=charging;
+    if(!shotCycleActive)return null;
+    const duration=typeof tstageShotCycleDuration==="function"?tstageShotCycleDuration():0;
+    if(!(duration>0)){resetTstageShotCycle();return null;}
+    shotCycleClock=Math.min(duration,shotCycleClock);
+    return clampN(shotCycleClock/duration,0,1);
+  }
+  function updateReleaseFeet(dt,walking,phys,c){
+    if(typeof isReleaseFeetShotAnimation!=="function"||!isReleaseFeetShotAnimation()||walking){resetReleaseFeet();return null;}
+    const charging=!!G.charging,safeDt=Math.max(0,Math.min(.08,dt||0));
+    if(charging&&!releaseFeetWasCharging){
+      releaseFeetClock=0;releaseFeetLandClock=0;releaseFeetAirClock=0;releaseFeetActive=true;releaseFeetReleased=false;
+      releaseFeetLanded=false;releaseFeetAirborne=false;
+    }
+    /* 用户松手前取消蓄力时清回原版游戏下肢，不留下半截 release pose。 */
+    if(!charging&&releaseFeetWasCharging&&!releaseFeetReleased){resetReleaseFeet();return null;}
+    if(!releaseFeetActive){releaseFeetWasCharging=charging;return null;}
+    /* 地面蓄力段不叠加 release pose。releaseShot 可能先于物理 airborne 到达，
+       这里等真正离地后才启动踢腿时钟；因此不会出现“先在地上踢、再起跳”。 */
+    if(!releaseFeetReleased){releaseFeetWasCharging=charging;return null;}
+    releaseFeetClock+=safeDt;
+    if(!releaseFeetAirborne&&phys&&phys.airborne){
+      releaseFeetAirborne=true;releaseFeetAirClock=0;
+    }
+    if(!releaseFeetAirborne){
+      if(!phys?.airborne&&releaseFeetClock>RELEASE_FEET_EARLY_RELEASE_LIMIT){resetReleaseFeet();return null;}
+      releaseFeetWasCharging=charging;return null;
+    }
+    releaseFeetAirClock+=safeDt;
+    if(phys&&phys.justLanded){releaseFeetLanded=true;releaseFeetLandClock=0;}
+    else if(!releaseFeetLanded&&!phys?.airborne&&releaseFeetClock>RELEASE_FEET_EARLY_RELEASE_LIMIT){
+      releaseFeetLanded=true;releaseFeetLandClock=0;
+    }
+    if(releaseFeetLanded)releaseFeetLandClock+=safeDt;
+    const recoverNow=ease01(clampN((releaseFeetLandClock-RELEASE_FEET_LAND_BLEND-RELEASE_FEET_LAND_HOLD)/RELEASE_FEET_RECOVER,0,1));
+    if(recoverNow>=1){resetReleaseFeet();return null;}
+    releaseFeetWasCharging=charging;
+    const kickWeight=ease01(releaseFeetAirClock/RELEASE_FEET_KICK_BLEND)*RELEASE_FEET_KICK_WEIGHT;
+    const landBlend=releaseFeetLanded?ease01(releaseFeetLandClock/RELEASE_FEET_LAND_BLEND):0;
+    return {
+      released:true,airborne:true,kickWeight,landBlend,recover:recoverNow,
+    };
+  }
   function captureReleasePose(o){
     releasePose=typeof captureShotPose==="function"?captureShotPose(o):null;
   }
@@ -235,6 +315,9 @@
     const lk=landT>0?Math.sin((0.3-landT)/0.3*Math.PI):0;
     const follow=followState(dt);
     const c=visualReleaseCurve(rawCurve,follow);
+    const catchState=G.passCatch;
+    const tstageShotPhase=updateShotCycle(dt,!!P.walking);
+    const releaseFeetPhase=updateReleaseFeet(dt,!!P.walking,phys,c);
     // 接球屈髋：这条才是当前生效的 updPose，不写这里改了也看不见
     P.jump=phys.airborne?Math.max(0,rawCurve.jmp*0.55):Math.max(-0.06,rawCurve.jmp*0.55-rawCurve.over*0.28);
     P.eyeDip=-0.26*c.dip-0.09*lk;
@@ -242,7 +325,6 @@
     // 第三人称
     player.g.position.set(P.pos.x,0,P.pos.z);
     player.g.rotation.y=P.face+(P.walking?0:SHOT_STANCE_YAW*stance);
-    const catchState=G.passCatch;
     if(P.walking){
       /* 走路统一走 poseRunCycle —— 它才是"全项目唯一的一套跑动姿势"(motion.js)。
          这里原本是另抄的一条正弦:步频写死 dt*9(和真实位移脱钩,脚在地上滑)、
@@ -263,7 +345,11 @@
       if(typeof resetWalkSpeed==="function")resetWalkSpeed();
       if(P.walkRig)P.walkRig.phase=0;
       player.g.rotation.z=0;
-      player.g.position.y=poseGuy(player,c,lk)+P.jump;
+      const gamePoseY=poseGuy(player,c,lk);
+      const gameRootLean=player.g&&player.g.rotation?player.g.rotation.x:0;
+      const gameFootY=(poseFootBottomY(player.legs[0].rotation.x+gameRootLean,player.knees[0].rotation.x,player.ankles[0].rotation.x)+
+        poseFootBottomY(player.legs[1].rotation.x+gameRootLean,player.knees[1].rotation.x,player.ankles[1].rotation.x))*.5;
+      player.g.position.y=gamePoseY+P.jump;
       /* 出手跟随要 0.725 秒，而 Rack Rush 后几关出手 60ms 后就开始传球，两者必然重叠。
          这里必须叠加而不是二选一：先让跟随继续写它的收手姿势，poseCatchHands 再用
          blendNodeQuat 从"本帧已有姿势"往迎球帧插值(progress 小的时候 k≈0)。
@@ -271,6 +357,12 @@
       if(follow.active)applyFollowThroughPose(player,follow);
       // 飞行阶段迎球；到手后由同一控制器短暂缓冲到持球帧，禁止一帧换骨架。
       if(catchState&&catchState.active)poseCatchHands(player,catchState,dt);
+      /* T台版只覆盖非接球阶段的上肢最终写入；接球优先级更高，避免球还没
+         到手时 shot_cycle 把迎球手型抢回去。腿、躯干、球和所有状态仍由游戏链控制。 */
+      if(!(catchState&&catchState.active)&&tstageShotPhase!=null&&typeof applyTstageShotCyclePose==="function")
+        applyTstageShotCyclePose(player,tstageShotPhase);
+      if(releaseFeetPhase&&typeof applyReleaseFeetPose==="function")
+        applyReleaseFeetPose(player,releaseFeetPhase,gameFootY);
     }
     // 球挂在投篮手 handRig 上，伸肘与压腕期间连续随手，真正 release 后才隐藏/脱离。
     if(!ballAttached)poseBallPos(pBall.position,c);
@@ -298,6 +390,8 @@
   function releaseShotV2(power,shot){
     if(!on)return chainedReleaseShot.apply(this,arguments);
     if(pendingRelease)return false;
+    markShotCycleReleased();
+    markReleaseFeetReleased();
     captureReleasePose(player);
     captureReleaseCurve();
     beginFollow();
@@ -369,6 +463,7 @@
     global.updBalls=origUpdBalls;
     if(global.AIBAShotPhysics)AIBAShotPhysics.reset();
     followAge=0;followActive=false;pendingRelease=null;
+    resetShotCycle();
   }
   function apply(){
     if(on){
@@ -393,14 +488,18 @@
   global.AIBAMotionToggle=toggle;
   global.AIBAShotMotion=Object.freeze({
     applyFollowThroughPose,
+    resetShotCycle,
     // 姿势在 updPose 之后被改写时(例如绝杀庆祝)，用它把第一人称镜像重新对齐
     syncFp(){if(fpRig)syncFpRigFromPlayer();},
     captureShotPose:o=>typeof captureShotPose==="function"?captureShotPose(o):null
   });
-  global.AIBAMotion={
+    global.AIBAMotion={
     enabled:()=>on,
     setEnabled,toggleMarkup,restoreLegacy:restoreLegacyMotion,
-    stats:()=>({on,ballAttached,fpRig:!!fpRig,followAge:+followAge.toFixed(2),followActive,pendingRelease:!!pendingRelease})
+    stats:()=>({on,ballAttached,fpRig:!!fpRig,followAge:+followAge.toFixed(2),followActive,pendingRelease:!!pendingRelease,
+      shotAnimation:typeof getShotAnimationMode==="function"?getShotAnimationMode():"game",
+      shotCycleActive,shotCycleTime:+shotCycleClock.toFixed(2),releaseFeetActive,releaseFeetAirborne,
+      releaseFeetKickTime:+releaseFeetAirClock.toFixed(2)})
   };
   apply();
 })(window);

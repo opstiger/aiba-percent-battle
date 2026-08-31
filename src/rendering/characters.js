@@ -81,7 +81,7 @@ function voxelGuy(){
   const add=(p,w,h,d,m,x,y,z)=>{const b=mk(w,h,d,m);b.position.set(x,y,z);p.add(b);return b;};
   const addSoft=(p,w,h,d,m,x,y,z,r,segments)=>{const b=soft(w,h,d,m,r,segments);b.position.set(x,y,z);p.add(b);return b;};
   const round=(p,rx,ry,rz,m,x,y,z)=>{const b=new THREE.Mesh(new THREE.SphereGeometry(1,10,6),m);b.scale.set(rx,ry,rz);b.position.set(x,y,z);p.add(b);return b;};
-  const legs=[],knees=[],ankles=[],arms=[],elbows=[],upperArms=[],forearms=[],shoes=[],wrists=[],sleeves=[],palms=[],thumbs=[],handRoots=[],fingerJoints=[],ballGrips=[];
+  const legs=[],knees=[],ankles=[],footRoots=[],toeRoots=[],arms=[],elbows=[],upperArms=[],forearms=[],shoes=[],wrists=[],sleeves=[],palms=[],thumbs=[],thumbRoots=[],thumbTips=[],handRoots=[],fingerJoints=[],fingerPipJoints=[],fingerDipJoints=[],ballGrips=[];
   const hipBlends=[],kneeBlends=[],ankleBlends=[],elbowBlends=[],wristBlends=[];
   // ---- 腿 ----
   [-VOXEL_HIP_X,VOXEL_HIP_X].forEach(x=>{
@@ -101,6 +101,10 @@ function voxelGuy(){
     add(kn,0.17,0.024,0.185,mJ, 0,-0.252,0.006);              // 袜口队色细条
     add(kn,0.165,0.018,0.18,mP, 0,-0.322,0.008);              // 袜底暗线
     const ank=new THREE.Group();ank.position.y=-0.32;         // 踝 pivot
+    /* 脚部拆成 ankle -> foot -> toe：踝关节负责小腿末端的补偿，foot 负责
+       整体承重，toe 负责前脚掌蹬地。现有鞋面继续挂在 foot，保留旧外观。 */
+    const foot=new THREE.Group();foot.name="footRig";ank.add(foot);
+    const toe=new THREE.Group();toe.name="toeJoint";toe.position.set(0,-.105,.045);foot.add(toe);
     addSoft(ank,0.205,0.055,0.27,mSole, 0,-0.085,0.005,.016,2);// 鞋底主体
     round(ank,.103,.028,.09,mSole,0,-.085,.15);               // 收圆的前掌鞋底
     const sh=soft(0.19,0.11,0.23,new THREE.MeshLambertMaterial({color:0xffffff}),.032,3); // 鞋面(可染色,shoes[])
@@ -115,10 +119,21 @@ function voxelGuy(){
     add(ank,0.12,0.022,0.028,mLace, 0,0.078,0.09);            // 鞋带 2
     add(ank,0.21,0.028,0.25,mSole, 0,-0.052,0.005);           // 中底白条主体
     round(ank,.105,.015,.085,mSole,0,-.052,.15);              // 中底圆头
+    /* 把已经生成的鞋部件重新挂到 foot，再把前掌相关部件移进 toe。
+       这样不改变原有网格尺寸/材质，只改变旋转支点。位置换算为 toe 的
+       parent-local，避免重挂载后出现鞋头跳位。 */
+    const shoeParts=ank.children.slice();
+    shoeParts.forEach(child=>{if(child!==foot)foot.add(child);});
+    const toeParts=[shoeParts[2],shoeParts[4],shoeParts[8],shoeParts[9],shoeParts[10],shoeParts[11],shoeParts[13]];
+    toeParts.forEach(child=>{
+      if(!child)return;
+      child.position.y-=toe.position.y;child.position.z-=toe.position.z;toe.add(child);
+    });
     const ankleBlend=addSoft(ank,0.158,0.13,0.145,mSock,0,0.035,-0.065,.036,3);
     ankleBlend.name="ankleBlend";                             // 袜筒与球鞋共同包住踝 pivot
     kn.add(ank);lg.add(kn);
     g.add(lg);legs.push(lg);knees.push(kn);ankles.push(ank);shoes.push(sh);
+    footRoots.push(foot);toeRoots.push(toe);
     hipBlends.push(hipBlend);kneeBlends.push(kneeBlend);ankleBlends.push(ankleBlend);
   });
   // ---- 盆骨/短裤腰(填补躯干与腿之间) ----
@@ -200,19 +215,43 @@ function voxelGuy(){
     /* Pose Lab 的手掌原点在 palm center、手指沿 +Y。游戏手模通过绕 local X
        旋转 PI 与之对齐，因此这里也把拇指根与子网格按同一基变换重建。 */
     const thumbRoot=new THREE.Group();
+    thumbRoot.name="thumbMcp";
     thumbRoot.position.set(handSide*.075,-.061,-.018);thumbRoot.rotation.z=handSide*.70;handRoot.add(thumbRoot);
-    const thumb=addSoft(thumbRoot,0.038,0.078,0.042,mS,0,-.036,0,.010,2);
+    /* 拇指按人类的两节外形拆开：掌指段 + 末节。thumbRoot 本身就是拇指根部
+       关节，thumbTipRoot 是 IP 关节；跑步握拳时两节会一起向掌心收。 */
+    const thumbProxLength=.045,thumbTipLength=.033;
+    const thumb=addSoft(thumbRoot,0.038,thumbProxLength,0.042,mS,0,-thumbProxLength*.5,0,.010,2);
     thumb.name="thumb";
+    const thumbTipRoot=new THREE.Group();
+    thumbTipRoot.name="thumbIp";thumbTipRoot.position.y=-thumbProxLength;thumbRoot.add(thumbTipRoot);
+    addSoft(thumbTipRoot,0.036,thumbTipLength,0.040,mS,0,-thumbTipLength*.5,0,.009,2).name="thumbTip";
+    addSoft(thumbTipRoot,0.027,0.018,0.032,mS,0,-.004,0,.007,2).name="thumbJoint";
+    thumbRoot.userData.aibaThumbChain={tip:thumbTipRoot};
     const fingerLengths=[.094,.108,.112,.100];
-    const fingerRoots=[];
+    const fingerRoots=[],pipRoots=[],dipRoots=[];
     [-1.5,-.5,.5,1.5].forEach((i,index)=>{
       const length=fingerLengths[index];
       const fingerRoot=new THREE.Group();
       /* palm center 在 handRoot local y=-.055；此坐标正是 Pose Lab 指根
          [x,+.073,+.015] 经 local-X PI 基变换后的精确位置。 */
-      fingerRoot.name="fingerJoint";fingerRoot.position.set(i*.028,-.128,-.015);fingerRoot.rotation.x=-.08;
-      const finger=addSoft(fingerRoot,0.022,length,0.03,mS,0,-length*.5,0,.008,2);
-      finger.name="finger";handRoot.add(fingerRoot);fingerRoots.push(fingerRoot);
+      fingerRoot.name="fingerMcp";fingerRoot.position.set(i*.028,-.128,-.015);fingerRoot.rotation.x=-.08;
+      /* 三节指骨：MCP(根节点) -> PIP(近端指间) -> DIP(远端指间)。长度沿用旧
+         单段手指的总长度，只把弯曲分摊到三节，避免握拳时像一根硬棍折弯。 */
+      const proximalLength=length*.44,middleLength=length*.33,distalLength=length-proximalLength-middleLength;
+      const proximal=addSoft(fingerRoot,0.022,proximalLength,0.030,mS,0,-proximalLength*.5,0,.008,2);
+      proximal.name="finger";
+      const pipRoot=new THREE.Group();
+      pipRoot.name="fingerPip";pipRoot.position.y=-proximalLength;fingerRoot.add(pipRoot);
+      addSoft(pipRoot,0.023,0.018,0.031,mS,0,-.004,0,.007,2).name="fingerPipJoint";
+      const middle=addSoft(pipRoot,0.021,middleLength,0.029,mS,0,-middleLength*.5,0,.007,2);
+      middle.name="fingerMiddle";
+      const dipRoot=new THREE.Group();
+      dipRoot.name="fingerDip";dipRoot.position.y=-middleLength;pipRoot.add(dipRoot);
+      addSoft(dipRoot,0.022,0.016,0.030,mS,0,-.003,0,.006,2).name="fingerDipJoint";
+      const distal=addSoft(dipRoot,0.020,distalLength,0.028,mS,0,-distalLength*.5,0,.007,2);
+      distal.name="fingerTip";
+      fingerRoot.userData.aibaFingerChain={pip:pipRoot,dip:dipRoot};
+      handRoot.add(fingerRoot);fingerRoots.push(fingerRoot);pipRoots.push(pipRoot);dipRoots.push(dipRoot);
     });
     const ballGrip=new THREE.Group();
     /* 持球锚点(= pBall 的父节点,也是物理出手点)。
@@ -222,11 +261,11 @@ function voxelGuy(){
        前送，直到 releaseShot 真正读取 pBall 世界坐标后才脱手。 */
     ballGrip.name="ballGrip";ballGrip.position.set(.012341,-.108954,-.193745);handRoot.add(ballGrip);
     sh2.add(el);g.add(sh2);
-    arms.push(sh2);elbows.push(el);upperArms.push(up);forearms.push(fo);wrists.push(wr);sleeves.push(sl);palms.push(palm);thumbs.push(thumb);handRoots.push(handRoot);fingerJoints.push(fingerRoots);ballGrips.push(ballGrip);
+    arms.push(sh2);elbows.push(el);upperArms.push(up);forearms.push(fo);wrists.push(wr);sleeves.push(sl);palms.push(palm);thumbs.push(thumb);thumbRoots.push(thumbRoot);thumbTips.push(thumbTipRoot);handRoots.push(handRoot);fingerJoints.push(fingerRoots);fingerPipJoints.push(pipRoots);fingerDipJoints.push(dipRoots);ballGrips.push(ballGrip);
     elbowBlends.push(elbowBlend);wristBlends.push(wristBlend);
   });
   const o={g,headRoot,headScale:VOXEL_HEAD_SCALE,baseShoulderX:VOXEL_SHOULDER_X,baseHipX:VOXEL_HIP_X,
-    legs,knees,ankles,arms,elbows,upperArms,forearms,shoes,wrists,sleeves,palms,thumbs,handRoots,fingerJoints,ballGrips,
+    legs,knees,ankles,footRoots,toeRoots,arms,elbows,upperArms,forearms,shoes,wrists,sleeves,palms,thumbs,thumbRoots,thumbTips,handRoots,fingerJoints,fingerPipJoints,fingerDipJoints,ballGrips,
     hipBlends,kneeBlends,ankleBlends,elbowBlends,wristBlends,neckBlend,headband,
     hair:hairGrp,hairGrp,hairMat,beardGrp,beardMat,mJ,mP,mS,bodyF,bodyB,mFace,hairStyle:"short"};
   setHair(o,"short");
@@ -369,7 +408,6 @@ function applyStarStyle(guy,star){
   const hc=star.hair!=null?star.hair:0x141414;
   setHair(guy, star.hairStyle||"short", hc);
   setBeard(guy, !!star.beard, (typeof star.beard==="number")?star.beard:hc);
-  if(window.AIBAFaceOverlays)AIBAFaceOverlays.apply(guy,star);
 }
 function randomizeOutfit(o){
   const pick=a=>a[(Math.random()*a.length)|0];

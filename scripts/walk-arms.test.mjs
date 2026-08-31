@@ -112,6 +112,10 @@ const inspect=()=>page.evaluate(()=>{
   const proj=v=>{const q=v.clone().project(cam);return {x:q.x,y:q.y,z:q.z,inside:Math.abs(q.x)<=1.18&&Math.abs(q.y)<=1.18&&q.z>-1&&q.z<1};};
   const distance=(a,b)=>a.distanceTo(b);
   o.g.updateMatrixWorld(true);
+  const footBox=root=>{
+    const box=new THREE.Box3().setFromObject(root);
+    return {minY:+box.min.y.toFixed(4),maxY:+box.max.y.toFixed(4)};
+  };
   const actorInv=o.g.getWorldQuaternion(new THREE.Quaternion()).invert();
   const arms=o.arms.map((arm,i)=>{
     const shoulder=p(arm),elbow=p(o.elbows[i]),wrist=p(o.handRoots[i]);
@@ -131,43 +135,147 @@ const inspect=()=>page.evaluate(()=>{
       upperTilt:+upperTilt.toFixed(1),lowerTilt:+lowerTilt.toFixed(1),
       palm:[+palmLocal.x.toFixed(3),+palmLocal.y.toFixed(3),+palmLocal.z.toFixed(3)],palmInward};
   });
+  const motionApi=AIBA.runtime.service("rendering:motion");
+  const fingerCurl=(o.fingerJoints||[]).map(fingers=>fingers.length
+    ?+(fingers.reduce((sum,finger)=>sum+(typeof motionApi.fingerCurlValue==="function"?motionApi.fingerCurlValue(finger):finger.rotation.x),0)/fingers.length).toFixed(3):NaN);
+  const fingerJointCount=(o.fingerJoints||[]).map(fingers=>fingers.map(finger=>{
+    const chain=finger&&finger.userData&&finger.userData.aibaFingerChain||{};
+    return 1+(chain.pip?1:0)+(chain.dip?1:0);
+  }));
+  const thumbCurl=(o.thumbRoots||[]).map(root=>{
+    const tip=root&&root.userData&&root.userData.aibaThumbChain&&root.userData.aibaThumbChain.tip;
+    return +((Number(root&&root.rotation.x)||0)+(Number(tip&&tip.rotation.x)||0)).toFixed(3);
+  });
+  const thumbJointCount=(o.thumbRoots||[]).map(root=>{
+    const tip=root&&root.userData&&root.userData.aibaThumbChain&&root.userData.aibaThumbChain.tip;
+    return 1+(tip?1:0);
+  });
   const legs=o.legs.map((leg,i)=>{
     const hip=p(leg),knee=p(o.knees[i]),v=knee.sub(hip).normalize().applyQuaternion(actorInv);
     return {z:+v.z.toFixed(3)};
   });
-  const motion=AIBA.runtime.service("rendering:motion").getState();
+  const feet=o.ankles.map((ankle,i)=>{
+    const foot=(o.footRoots&&o.footRoots[i])||ankle;
+    const toe=(o.toeRoots&&o.toeRoots[i])||null;
+    const forward=new THREE.Vector3(0,0,1).applyQuaternion(foot.getWorldQuaternion(new THREE.Quaternion())).applyQuaternion(actorInv);
+    const toeForward=toe
+      ?new THREE.Vector3(0,0,1).applyQuaternion(toe.getWorldQuaternion(new THREE.Quaternion())).applyQuaternion(actorInv)
+      :null;
+    const runFootPitch=o.g.userData.runFootPitch||o.g.userData.runAnklePitch;
+    const runToePitch=o.g.userData.runToePitch;
+    const runContact=o.g.userData.runFootContact;
+    const runSupport=o.g.userData.runFootSupport;
+    const runLift=o.g.userData.runFootLift;
+    return {
+    ankle:+ankle.rotation.x.toFixed(4),foot:+foot.rotation.x.toFixed(4),toe:+(toe?toe.rotation.x:0).toFixed(4),
+    hasFoot:!!o.footRoots&&!!o.footRoots[i],hasToe:!!o.toeRoots&&!!o.toeRoots[i],
+    shoe:+o.shoes[i].rotation.x.toFixed(4),
+    worldBox:footBox(foot),
+    footForwardY:+forward.y.toFixed(4),toeForwardY:toeForward?+toeForward.y.toFixed(4):null,
+    runPitch:Number.isFinite(runFootPitch&&runFootPitch[i])
+      ?+runFootPitch[i].toFixed(4):null,
+    runToePitch:Number.isFinite(runToePitch&&runToePitch[i])
+      ?+runToePitch[i].toFixed(4):null,
+    runContact:Number.isFinite(runContact&&runContact[i])
+      ?+runContact[i].toFixed(4):null,
+    runSupport:Number.isFinite(runSupport&&runSupport[i])
+      ?+runSupport[i].toFixed(4):null,
+    runLift:Number.isFinite(runLift&&runLift[i])
+      ?+runLift[i].toFixed(4):null,
+    readyPitch:Number.isFinite(o.g.userData.readyAnklePitch&&o.g.userData.readyAnklePitch[i])
+      ?+o.g.userData.readyAnklePitch[i].toFixed(4):null
+    };
+  });
+  const motion=motionApi.getState();
   const pass=g.getPassing();
+  const rightHandWorld=o.handRoots[0].getWorldQuaternion(new THREE.Quaternion());
   return {state:g.G.state,walking:!!g.P.walking,moving:!!g.G.moving,canShoot:!!g.G.canShoot,
     pass:pass?{t:+pass.t.toFixed(3),dur:+pass.dur.toFixed(3),progress:+(pass.t/pass.dur).toFixed(3)}:null,
     catch:g.G.passCatch?{active:!!g.G.passCatch.active,settling:!!g.G.passCatch.settling,progress:+(g.G.passCatch.progress||0).toFixed(3)}:null,
     walk:motion.walk?{t:+motion.walk.t.toFixed(3),dur:+motion.walk.dur.toFixed(3),k:+(motion.walk.t/motion.walk.dur).toFixed(3)}:null,
     tstage:{run:o.g.userData.tstageAnimation==="run",runPhase:o.g.userData.tstageRunPhase??null,runBodyBob:o.g.userData.tstageRunBodyBob??null,
       runSource:o.g.userData.tstageRunSource||null,catch:o.g.userData.tstageAnimation==="catching",
-      catchSource:o.g.userData.catchPoseSource||null},
-    legs,arms};
+      catchSource:o.g.userData.catchPoseSource||null,catchRightHandPrep:o.g.userData.catchRightHandPrep??null,
+      catchRightHandRoll:o.g.userData.catchRightHandRoll??null},
+    gait:{cadence:Number.isFinite(o.g.userData.runCadence)?+o.g.userData.runCadence.toFixed(3):null,
+      stride:Number.isFinite(o.g.userData.runStride)?+o.g.userData.runStride.toFixed(3):null,
+      targetStride:Number.isFinite(o.g.userData.runTargetStride)?+o.g.userData.runTargetStride.toFixed(3):null},
+    shot:{hipHinge:Number.isFinite(o.g.userData.shotHipHinge)?+o.g.userData.shotHipHinge.toFixed(4):null,
+      hipFlex:Array.isArray(o.g.userData.shotHipFlex)?o.g.userData.shotHipFlex.map(v=>+v.toFixed(4)):null,
+      lowerBodyHingeComp:Number.isFinite(o.g.userData.shotLowerBodyHingeComp)?+o.g.userData.shotLowerBodyHingeComp.toFixed(4):null,
+      readyLowerBlend:Number.isFinite(o.g.userData.shotReadyLowerBlend)?+o.g.userData.shotReadyLowerBlend.toFixed(4):null},
+    rightHandWorldQuat:[rightHandWorld.x,rightHandWorld.y,rightHandWorld.z,rightHandWorld.w],
+    legs,feet,arms,fingerCurl,fingerJointCount,thumbCurl,thumbJointCount};
 });
 
-const capture=async(name,distance=3.45,sideOffset=.82)=>{
+const capture=async(name,distance=3.45,sideOffset=.82,lookY=1.02)=>{
   /* 审计机位只改变截图，不改变游戏的动作/状态：放到球员正前方侧一点，
      否则正常的球员跟随机位从背后看不到肘部，截图无法审手臂。 */
-  await page.evaluate(({distance,sideOffset})=>{
+  await page.evaluate(({distance,sideOffset,lookY})=>{
     const g=AIBA.runtime.service("legacy"),d=new THREE.Vector3(Math.sin(g.P.face),0,Math.cos(g.P.face)),side=new THREE.Vector3(d.z,0,-d.x);
     g.G.glideCam=true;
     g.rig.pos.copy(g.P.pos).addScaledVector(d,distance).addScaledVector(side,sideOffset);g.rig.pos.y=1.38;
-    g.rig.look.copy(g.P.pos);g.rig.look.y=1.02;
-  },{distance,sideOffset});
+    g.rig.look.copy(g.P.pos);g.rig.look.y=lookY;
+  },{distance,sideOffset,lookY});
   await page.waitForTimeout(80);
   const info=await inspect();
   await page.screenshot({path:path.join(OUT,name+".png")});
   fs.writeFileSync(path.join(OUT,name+".json"),JSON.stringify(info,null,2));
-  console.log("  SNAP  "+name+" "+JSON.stringify({walking:info.walking,moving:info.moving,pass:info.pass,catch:info.catch,tstage:info.tstage,bends:info.arms.map(a=>a.bend),meshes:info.arms.map(a=>a.meshes)}));
+  console.log("  SNAP  "+name+" "+JSON.stringify({walking:info.walking,moving:info.moving,pass:info.pass,catch:info.catch,tstage:info.tstage,gait:info.gait,shot:info.shot,feet:info.feet.map(f=>({ankle:f.ankle,foot:f.foot,toe:f.toe,runSupport:f.runSupport,runLift:f.runLift,minY:f.worldBox.minY})),bends:info.arms.map(a=>a.bend),meshes:info.arms.map(a=>a.meshes)}));
   return info;
 };
+const followAuditCamera=async(distance=2.35,sideOffset=.9,lookY=1.02)=>page.evaluate(({distance,sideOffset,lookY})=>{
+  const g=AIBA.runtime.service("legacy"),d=new THREE.Vector3(Math.sin(g.P.face),0,Math.cos(g.P.face)),side=new THREE.Vector3(d.z,0,-d.x);
+  g.G.glideCam=true;
+  g.rig.pos.copy(g.P.pos).addScaledVector(d,distance).addScaledVector(side,sideOffset);g.rig.pos.y=1.38;
+  g.rig.look.copy(g.P.pos);g.rig.look.y=lookY;
+},{distance,sideOffset,lookY});
 
 const idle=await capture("00-idle-no-catch",2.35,.9);
 assert(!idle.walking&&!idle.moving&&!idle.canShoot,"站定无球状态没有误判为接球/走位");
+const cadenceProbe=await page.evaluate(()=>{
+  const m=AIBA.runtime.service("rendering:motion");
+  return [.5,1.4,2.6,3.6,4.6].map(speed=>({speed,cadence:m.runCadence(speed)}));
+});
+console.log("  METRIC gait-cadence="+JSON.stringify(cadenceProbe.map(v=>({speed:v.speed,cadence:+v.cadence.toFixed(2)}))));
+assert(cadenceProbe.find(v=>v.speed===3.6).cadence<4.1,"最快常规跑速的步频不再冲到接近 5 步/秒");
+assert(cadenceProbe.find(v=>v.speed===4.6).cadence<3.7,"更高速段步频有上限，速度主要由步幅承担");
+assert(idle.feet.every(f=>f.shoe===0),"站定时不只旋转鞋面，鞋面局部保持归零");
+assert(idle.fingerCurl.every(v=>Number.isFinite(v)&&v<0),"站定不接球时手指保持松开");
+assert(idle.fingerJointCount.every(hand=>hand.every(count=>count===3)),"每根手指在站定状态保留 MCP/PIP/DIP 三节关节");
+assert(idle.thumbJointCount.every(count=>count===2),"每只拇指在站定状态保留根部/IP 两节关节");
+assert(idle.thumbCurl.every(v=>Number.isFinite(v)&&Math.abs(v)<.05),"站定时拇指保持松弛而不是收成拳");
 assert(idle.arms.every(a=>a.upperTilt<=12&&a.lowerTilt<=18&&a.bend>=2&&a.bend<=12),"站定不接球时双臂近垂直、肘部只保留约 5° 松弛弯曲");
 assert(idle.arms.every(a=>a.meshes>0&&a.palmInward),"站定不接球时双手仍存在且掌心相对");
+const idleFootSamples=[];
+for(let i=0;i<24;i++){await page.waitForTimeout(55);idleFootSamples.push(await inspect());}
+const readyAnkleRanges=idleFootSamples[0].feet.map((_,i)=>Math.max(...idleFootSamples.map(info=>info.feet[i].ankle))-Math.min(...idleFootSamples.map(info=>info.feet[i].ankle)));
+console.log("  METRIC ready-ankle-range="+JSON.stringify(readyAnkleRanges.map(v=>+v.toFixed(3))));
+assert(readyAnkleRanges.every(range=>range>.04),"原地垫步会交替改变真实 ankle group，而不是只有膝盖上下");
+assert(idleFootSamples.every(info=>info.feet.every(f=>f.shoe===0)),"原地垫步没有退回只转鞋面的假脚掌动作");
+await capture("00-idle-feet",1.65,.48,.42);
+const landingProbe=await page.evaluate(()=>{
+  const m=AIBA.runtime.service("rendering:motion"),c={dip:0,lift:0,rise:0,jmp:0,over:0};
+  m.poseGuy(player,c,0);const flat=player.ankles.map(a=>a.rotation.x);
+  const flatFoot=player.footRoots.map(a=>a.rotation.x),flatToe=player.toeRoots.map(a=>a.rotation.x);
+  m.poseGuy(player,c,1);const landing=player.ankles.map(a=>a.rotation.x);
+  const landingFoot=player.footRoots.map(a=>a.rotation.x),landingToe=player.toeRoots.map(a=>a.rotation.x);
+  return {flat,landing,delta:landing.map((v,i)=>v-flat[i]),
+    footDelta:landingFoot.map((v,i)=>v-flatFoot[i]),toeDelta:landingToe.map((v,i)=>v-flatToe[i])};
+});
+console.log("  METRIC landing-ankle-pitch="+JSON.stringify(landingProbe.delta.map(v=>+v.toFixed(3))));
+assert(landingProbe.delta.every(v=>Math.abs(v)>.06),"投后落地会让真实踝关节出现前脚掌承接/回落动作");
+assert(landingProbe.footDelta.every(v=>Math.abs(v)>=.02)&&landingProbe.toeDelta.every(v=>Math.abs(v)>.04),"投后落地会让真实 foot/toe 关节参与前脚掌承接");
+const chargeProbe=await page.evaluate(()=>{
+  const m=AIBA.runtime.service("rendering:motion"),c={dip:1,lift:0,rise:0,jmp:0,over:0};
+  m.poseGuy(player,c,0);player.g.updateMatrixWorld(true);
+  const hinge=player.g.userData.shotHipHinge,localHip=player.legs[0].rotation.x;
+  return {hinge,localHip,worldHip:hinge+localHip,expected:player.g.userData.shotHipFlex&&player.g.userData.shotHipFlex[0],
+    hingeComp:player.g.userData.shotLowerBodyHingeComp,readyBlend:player.g.userData.shotReadyLowerBlend};
+});
+console.log("  METRIC shot-hip-hinge="+JSON.stringify(chargeProbe));
+assert(chargeProbe.hinge<-.12&&Math.abs(chargeProbe.localHip-chargeProbe.worldHip)>.12&&
+  Math.abs(chargeProbe.worldHip-chargeProbe.expected)<1e-6,"蓄力时上身前倾、腿根承重，形成真实屈髋而不是只屈膝");
 await page.evaluate(()=>{
   G.canShoot=true;
   if(typeof pBall!=="undefined")pBall.visible=true;
@@ -176,11 +284,25 @@ await page.waitForTimeout(100);
 
 /* 首次确认站定基线，然后正常出手。 */
 const ready=await capture("01-ready-before-shot");
-await page.evaluate(()=>{startCharge();});
-await page.waitForTimeout(120);
+/* 蓄力画面用真实 poseGuy() 路径冻结在最深蓄力帧：这样不会因为浏览器
+   恰好截在 0.06s 的起始过渡而把“已经开始前倾”误判成“没有屈髋”。
+   PAUSE.on 只暂停时间推进，不替换骨架，也不改动作代码。 */
+await page.evaluate(()=>{
+  const m=AIBA.runtime.service("rendering:motion");
+  PAUSE.on=true;G.charging=true;G.canShoot=false;G.moving=false;
+  m.poseGuy(player,{dip:1,lift:0,rise:0,jmp:0,over:0},0);
+  player.g.updateMatrixWorld(true);
+});
+const charge=await capture("01-charge-hip-hinge",2.35,.9);
+assert(charge.shot.hipHinge<-.12&&charge.shot.readyLowerBlend>.8,"实际蓄力冻结帧融合 ready_pose1 的髋折叠目标");
+await page.evaluate(()=>{PAUSE.on=false;G.charging=false;G.canShoot=true;G.power=0;});
+await page.evaluate(()=>{startCharge();G.power=weatherAdjustedIdeal(curShot(),true);});
+await page.waitForTimeout(50);
 await page.evaluate(()=>{G.power=weatherAdjustedIdeal(curShot(),true);doRelease();});
 
 await page.waitForFunction("G.moving===true&&P.walking===true",{timeout:20000});
+/* 等待 walkSpeed 经过真实的加速平滑，步频测量不取刚置位的零速首帧。 */
+await page.waitForTimeout(180);
 const walk=await capture("02-walk-before-catch");
 assert(walk.moving&&walk.walking,"出手后真实进入走位");
 assert(walk.tstage.run,"小跑状态使用 T台 run 动作片段");
@@ -188,16 +310,55 @@ assert(walk.arms.every(a=>a.meshes>0),"普通小跑两侧手臂都有可见网�
 assert(walk.arms.every(a=>a.bend>=35&&a.bend<=135),"普通小跑两侧肘部保持弯折(35°~135°)");
 assert(walk.arms.every(a=>a.palmInward),"普通小跑两只掌心相对而不是朝地");
 assert(walk.arms.every(a=>a.shoulder.inside&&a.elbow.inside&&a.wrist.inside),"普通小跑肩-肘-腕都在画面内");
+/* waitForFunction 会在走位状态刚置位的第一帧就返回，此时握拳还在 0.10s 的
+   收拢过渡中；首帧只验“已经开始收拢”，稳定的闭合幅度由下面近景和连续采样验。 */
+assert(walk.fingerCurl.every(v=>Number.isFinite(v)&&v>.05),"普通小跑手指开始进入可见的多关节握拳");
+assert(walk.thumbCurl.every(v=>Number.isFinite(v)&&v>.10),"普通小跑拇指同步收进掌心");
 assert(Number.isFinite(walk.tstage.runBodyBob),"普通小跑应用 T台 bodyBob 起伏参数");
+assert(Number.isFinite(walk.gait.cadence)&&walk.gait.cadence>1&&walk.gait.cadence<4.6,"普通小跑步频落在自然范围");
+assert(walk.feet.every(f=>f.shoe===0),"普通小跑没有退回只转鞋面的假脚掌实现");
 const walkClose=await capture("02-walk-closeup",2.35,.9);
 assert(walkClose.arms.every(a=>a.meshes>0&&a.bend>=35&&a.bend<=135),"近景小跑两侧手臂仍可见且保持弯肘");
 assert(walkClose.arms.every(a=>a.palmInward),"近景小跑两只掌心相对而不是朝地");
+assert(walkClose.fingerCurl.every(v=>Number.isFinite(v)&&v>.95),"近景小跑双手进入多关节轻握拳状态");
+assert(walkClose.thumbCurl.every(v=>Number.isFinite(v)&&v>.75),"近景小跑近景可见拇指跨入掌心");
+assert(walkClose.fingerJointCount.every(hand=>hand.every(count=>count===3)),"近景小跑每根手指仍是三节关节链");
+assert(walkClose.thumbJointCount.every(count=>count===2),"近景小跑拇指仍是两节关节链");
+assert(walkClose.feet.every(f=>f.hasFoot&&f.hasToe&&Number.isFinite(f.runPitch)&&Number.isFinite(f.runToePitch)&&f.shoe===0),"近景小跑由真实 foot/toe group 驱动脚跟/前掌滚动");
 const walkSamples=[];
-for(let i=0;i<6;i++){await page.waitForTimeout(55);walkSamples.push(await inspect());}
+for(let i=0;i<10;i++){await page.waitForTimeout(55);await followAuditCamera();walkSamples.push(await inspect());}
 assert(walkSamples.every(info=>info.walking&&info.moving),"连续跑动采样始终保持走位状态");
 assert(walkSamples.every(info=>info.arms.every(a=>a.meshes>0&&a.bend>=35&&a.bend<=135)),"连续跑动采样手臂始终可见且保持弯肘");
 assert(walkSamples.every(info=>info.arms.every(a=>a.palmInward)),"连续跑动采样掌心始终相对");
 assert(walkSamples.every(info=>info.arms.every(a=>a.shoulder.inside&&a.elbow.inside&&a.wrist.inside)),"连续跑动采样肩-肘-腕始终在画面内");
+assert(walkSamples.every(info=>info.fingerCurl.every(v=>Number.isFinite(v)&&v>.95)),"连续跑动采样双手始终保持多关节轻握拳");
+assert(walkSamples.every(info=>info.thumbCurl.every(v=>Number.isFinite(v)&&v>.75)),"连续跑动采样拇指始终收进掌心");
+assert(walkSamples.every(info=>Number.isFinite(info.gait.cadence)&&info.gait.cadence<4.6),"连续跑动步频不会在高速段异常飙升");
+assert(walkSamples.some(info=>Number.isFinite(info.gait.cadence)&&info.gait.cadence>1.2),"连续跑动采样能进入自然小跑步频");
+const runAnkleRanges=walkSamples[0].feet.map((_,i)=>Math.max(...walkSamples.map(info=>info.feet[i].ankle))-Math.min(...walkSamples.map(info=>info.feet[i].ankle)));
+console.log("  METRIC run-ankle-range="+JSON.stringify(runAnkleRanges.map(v=>+v.toFixed(3))));
+assert(runAnkleRanges.every(range=>range>.04),"连续跑动时左右脚踝会持续活动，而不是平板脚锁死");
+const runFootRanges=walkSamples[0].feet.map((_,i)=>Math.max(...walkSamples.map(info=>info.feet[i].runPitch))-Math.min(...walkSamples.map(info=>info.feet[i].runPitch)));
+const runToeRanges=walkSamples[0].feet.map((_,i)=>Math.max(...walkSamples.map(info=>info.feet[i].runToePitch))-Math.min(...walkSamples.map(info=>info.feet[i].runToePitch)));
+console.log("  METRIC run-foot-roll="+JSON.stringify({foot:runFootRanges.map(v=>+v.toFixed(3)),toe:runToeRanges.map(v=>+v.toFixed(3))}));
+assert(runFootRanges.every(range=>range>.08)&&runToeRanges.every(range=>range>.10),"连续跑动时 foot/toe 关节会完整走过落跟到蹬地的滚动幅度");
+const hasContactAndSwing=walkSamples.some(info=>info.feet.some(f=>f.runSupport>.9)&&info.feet.some(f=>f.runLift>.02));
+assert(hasContactAndSwing,"连续跑动同时出现支撑脚与摆动脚，支撑脚不会跟着身体漂移");
+const runGroundSamples=walkSamples.flatMap(info=>info.feet.map(f=>f.worldBox.minY));
+console.log("  METRIC run-foot-ground="+JSON.stringify({min:+Math.min(...runGroundSamples).toFixed(4),max:+Math.max(...runGroundSamples).toFixed(4)}));
+assert(runGroundSamples.every(v=>Number.isFinite(v)&&v>=-.006),"连续跑动真实鞋底网格不穿过地面");
+const supportedGroundSamples=walkSamples.flatMap((info,sample)=>info.feet
+  .filter(f=>f.runSupport>.9)
+  .map((f,index)=>({sample,index,support:f.runSupport,minY:f.worldBox.minY})));
+console.log("  METRIC run-support-ground="+JSON.stringify(supportedGroundSamples.map(v=>({sample:v.sample,index:v.index,support:+v.support.toFixed(4),minY:+v.minY.toFixed(4)}))));
+assert(supportedGroundSamples.length>=4&&supportedGroundSamples.every(v=>v.minY>=-.006&&v.minY<=.012),"跑动支撑脚真实鞋底落在地面容差内");
+const hasOppositeRoll=walkSamples.some(info=>{
+  const a=info.feet[0],b=info.feet[1];
+  return (a.runToePitch>.12&&b.runPitch<-.08)||(b.runToePitch>.12&&a.runPitch<-.08);
+});
+assert(hasOppositeRoll,"近景小跑一只脚尖上翘准备落跟、另一只脚掌下压准备蹬地");
+assert(walkSamples.some(info=>Math.abs(info.feet[0].footForwardY)>.03&&Math.abs(info.feet[1].footForwardY)>.03&&info.feet[0].footForwardY*info.feet[1].footForwardY<0),"连续跑动左右脚的前掌朝向会交替变化");
+assert(walkSamples.every(info=>info.feet.every(f=>f.shoe===0)),"连续跑动没有退回只转鞋面的假脚掌实现");
 const lowerAngularRanges=walkSamples[0].arms.map((_,i)=>{
   const base=walkSamples[0].arms[i].lower;
   return Math.max(...walkSamples.map(info=>{
@@ -219,6 +380,7 @@ const profile=await capture("02-walk-profile",2.8,1.75);
 assert(profile.arms.every(a=>a.meshes>0&&a.bend>=35&&a.bend<=135),"侧面跑动截图两侧手臂仍保持弯肘");
 assert(profile.arms.every(a=>a.palmInward),"侧面跑动截图两只掌心仍相对");
 assert(profile.arms.every(a=>a.shoulder.inside&&a.elbow.inside&&a.wrist.inside),"侧面跑动截图肩-肘-腕均可见");
+await capture("02-walk-feet",1.65,.48,.42);
 
 await page.waitForFunction("G.moving===true&&P.walking===true&&G.passCatch&&G.passCatch.active&&G.passCatch.settling!==true&&AIBA.runtime.service('legacy').getPassing()",{timeout:20000});
 const catchInfo=await capture("03-walk-while-ball-in-flight");
@@ -236,6 +398,33 @@ assert(catchInfo.arms.every(a=>a.bend>=18&&a.bend<=150),"伸手接球阶段肘�
 assert(catchInfo.arms.every(a=>a.shoulder.inside&&a.elbow.inside&&a.wrist.inside),"伸手接球阶段两只手都没有跑出画面");
 
 await page.waitForFunction("G.canShoot===true&&G.passCatch&&G.passCatch.settling===true",{timeout:20000});
+/* 第一人称回归：相机只切到真实 FP，不移动审计机位；在接球收势第一帧截图，
+   再逐帧测右手世界四元数，防止“接球后走大圈”只靠肉眼描述。 */
+await page.evaluate(()=>{G.glideCam=false;CAM.mode=0;applyCamMode();});
+await page.waitForTimeout(24);
+await page.screenshot({path:path.join(OUT,"04-first-person-catch-settle.png")});
+const settleSamples=await page.evaluate(async()=>{
+  const samples=[],deadline=performance.now()+1200;
+  while(performance.now()<deadline){
+    const state=G.passCatch;
+    if(state&&state.settling){
+      player.g.updateMatrixWorld(true);
+      const q=player.handRoots[0].getWorldQuaternion(new THREE.Quaternion());
+      samples.push({settle:+(state.settle||0).toFixed(4),q:[q.x,q.y,q.z,q.w]});
+      if((state.settle||0)>=1)break;
+    }
+    await new Promise(resolve=>requestAnimationFrame(resolve));
+  }
+  return samples;
+});
+const quatAngleDeg=(a,b)=>{
+  const dot=Math.min(1,Math.abs(a[0]*b[0]+a[1]*b[1]+a[2]*b[2]+a[3]*b[3]));
+  return 2*Math.acos(dot)*180/Math.PI;
+};
+const settleAngle=settleSamples.length>1?quatAngleDeg(settleSamples[0].q,settleSamples[settleSamples.length-1].q):NaN;
+console.log("  METRIC first-person-right-hand-settle="+JSON.stringify({samples:settleSamples.length,angleDeg:+settleAngle.toFixed(2),first:settleSamples[0]?.settle,last:settleSamples.at(-1)?.settle}));
+assert(settleSamples.length>=5,"第一人称接球收势有逐帧右手样本");
+assert(Number.isFinite(settleAngle)&&settleAngle>1&&settleAngle<25,"第一人称右手收势只做小幅反向旋转，不走大圈");
 const landed=await capture("04-ball-arrived-settle");
 assert(landed.canShoot,"球到手后才允许投篮");
 assert(landed.arms.every(a=>a.meshes>0),"球到手缓冲阶段两侧手臂仍有可见网格");

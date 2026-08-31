@@ -339,15 +339,46 @@ function battleCutaway(byMe,key){
   }
   if(navigator.vibrate)navigator.vibrate(key?[20,50,20,50]:[15,40,25]);
 }
+const _celebGroundBox=new THREE.Box3(),_celebGroundAxis=new THREE.Vector3(),_celebGroundQuat=new THREE.Quaternion(),_celebGroundScale=new THREE.Vector3();
+function groundCelebrateRoot(o){
+  if(!o||!o.g)return;
+  o.g.updateMatrixWorld(true);
+  let min=Infinity;
+  (o.footRoots||[]).forEach((foot,index)=>{
+    if(!foot)return;
+    const y=typeof runFootGroundY==="function"?runFootGroundY(o,index):(_celebGroundBox.setFromObject(foot),_celebGroundBox.min.y);
+    if(Number.isFinite(y))min=Math.min(min,y);
+  });
+  if(!Number.isFinite(min))return;
+  const parent=o.g.parent;
+  if(parent&&parent.getWorldQuaternion){
+    _celebGroundAxis.set(0,1,0).applyQuaternion(parent.getWorldQuaternion(_celebGroundQuat));
+    const scale=parent.getWorldScale?parent.getWorldScale(_celebGroundScale).y:1;
+    const factor=_celebGroundAxis.y*scale;
+    if(Math.abs(factor)>.08)o.g.position.y-=min/factor;
+    else o.g.position.y-=min;
+  }else o.g.position.y-=min;
+  o.g.updateMatrixWorld(true);
+}
+function prepareCelebrateGround(o){
+  if(!o||!o.g)return 0;
+  // 庆祝不能继承上一帧投篮的滞空根高度；先回到中立腿，再以真实鞋底校正。
+  (o.footRoots||[]).forEach(foot=>{if(foot&&foot.position)foot.position.y=0;});
+  const neutralY=typeof poseGuy==="function"?poseGuy(o,shotCurves(0),0):o.g.position.y;
+  if(Number.isFinite(neutralY))o.g.position.y=neutralY;
+  groundCelebrateRoot(o);
+  return o.g.position.y;
+}
 function startCelebrate(o,type){
   if(!o||!o.g)return;
+  const basePosY=prepareCelebrateGround(o);
   o._celeb={
     t:0,
     type,
     baseX:o.g.rotation.x,
     baseY:o.g.rotation.y,
     baseZ:o.g.rotation.z,
-    basePosY:o.g.position.y
+    basePosY
   };
 }
 function updateCelebrate(o,dt){
@@ -357,46 +388,48 @@ function updateCelebrate(o,dt){
   o.g.rotation.y=c.baseY;
   o.g.rotation.z=c.baseZ;
   o.g.position.y=c.basePosY;
-  if(c.type===0){ // 双臂振举欢呼 + 蹦跳
+  if(c.type===0){ // 双臂振举欢呼，脚底保持贴地
     const pump=Math.abs(Math.sin(t*6));
     o.arms.forEach(a=>a.rotation.x=-2.6-pump*0.4);o.elbows.forEach(e=>e.rotation.x=-0.3);
-    o.g.position.y=c.basePosY+Math.abs(Math.sin(t*5))*0.18;
+    o.g.position.y=c.basePosY;
   }else if(c.type===1){ // 捶胸
     const beat=Math.sin(t*9);
     o.arms[0].rotation.x=-1.5-Math.max(0,beat)*0.6;o.arms[1].rotation.x=-1.5-Math.max(0,-beat)*0.6;
     o.elbows.forEach(e=>e.rotation.x=-1.9);o.g.position.y=c.basePosY;
   }else if(c.type===2){ // 三分手势 + 转身
     o.arms.forEach(a=>a.rotation.x=-1.9);o.elbows.forEach(e=>e.rotation.x=-1.2);
-    o.g.rotation.y=c.baseY+t*2.2;o.g.position.y=c.basePosY+Math.abs(Math.sin(t*4))*0.1;
-  }else if(c.type===3){ // 单臂指天 + 小跳
+    o.g.rotation.y=c.baseY+t*2.2;o.g.position.y=c.basePosY;
+  }else if(c.type===3){ // 单臂指天，脚底保持贴地
     o.arms[0].rotation.x=-2.55;o.arms[0].rotation.z=0.2;
     o.arms[1].rotation.x=-0.55;o.arms[1].rotation.z=-0.1;
     o.elbows[0].rotation.x=-0.2;o.elbows[1].rotation.x=-0.8;
-    o.g.position.y=c.basePosY+Math.abs(Math.sin(t*7))*0.12;
+    o.g.position.y=c.basePosY;
   }else if(c.type===4){ // 头顶击掌 / 庆祝拍手
     const clap=Math.abs(Math.sin(t*10));
     o.arms[0].rotation.x=-2.1-clap*0.2;o.arms[1].rotation.x=-2.1-clap*0.2;
     o.arms[0].rotation.z=0.3;o.arms[1].rotation.z=-0.3;
     o.elbows.forEach(e=>e.rotation.x=-0.5-clap*0.6);
-    o.g.position.y=c.basePosY+clap*0.08;
+    o.g.position.y=c.basePosY;
   }else if(c.type===5){ // 张开双臂拥抱全场
     const open=0.85+Math.sin(t*5)*0.12;
     o.arms[0].rotation.x=-1.8;o.arms[1].rotation.x=-1.8;
     o.arms[0].rotation.z=-0.55*open;o.arms[1].rotation.z=0.55*open;
     o.elbows.forEach(e=>e.rotation.x=-0.8);
-    o.g.position.y=c.basePosY+Math.abs(Math.sin(t*3.5))*0.07;
+    o.g.position.y=c.basePosY;
   }else if(c.type===6){ // 摇手指 / no-no
     o.arms[0].rotation.x=-2.2;o.arms[0].rotation.z=-0.22+Math.sin(t*8)*0.18;
     o.arms[1].rotation.x=-0.45;o.arms[1].rotation.z=0.18;
     o.elbows[0].rotation.x=-0.55;o.elbows[1].rotation.x=-0.8;
     o.g.rotation.y=c.baseY+Math.sin(t*4.2)*0.18;
-    o.g.position.y=c.basePosY+Math.abs(Math.sin(t*6))*0.05;
+    o.g.position.y=c.basePosY;
   }else{ // 低头定格 / 深呼吸
     o.arms[0].rotation.x=-1.15;o.arms[1].rotation.x=-1.15;
     o.elbows.forEach(e=>e.rotation.x=-0.45);
     o.g.rotation.y=c.baseY+Math.sin(t*2.8)*0.12;
-    o.g.position.y=c.basePosY+Math.abs(Math.sin(t*2.8))*0.04;
+    o.g.position.y=c.basePosY;
   }
+  // 以当前帧真实鞋底再次收口，防止投篮/起跳遗留的根高度让人物悬空。
+  groundCelebrateRoot(o);
 }
 function stopCelebrate(o){
   if(!o._celeb)return;

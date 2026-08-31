@@ -1,7 +1,7 @@
 (function(global){
   "use strict";
 
-  const runtime=global.AIBA&&global.AIBA.runtime,ctx=runtime&&runtime.service("legacy"),battle=global.AIBABattle;
+  const runtime=global.AIBA&&global.AIBA.runtime,ctx=runtime&&runtime.service("legacy"),motion=runtime&&runtime.service("rendering:motion"),battle=global.AIBABattle;
   if(!ctx||!battle)throw new Error("Percent Battle opponent requires battle state");
   const {
     G,BATTLE_TARGET,BATTLE_SPOTS,OPP_SPOT_EMPTY_WAIT,COURT,HOOP,P,V3,clamp,faceTo,rivals,
@@ -175,6 +175,7 @@
     OPP.playerSpotSeen=G.battleSpot||0;
     const start=oppSpotPos(OPP.spotIdx);
     OPP.guy.g.position.copy(start);OPP.guy.g.rotation.y=faceTo(start,HOOP);
+    OPP.gait={phase:0,idleT:0,lean:0};
     OPP.pos=start.clone();OPP.from=start.clone();OPP.to=start.clone();
     OPP.guy.ball.visible=false;OPP.guy.ball.material=matBall;oppPasser.g.visible=true;oppPasserBall.visible=true;ctx.refreshBench();
   }
@@ -239,11 +240,12 @@
     const guy=OPP.guy;OPP.t+=dt;
     if(OPP.phase==="walk"){
       const duration=clamp(OPP.from.distanceTo(OPP.to)/3.4,0.35,1.6),progress=Math.min(1,OPP.t/duration);
-      OPP.pos.lerpVectors(OPP.from,OPP.to,progress);guy.g.position.copy(OPP.pos);guy.g.rotation.y=faceTo(OPP.pos,HOOP);
-      const swing=Math.sin(OPP.t*15);
-      guy.legs[0].rotation.x=swing*0.55;guy.legs[1].rotation.x=-swing*0.55;
-      guy.knees[0].rotation.x=Math.max(0,-swing*0.4+0.2);guy.knees[1].rotation.x=Math.max(0,swing*0.4+0.2);
-      guy.ankles[0].rotation.x=-swing*0.2;guy.ankles[1].rotation.x=swing*0.2;
+      OPP.pos.lerpVectors(OPP.from,OPP.to,progress);guy.g.position.x=OPP.pos.x;guy.g.position.z=OPP.pos.z;guy.g.rotation.y=faceTo(OPP.pos,HOOP);
+      if(motion&&typeof motion.poseRunCycle==="function"){
+        OPP.gait=OPP.gait||{phase:0,idleT:0,lean:0};
+        motion.poseRunCycle(guy,OPP.gait,duration>0?OPP.from.distanceTo(OPP.to)/duration:0,dt,{sway:true});
+        guy.g.position.x=OPP.pos.x;guy.g.position.z=OPP.pos.z;
+      }
       if(progress>=1){
         guy.legs.forEach(leg=>leg.rotation.x=0);guy.knees.forEach(knee=>knee.rotation.x=0);guy.ankles.forEach(ankle=>ankle.rotation.x=0);oppBeginPass();
       }

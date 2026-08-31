@@ -201,12 +201,16 @@
     return `<div class="perfRow perfSeg"><span class="perfRowMain"><b>语言 / Language</b><em>切换后自动刷新页面</em></span>
       <span class="perfSegBtns">${opts.map(o=>`<button type="button" class="${cur===o[0]?"on":""}" onclick="AIBALang('${o[0]}')">${o[1]}</button>`).join("")}</span></div>`;
   }
+  function customCameraRow(){
+    return global.AIBACamera&&AIBACamera.settingsMarkup?AIBACamera.settingsMarkup():"";
+  }
   function panelMarkup(){
     return `<div class="perfPanel">
       <div class="perfHead"><small>GAME SETTINGS</small><h1>游戏设置</h1><p>昵称与画面流畅度都在这里调整。</p></div>
       ${identityRow()}
       ${langRow()}
       <button class="perfHelp" type="button" data-aiba-icon="book-open" data-aiba-label="帮助与引导" onclick="window.AIBAOnboard&&AIBAOnboard.help('settings')">帮助与引导</button>
+      ${customCameraRow()}
       ${toggleRow("autoTune","自动流畅保护",AUTO_DEVICE?(autoTier?`本次已自动降到 ${autoTier} 档,录屏期间不会切档`:"持续低帧时自动精简观众与特效"):"手机端生效,桌面端保持原画质")}
       ${toggleRow("lowRes","省电分辨率","压低渲染分辨率下限,最直接的提帧手段(画面会略糊)")}
       ${toggleRow("hideCones","关灯光光锥","关掉体育馆透明光柱,iOS 填充率大头")}
