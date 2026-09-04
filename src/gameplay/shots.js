@@ -243,6 +243,7 @@ function releaseShot(power,shot){
   const tf=shotFlightTime(0.78+dist*0.062,G.myStar,shot);
   const v0=V3((T.x-p0.x)/tf,(T.y-p0.y)/tf+4.9*tf,(T.z-p0.z)/tf);
   const mesh=new THREE.Mesh(ballGeo,shotMat(shot));
+  mesh.castShadow=true;   // 飞行中的球在地板上扫过一道影子,是很便宜的一条运动线索
   mesh.position.copy(p0);scene.add(mesh);
   const blob=new THREE.Mesh(blobGeo,blobMat.clone());
   blob.rotation.x=-Math.PI/2;blob.position.set(p0.x,0.02,p0.z);scene.add(blob);

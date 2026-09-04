@@ -62,7 +62,16 @@ function buildNearCourtCrowd(){
   const mats={
     skin:[mat(0xf4c89c),mat(0xd9a066),mat(0x8d5524),mat(0x5f351f)],
     hair:[mat(0x16100d),mat(0x3b2415),mat(0xcaa36a),mat(0x0f1118),mat(0xffffff)],
-    shirts:[mat(0xffc72c),mat(0x1d428a),mat(0xce1141),mat(0x007a33),mat(0x111827),mat(0xffffff),mat(0xff6b5b),mat(0x63d7ff),mat(0x8a5cff)],
+    /* 配色从"糖果色拼盘"改成中性深色系。原来 9 色里有 5 个高饱和
+       (金黄/粉红/浅蓝/紫/纯白),即使过一遍 recede 仍然偏粉偏浅,
+       看台读起来像一堆积木而不是观众。
+       真实球馆观众的衣服以黑/灰/藏蓝/棕为主,彩色只是零星点缀 ——
+       所以这里 6 个中性深色打底,只留暗酒红、暗绿两色点缀,1 个浅灰提亮。
+       同时把 recede 从 (.30,.16) 收到 (.18,.08):基础色本来就暗,
+       再按原力度压会黑成一团,失去"看得见的人"。
+       啦啦队(cheer)保持鲜艳 —— 他们本来就该是画面里的亮色。 */
+    shirts:[0x1a1d24,0x2b3038,0x1f2a3a,0x39404d,0x2a2f38,
+            0x4a3728,0x3d2b33,0x2f3a2c,0x545b66].map(h=>mat(recede(h,.18,.08))),
     pants:[mat(0x181b24),mat(0x273b59),mat(0x6e727b),mat(0x0d3527),mat(0xffffff),mat(0x2a1d16)],
     shoes:[mat(0xffffff),mat(0x111111),mat(0xff4d6d),mat(0x68e6ff),mat(0xffe36e)],
     cheer:[mat(0xff2f4f),mat(0x21a7ff),mat(0xffc72c),mat(0x7CFC6B)],
@@ -278,4 +287,3 @@ window.AIBA.runtime.register("rendering:spectators",Object.freeze({
   buildNearCourtCrowd,triggerNearCourtCrowdReaction,updNearCourtCrowd,
   resetStreetCrowd,buildStreetCrowd,triggerStreetCrowdReaction,updStreetCrowd
 }));
-

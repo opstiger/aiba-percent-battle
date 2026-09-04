@@ -8,13 +8,27 @@ const CHARACTER_TEXTURE_CACHE=new Map();
 /* ---------------- 角色接地影 ----------------
    球有 blob 假影,角色一个都没有 —— 人就像贴在地板上,这才是"没有落地感"的直接来源。
 
-   为什么不用真实阴影贴图:试过。这个场景是刻意平光的(ambient .32 + hemi .34 +
-   spot 1.0 压过 sun .8),开了 shadowMap 之后开关两张图的平均像素差只有 1.21/255,
-   等于看不见,却要多付一整个阴影 pass。要让它读出来得把整套灯光配比重做,
-   那会毁掉方块美术现在的干净观感。软影贴图在这种画风下反而更对路,也几乎不要钱。
+   v2.19.9 时这是**唯一**的影子:那会儿场景刻意平光,开 shadowMap 也读不出来(实测
+   开关两图平均像素差 1.21/255)。v2.20 重排灯光、有了压过其它所有灯的顶部主光之后,
+   真实阴影才终于有东西可投,已经在 core.js 打开。
+
+   两者现在是分工,不是重复:
+     真实阴影 —— 有方向、随姿势变形,只在主光锥覆盖的范围内有
+     这层软影 —— 降到三成强度当接触遮蔽(AO)用,并且覆盖锥外的角色(替补/传球人)
+   开着真实阴影还留满强度的软影,脚下会出现两层黑,所以下面按 SHADOWS 折算。
 
    影子挂在**场景层**而不是角色下面:角色的 g.position.y 会随呼吸/起伏/起跳变化,
    做成子节点的话影子会跟着飘起来。 */
+/* 0.62→0.95。改成顶部灯阵之后,地面投影被拆成几个方向、每盏又压得很低,
+   实测地面阴影平均深度只剩 2.4/255 —— 单独看几乎读不出"人站在地上"。
+   这正好对应真实球馆的样子:**脚下是一团模糊的圆影,而不是一条有方向的投影**,
+   所以落地感主要由这层无方向的软圆斑承担,把它提到接近满强度。
+   灯阵那几层极淡的方向影仍然保留,它们负责"光是从上面多个方向来的"这个读感。 */
+const GROUND_SHADOW_SCALE=(typeof SHADOWS!=="undefined"&&SHADOWS)?.95:1;
+/* 角色自阴影开关。自阴影是最吃 shadow map 分辨率的一项：512 的图上，手臂压在
+   躯干上的那条影容易退化成噪点或整片糊黑。真机上用 ?selfshadow=0 单独关掉它
+   （地面投影保留），就能一眼看出这一层值不值那点开销。 */
+const SHADOW_RECEIVE=!(typeof location!=="undefined"&&/(\?|&)selfshadow=0(&|#|$)/.test(location.search));
 const GROUND_SHADOWS=[];
 let groundShadowGeo=null,groundShadowMat=null;
 function groundShadowAssets(){
@@ -35,15 +49,32 @@ function attachGroundShadow(o){
   /* 几个角色共用同一张软影贴图，但材质必须各自一份：起跳时每个人的
      透明度要按自己的高度衰减，不能再用“只摊大、不变淡”的假反馈。 */
   const m=new THREE.Mesh(groundShadowGeo,groundShadowMat.clone());
-  m.userData.groundShadowBaseOpacity=groundShadowMat.opacity;
+  m.material.opacity=groundShadowMat.opacity*GROUND_SHADOW_SCALE;
+  m.userData.groundShadowBaseOpacity=m.material.opacity;
   m.rotation.x=-Math.PI/2;m.position.y=0.014;m.renderOrder=-1;
   scene.add(m);
   o.groundShadow=m;GROUND_SHADOWS.push(o);
   return m;
 }
-/* 逐帧同步。离地越高影子越摊开、越淡，并沿主光相反方向轻微偏移。
-   这是轻量的方向性假影，不打开 shadowMap，不增加额外阴影 pass。 */
+/* 把角色的每个网格标成投影体。castShadow 在 three 里**不沿层级继承**,必须逐个网格设。
+   装备、发型、胡子都是创建之后才挂上去的,创建时扫一遍盖不全 —— 所以下面每 15 帧
+   重扫一次(4 个角色 × 约 40 个节点,一秒 4 次,可以忽略)。 */
+function markShadowCasters(o){
+  if(!o||!o.g)return;
+  let n=0;
+  /* castShadow 和 receiveShadow 在 three 里都**不沿层级继承**，必须逐个网格设。
+     之前只设了 castShadow：角色只往地面投影，自己不接收任何阴影，
+     于是手臂压在躯干上、头压在脖子上、头发压在额头上的暗部一个都没有 ——
+     这是"角色像塑料/贴纸"的直接来源，比材质和灯光都更影响体积感。
+     补上 receiveShadow 之后角色既投影也接影，多人场景里彼此的影子也会落在对方身上。 */
+  o.g.traverse(m=>{if(m.isMesh||m.isInstancedMesh){m.castShadow=true;m.receiveShadow=SHADOW_RECEIVE;n++;}});
+  o._shadowNodes=n;
+}
+let _shadowScanTick=0;
+/* 逐帧同步。离地越高影子越摊开、越淡，并沿主光相反方向轻微偏移。 */
 function updGroundShadows(){
+  if(GROUND_SHADOW_SCALE<1&&(++_shadowScanTick%15===0))
+    for(let i=0;i<GROUND_SHADOWS.length;i++)markShadowCasters(GROUND_SHADOWS[i]);
   for(let i=0;i<GROUND_SHADOWS.length;i++){
     const o=GROUND_SHADOWS[i],m=o.groundShadow;
     if(!m)continue;
@@ -116,6 +147,7 @@ function voxelGuy(){
     addSoft(kn,0.15,0.22,0.165,mS,0,-0.18,0,.028,2);          // 小腿上端伸入膝关节包
     addSoft(kn,0.165,0.095,0.18,mSock, 0,-0.295,0.006,.024,2);// 袜子
     add(kn,0.17,0.024,0.185,mJ, 0,-0.252,0.006);              // 袜口队色细条
+    addSoft(kn,0.185,0.020,0.20,mSock,0,-0.243,0.006,.006,2); // 袜口外翻(在小腿上留暗边)
     add(kn,0.165,0.018,0.18,mP, 0,-0.322,0.008);              // 袜底暗线
     const ank=new THREE.Group();ank.position.y=-0.32;         // 踝 pivot
     /* 脚部拆成 ankle -> foot -> toe：踝关节负责小腿末端的补偿，foot 负责
@@ -172,6 +204,18 @@ function voxelGuy(){
   add(g,0.12,0.055,0.215,mP, -0.19,1.385,0);                 // 左肩滚边
   add(g,0.12,0.055,0.215,mP,  0.19,1.385,0);                 // 右肩滚边
   add(g,0.50,0.035,0.29,mP,0,0.88,0);                        // 球衣下摆压线
+  /* ---- 层叠细节片 ----
+     这几片本身薄到几乎看不见,存在的唯一目的是**给自阴影制造可投的暗面**。
+     体素角色每个部位是单个圆角盒,单一主光下已经自带亮面/暗面的强二分,
+     所以单开 receiveShadow 的视觉增量很小(实测角色区 std 只涨 3.3%) ——
+     数据也印证了:把主光从 46° 压到 20°,立体感同样只涨 3.3%,地板却暗 8%。
+     真正的体积感来自"层与层之间的接触阴影":衣摆压在短裤上、领口压在胸口上、
+     袜口压在小腿上。下面每片都比它盖住的那件宽 2~4cm、低 1~3cm,
+     主光一斜就在下缘留出一道暗边,那道边就是布料"有厚度"的读感。
+     全部是新增节点,不改动上面任何既有网格,check.js 的几何断言不受影响。 */
+  addSoft(g,0.545,0.030,0.315,mJ,0,0.845,0,.008,2);           // 球衣下摆外伸(在短裤上留暗边)
+  addSoft(g,0.455,0.028,0.305,mP,0,0.748,0,.008,2);           // 球裤下摆外伸(在大腿上留暗边)
+  add(g,0.235,0.032,0.185,mP,0,1.373,0.032);                  // 领口内侧(胸口投影)
   /* 下摆单独留一层很薄的布片，跑动时做低幅度二级弹簧；不参与身体/脚底解算，
      站定时回到零，避免把整件球衣当硬板。前后各一片是为了转身时仍能读到摆动。 */
   const jerseyHem=new THREE.Group();jerseyHem.name="jerseyHem";jerseyHem.position.y=.895;
@@ -302,6 +346,7 @@ function voxelGuy(){
     hair:hairGrp,hairGrp,hairMat,beardGrp,beardMat,mJ,mP,mS,bodyF,bodyB,mFace,hairStyle:"short"};
   setHair(o,"short");
   attachGroundShadow(o);
+  markShadowCasters(o);
   return o;
 }
 function setFaceExpression(o,mode){

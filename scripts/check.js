@@ -111,7 +111,7 @@ if(!entryHtml.includes('<script src="src/core/runtime.js?v=refactor7"></script>'
 if(entryHtml.includes("player-id-sandbox")||entryHtml.includes("leaderboard-sandbox"))fail("entry must not load sandbox identity/leaderboard");
 if(!entryHtml.includes('<script src="src/recorder.js?v=2.19.9-fold"></script>'))fail("next recorder cache version missing");
 if(!entryHtml.includes('<script src="src/vision.js?v=2.19.9-fold"></script>'))fail("next vision cache version missing");
-if(!entryHtml.includes('<script src="src/rendering/core.js?v=2.19.5-hfov"></script>'))fail("next rendering core missing");
+if(!entryHtml.includes('<script src="src/rendering/core.js?v=2.21.0-exp"></script>'))fail("next rendering core missing");
 for(const file of ["core/error-boundary","core/foundation","data/dialogue","core/state","services/audio-cues","ui/result-copy"]){
   const version=file==="core/state"?"2.19.9-hy4b-state2":"refactor39";
   if(!entryHtml.includes(`<script src="src/${file}.js?v=${version}"></script>`))fail(`next shell module missing ${file}`);
@@ -120,7 +120,7 @@ if(!entryHtml.includes('<script src="src/data/game-config.js?v=2.19.9-release"><
 if(!entryHtml.includes('<script src="src/data/tstage-motion-pack.js?v=2.19.9-tstage2-airjordan"></script>'))fail("T台 motion pack missing");
 
 if(entryHtml.indexOf('src/core/runtime.js')>entryHtml.indexOf('src/config.js'))fail("next runtime must load before config");
-if(entryHtml.indexOf('<script src="src/rendering/core.js?v=2.19.5-hfov"></script>')>entryHtml.indexOf('<script src="src/core/scene-init.js?v=2.19.9-ceiling"></script>'))fail("rendering core must load before scene construction");
+if(entryHtml.indexOf('<script src="src/rendering/core.js?v=2.21.0-exp"></script>')>entryHtml.indexOf('<script src="src/core/scene-init.js?v=2.19.9-ceiling"></script>'))fail("rendering core must load before scene construction");
 if(!entryHtml.includes('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>'))fail("next legacy adapter missing");
 if(!entryHtml.includes('<script src="src/modes/rack-rush.js?v=2.19.9-hy4b-state"></script>'))fail("next Rack Rush module missing");
 if(!entryHtml.includes('<script src="src/modes/contest.js?v=2.19.9-hy4b-state"></script>'))fail("next contest module missing");
@@ -543,11 +543,11 @@ if(!entryHtml.includes('<script src="src/rendering/character-visuals.js?v=2.16.2
 if(entryHtml.indexOf('src/roster-style.js?v=2.15.5-hand-follow')>entryHtml.indexOf('src/rendering/character-visuals.js?v=2.16.2-human-proportion'))fail("voxel pro visuals must wrap roster styling");
 if(!entryHtml.includes('<script src="src/hero-moments.js?v=1.80"></script>'))fail("hero moments script missing");
 if(!entryHtml.includes('<script src="src/hot-hand.js?v=2.19.9-flame"></script>'))fail("hot hand script missing");
-if(!entryHtml.includes('<script src="src/perf.js?v=1.72"></script>'))fail("perf script missing");
+if(!entryHtml.includes('<script src="src/perf.js?v=2.20-arena4"></script>'))fail("perf script missing");
 if(!entryHtml.includes('<script src="src/perf-settings.js?v=2.19.9-customcam1"></script>'))fail("perf settings script missing");
 if(!entryHtml.includes('<script src="src/face-overlays.js?v=1.2-disabled"></script>'))fail("face overlays retirement shim missing");
 if(!entryHtml.includes('<script src="src/haptics.js?v=1.80"></script>'))fail("haptics script missing");
-if(!entryHtml.includes('<script src="src/visual-director.js?v=1.85"></script>'))fail("visual director script missing");
+if(!entryHtml.includes('<script src="src/visual-director.js?v=2.22.0-refl"></script>'))fail("visual director script missing");
 if(!entryHtml.includes('<script src="src/audio.js?v=2.19.9-clutchvoice"></script>'))fail("audio script missing");
 if(!entryHtml.includes('<script src="src/vision.js?v=2.19.9-fold"></script>'))fail("vision script missing");
 if(!entryHtml.includes('<script src="src/ui/icons.js?v=1"></script>'))fail("local SVG icon script missing");
@@ -1029,7 +1029,11 @@ if(entryHtml.includes("function realBallTex("))fail("next entry still contains i
 const renderingCourt=read("src/rendering/court.js");
 for(const token of ['runtime.register("rendering:court"',"function makeCourtTexture","function buildCourt","courtIndoorTexture","curSpotRing=new THREE.Mesh"])
   if(!renderingCourt.includes(token))fail("rendering court token missing "+token);
-if(!entryHtml.includes('src/rendering/court.js?v=refactor18'))fail("next entry must load rendering court");
+for(const token of ["const FLOOR_PHYS=","function makeCourtRoughness()","roughnessMap:courtRoughTexture","anisotropy:16,linear:true","const w=512,h=256","const ROWS=4,PER=9"])
+  if(!renderingCourt.includes(token))fail("polished hardwood guard missing "+token);
+const visualDirector=read("src/visual-director.js");
+if(!visualDirector.includes('const FP=(typeof FLOOR_PHYS!=="undefined")?FLOOR_PHYS'))fail("visual director must reuse FLOOR_PHYS instead of overriding court material values");
+if(!entryHtml.includes('src/rendering/court.js?v=2.22.3-lum'))fail("next entry must load rendering court");
 if(entryHtml.includes("function makeCourtTexture("))fail("next entry still contains inline court texture builder");
 const renderingArena=read("src/rendering/arena.js");
 for(const token of ['runtime.register("rendering:arena"',"function buildStands","function buildBackcourtShow","function buildCrowd","function updCrowd"])
@@ -1044,7 +1048,7 @@ const renderingEnvironments=read("src/rendering/environments.js");
 for(const token of ['runtime.register("rendering:environments"',"function buildOutdoorPark","function buildFlowerCourt","function buildBeachSunset","function applyScenePreset","function updateEnvironment"])
   if(!renderingEnvironments.includes(token))fail("rendering environments token missing "+token);
 if(renderingEnvironments.includes("const rackBalls="))fail("rendering environments must not own gameplay props");
-for(const token of ['src/rendering/arena.js?v=2.19.9-ceiling','src/rendering/spectators.js?v=bake2','src/rendering/hoop.js?v=refactor21','src/rendering/environments.js?v=refactor22a'])
+for(const token of ['src/rendering/arena.js?v=2.21.0-stands','src/rendering/spectators.js?v=2.20.6-bigarena','src/rendering/hoop.js?v=2.21.0-hoop','src/rendering/environments.js?v=2.20.31-rim2'])
   if(!entryHtml.includes(token))fail("next entry missing court element module "+token);
 for(const token of ["function buildStands(","function buildNearCourtCrowd(","function buildHoop(","function applyScenePreset("])
   if(entryHtml.includes(token))fail("next entry still contains inline court element "+token);
@@ -1294,7 +1298,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.19.9-hy4b-shadow','src/rendering/camera.js?v=2.19.9-customcam1','src/rendering/motion.js?v=2.19.9-hy4b-life2','src/shot-motion.js?v=2.19.9-hy4b-ground','src/gameplay/shots.js?v=2.19.9-hy4b-shot','src/modes/last-shot/squad.js?v=2.19.9-hy4b-life','src/modes/last-shot/sequence.js?v=2.19.9-reactionflow'])
+for(const token of ['src/rendering/props.js?v=2.19-lastshot5','src/rendering/characters.js?v=2.20.5-array','src/rendering/camera.js?v=2.19.9-customcam1','src/rendering/motion.js?v=2.19.9-hy4b-life2','src/shot-motion.js?v=2.19.9-hy4b-ground','src/gameplay/shots.js?v=2.20-arena','src/modes/last-shot/squad.js?v=2.19.9-hy4b-life','src/modes/last-shot/sequence.js?v=2.19.9-reactionflow'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1746,7 +1750,7 @@ for(const token of ["function updateCameraDirector(","AIBACamera.isEditing","AIB
   if(!cameraSource.includes(token))fail("camera director token missing "+token);
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.19.9-hy4b-shot','src/presentation/replay.js?v=2.19.9-hy4b-shot','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.19.9-customcam1','src/core/scene-init.js?v=2.19.9-ceiling'])
+for(const token of ['src/gameplay/shots.js?v=2.20-arena','src/presentation/replay.js?v=2.19.9-hy4b-shot','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.15.5-hand-follow','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.19.9-customcam1','src/core/scene-init.js?v=2.19.9-ceiling'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);

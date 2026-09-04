@@ -22,6 +22,12 @@
     if(typeof showCrew!=="undefined"&&Array.isArray(showCrew)){
       showCrew.forEach(c=>{if(c&&c.g&&c.g.traverse)c.g.traverse(o=>skip.add(o));});
     }
+    /* 灯和它们的 target 不能冻结。数量只有个位数,冻结省不下任何东西,
+       但一旦冻上,`light.position.set(...)` 就**静默失效** ——
+       matrixAutoUpdate=false 时 updateMatrixWorld 不会再用 position 重算 matrix,
+       所以 applyScenePreset 里改灯位的那几行全是空操作,改完画面一点变化都没有。
+       (v2.20 排查阴影不动时才发现:整整一轮 A/B 三个灯位读数完全相同。) */
+    indoorRoot.traverse(o=>{if(o.isLight){skip.add(o);if(o.target)skip.add(o.target);}});
     const list=[];
     indoorRoot.traverse(o=>{if(o!==indoorRoot&&!skip.has(o))list.push(o);});
     if(typeof courtFloor!=="undefined"&&courtFloor)list.push(courtFloor);

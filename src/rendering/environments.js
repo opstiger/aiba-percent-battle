@@ -390,17 +390,20 @@ function applyScenePreset(name,opts){
       scene.background.setHex(0xf1a05f);scene.fog.color.setHex(0xb48272);scene.fog.near=44;scene.fog.far=105;
       ambient.color.setHex(0xffe0c2);ambient.intensity=.4;
       hemi.color.setHex(0xffbd86);hemi.groundColor.setHex(0x51444b);hemi.intensity=.58;
-      sun.color.setHex(0xffd5a0);sun.intensity=.9;sun.position.set(-14,15,-8);spot.intensity=0;
+      sun.color.setHex(0xffd5a0);sun.intensity=.9;sun.position.set(-14,15,-8);spot.intensity=0;camFill.intensity=.2;
+      arenaLights.forEach(l=>{l.intensity=0;});
     }else if(rainy){
       scene.background.setHex(0x657987);scene.fog.color.setHex(0x758690);scene.fog.near=28;scene.fog.far=68;
       ambient.color.setHex(0xdce8ee);ambient.intensity=.32;
       hemi.color.setHex(0x9db6c4);hemi.groundColor.setHex(0x405347);hemi.intensity=.46;
-      sun.color.setHex(0xc5d5dc);sun.intensity=.34;sun.position.set(-10,18,10);spot.intensity=0;
+      sun.color.setHex(0xc5d5dc);sun.intensity=.34;sun.position.set(-10,18,10);spot.intensity=0;camFill.intensity=.2;
+      arenaLights.forEach(l=>{l.intensity=0;});
     }else{
       scene.background.setHex(0x236fa8);scene.fog.color.setHex(0x91b8c5);scene.fog.near=42;scene.fog.far=94;
       ambient.color.setHex(0xeaf3f5);ambient.intensity=.36;
       hemi.color.setHex(0xb7dded);hemi.groundColor.setHex(0x40583b);hemi.intensity=.55;
-      sun.color.setHex(0xffe2a3);sun.intensity=.9;sun.position.set(-12,22,14);spot.intensity=0;
+      sun.color.setHex(0xffe2a3);sun.intensity=.9;sun.position.set(-12,22,14);spot.intensity=0;camFill.intensity=.2;
+      arenaLights.forEach(l=>{l.intensity=0;});
     }
     if(beach)buildBeachSunset();
     else{
@@ -410,10 +413,42 @@ function applyScenePreset(name,opts){
     }
     buildStreetCrowd({beach,rainy,flower});
   }else{
-    scene.background.setHex(0x05060c);scene.fog.color.setHex(0x05060c);scene.fog.near=34;scene.fog.far=70;
-    ambient.color.setHex(0xdce7f0);ambient.intensity=.32;
-    hemi.color.setHex(0x8799c4);hemi.groundColor.setHex(0x15100d);hemi.intensity=.34;
-    sun.color.setHex(0xffe5b8);sun.intensity=.8;sun.position.set(7,16,8);spot.intensity=1.0;
+    /* 室内是唯一有"主光"的预设,四盏灯的分工见 rendering/core.js 顶部。
+       这里必须把 core.js 的默认值逐项重写一遍 —— 切过一次户外场景再切回来,
+       灯位/强度全被上面的分支改过了,漏写哪一项,那一项就停在户外的值上。 */
+    /* 不用纯黑当背景。顶棚和横幅墙之间那条缝里没有几何体,露出来的就是背景色 ——
+       纯黑在那里读作"破洞",带一点蓝的深色才读作"暗处的空气"。 */
+    scene.background.setHex(0x0d1220);
+    /* 雾色比背景亮一档:远处观众不是"淡入黑洞",而是淡进一层空气。
+       near 15 / far 52 —— 主角(3~4m)和篮筐(9m)完全不吃雾,
+       看台(13m)刚起雾,横幅墙(20m)约 14%,后场(30m)约 43%。 */
+    /* ⚠ 这组才是室内灯光与雾的**权威值**。core.js 里那几盏灯只是初始定义,
+       每次切场景都会被这里整体覆盖 —— 改了 core.js 不改这里等于没改
+       (v2.20.4 踩过:只改 core.js,实测地面阴影深度纹丝不动,查出来是这里在重置)。 */
+    scene.fog.color.setHex(0x141a24);scene.fog.near=12;scene.fog.far=52;
+    /* 主光:环境由 5.3:1 改为约 1:1 —— 真实球馆是几十盏顶灯均匀漫射,
+       不是一束追光。被遮挡处亮度 = 环境/(环境+主光),1.75 时约 36%(影子死实),
+       0.82 时约 58%(读得出遮蔽但看不出方向)。 */
+    ambient.color.setHex(0x9fb4d0);ambient.intensity=.58;
+    hemi.color.setHex(0x6f86b6);hemi.groundColor.setHex(0x241a12);hemi.intensity=.54;
+    sun.color.setHex(0xffdcae);sun.intensity=.30;sun.position.set(6.5,17,5);
+    /* spot 从 .82 降到 .30。它已经不再 castShadow(见 core.js),这里降强度是因为
+       灯阵 4×.30=1.20 已经承担了主要照明,spot 再保持 .82 会重新变回"单方向主导",
+       多方向填亮的效果就没了。它现在只留一点点方向感,让暗面不至于完全平。 */
+    spot.color.setHex(0xfff2d8);spot.intensity=.30;spot.distance=42;spot.angle=.68;spot.penumbra=.55;spot.decay=1.1;
+    spot.position.set(6.2,11.8,4.2);spot.target.position.set(0,.9,-4.2);spot.target.updateMatrixWorld();
+    /* 灯阵恢复。户外分支把强度清成 0 了,切回来必须逐盏写回 ——
+       和 spot/ambient 一样,漏写就会停在户外的值上(全黑)。 */
+    applyArenaLightMix();
+    /* .46→.18。**这里才是 rim 的权威值**(core.js 那份是初始化值,切场景会被本行覆盖,
+       两边必须一起改,否则改了 core.js 会看起来"没生效")。
+       原因见 core.js 的注释:rim 俯角只有 16°,是掠射角,漫反射余弦仅 0.27 却因
+       Fresnel 趋近 1.0 而把镜面反射拉成一条长带 —— 逐灯消融显示它是地板那块
+       过曝的**唯一来源**(单独归零即让 16580 个过曝像素塌到 0),
+       而压到 .18 的代价是场地均值 −2.5%、角色 P95 完全不变(它是背光,
+       过肩机位下相机看到的正面本就吃不到它)。 */
+    rim.intensity=.18;rim.position.set(-5,4.5,-15);
+    camFill.intensity=0.25;camFill.distance=12;camFill.position.set(0,-.15,1);
     updJumbo();
   }
   document.documentElement.dataset.scenePreset=name;

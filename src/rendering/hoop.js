@@ -55,12 +55,49 @@ function updateNetPulse(dt){
 }
 function buildHoop(){
   const grp=new THREE.Group();
-  // stanchion
+  /* 落地式篮架(验收点名)。
+     原来是"插在底线边上的一根杆":立柱距底线仅 0.62m、臂长 1.6m,
+     底座几乎贴着球场 —— 那是玩具篮架的比例,不是比赛设备。
+     真实 NBA 篮架是**落地式**:底座坐在底线后 2.4~2.8m 的记者区地面上,
+     再用一根长臂伸到篮板背后,配重箱、护垫、斜撑都在这个底座上。
+     ⚠ 篮板/篮筐的坐标一个都不能动 —— 投篮命中判定全部基于 HOOP 常量
+     和 board 的位置,动一点整个命中逻辑就废了。
+     所以这里只把底座往后挪,再把臂加长去够回原来那个篮板。 */
+  const ARM_LEN=2.6;                                  // 臂长(底座→篮板),真实 NBA 约 2.4~2.8m
+  const BOARD_Z=-8.62;                                // 篮板 z:不可改动
+  const BASE_Z=BOARD_Z-ARM_LEN;                       // 底座后移到底线外,落在记者区
   const polM=new THREE.MeshLambertMaterial({color:0x33333f});
   const pole=new THREE.Mesh(new THREE.BoxGeometry(0.3,3.4,0.3),polM);
-  pole.position.set(0,1.7,-10.2);grp.add(pole);
-  const arm=new THREE.Mesh(new THREE.BoxGeometry(0.24,0.24,1.6),polM);
-  arm.position.set(0,3.45,-9.4);grp.add(arm);
+  pole.position.set(0,1.7,BASE_Z);grp.add(pole);
+  const arm=new THREE.Mesh(new THREE.BoxGeometry(0.24,0.24,ARM_LEN),polM);
+  arm.position.set(0,3.45,(BOARD_Z+BASE_Z)/2);grp.add(arm);
+  /* 支架护垫(padding)。正式比赛设备的支架底部一定包着厚护垫,
+     没有它,光秃秃一根细杆就是"玩具篮架"最直接的信号。
+     臂加长之后底座受力更明显,护垫同步加高加粗(1.5→1.7m、0.62→0.72m),
+     覆盖人撞得到的整个区间。 */
+  const padM=new THREE.MeshLambertMaterial({color:0x2b3550});
+  const pad=new THREE.Mesh(new THREE.BoxGeometry(0.72,1.7,0.72),padM);
+  pad.position.set(0,0.88,BASE_Z);grp.add(pad);
+  const padTop=new THREE.Mesh(new THREE.BoxGeometry(0.76,0.16,0.76),padM);
+  padTop.position.set(0,1.78,BASE_Z);grp.add(padTop);
+  /* 斜撑:从底座斜向上顶住长臂中段。
+     臂伸到 2.6m 之后只靠一根竖杆挑着会明显头重脚轻;真实篮架都用一根斜撑
+     把力矩传回底座 —— 这也是"落地式"和"插杆式"最直观的区别:
+     有斜撑,底座才读成"压住地面的配重箱",而不是插在地里的一根杆。
+     dir=+1 近端(向 +z 伸) / -1 远端(向 −z 伸)。 */
+  const BRACE_DY=1.55,BRACE_DZ=1.10,BRACE_LEN=Math.hypot(BRACE_DY,BRACE_DZ);
+  const addBrace=(parent,baseZ,dir)=>{
+    const b=new THREE.Mesh(new THREE.BoxGeometry(0.16,0.16,BRACE_LEN),polM);
+    b.position.set(0,1.75+BRACE_DY/2,baseZ+dir*(0.25+BRACE_DZ/2));
+    b.rotation.x=-Math.atan2(BRACE_DY,dir*BRACE_DZ);
+    parent.add(b);
+  };
+  addBrace(grp,BASE_Z,1);
+  /* 底座配重箱:落地式篮架的底座是一个扁平的箱子,不是一根杆插进地里 */
+  const baseBox=new THREE.Mesh(new THREE.BoxGeometry(1.15,0.42,1.35),polM);
+  baseBox.position.set(0,0.21,BASE_Z+0.15);grp.add(baseBox);
+  /* 支架加粗:原来 0.3×3.4 的细杆配 1.9m 宽的篮板显得头重脚轻 */
+  pole.scale.set(1.25,1,1.25);
   // backboard
   const bTex=pixTex(128,80,(g)=>{
     g.fillStyle="#e8e8f2";g.fillRect(0,0,128,80);
@@ -69,9 +106,28 @@ function buildHoop(){
     g.strokeStyle="#cf4a1e";g.lineWidth=7;g.strokeRect(6,5,116,70);
     g.lineWidth=5;g.strokeRect(48,40,32,28);
   },{smooth:true});
-  const board=new THREE.Mesh(new THREE.BoxGeometry(1.9,1.1,0.12),
-    new THREE.MeshLambertMaterial({map:bTex}));
+  /* 篮板改半透明。原来是不透明实心板,挡住后面的看台和赛场,
+     读起来像一块刷了漆的木板;真实篮板是透明亚克力/钢化玻璃,
+     能透出后面的场馆 —— 这个"透"就是正式比赛设备的观感来源。
+     opacity 不压太低:还要看得见白色板面和橙色方框。 */
+  /* 材质抽成共享的 boardMat:之前只改了近端,远端 farBoard 仍是不透明 Lambert,
+     于是两侧透明度不一致(评测直接点出来了)。共用一个材质就锁死了这个不一致。
+     opacity .42→.30、clearcoat 提到 .9:原来的板"偏灰偏实"是因为透明度不够
+     加上 Lambert 的漫反射把板面压成了灰白;玻璃感来自**高透明 + 强清漆高光**,
+     不是把白色板面调淡。 */
+  const boardMat=new THREE.MeshPhysicalMaterial({map:bTex,transparent:true,opacity:0.30,
+    roughness:0.06,metalness:0.0,clearcoat:0.9,clearcoatRoughness:0.05,
+    side:THREE.DoubleSide,depthWrite:false});
+  const board=new THREE.Mesh(new THREE.BoxGeometry(1.9,1.1,0.12),boardMat);
   board.position.set(0,3.5,-8.62);grp.add(board);
+  /* 板边框:真实篮板有一圈明显的边框,透明化之后更需要它来界定板面 */
+  const bFrameM=new THREE.MeshLambertMaterial({color:0xcf4a1e});
+  [[1.94,0.07],[1.94,-0.07]].forEach(o=>{
+    const h=new THREE.Mesh(new THREE.BoxGeometry(1.96,0.09,0.16),bFrameM);
+    h.position.set(0,3.5+(o[1]>=0?0.55:-0.55),-8.62);grp.add(h);
+    const v=new THREE.Mesh(new THREE.BoxGeometry(0.09,1.14,0.16),bFrameM);
+    v.position.set(o[1]>=0?0.95:-0.95,3.5,-8.62);grp.add(v);
+  });
   // blocky rim (octagon of boxes)
   const rimM=new THREE.MeshLambertMaterial({color:0xd6451c});
   for(let i=0;i<8;i++){
@@ -92,12 +148,23 @@ function buildHoop(){
 
   // 远端装饰篮筐：让场馆在俯拍/回放里真正读成一块全场。
   const farGrp=new THREE.Group();
+  /* 远端同规格:底座同样后移到底线外,臂长/护垫/斜撑与近端一致
+     (评测点名过"两侧不一致",所以这里必须逐件对齐,不能只改近端)。 */
+  const FAR_BOARD_Z=COURT.farBaseline-0.96;            // 篮板 z:不可改动
+  const FAR_BASE_Z=FAR_BOARD_Z+ARM_LEN;
   const farPole=new THREE.Mesh(new THREE.BoxGeometry(0.3,3.4,0.3),polM);
-  farPole.position.set(0,1.7,COURT.farBaseline+.62);farGrp.add(farPole);
-  const farArm=new THREE.Mesh(new THREE.BoxGeometry(0.24,0.24,1.6),polM);
-  farArm.position.set(0,3.45,COURT.farBaseline-.18);farGrp.add(farArm);
-  const farBoard=new THREE.Mesh(new THREE.BoxGeometry(1.9,1.1,0.12),
-    new THREE.MeshLambertMaterial({map:bTex}));
+  farPole.position.set(0,1.7,FAR_BASE_Z);farGrp.add(farPole);
+  farPole.scale.set(1.25,1,1.25);
+  const farArm=new THREE.Mesh(new THREE.BoxGeometry(0.24,0.24,ARM_LEN),polM);
+  farArm.position.set(0,3.45,(FAR_BOARD_Z+FAR_BASE_Z)/2);farGrp.add(farArm);
+  const farPad=new THREE.Mesh(new THREE.BoxGeometry(0.72,1.7,0.72),padM);
+  farPad.position.set(0,0.88,FAR_BASE_Z);farGrp.add(farPad);
+  const farPadTop=new THREE.Mesh(new THREE.BoxGeometry(0.76,0.16,0.76),padM);
+  farPadTop.position.set(0,1.78,FAR_BASE_Z);farGrp.add(farPadTop);
+  addBrace(farGrp,FAR_BASE_Z,-1);
+  const farBaseBox=new THREE.Mesh(new THREE.BoxGeometry(1.15,0.42,1.35),polM);
+  farBaseBox.position.set(0,0.21,FAR_BASE_Z-0.15);farGrp.add(farBaseBox);
+  const farBoard=new THREE.Mesh(new THREE.BoxGeometry(1.9,1.1,0.12),boardMat);
   farBoard.position.set(0,3.5,COURT.farBaseline-.96);farGrp.add(farBoard);
   for(let i=0;i<8;i++){
     const a=i/8*Math.PI*2;
@@ -117,11 +184,13 @@ function buildHoop(){
 /* light cones + jumbotron */
 let jumboCv,jumboTex;
 function buildAtmos(){
-  const coneM=new THREE.MeshBasicMaterial({color:0xaaccff,transparent:true,opacity:0.055,
-    blending:THREE.AdditiveBlending,depthWrite:false,side:THREE.DoubleSide});
+  /* 锥体光柱已删除(原来这里每个位置一个 ConeGeometry(3.4,12) + AdditiveBlending)。
+     和 arena.js 的 buildLightShafts 是同一类问题:只要它是实心网格,轮廓处视线
+     就切着薄壳穿过更厚的路径、累积更亮,硬边界是几何决定的,调 opacity 治不了。
+     而且 Additive + DoubleSide 会翻倍、又不吃雾,暗背景上尤其跳 ——
+     结果就是"我直接看到了一个锥子",而参考图要的是"我感觉到灯在上面"。
+     灯箱(lamp)保留:那是光源本体,是"看得到灯"的来源,跟画光的路径是两回事。 */
   [[-8,COURT.nearBaseline+.8],[8,COURT.nearBaseline+.8],[-8,COURT.midZ],[8,COURT.midZ],[-8,COURT.farBaseline-.8],[8,COURT.farBaseline-.8]].forEach(p=>{
-    const c=new THREE.Mesh(new THREE.ConeGeometry(3.4,12,6,1,true),coneM);
-    c.position.set(p[0],6.5,p[1]);indoorRoot.add(c);
     const lamp=new THREE.Mesh(new THREE.BoxGeometry(0.8,0.4,0.8),
       new THREE.MeshBasicMaterial({color:0xfff7d0}));
     lamp.position.set(p[0],12.6,p[1]);indoorRoot.add(lamp);
@@ -129,7 +198,10 @@ function buildAtmos(){
   jumboCv=document.createElement("canvas");jumboCv.width=256;jumboCv.height=128;
   jumboTex=new THREE.CanvasTexture(jumboCv);
   jumboTex.magFilter=THREE.NearestFilter;jumboTex.minFilter=THREE.NearestFilter;
-  const jm=new THREE.MeshBasicMaterial({map:jumboTex});
+  /* 端线大屏压暗一档(评测:大号黄色数字比中央吊挂记分牌更抢眼)。
+     MeshBasicMaterial 不吃灯,默认满亮,在暗场馆里天然是视觉焦点;
+     给一个压暗色之后,注意力才回到球场正上方的中央吊挂屏 —— 那才是职业馆的构图中心。 */
+  const jm=new THREE.MeshBasicMaterial({map:jumboTex,color:0x5d626c});
   const dark=new THREE.MeshLambertMaterial({color:0x15151f});
   const jumbo=new THREE.Mesh(new THREE.BoxGeometry(3.6,1.9,3.6),[jm,jm,dark,dark,jm,jm]);
   jumbo.position.set(0,9.5,COURT.midZ);indoorRoot.add(jumbo);
