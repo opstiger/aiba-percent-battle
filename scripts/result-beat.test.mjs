@@ -25,15 +25,23 @@ await page.waitForFunction("window.AIBAResultBeat&&typeof G!=='undefined'",{time
 console.log("① onDone 恰好一次,且真的等满了时间");
 {
   const r=await page.evaluate(async()=>{
-    let n=0,at=0;const t0=Date.now();
+    let n=0,at=0,ctrl=0;const t0=Date.now();
     AIBAResultBeat.play({eyebrow:"测试",score:42,unit:"分",seconds:1.0,onDone:()=>{n++;at=Date.now()-t0;}});
+    /* 对照组:同一时刻、同一负载下的一个裸 setTimeout(1000)。
+       留白本身就是 setTimeout 驱动的,所以"它迟到多少"完全取决于主线程有多忙 ——
+       无头环境跑的是软件 WebGL(实测帧间隔约 200ms),裸定时器也会迟到几百毫秒。
+       写死一个 1600ms 的上界等于在断言"这台机器有多快",而不是"留白多长"。
+       改成和对照组比:机器再慢,两者一起慢,差值仍然应该接近 0。 */
+    setTimeout(()=>{ctrl=Date.now()-t0;},1000);
     const during=AIBAResultBeat.active();
-    await new Promise(r=>setTimeout(r,2200));
-    return {n,at,during};
+    await new Promise(r=>setTimeout(r,2600));
+    return {n,at,ctrl,during};
   });
   check(r.during===true,"play 之后处于留白中");
   check(r.n===1,"onDone 恰好执行 1 次(实际 "+r.n+")");
-  check(r.at>=900&&r.at<=1600,"确实等了约 1 秒才进结算(实际 "+r.at+"ms)");
+  check(r.at>=900,"确实等满了,不是立刻收尾(实际 "+r.at+"ms)");
+  check(Math.abs(r.at-r.ctrl)<=250,
+    "留白时长等于它声明的时长(实测 "+r.at+"ms,同负载对照 "+r.ctrl+"ms,差 "+Math.abs(r.at-r.ctrl)+"ms)");
 }
 
 console.log("\n② 重入不丢 onDone");

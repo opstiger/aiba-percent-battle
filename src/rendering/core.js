@@ -189,7 +189,30 @@ spot.target.position.set(0,0.9,-4.2);indoorRoot.add(spot);indoorRoot.add(spot.ta
    角色正面本就吃不到它,它的能量全砸在地板上。
    顺便:上面"压到 y=4.5 后地板只吃 0.24"那句判断方向是对的,
    但只算了漫反射,漏掉了掠射角下 Fresnel 主导的镜面项。 */
-const rim=new THREE.DirectionalLight(0x9ec4ff,0.18);rim.position.set(-5,4.5,-15);indoorRoot.add(rim);
+/* ⚠ 撤销:这里曾用 rim.layers.enable(1) + player.g.layers.enable(1)
+   试图做"rim 只照人物、不照地板"。该方案**无效且基于错误认知**,已移除。
+   教训(2026-09-08 验收指出,已核对 r128 源码):
+   ① r128 WebGLRenderer 的灯光是**按相机 layers 收集**的 ——
+      projectObject 里是 object.layers.test(camera.layers) 才 pushLight,
+      灯光进的是全局 lights 数组,shader 里所有材质共用。
+      **不存在"每个 mesh 与 light 单独求交"的 selective lighting**,
+      所以在单次渲染里无法让一盏灯只照某些物体。
+   ② mesh 的 layers 不影响"谁能照它",只影响它是否被相机/阴影对待;
+      且 g.layers.enable() **不递归**子网格(实测 playerMask=3 而 leg 子节点仍=1)。
+   ③ layers 是位掩码:默认 light 与 object 都是 mask=1(bit 0);
+      enable(1) 得到 3(bit0|bit1),并非"只带 bit 1";set(1) 得到 1,也不是 bit 0。
+   实测证据:仅 disable(1) 让 rim mask 3→1,画面 RGB 平均绝对差 = 0.0000,
+   即 layers 改动对渲染**零影响**;而真正 rim.intensity=0 时差 31.97。
+
+   现在的处理:关闭这盏低角度 rim(intensity 0)。
+   它是地板宽幅洗白的唯一来源(逐灯消融:单独归零即让过曝塌到 0),
+   根因是 16° 掠射角下 Fresnel 主导的镜面项 —— "照不亮地板,却照爆地板"。
+   而它对人物几乎无贡献:它是背光,过肩机位下相机看到的角色正面本就吃不到,
+   实测 rim 0.46→0.18 时角色包围盒 P95 完全不变(198.3)、最亮只掉 1。
+   即"轮廓光"这个名分与它实际的作用不符 —— 它只给地板添乱。
+   若将来要真正的只作用于人物的轮廓光,应走**角色材质的独立轮廓项**或
+   **分层多通道合成**(需验证深度遮挡、透明篮板、阴影与性能),不能再改 layers。 */
+const rim=new THREE.DirectionalLight(0x9ec4ff,0);rim.position.set(-5,4.5,-15);indoorRoot.add(rim);
 /* ---------------- 球馆顶部灯阵 ----------------
    之前全场只有 spot 一盏投影,所以必然只有一个方向的硬影 —— 那是户外太阳/摄影棚单灯
    的逻辑,不是室内球馆。真实球馆是顶棚几十盏灯均匀漫射,关键在于**互相填亮**:

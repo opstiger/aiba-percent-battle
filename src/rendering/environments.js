@@ -447,7 +447,12 @@ function applyScenePreset(name,opts){
        过曝的**唯一来源**(单独归零即让 16580 个过曝像素塌到 0),
        而压到 .18 的代价是场地均值 −2.5%、角色 P95 完全不变(它是背光,
        过肩机位下相机看到的正面本就吃不到它)。 */
-    rim.intensity=.18;rim.position.set(-5,4.5,-15);
+    /* .05→0。**这里才是 rim 的权威值**(core.js 那份是初始化值,切场景会被本行覆盖)。
+       关闭理由见 core.js:它是地板宽幅洗白的唯一来源(16° 掠射角下 Fresnel 主导),
+       而对人物几乎无贡献(背光,相机看到的正面吃不到,P95 实测不变)。
+       曾试图用 layers 让"rim 只照人物不照地板",实测 RGB 差 0.0000 证明无效(r128
+       灯光按相机 layers 收集,无 selective lighting),该方案已撤销。 */
+    rim.intensity=0;rim.position.set(-5,4.5,-15);
     camFill.intensity=0.25;camFill.distance=12;camFill.position.set(0,-.15,1);
     updJumbo();
   }

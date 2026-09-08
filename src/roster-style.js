@@ -12,38 +12,48 @@
   /* ---------- 女性发型 ---------- */
   const FEMALE_STYLES={ponytail:1,bun:1,long:1};
   function buildFemaleHair(o,style){
-    const G=o.hairGrp,m=o.hairMat;
-    while(G.children.length){
-      const child=G.children[0];G.remove(child);
-      if(child.geometry&&child.geometry.dispose)child.geometry.dispose();
-    }
+    const m=o.hairMat;
+    /* 与 characters.js 的 setHair 保持同一套分层:
+       B=贴头皮(发冠/后脑/侧发/发际线) → 固定,发根不漂
+       S=外层(丸子等头顶上方结构)      → 小幅摆
+       T=马尾/长发末端                  → 摆幅最大
+       ⚠ 女性发型原先整组挂在 hairGrp 上,发根会随晃动漂移,必须一并覆盖。 */
+    const B=o.hairBase||o.hairGrp,S=o.hairGrp,T=o.hairTail||o.hairGrp;
+    [B,S,T].forEach(G=>{
+      while(G.children.length){
+        const child=G.children[0];G.remove(child);
+        if(child.geometry&&child.geometry.dispose)child.geometry.dispose();
+      }
+    });
     o.hairStyle=style;
-    const box=(w,h,d,x,y,z)=>{const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);b.position.set(x,y,z);G.add(b);return b;};
-    const tuft=(rx,ry,rz,x,y,z)=>{const b=new THREE.Mesh(new THREE.SphereGeometry(1,8,5),m);b.scale.set(rx,ry,rz);b.position.set(x,y,z);G.add(b);return b;};
-    const lock=(r,h,x,y,z,rx,rz)=>{const b=new THREE.Mesh(new THREE.CylinderGeometry(r*.72,r,h,6),m);b.position.set(x,y,z);b.rotation.set(rx||0,0,rz||0);G.add(b);return b;};
-    /* 共用发冠:顶部之外继续包到侧后脑,避免像一块头顶盖板。 */
-    tuft(.182,.072,.182,0,1.787,0);
-    box(.30,.22,.058,0,1.68,-.166);
-    box(.058,.21,.29,-.166,1.69,0);
-    box(.058,.21,.29,.166,1.69,0);
-    box(.29,.042,.052,0,1.765,.17);
+    const box=(L,w,h,d,x,y,z)=>{const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);b.position.set(x,y,z);L.add(b);return b;};
+    const tuft=(L,rx,ry,rz,x,y,z)=>{const b=new THREE.Mesh(new THREE.SphereGeometry(1,8,5),m);b.scale.set(rx,ry,rz);b.position.set(x,y,z);L.add(b);return b;};
+    const lock=(L,r,h,x,y,z,rx,rz)=>{const b=new THREE.Mesh(new THREE.CylinderGeometry(r*.72,r,h,6),m);b.position.set(x,y,z);b.rotation.set(rx||0,0,rz||0);L.add(b);return b;};
+    /* 共用发冠:顶部之外继续包到侧后脑,避免像一块头顶盖板 —— 全部贴头皮,归 B。 */
+    tuft(B,.182,.072,.182,0,1.787,0);
+    box(B,.30,.22,.058,0,1.68,-.166);
+    box(B,.058,.21,.29,-.166,1.69,0);
+    box(B,.058,.21,.29,.166,1.69,0);
+    box(B,.29,.042,.052,0,1.765,.17);
     if(style==="ponytail"){
-      tuft(.095,.09,.085,0,1.77,-.235);
-      lock(.075,.31,0,1.59,-.31,-.20,0);
-      lock(.063,.27,.025,1.34,-.34,-.17,.07);
-      tuft(.068,.072,.06,.04,1.18,-.35);
+      tuft(B,.095,.09,.085,0,1.77,-.235);        // 扎发点与头皮相连,固定
+      lock(T,.075,.31,0,1.59,-.31,-.20,0);        // 马尾第一节
+      lock(T,.063,.27,.025,1.34,-.34,-.17,.07);   // 第二节
+      tuft(T,.068,.072,.06,.04,1.18,-.35);        // 末端
       return;
     }
     if(style==="bun"){
-      tuft(.13,.13,.12,0,1.88,-.18);
-      tuft(.085,.075,.08,0,1.98,-.18);
+      /* 丸子在头顶上方,不贴头皮 → S */
+      tuft(S,.13,.13,.12,0,1.88,-.18);
+      tuft(S,.085,.075,.08,0,1.98,-.18);
       return;
     }
-    /* long:披肩长发 */
-    box(.085,.42,.27,-.19,1.52,-.03);
-    box(.085,.42,.27,.19,1.52,-.03);
-    box(.34,.40,.075,0,1.52,-.205);
-    tuft(.17,.065,.055,0,1.31,-.21);
+    /* long:披肩长发 —— 分成后发与左右侧发,统一归 T。
+       它们垂到肩膀高度,motion.js 已把 T 层调成"多前后摆、少左右摆"以避开肩膀。 */
+    box(T,.085,.42,.27,-.19,1.52,-.03);
+    box(T,.085,.42,.27,.19,1.52,-.03);
+    box(T,.34,.40,.075,0,1.52,-.205);
+    tuft(T,.17,.065,.055,0,1.31,-.21);
   }
   const origSetHair=global.setHair;
   if(typeof origSetHair==="function"&&!origSetHair.__aibaRoster){

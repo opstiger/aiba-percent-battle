@@ -279,7 +279,7 @@
         const mesh=new THREE.Mesh(ballGeo,matBall);
         mesh.position.copy(from);scene.add(mesh);
         const miss=V3(HOOP.x+(Math.random()<.5?-1:1)*(.42+Math.random()*.3),HOOP.y+.18,HOOP.z+.34);
-        LS.putback={mesh,from:from.clone(),to:miss,t:0,dur:.34+Math.random()*.12};
+        LS.putback={mesh,from:from.clone(),to:miss,v0:miss.clone().sub(from),t:0,dur:.34+Math.random()*.12};
         squadApi.setActorBall(rb.winner,false);
       }
     }
@@ -290,7 +290,7 @@
       const p=LS.putback;p.t+=dt;const k=Math.min(1,p.t/p.dur);
       p.mesh.position.lerpVectors(p.from,p.to,k);
       p.mesh.position.y+=Math.sin(k*Math.PI)*.55;
-      p.mesh.rotation.x-=dt*12;
+      spinBall(p,dt,1);
       if(k>=1){
         // 打在框上弹开，落地后移除——不会有任何得分
         p.mesh.position.y=Math.max(.2,p.mesh.position.y-dt*2);

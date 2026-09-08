@@ -391,7 +391,11 @@ function updateCelebrate(o,dt){
   /* 庆祝从投篮/落地接管时，先清掉上一动作残留的二级旋转；下面的统一时间层
      会在动作真正开始后再让它们晚半拍跟随。 */
   if(o.headRoot)o.headRoot.rotation.set(0,0,0);
+  /* 头发晃动现在作用在 hairPivot / hairTail 上(支点已抬到头顶),
+     重置时这两层也要一起归零,否则过场结束会残留上一次的摆动。 */
   if(o.hairGrp)o.hairGrp.rotation.set(0,0,0);
+  if(o.hairPivot)o.hairPivot.rotation.set(0,0,0);
+  if(o.hairTail)o.hairTail.rotation.set(0,0,0);
   if(o.headband)o.headband.rotation.set(0,0,0);
   (o.wrists||[]).forEach(wrist=>{if(wrist)wrist.rotation.set(0,0,0);});
   if(o.jerseyHem)o.jerseyHem.rotation.set(0,0,0);

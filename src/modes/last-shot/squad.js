@@ -300,6 +300,9 @@ function foeKit(allyJersey){
     guy.arms[0].rotation.z=-.08;guy.arms[1].rotation.z=.08;
     guy.elbows[0].rotation.x=-.42;guy.elbows[1].rotation.x=-.42;
     if(guy.hairGrp)guy.hairGrp.rotation.set(0,0,0);
+    /* 同 cinematics:支点抬到头顶后,晃动落在 pivot/tail 上,重置要覆盖这两层 */
+    if(guy.hairPivot)guy.hairPivot.rotation.set(0,0,0);
+    if(guy.hairTail)guy.hairTail.rotation.set(0,0,0);
     if(guy.headband)guy.headband.rotation.set(0,0,0);
     (guy.wrists||[]).forEach(wrist=>{if(wrist)wrist.rotation.set(0,0,0);});
     if(guy.jerseyHem)guy.jerseyHem.rotation.set(0,0,0);

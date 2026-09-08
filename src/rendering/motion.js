@@ -424,13 +424,39 @@ function tstageFramePair(clip,normalized){
 function tstageRunPhaseNormalized(phase){
   return ((phase/(Math.PI*2)+.75)%1+1)%1;
 }
+/* 每个跑动角色保留一组由角色 id + 当前 seed 得到的微小偏差。
+   不是逐帧随机，而是“这个人一直有一点自己的节奏”：摆臂不完全镜像，
+   T 台手臂关键帧也不会和所有角色同时到达同一个极值。幅度刻意很小，
+   不改变脚步的位移解算，只消除复制粘贴式的机械感。 */
+function ensureRunVariation(o,state){
+  if(!state)return {phaseOffset:0,phaseWarp:0,armScaleA:1,armScaleB:1};
+  if(!Number.isFinite(state.runArmPhaseOffset)){
+    const key=(o&&o.g&&Number(o.g.id)||0)+17;
+    state.runArmPhaseOffset=shotPoseNoiseUnit(key,101)*.055;
+    state.runArmPhaseWarp=shotPoseNoiseUnit(key,102)*.022;
+    state.runArmScaleA=1+shotPoseNoiseUnit(key,103)*.045;
+    state.runArmScaleB=1+shotPoseNoiseUnit(key,104)*.045;
+  }
+  return {
+    phaseOffset:Number(state.runArmPhaseOffset)||0,
+    phaseWarp:Number(state.runArmPhaseWarp)||0,
+    armScaleA:Number(state.runArmScaleA)||1,
+    armScaleB:Number(state.runArmScaleB)||1
+  };
+}
+function runClipPhase(state){
+  const base=Number(state&&state.phase)||0;
+  const v=ensureRunVariation(null,state);
+  return base+v.phaseOffset+Math.sin(base*2+v.phaseOffset)*v.phaseWarp;
+}
 function tstageRunBodyBob(state,hs){
   const config=tstageMotionClip("run")&&tstageMotionClip("run").bodyBob;
   const amplitude=Number(config&&config.amplitude);
   if(!config||!Number.isFinite(amplitude)||amplitude<=0)return 0;
   const frequency=clamp(Number.isFinite(config.frequency)?Number(config.frequency):2,.5,4);
   const phase=Number.isFinite(config.phase)?Number(config.phase):0;
-  const normalized=tstageRunPhaseNormalized((state&&state.phase)||0);
+  const normalized=tstageRunPhaseNormalized(state&&Number.isFinite(state.runClipPhase)
+    ?state.runClipPhase:(state&&state.phase)||0);
   /* T台 run 的 bodyBob 是每个左右换步一次压缩/提起，
      与同一条 run 时间轴上的手臂关键帧保持同相。 */
   return -Math.cos((normalized+phase)*Math.PI*2*frequency)*amplitude*(hs||1);
@@ -541,7 +567,7 @@ function applyTstageRunPose(o,state){
   /* T台的 run_left_front 是 phase=pi/2 时的同侧脚后摆帧，
      run_right_front 是 phase=3pi/2 时的对侧脚后摆帧；用相位直接映射，
      不再用 cos 产生四分之一周期错位。这样同侧脚向后时同侧手向前。 */
-  const phase=state.phase||0;
+  const phase=Number.isFinite(state.runClipPhase)?state.runClipPhase:(state.phase||0);
   const u=tstageRunPhaseNormalized(phase);
   const pair=tstageFramePair(clip,u);
   if(!pair||!pair.a.shooting||!pair.a.guide)return false;
@@ -873,11 +899,25 @@ function applyShotFollowThroughPose(o,state,pose){
 const RUN_KNEE_FLEX_MIN=.38,RUN_KNEE_FLEX_GAIN=.32;
 const RUN_HIP_SWING_MAX=.59;
 const RUN_CADENCE_MIN=1.12,RUN_CADENCE_MAX=3.24;
+/* 收步不是把人拖到 1 步/秒再停，而是身体速度下降时用更短、更快的
+   调整步把最后几十厘米吃掉。这个窗口只影响最后 16% 的走位。 */
+const RUN_DECEL_WINDOW=.16,RUN_DECEL_CADENCE_MIN=1.85,RUN_DECEL_STEP_MIN=.12;
 const RUN_STANCE_WALK=.54,RUN_STANCE_RUN=.36;
-const RUN_CONTACT_LEAD=.42;
+/* 前伸量(lead = stepLength × 该系数)。原 .42 使 lead≈.513m,
+   而腿长 reach≈.646 决定了:想让髋高维持在 .52,就要求 |z| ≤ √(reach²−H²)≈.383。
+   .513 远超这个值,于是接触瞬间髋被几何强制掉到 .314 —— 一个周期起伏 25cm,
+   这就是"重心大幅上下摆、人像蹲着贴地挪"。收到 .30 后 lead≈.38,刚好落在
+   髋高可全程维持的范围内,起伏从 25cm 降到约 4cm。 */
+const RUN_CONTACT_LEAD=.30;
 const RUN_HEEL_STRIKE_PITCH=-.14,RUN_MIDSTANCE_PITCH=0,RUN_TOE_OFF_PITCH=.10;
 const RUN_TOE_OFF_TOE_PITCH=.20;
-const RUN_FOOT_CLEARANCE_MIN=.055,RUN_FOOT_CLEARANCE_GAIN=.070;
+/* 摆动脚离地高度。原来最高仅 .125m,又被 25cm 的身体起伏盖过去,
+   看起来就成了"前脚贴着地面往前滑"。抬到 .19m,让抬腿肉眼可辨。 */
+const RUN_FOOT_CLEARANCE_MIN=.075,RUN_FOOT_CLEARANCE_GAIN=.115;
+/* 目标髋高(脚底到髋的垂直距离)—— **由步态给定**,不再由脚的前后位置反推。
+   旧逻辑 down = straightDown − compression 等价于"腿全程绷直",脚越靠前髋越低。
+   真实跑步靠屈膝解耦髋高与落脚点,除接近腿长极限处髋高基本恒定。 */
+const RUN_HIP_TARGET_WALK=.575,RUN_HIP_TARGET_RUN=.52;
 const RUN_GROUND_SUPPORT_THRESHOLD=.90;
 let _runGroundBox=null;
 /* 运行时地面判定必须读真实鞋底网格，而不能继续猜一个“鞋底高度”公式。
@@ -900,11 +940,13 @@ function runLiftFootSole(o,index,groundY){
   if(Math.abs(factor)>.08)foot.position.y+=-groundY/factor;
 }
 function runKneeFlex(run){return RUN_KNEE_FLEX_MIN+run*RUN_KNEE_FLEX_GAIN;}
-function runCadence(speed){
+function runCadence(speed,decel){
   const v=clamp(Number(speed)||0,0,4.2),r=clamp(v/3.6,0,1);
   /* 低速段仍允许小碎步，但最高常规跑速约 3.15 步/秒(189 spm)。
      速度继续增加时优先拉长步幅，不再把腿频推到 4~5 步/秒。 */
-  return clamp(1.12+2.20*r-.17*r*r,RUN_CADENCE_MIN,RUN_CADENCE_MAX);
+  const base=clamp(1.12+2.20*r-.17*r*r,RUN_CADENCE_MIN,RUN_CADENCE_MAX);
+  const finishFloor=mixN(RUN_CADENCE_MIN,RUN_DECEL_CADENCE_MIN,clamp(Number(decel)||0,0,1));
+  return Math.max(base,finishFloor);
 }
 function runStanceFraction(run){
   return mixN(RUN_STANCE_WALK,RUN_STANCE_RUN,ease01(clamp(run,0,1)));
@@ -916,8 +958,22 @@ function solveRunLegTarget(z,lift,anklePitch,run,activity){
   const reach=THIGH_LEN+SHIN_LEN-.014;
   const safeZ=clamp(Number(z)||0,-reach*.92,reach*.92);
   const straightDown=Math.sqrt(Math.max(.08,reach*reach-safeZ*safeZ));
-  const compression=.045+.035*clamp(Number(run)||0,0,1)+.015*(1-clamp(Number(activity)||0,0,1));
-  const down=clamp(straightDown-compression,.30,.61);
+  /* ⚠ 髋高的因果方向被修正了。
+     旧式 down = straightDown − compression 等价于"腿始终绷直":
+     脚越靠前/靠后,髋在几何上就必须越低(√(reach²−z²) 变小),
+     于是一个步态周期内髋高差 25cm,而摆动脚只抬 12cm ——
+     身体大幅起伏把抬脚完全盖住,观感就是"屈膝蹲着、脚贴地往前挪"。
+     真实跑步靠**屈膝**把髋高和落脚点解耦:除了接近腿长极限的位置,
+     髋高基本恒定,前后摆腿靠大腿抬起 + 小腿收折完成。
+     所以髋高改由步态目标给定:够得着就用目标值(此时膝盖自然多弯),
+     够不着(接近伸直极限)才被迫下降。 */
+  const rN=clamp(Number(run)||0,0,1),aN=clamp(Number(activity)||0,0,1);
+  const hipTarget=mixN(RUN_HIP_TARGET_WALK,RUN_HIP_TARGET_RUN,ease01(rN));
+  /* 低速收步不是继续蹲低：当 activity 下降时，髋高要从跑步目标平滑
+     回到当前落脚点允许的直立高度。旧式 .72+.28*aN 会让 activity 越低
+     desired 越小，反而把膝盖越折越深，最后变成“蹲着挪到位”。 */
+  const desired=mixN(straightDown-.012,hipTarget,ease01(aN));
+  const down=clamp(Math.min(desired,straightDown-.012),.28,reach*.985);
   let targetY=-down+Math.max(0,Number(lift)||0);
   let r=Math.hypot(safeZ,targetY);
   if(r>reach-.002){
@@ -1036,8 +1092,23 @@ function applyRunVitality(o,state,run,dt,defensive){
   const headYaw=Number.isFinite(state.runHeadYaw)?state.runHeadYaw:0;
   state.runHeadYaw=headYaw+(headTarget-headYaw)*Math.min(1,Math.max(0,Number(dt)||0)*8);
   if(o.headRoot)o.headRoot.rotation.y=state.runHeadYaw;
-  if(o.hairGrp)o.hairGrp.rotation.z=state.runSpring*1.8;
-  if(o.headband)o.headband.rotation.z=state.runSpring*.9;
+  /* 头发:只晃"外层"与"末端",支点已从脚底抬到头顶(见 HAIR_PIVOT_Y)。
+     hairBase(发际线/鬓角/后脑包覆)完全不参与 —— 这是发根不再漂移的关键。
+     末端(马尾/辫子)幅度约 2 倍,并额外加一点前后摆模拟甩动。 */
+  if(o.hairPivot)o.hairPivot.rotation.z=state.runSpring*1.8;
+  if(o.hairTail){
+    /* 末端摆幅最大,但**以前后摆(x)为主、左右摆(z)收着**:
+       披肩长发垂到肩膀高度(y≈1.31~1.52),左右摆太大会扫进肩膀里。
+       原先 2.0 的左右系数会把侧发推出肩宽,这里降到 1.3 并加大前后摆。 */
+    /* 系数 1.3 实测末端位移 15.5~16.7cm(相对 0.34m 的头宽约半个头),甩得过夸张。
+       0.5 之后约 6~7cm:看得出来在甩,又不会扫进肩膀。前后摆(x)略大于左右摆(z),
+       因为长发垂在肩侧,左右空间比前后窄得多。 */
+    o.hairTail.rotation.z=state.runSpring*1.8*0.45;
+    o.hairTail.rotation.x=state.runSpring*1.8*0.62;
+  }
+  /* 发带是**贴头**的(挂在 headRoot、y=1.70),和头发一样绕脚底转会有 8cm 横移,
+     而且它没有任何可摆动的飘带 —— 转起来只会在头上滑动。按验收要求保持固定。 */
+  if(o.headband)o.headband.rotation.z=0;
   if(o.g){
     o.g.userData.runShoulderTwist=twist;
     o.g.userData.runHipTwist=hipTwist;
@@ -1080,8 +1151,13 @@ function applyActionTimingPose(o,t,kind,phase){
   }
   const wave=Math.sin(time*9.6+(Number(phase)||0));
   if(o.headRoot)o.headRoot.rotation.z=wave*.024*follow;
-  if(o.hairGrp)o.hairGrp.rotation.z=wave*.052*follow;
-  if(o.headband)o.headband.rotation.z=wave*.026*follow;
+  /* 同跑步分支:只晃外层与末端,贴头皮层固定 */
+  if(o.hairPivot)o.hairPivot.rotation.z=wave*.052*follow;
+  if(o.hairTail){
+    o.hairTail.rotation.z=wave*.052*follow*0.45;  // 同跑步分支:左右收着,前后为主
+    o.hairTail.rotation.x=wave*.052*follow*0.62;
+  }
+  if(o.headband)o.headband.rotation.z=0;   // 贴头配件固定,见跑步分支的说明
   if(o.jerseyHem){
     o.jerseyHem.rotation.x=wave*.030*follow;
     o.jerseyHem.rotation.z=wave*.020*follow;
@@ -1146,16 +1222,29 @@ function poseRunCycle(o,state,speed,dt,opts){
      否则主角掌心相对、其他跑动角色却仍然掌心朝地。投篮/接球关键帧在后续阶段覆盖它。 */
   poseRunPalms(o);
   const cfg=opts||{},hs=cfg.hs||1;
+  const variation=ensureRunVariation(o,state);
+  /* updPose 在 updWalk 前执行一帧；主角的 walk 状态因此可直接提供上
+     一帧已经算好的收步进度。其他调用方仍可显式传 decel。 */
+  const autoDecel=(typeof walk!=="undefined"&&walk&&typeof P!=="undefined"&&state===P.walkRig)
+    ?Number(walk.decel)||0:0;
+  const decel=clamp(Number.isFinite(Number(cfg.decel))?Number(cfg.decel):
+    (Number.isFinite(Number(state.runDecel))?Number(state.runDecel):autoDecel),0,1);
+  state.runDecel=decel;
+  state.runClipPhase=runClipPhase(state);
   const run=clamp(speed/3.6,0,1);
   /* ---- 步幅/步频 ----
      先定自然步频，再反推出这一步需要多长。最高常规跑速把步频封在约
      189 spm，超出的速度交给更长的步幅，不再用高频抽腿掩盖几何误差。 */
-  const cadence=runCadence(speed);
-  const L=clamp(speed/Math.max(.01,cadence),.34,1.16);
+  const cadence=runCadence(speed,decel);
+  const minStep=mixN(.34,RUN_DECEL_STEP_MIN,decel);
+  const L=clamp(Math.max(minStep,speed/Math.max(.01,cadence)),minStep,1.16);
   const solvedSwing=solveRunSwing(L,run);
   /* 起步第一帧 speed 可能还是 0，不能因此把双腿冻结在一个随机半步姿态。
      这里的 stepLen 与 IK 的两脚几何分离相同，phase 仍然按位移推进。 */
   const gaitBlend=clamp(speed/.45,0,1);
+  /* 腿姿比摆臂更晚才完全进入跑姿；减速时先抬身，再保留最后的小步。
+     .72m/s 是跑姿到直立腿姿的过渡带，不改变步频和脚的位移相位。 */
+  const legActivity=clamp(speed/.72,0,1);
   state.runActive=gaitBlend;
   const stepLen=Math.max(.12,runFootSpan(solvedSwing,run));
   state.phase=(state.phase||0)+(speed*dt/stepLen)*Math.PI;
@@ -1164,7 +1253,7 @@ function poseRunCycle(o,state,speed,dt,opts){
   const idle=Math.sin(state.idleT*1.7)*.03;
   const footAState=runFootPhase(0,state.phase,stepLen,run);
   const footBState=runFootPhase(1,state.phase,stepLen,run);
-  const legA=runLegFromFoot(footAState,run,gaitBlend),legB=runLegFromFoot(footBState,run,gaitBlend);
+  const legA=runLegFromFoot(footAState,run,legActivity),legB=runLegFromFoot(footBState,run,legActivity);
   const hipA=legA.hip,hipB=legB.hip;
   const kneeA=legA.knee,kneeB=legB.knee;
   const ankA=legA.ankle,ankB=legB.ankle;
@@ -1177,6 +1266,8 @@ function poseRunCycle(o,state,speed,dt,opts){
   o.shoes[0].rotation.x=0;o.shoes[1].rotation.x=0;
   if(o.g){
     o.g.userData.runCadence=speed>0.001?speed/stepLen:0;
+    o.g.userData.runTargetCadence=cadence;
+    o.g.userData.runDecel=decel;
     o.g.userData.runStride=stepLen;
     o.g.userData.runTargetStride=L;
     o.g.userData.runAnklePitch=[legA.footPitch,legB.footPitch];
@@ -1200,7 +1291,9 @@ function poseRunCycle(o,state,speed,dt,opts){
          肘部只保持一个接近 80° 的弯折，不再反解成固定世界前臂角；
          这样小臂会跟着大臂一起前后摆，不会整段锁成“接球手”。 */
       const armSwing=.24+run*.30,armBase=-.20;
-      const armA=armBase-s*armSwing,armB=armBase+s*armSwing;
+      const armS=Math.sin((state.phase||0)+variation.phaseOffset);
+      const armA=armBase-armS*armSwing*variation.armScaleA;
+      const armB=armBase+armS*armSwing*variation.armScaleB;
       o.arms[0].rotation.set(armA,0,0);o.arms[1].rotation.set(armB,0,0);
       /* 必须和**同侧的腿**反相:legs[0] 和 arms[0] 都建在 x 负侧(见 characters.js
          的 [-HIP_X,HIP_X] / [-SHOULDER_X,SHOULDER_X] 两个循环),而真实步态是
@@ -1611,7 +1704,7 @@ function updPose(dt){
     updWalkSpeed(dt);
     P.walkRig=P.walkRig||{phase:0,idleT:0,lean:0};
     poseHandJoints(player,shotCurves(0));
-    poseRunCycle(player,P.walkRig,walkSpeed,dt,{sway:true});
+    poseRunCycle(player,P.walkRig,walkSpeed,dt,{sway:true,decel:currentWalkDecel()});
     player.g.position.y+=P.jump;
     regroundRunPose(player);
   }else{
@@ -1648,6 +1741,7 @@ function updWalkSpeed(dt){
 }
 /* 走位结束/瞬间摆位后调用,下一帧重新采样,免得把瞬移算成高速。 */
 function resetWalkSpeed(){walkPrevX=null;walkPrevZ=null;walkSpeed=0;}
+function currentWalkDecel(){return typeof walk!=="undefined"&&walk?Number(walk.decel)||0:0;}
 
 /* ---------------- passer & pass ----------------
    传球飞行时长。Rack Rush 原本是 .22–.32 秒，5 米传球等于 20m/s，在方块画风下就是
@@ -1733,9 +1827,10 @@ function walkTo(shot,cb,opts){
   const from=P.pos.clone(),to=base.clone();
   /* 梯形剖面下平均速度 = WALK_CRUISE,峰值 = WALK_CRUISE/(1-A/2-D/2) ≈ 2.6 m/s。
      原来是峰值 5.1 m/s。 */
-  /* 上限原来是 2.6s,长距离走位(比如底角到弧顶 9.4m)会被截断成 3.7 m/s ——
-     巡航速度形同虚设。放宽到 3.4s。 */
-  const dur=clamp(from.distanceTo(to)/WALK_CRUISE,0.55,3.4);
+  /* 长距离走位不能再被短时长上限截断：底角到弧顶约 9.4m 时，3.4s
+     会把实际峰值重新推到接近 4m/s，步频和摆臂都会变成冲刺。上限放到
+     5.4s，仍保留短距离的灵敏度，但让 WALK_CRUISE 真正决定巡航速度。 */
+  const dur=clamp(from.distanceTo(to)/WALK_CRUISE,0.55,5.4);
   const overlapPass=!!(opts&&opts.overlapPass);
   let passStartK=1;
   if(overlapPass){
@@ -1747,12 +1842,15 @@ function walkTo(shot,cb,opts){
     passStartK=clamp((dur-passDur+.03)/dur,0,.98);
   }
   P.walking=true;G.moving=true;P.walkT=0;
-  walk={from,to,t:0,dur,fMove:faceTo(from,to),f1:faceTo(to,HOOP),cb,step:0,
+  walk={from,to,t:0,dur,decel:0,fMove:faceTo(from,to),f1:faceTo(to,HOOP),cb,step:0,
     overlapPass,passStartK,passStarted:false,callbackCalled:false};
 }
 function updWalk(dt){
   if(!walk)return;
   walk.t+=dt;const k=Math.min(1,walk.t/walk.dur);
+  /* 身体仍然沿连续的减速曲线前进，但最后 16% 交给步态做快速小步
+     校位；这样不会出现“速度降了，脚却还用大步拖到终点”的割裂感。 */
+  walk.decel=clamp((k-(1-RUN_DECEL_WINDOW))/RUN_DECEL_WINDOW,0,1);
   /* 位移走 smoothstep,不是线性 —— 线性的话人是"匀速滑出去、到点急停",
      没有起步蹬地也没有收步。加减速之后步频也跟着变(poseRunCycle 的相位由
      实际位移驱动),所以一条缓动同时修好了"起步收步"和"腿频不跟脚"。 */

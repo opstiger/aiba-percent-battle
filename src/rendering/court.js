@@ -27,7 +27,13 @@ const FLOOR_PHYS={
   roughness:0.38,          // 木材本体上限;roughnessMap 调制到 0.32~0.38(±0.03)
   metalness:0.0,
   clearcoat:0.34,          // 清漆强度。旧值 0.17 太弱:关掉 PBR 只差 0.5 灰阶 ≈ 看不出
-  clearcoatRoughness:0.28, // 清漆粗糙度。旧值 0.45 太散,反射被摊平成一片雾
+  /* 0.28→0.34(区间上限)。六机位消融实测:低机位最大连通白斑 28414 像素,
+     关掉 rim 后归零、关掉 envMap 几乎不变 —— 说明白斑是 rim 这盏**掠射方向光**
+     打在清漆上的 Fresnel 高光,再被 bloom 放大约 8 倍,不是环境反射的问题。
+     所以收敛手段是"把高光摊开"而不是"降低反射量":roughness 提到 .34
+     让同样的反射能量散到更大面积,峰值掉下来,长条形状和木纹都还在。
+     注意不能靠降 clearcoat 解决 —— 那会退回"看不见清漆"的老问题。 */
+  clearcoatRoughness:0.34,
   envMapIntensity:0.48     // 反射强度。旧值 0.36
 };
 
@@ -148,10 +154,15 @@ function buildCourtZones(){
     clearcoat:FLOOR_PHYS.clearcoat,
     clearcoatRoughness:FLOOR_PHYS.clearcoatRoughness,
     envMap:makeArenaEnvPMREM(),envMapIntensity:FLOOR_PHYS.envMapIntensity*0.5});
+  /* name 是给验收台用的:做"可见地板 mask"时必须能**按对象**区分
+     木地板 / 三秒区 / 白线,而不是靠"这个像素够不够亮"去猜 ——
+     靠亮度猜正是旧验收台被判无效的原因(白线、人物边缘、噪声都会混进来)。
+     验收台借此单独渲染每类对象生成精确 mask。 */
   const face=(geo,mat,z,sx)=>{
     const m=new THREE.Mesh(geo,mat);
     m.rotation.x=-Math.PI/2;m.position.set(0,Y,z);
     if(sx)m.scale.x=sx;
+    m.name=(mat===zoneMat)?"courtZone":(mat===lineMat?"courtLine":"courtMark");
     scene.add(m);return m;
   };
   /* 三秒区 4.9 × 5.79,贴着两侧底线 */
@@ -417,6 +428,7 @@ function buildCourt(){
         map:courtIndoorTexture,color:0xb0a798,specular:0x8d8574,shininess:38,
         envMap:makeArenaEnvMap(),reflectivity:0.12}));
   courtFloor.receiveShadow=true;
+  courtFloor.name="courtFloor";        // 供验收台按对象生成 mask
   courtFloor.rotation.x=-Math.PI/2;
   courtFloor.position.set(0,0,(COURT.floorMinZ+COURT.floorMaxZ)/2);
   scene.add(courtFloor);

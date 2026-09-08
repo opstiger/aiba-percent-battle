@@ -19,6 +19,7 @@ function startClip(){
   rep.clip=h;rep.t=0;rep.scoredFx=false;
   rep.ghost.visible=true;rep.gBlob.visible=true;
   rep.ghost.material=h.deep?matDeep:(h.money?matGold:matBall);
+  rep.spin={mesh:rep.ghost,v0:h.v0||HOOP.clone().sub(h.p0||h.startPos),backspin:h.backspin,sideSpin:h.sideSpin};
   rep.end=Math.min(h.rec[h.rec.length-1][0],h.tf+0.4);
   // random broadcast cameras — all positioned in front of the backboard (z > -8) so nothing blocks the view
   const s=h.shooterPos||V3(h.startPos.x,0,h.startPos.z);
@@ -68,7 +69,7 @@ function updReplay(dt){
   const k=b2[0]>a[0]?(t-a[0])/(b2[0]-a[0]):0;
   if(h.p0&&(photo||t<=h.rec[0][0]))rep.ghost.position.copy(h.p0);
   else rep.ghost.position.set(a[1]+(b2[1]-a[1])*k,a[2]+(b2[2]-a[2])*k,a[3]+(b2[3]-a[3])*k);
-  rep.ghost.rotation.x-=dt*4;
+  poseBallSpinAtTime(rep.spin,t);
   rep.gBlob.position.set(rep.ghost.position.x,0.02,rep.ghost.position.z);
   const cut=h.tf*0.6;
   if(photo){

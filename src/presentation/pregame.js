@@ -457,7 +457,8 @@ function pregameSyncBallAfterPose(actor,action,u,seg){
     if(ball.visible){
       ball.position.lerpVectors(release,target,flight);
       ball.position.y+=Math.sin(flight*Math.PI)*1.12;
-      ball.rotation.x+=.22;
+      if(!seg._pregameSpin)seg._pregameSpin={mesh:ball,v0:target.clone().sub(release),spinStartQuaternion:ball.quaternion.clone()};
+      poseBallSpinAtTime(seg._pregameSpin,Math.max(0,u-releaseAt)*(Number(seg.dur)||1));
     }
     return;
   }

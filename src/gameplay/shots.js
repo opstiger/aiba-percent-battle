@@ -8,14 +8,50 @@ function postNetVelocity(ball,vy){
   const drop=Math.min(-.45,(Number(vy)||-.8)*(.34+(ball.backspin||0)*.035));
   return new THREE.Vector3(ball.v0.x*retention,drop,ball.v0.z*retention);
 }
-/* 后旋既要看得出来，也要在进网后被网/空气阻尼掉；它不改命中判定，只负责球的
-   飞行姿态和落网后的速度连续性。 */
+/* 这里只修正可视自转,不改变命中/碰筐分支。后旋的定义与相机无关:
+   axis = 水平出手方向 × 世界向上,因此球顶速度 omega × up 指向投手。
+   不能固定减 Euler.x:换投篮点会变成前旋/侧旋,而且初始姿态会改变局部轴。
+   出手轴只初始化一次;反弹后的平移不能凭空把空中后旋改成向前滚动。 */
+const BALL_SPIN_UP=new THREE.Vector3(0,1,0);
+function rotateBallWorld(ball,omega,dt,damping){
+  if(!ball||!ball.mesh)return;
+  const seconds=Math.max(0,Number(dt)||0),k=damping==null?1:Math.max(0,Number(damping)||0);
+  const rate=omega.length();if(!seconds||!k||rate<1e-8)return;
+  const axis=ball._spinLocalAxis||(ball._spinLocalAxis=new THREE.Vector3());
+  const delta=ball._spinDelta||(ball._spinDelta=new THREE.Quaternion());
+  axis.copy(omega).multiplyScalar(1/rate);
+  if(ball.mesh.parent){
+    const parentQ=ball._spinParentQ||(ball._spinParentQ=new THREE.Quaternion());
+    ball.mesh.parent.getWorldQuaternion(parentQ);
+    axis.applyQuaternion(parentQ.invert());
+  }
+  delta.setFromAxisAngle(axis,rate*seconds*k);
+  ball.mesh.quaternion.premultiply(delta).normalize();
+}
 function spinBall(ball,dt,damping){
   if(!ball||!ball.mesh)return;
-  const k=damping==null?1:damping,back=Number(ball.backspin)||.65,side=Number(ball.sideSpin)||0;
-  ball.mesh.rotation.x-=Math.max(0,dt||0)*(3.3+back*5.6)*k;
-  ball.mesh.rotation.y+=(Number(dt)||0)*side*2.2*k;
-  ball.mesh.rotation.z+=(Number(dt)||0)*(.7+Math.abs(side)*.35)*k;
+  if(!ball.spinOmega){
+    const launch=ball.v0||ball.vel;
+    const forward=new THREE.Vector3(launch&&launch.x||0,0,launch&&launch.z||0);
+    if(forward.lengthSq()<1e-8)forward.set(0,0,-1);
+    forward.normalize();
+    const back=Number.isFinite(ball.backspin)?Math.max(0,ball.backspin):.65;
+    const side=Number.isFinite(ball.sideSpin)?ball.sideSpin:0;
+    ball.spinOmega=forward.cross(BALL_SPIN_UP).multiplyScalar(3.3+back*5.6);
+    ball.spinOmega.y=side*2.2;
+  }
+  rotateBallWorld(ball,ball.spinOmega,dt,damping);
+}
+function rollBall(ball,dt){
+  const omega=ball._rollOmega||(ball._rollOmega=new THREE.Vector3());
+  omega.crossVectors(BALL_SPIN_UP,ball.vel).multiplyScalar(1/SHOT_BALL_RADIUS);
+  rotateBallWorld(ball,omega,dt,1);
+}
+/* 回放/热身按动画时间采样,不按渲染帧数累加;慢动作与定格都保持正确后旋。 */
+function poseBallSpinAtTime(ball,seconds){
+  if(ball.spinStartQuaternion)ball.mesh.quaternion.copy(ball.spinStartQuaternion);
+  else ball.mesh.quaternion.identity();
+  spinBall(ball,seconds,1);
 }
 const BALL_FLOOR_PHYSICS=Object.freeze({
   y:.16,
@@ -514,7 +550,7 @@ function updBalls(dt){
       const p=b.mesh.position,drag=Math.exp(-BALL_FLOOR_PHYSICS.rollDrag*dt);
       p.x+=b.vel.x*dt;p.z+=b.vel.z*dt;p.y=BALL_FLOOR_PHYSICS.y;
       b.vel.x*=drag;b.vel.z*=drag;b.vel.y=0;
-      spinBall(b,dt,.42);b.mesh.rotation.x-=b.vel.z*dt*3;b.mesh.rotation.z+=b.vel.x*dt*3;
+      rollBall(b,dt);
       b.rollT=(b.rollT||0)+dt;b.life-=dt;
       if(b.life<=0||(b.rollT>=BALL_FLOOR_PHYSICS.rollLife&&Math.hypot(b.vel.x,b.vel.z)<.12)){
         scene.remove(b.mesh);scene.remove(b.blob);
@@ -524,7 +560,7 @@ function updBalls(dt){
     }else{ // fall / free
       b.vel.y-=9.8*dt;
       b.mesh.position.addScaledVector(b.vel,dt);
-      spinBall(b,dt,.42);b.mesh.rotation.x-=b.vel.z*dt*3;b.mesh.rotation.z+=b.vel.x*dt*3;
+      spinBall(b,dt,.42);
       const p=b.mesh.position;
       // backboard
       if(b.phase==="free"&&b.vel.z<0&&p.z<(-8.5+SHOT_BALL_RADIUS)&&p.z>(-8.78-SHOT_BALL_RADIUS)&&Math.abs(p.x)<(.98+SHOT_BALL_RADIUS)&&p.y>(2.9-SHOT_BALL_RADIUS)&&p.y<(4.1+SHOT_BALL_RADIUS)){

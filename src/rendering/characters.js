@@ -4,6 +4,14 @@ const VOXEL_HEAD_SCALE=new URLSearchParams(location.search).get("head")==="class
 const VOXEL_HEAD_PIVOT_Y=1.45;
 const VOXEL_SHOULDER_X=.285;
 const VOXEL_HIP_X=.125;
+/* 头发的旋转支点高度(headRoot 局部坐标,与发块同一套绝对坐标)。
+   ⚠ 原来 hairGrp 直接挂 headRoot,pivot 落在 (0,0,0) —— 那是**脚底**,
+     而发块在 y≈1.79,力臂约等于整个身高:
+       1.79 × sin(3°) × 0.86(headRoot 缩放) ≈ 8.0 cm
+     跑动晃动实测约 3.9°,足已让发冠横移 8cm —— 这就是发根错位/穿头的根因。
+   把支点抬到头顶(1.78)后,发块相对支点只剩 ~0.01~0.27m,
+   同样角度的横移降到毫米级。 */
+const HAIR_PIVOT_Y=1.78;
 const CHARACTER_TEXTURE_CACHE=new Map();
 /* ---------------- 角色接地影 ----------------
    球有 blob 假影,角色一个都没有 —— 人就像贴在地板上,这才是"没有落地感"的直接来源。
@@ -242,7 +250,20 @@ function voxelGuy(){
   add(headRoot,0.09,0.026,0.035,hairMat,  0.085,1.67,0.19);   // 立体右眉
   add(headRoot,0.055,0.045,0.055,mS, -0.197,1.56,0.032);      // 耳垂
   add(headRoot,0.055,0.045,0.055,mS,  0.197,1.56,0.032);      // 耳垂
-  const hairGrp=new THREE.Group();headRoot.add(hairGrp);      // 头发(按 setHair 重建)
+  /* 头发分三层,**支点抬到头顶**(见 HAIR_PIVOT_Y 的说明):
+       hairBase  贴头皮(发际线/鬓角/后脑包覆/寸头) → 直接挂 headRoot,永不独立晃动
+       hairGrp   外层/发梢                        → 经 hairPivot 绕头顶小幅摆
+       hairTail  马尾/辫子/长发末端                → 绕头顶摆,幅度最大
+     三者都用**同一套绝对坐标**(与原来一致),靠父节点 position 抵消,
+     所以 setHair 里每个发块的数值一个都不用改。
+     hairBase 不进 hairPivot,因此完全不受晃动影响 —— 发根永远不会漂。 */
+  const hairBase=new THREE.Group();hairBase.name="hairBase";headRoot.add(hairBase);
+  const hairPivot=new THREE.Group();hairPivot.name="hairPivot";
+  hairPivot.position.y=HAIR_PIVOT_Y;headRoot.add(hairPivot);
+  const hairGrp=new THREE.Group();
+  hairGrp.position.y=-HAIR_PIVOT_Y;hairPivot.add(hairGrp);     // 抵消支点,保持绝对坐标
+  const hairTail=new THREE.Group();
+  hairTail.position.y=-HAIR_PIVOT_Y;hairPivot.add(hairTail);   // 同样抵消,摆幅另算
   const beardGrp=new THREE.Group();beardGrp.visible=false;headRoot.add(beardGrp); // 胡子
   // Four slim strips read as fabric around the head instead of an opaque slab through the face.
   const headband=new THREE.Group(),headbandMat=new THREE.MeshLambertMaterial({color:0xff4040});
@@ -343,7 +364,8 @@ function voxelGuy(){
   const o={g,headRoot,jerseyHem,faceExpression:{root:faceExpressionRoot,brows:[expressionBrowL,expressionBrowR],mouth:expressionMouth},headScale:VOXEL_HEAD_SCALE,baseShoulderX:VOXEL_SHOULDER_X,baseHipX:VOXEL_HIP_X,
     legs,knees,ankles,footRoots,toeRoots,arms,elbows,upperArms,forearms,shoes,wrists,sleeves,palms,thumbs,thumbRoots,thumbTips,handRoots,fingerJoints,fingerPipJoints,fingerDipJoints,ballGrips,
     hipBlends,kneeBlends,ankleBlends,elbowBlends,wristBlends,neckBlend,headband,
-    hair:hairGrp,hairGrp,hairMat,beardGrp,beardMat,mJ,mP,mS,bodyF,bodyB,mFace,hairStyle:"short"};
+    hair:hairGrp,hairGrp,hairMat,beardGrp,beardMat,mJ,mP,mS,bodyF,bodyB,mFace,hairStyle:"short",
+    hairPivot,hairBase,hairTail};
   setHair(o,"short");
   attachGroundShadow(o);
   markShadowCasters(o);
@@ -369,66 +391,79 @@ function setFaceExpression(o,mode){
 /* 发型:清空 hairGrp 重建,所有发块共享 hairMat */
 function setHair(o,style,colorHex){
   if(colorHex!=null)o.hairMat.color.setHex(colorHex);
-  const G=o.hairGrp,m=o.hairMat;
-  while(G.children.length){
-    const child=G.children[0];G.remove(child);
-    if(child.geometry&&child.geometry.dispose)child.geometry.dispose();
-  }
+  const m=o.hairMat;
+  /* 三层容器。B=贴头皮(永不晃) / S=外层(绕头顶小摆) / T=长发末端(摆幅最大) */
+  const B=o.hairBase||o.hairGrp,S=o.hairGrp,T=o.hairTail||o.hairGrp;
+  [B,S,T].forEach(G=>{
+    while(G.children.length){
+      const child=G.children[0];G.remove(child);
+      if(child.geometry&&child.geometry.dispose)child.geometry.dispose();
+    }
+  });
   o.hairStyle=style;
-  const box=(w,h,d,x,y,z,rx,ry,rz)=>{const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);b.position.set(x,y,z);b.rotation.set(rx||0,ry||0,rz||0);G.add(b);return b;};
-  const tuft=(rx,ry,rz,x,y,z)=>{const b=new THREE.Mesh(new THREE.SphereGeometry(1,8,5),m);b.scale.set(rx,ry,rz);b.position.set(x,y,z);G.add(b);return b;};
-  const lock=(r,h,x,y,z,rx,rz)=>{const b=new THREE.Mesh(new THREE.CylinderGeometry(r*.72,r,h,6),m);b.position.set(x,y,z);b.rotation.set(rx||0,0,rz||0);G.add(b);return b;};
+  /* 辅助函数第一个参数是**目标层**,坐标语义与原来完全一致(绝对高度)。 */
+  const box=(L,w,h,d,x,y,z,rx,ry,rz)=>{const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);b.position.set(x,y,z);b.rotation.set(rx||0,ry||0,rz||0);L.add(b);return b;};
+  const tuft=(L,rx,ry,rz,x,y,z)=>{const b=new THREE.Mesh(new THREE.SphereGeometry(1,8,5),m);b.scale.set(rx,ry,rz);b.position.set(x,y,z);L.add(b);return b;};
+  const lock=(L,r,h,x,y,z,rx,rz)=>{const b=new THREE.Mesh(new THREE.CylinderGeometry(r*.72,r,h,6),m);b.position.set(x,y,z);b.rotation.set(rx||0,0,rz||0);L.add(b);return b;};
   if(style==="bald")return;
   if(style==="buzz"){
-    tuft(.178,.040,.178,0,1.79,0);
-    box(.30,.15,.045,0,1.70,-.169);
-    box(.045,.14,.27,-.169,1.71,-.005);box(.045,.14,.27,.169,1.71,-.005);
-    box(.25,.026,.045,0,1.772,.17);return;
+    /* 寸头整层贴着头皮 → 全部归 B,不参与任何晃动(原来整组晃就会浮起来) */
+    tuft(B,.178,.040,.178,0,1.79,0);
+    box(B,.30,.15,.045,0,1.70,-.169);
+    box(B,.045,.14,.27,-.169,1.71,-.005);box(B,.045,.14,.27,.169,1.71,-.005);
+    box(B,.25,.026,.045,0,1.772,.17);return;
   }
   if(style==="afro"){
-    tuft(.14,.12,.17,-.15,1.76,-.02);tuft(.14,.12,.17,.15,1.76,-.02);
-    tuft(.17,.12,.12,0,1.75,-.15);
-    tuft(.23,.18,.23,0,1.91,0);tuft(.19,.13,.19,0,2.055,0);
-    tuft(.13,.14,.19,-.205,1.91,0);tuft(.13,.14,.19,.205,1.91,0);
-    tuft(.18,.12,.12,0,1.89,.19);tuft(.18,.12,.12,0,1.89,-.19);return;
+    /* 贴着头皮的一圈固定,蓬松的顶部才晃 */
+    tuft(B,.14,.12,.17,-.15,1.76,-.02);tuft(B,.14,.12,.17,.15,1.76,-.02);
+    tuft(B,.17,.12,.12,0,1.75,-.15);
+    tuft(S,.23,.18,.23,0,1.91,0);tuft(S,.19,.13,.19,0,2.055,0);
+    tuft(S,.13,.14,.19,-.205,1.91,0);tuft(S,.13,.14,.19,.205,1.91,0);
+    tuft(S,.18,.12,.12,0,1.89,.19);tuft(S,.18,.12,.12,0,1.89,-.19);return;
   }
   if(style==="cornrows"){
-    box(.30,.15,.048,0,1.70,-.17);
-    box(.048,.14,.27,-.17,1.71,-.01);box(.048,.14,.27,.17,1.71,-.01);
-    for(let i=-2;i<=2;i++)box(.048,.062,.38,i*.074,1.805,0);
-    for(let i=-2;i<=2;i++)box(.034,.032,.06,i*.074,1.837,.18);
-    lock(.026,.25,-.11,1.61,-.21,-.10,-.05);lock(.026,.27,.11,1.60,-.21,.08,.05);return;
+    box(B,.30,.15,.048,0,1.70,-.17);
+    box(B,.048,.14,.27,-.17,1.71,-.01);box(B,.048,.14,.27,.17,1.71,-.01);
+    /* 头顶的辫垄会随头部摆动,前额的小结贴头皮固定 */
+    for(let i=-2;i<=2;i++)box(S,.048,.062,.38,i*.074,1.805,0);
+    for(let i=-2;i<=2;i++)box(B,.034,.032,.06,i*.074,1.837,.18);
+    /* 垂到脑后的两束 → T,末端摆幅最大 */
+    lock(T,.026,.25,-.11,1.61,-.21,-.10,-.05);lock(T,.026,.27,.11,1.60,-.21,.08,.05);return;
   }
   if(style==="ponytail"){
-    tuft(.18,.067,.18,0,1.785,0);
-    box(.30,.21,.055,0,1.68,-.165);
-    box(.055,.20,.29,-.165,1.69,0);box(.055,.20,.29,.165,1.69,0);
-    box(.28,.038,.05,0,1.765,.17);
-    tuft(.095,.10,.09,0,1.79,-.235);
-    lock(.074,.31,0,1.60,-.33,-.22,0);
-    lock(.063,.27,.025,1.34,-.355,-.18,.08);
-    tuft(.07,.075,.065,.045,1.18,-.37);return;
+    /* 发冠、后脑、侧发、发际线全部贴头皮固定 —— 发根不漂是这一批的核心 */
+    tuft(B,.18,.067,.18,0,1.785,0);
+    box(B,.30,.21,.055,0,1.68,-.165);
+    box(B,.055,.20,.29,-.165,1.69,0);box(B,.055,.20,.29,.165,1.69,0);
+    box(B,.28,.038,.05,0,1.765,.17);
+    tuft(B,.095,.10,.09,0,1.79,-.235);        // 扎发点(与头皮相连)
+    /* 马尾三节 → T,越往下摆得越多 */
+    lock(T,.074,.31,0,1.60,-.33,-.22,0);
+    lock(T,.063,.27,.025,1.34,-.355,-.18,.08);
+    tuft(T,.07,.075,.065,.045,1.18,-.37);return;
   }
   if(style==="bun"){
-    tuft(.18,.065,.18,0,1.785,0);
-    box(.30,.21,.055,0,1.68,-.165);
-    box(.055,.20,.29,-.165,1.69,0);box(.055,.20,.29,.165,1.69,0);
-    box(.28,.038,.05,0,1.765,.17);
-    tuft(.13,.13,.12,0,1.88,-.20);tuft(.085,.075,.08,0,1.98,-.19);return;
+    tuft(B,.18,.065,.18,0,1.785,0);
+    box(B,.30,.21,.055,0,1.68,-.165);
+    box(B,.055,.20,.29,-.165,1.69,0);box(B,.055,.20,.29,.165,1.69,0);
+    box(B,.28,.038,.05,0,1.765,.17);
+    /* 丸子本体在头顶上方 → S,跟着晃但不影响发根 */
+    tuft(S,.13,.13,.12,0,1.88,-.20);tuft(S,.085,.075,.08,0,1.98,-.19);return;
   }
   if(style==="flattop"){
-    box(.355,.18,.355,0,1.88,0);box(.30,.20,.06,0,1.70,-.165);
-    box(.34,.035,.34,0,1.99,0);box(.065,.20,.30,-.17,1.71,0);box(.065,.20,.30,.17,1.71,0);return;
+    box(S,.355,.18,.355,0,1.88,0);box(B,.30,.20,.06,0,1.70,-.165);
+    box(S,.34,.035,.34,0,1.99,0);box(B,.065,.20,.30,-.17,1.71,0);box(B,.065,.20,.30,.17,1.71,0);return;
   }
   // 默认 short / fade
   const sideH=style==="fade"?.14:.20,sideY=1.79-sideH*.5;
-  tuft(.18,.073,.18,0,1.785,-.005);           // 圆润发冠
-  box(.30,sideH,.055,0,sideY,-.168);           // 后脑包覆
-  box(.055,sideH,.29,-.168,sideY,-.005);       // 左侧包覆
-  box(.055,sideH,.29,.168,sideY,-.005);        // 右侧包覆
-  box(.30,.042,.055,0,1.765,.17);              // 前发际
-  box(.09,.052,.09,-.11,1.77,.18,-.10,0,-.10);// 前额碎发
-  box(.09,.052,.09,.11,1.77,.18,-.10,0,.10);
+  tuft(B,.18,.073,.18,0,1.785,-.005);        // 圆润发冠(贴头皮,固定)
+  box(B,.30,sideH,.055,0,sideY,-.168);        // 后脑包覆
+  box(B,.055,sideH,.29,-.168,sideY,-.005);    // 左侧包覆
+  box(B,.055,sideH,.29,.168,sideY,-.005);     // 右侧包覆
+  box(B,.30,.042,.055,0,1.765,.17);           // 前发际
+  /* 只有前额这两撮碎发给 S —— 它们本来就是翘起来的,轻微摆动更自然 */
+  box(S,.09,.052,.09,-.11,1.77,.18,-.10,0,-.10);
+  box(S,.09,.052,.09,.11,1.77,.18,-.10,0,.10);
 }
 /* 胡子:首次开启时构建,之后只切显隐 */
 function setBeard(o,on,colorHex){

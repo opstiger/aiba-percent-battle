@@ -343,7 +343,7 @@
       /* 先清理默认手部几何，再让 T台 run clip 最后写入上肢四元数；否则
          poseHandJoints 会把 T台手腕重新改成站姿，表现为跑动时手掌丢失/朝地。 */
       if(typeof poseHandJoints==="function")poseHandJoints(player,shotCurves(0));
-      if(typeof poseRunCycle==="function")poseRunCycle(player,P.walkRig,spd,dt,{sway:true});
+      if(typeof poseRunCycle==="function")poseRunCycle(player,P.walkRig,spd,dt,{sway:true,decel:typeof currentWalkDecel==="function"?currentWalkDecel():0});
       player.g.position.y+=P.jump;
       if(typeof regroundRunPose==="function")regroundRunPose(player);
       // 最后几步仍保持步态，但接球手势提前覆盖上肢，形成“转身收步同时迎球”。

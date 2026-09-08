@@ -51,6 +51,8 @@ function startWinCine(win,ball){
   w.ghost.material=w.gold?matGold:matBall;
   w.ghost.visible=true;w.gBlob.visible=true;
   w.ghost.position.copy(w.p0);w.gBlob.position.set(w.p0.x,0.02,w.p0.z);
+  w.spin={mesh:w.ghost,v0:ball&&ball.v0||HOOP.clone().sub(w.p0),backspin:ball&&ball.backspin,sideSpin:ball&&ball.sideSpin};
+  poseBallSpinAtTime(w.spin,0);
   // 电影感:黑边 + 字幕
   $("lbT").style.height="11vh";$("lbB").style.height="11vh";
   $("heroTag").style.display="block";window.AIBASetIcon("heroTag","clapperboard","英雄时刻");
@@ -107,7 +109,7 @@ function updWinCine(dt){
   }else if(tt<WC_T1){
     const prog=(tt-WC_T0)/(WC_T1-WC_T0);
     ballPos=winCineBallAt(prog*w.recEnd); w.ghost.visible=true;
-    w.ghost.rotation.x-=dt*5;
+    poseBallSpinAtTime(w.spin,prog*w.recEnd);
   }else{
     // 已入网,藏球
     ballPos=HOOP; w.ghost.visible=false;w.gBlob.visible=false;
