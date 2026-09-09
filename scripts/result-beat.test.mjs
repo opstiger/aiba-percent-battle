@@ -61,14 +61,27 @@ console.log("\n② 重入不丢 onDone");
 console.log("\n③ 随时可跳过");
 {
   const r=await page.evaluate(async()=>{
-    let n=0;const t0=Date.now();let at=0;
-    AIBAResultBeat.play({score:7,seconds:6,onDone:()=>{n++;at=Date.now()-t0;}});
+    /* 要量的是"点下去到收尾"这一段,不是"从 play() 到收尾"。
+       原来从 t0 起算,把**点击前那 200ms 的等待**也算了进去 —— 而那段是墙钟,
+       主线程一忙就拖长,于是 6 次里能红 2 次,报的却是"跳过不够快"。
+       跳过走的是同步 finish(),真实耗时应该是 0ms 级。 */
+    let n=0,fromClick=-1,fromPlay=0;
+    const t0=Date.now();let clickAt=0;
+    AIBAResultBeat.play({score:7,seconds:6,onDone:()=>{
+      n++;fromPlay=Date.now()-t0;fromClick=clickAt?Date.now()-clickAt:-1;}});
     await new Promise(r=>setTimeout(r,200));
+    clickAt=Date.now();
     dispatchEvent(new PointerEvent("pointerdown",{bubbles:true}));
     await new Promise(r=>setTimeout(r,400));
-    return {n,at,still:AIBAResultBeat.active()};
+    return {n,fromClick,fromPlay,still:AIBAResultBeat.active()};
   });
-  check(r.n===1&&r.at<900,"点一下立刻收尾并进结算("+r.at+"ms)");
+  /* 300ms:实测点击到收尾是 56~125ms(不是我以为的 0ms —— 派发链上还有别的监听器)。
+     对照声明的 6000ms,这个量级毫无歧义就是"立刻";而一旦跳过失效,
+     这个数会直接跳到 5800ms 级,照样红。 */
+  check(r.n===1&&r.fromClick>=0&&r.fromClick<300,
+    "点一下立刻收尾(点击后 "+r.fromClick+"ms,从 play 起算 "+r.fromPlay+"ms)");
+  /* 顺带守住"跳过确实提前了":声明 6 秒,收尾必须远早于它。 */
+  check(r.fromPlay<3000,"跳过确实截断了 6 秒的留白(实测 "+r.fromPlay+"ms)");
   check(r.still===false,"跳过后不再处于留白中");
 }
 

@@ -35,6 +35,12 @@
      skin:0x8d5524,shoe:0xf0f2ed,headband:false,wrist:0xf4c542,sleeve:0x0a0d12,hair:0x101010,hairStyle:"cornrows",beard:false,
      visualProfile:"voxel-pro-01",body:{h:1.02,w:.98}},
     {id:"curry",n:"斯蒂芬·库里",t:"四届总冠军 · 历史三分王",r:97,col:[0x1d428a,0xffc72c],num:30},
+    /* 全表第一个左手球星。hand:"left" 决定四件事:球架摆在哪一侧、取球往哪边转身、
+       整副骨架左右镜像(guy.g.scale.x 取负,第一人称 rig 同理)、球衣号码贴图预翻转
+       —— 不预翻转的话镜像会把号码照出反字。
+       没有这个字段的球星一律按右手处理,所以老球星逐位不变。 */
+    {id:"h13",n:"詹姆斯·哈登",t:"三届得分王 · 左手后撤步",r:93,col:[0xce1141,0xf7f7f7],num:13,hand:"left",
+     skin:0x8d5524,shoe:0xce1141,headband:false,wrist:0xf7f7f7,sleeve:0x111111,hair:0x14100d,hairStyle:"fade",beard:0x1a120c},
     {id:"thompson",n:"克莱·汤普森",t:"四届总冠军 · 单节37分",r:93,col:[0xffc72c,0x1d428a],num:11},
     {id:"allen",n:"雷·阿伦",t:"两届总冠军 · 致命底角",r:91,col:[0x007a33,0xffffff],num:20},
     {id:"bird",n:"拉里·伯德",t:"三届总冠军 · 三届MVP",r:89,col:[0x007a33,0x111111],num:33},
@@ -63,10 +69,69 @@
     a03:{speed:1.04,window:.99,arc:.96,arcLabel:"低平快拔",label:"快速拔起"},
     v15:{speed:.87,window:.92,arc:1.15,arcLabel:"高点大弧",label:"高点出手"},
     t01:{speed:.92,window:.97,arc:.90,arcLabel:"极低平弧",label:"舒展远射"},
+    h13:{speed:.96,window:1.03,arc:1.04,arcLabel:"后撤高弧",label:"左手后撤"},
     ionescu:{speed:1.08,window:1.06,arc:1.05,arcLabel:"高弧快射",label:"快速出手"},
     taurasi:{speed:1,window:1.05,arc:1.03,arcLabel:"标准高弧",label:"冷血出手"},
     "sue-bird":{speed:.99,window:1.04,arc:1,arcLabel:"平稳弧线",label:"节奏出手"}
   });
+
+  /* ---------------- 投篮动作风格 ----------------
+     和上面的 SHOT_PROFILES 分开:那张表管**玩法**(甜区/蓄力速度/弧线),这张表只管
+     **动作外观**。命中与否由 releaseShot 里的 power 对 ideal 决定,和这里一个字都无关 ——
+     所以调这张表不会影响任何人的手感。
+
+     六个量,全部有中性默认值(未列出的球星逐位维持今天的动作):
+       kick     出手后空中踢腿幅度倍数(1=今天)
+       lean     后仰弧度,正=后仰,随 jmp 淡入
+       turn     侧身弧度,正=向非投篮手一侧转开,随 lift 淡入
+       release  持球点高度偏移(米)
+       setPoint 段式。**正=二段式**(抬球先到位、停一下再起跳),**负=一段式**(抬球和起跳连贯)
+       drift    出手后前后位移(米),正=向篮筐
+     幅度刻意压小:后仰/侧身都在 6° 以内,出手点 ±5cm,前后 ±8cm。
+     目的是"看得出是不同的人",不是"换一套动作"。 */
+  const DEFAULT_SHOT_STYLE=Object.freeze({kick:1,lean:0,turn:0,release:0,setPoint:0,drift:0});
+  const SHOT_STYLES=Object.freeze({
+    /* 踢腿是这套差异里**唯一隔着半个球场都看得出来**的量,所以跨度给到 0.10~1.95(19.5 倍)。
+       第一版我把这一项压在 0.20~1.60,而且把麦迪配成了倒数第二小 —— 完全配反了。
+       真实特征:麦迪的招牌就是出手后那记大幅甩腿;库里/汤普森是极紧凑的教科书型,
+       几乎不踢;科比是大踢腿 + 前跳 + 后仰同时出现。 */
+    /* 踢腿最大。麦迪出手后甩腿幅度是全联盟最夸张的之一 */
+    t01:{kick:1.95,lean:.05,turn:.05,release:.02,setPoint:-.03,drift:-.02},
+    miller:{kick:1.70,lean:.03,turn:.09,release:.01,setPoint:.02,drift:.03},
+    /* 大踢腿 + 前跳 + 后仰。前跳和后仰同时出现是他最好认的组合 */
+    k24:{kick:1.55,lean:.10,turn:.11,release:.035,setPoint:.05,drift:.09},
+    v15:{kick:1.25,lean:0,turn:0,release:.05,setPoint:0,drift:0},
+    /* 后撤步:明显向后 + 轻微后仰,踢腿中等 */
+    h13:{kick:.80,lean:.06,turn:.05,release:.01,setPoint:-.02,drift:-.09},
+    j23:{kick:1.10,lean:.08,turn:.07,release:.045,setPoint:.04,drift:-.05},
+    lillard:{kick:.95,lean:.04,turn:0,release:0,setPoint:-.04,drift:-.05},
+    a03:{kick:.70,lean:0,turn:.03,release:-.045,setPoint:-.05,drift:.07},
+    nova24:{kick:.60,lean:0,turn:0,release:0,setPoint:-.02,drift:0},
+    taurasi:{kick:.55,lean:.05,turn:.04,release:0,setPoint:.03,drift:-.02},
+    stojakovic:{kick:.50,lean:0,turn:.02,release:.045,setPoint:.02,drift:0},
+    ionescu:{kick:.40,lean:0,turn:0,release:.01,setPoint:-.04,drift:0},
+    bird:{kick:.35,lean:0,turn:.03,release:.02,setPoint:.06,drift:0},
+    korver:{kick:.20,lean:0,turn:0,release:.02,setPoint:-.03,drift:0},
+    allen:{kick:.18,lean:0,turn:0,release:.01,setPoint:-.02,drift:0},
+    "sue-bird":{kick:.18,lean:0,turn:0,release:-.01,setPoint:-.02,drift:0},
+    /* 库里 / 汤普森:几乎不踢腿。两个人是全表最小值,和麦迪拉开一个数量级 */
+    curry:{kick:.15,lean:0,turn:.02,release:-.01,setPoint:-.06,drift:.05},
+    thompson:{kick:.10,lean:0,turn:0,release:.015,setPoint:0,drift:0}
+  });
+  /* 惯用手。没写 hand 的一律右手 —— 老球星因此逐位不变。 */
+  function shootingHandFor(star){
+    return (star&&star.hand==="left")?"left":"right";
+  }
+  /* 球架摆在**辅助手**那一侧(不是投篮手那一侧):
+       右手球员 → 架子在左边   左手球员 → 架子在右边
+     因为蓄力时躯干朝辅助手一侧打开,架子放在那边伸手才顺。
+     返回值 +1/-1 是沿 props.js 里 perp=(dir.z,0,-dir.x) 的倍数,
+     而 perp 指向球员的**左**手边 —— 所以右手球员取 +1。 */
+  function rackSideFor(star){return shootingHandFor(star)==="left"?-1:1;}
+  function shotStyleFor(star){
+    const raw=SHOT_STYLES[star&&(star.id||star.n)];
+    return raw?Object.assign({},DEFAULT_SHOT_STYLE,raw):DEFAULT_SHOT_STYLE;
+  }
 
   /* 体型档案:h=身高缩放 w=横向体格缩放,按真实球员身材粗调
      (库里1.88偏瘦 / 伯德2.06 / 米勒瘦长 / AI 1.83小个 / KD高瘦 / 女性球员整体更小) */
@@ -116,9 +181,14 @@
     CLASSIC_LEGENDS,
     DEFAULT_SHOT_PROFILE,
     SHOT_PROFILES,
+    SHOT_STYLES,
+    DEFAULT_SHOT_STYLE,
     DEFAULT_BODY,
     BODY_PROFILES,
     shotProfileFor,
+    shotStyleFor,
+    shootingHandFor,
+    rackSideFor,
     shotFlightTime,
     bodyProfileFor
   });

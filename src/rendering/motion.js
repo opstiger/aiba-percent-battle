@@ -6,12 +6,18 @@ function ease01(t){
   return t*t*(3-2*t);
 }
 const mixN=(a,b,k)=>a+(b-a)*k;
-function shotCurves(ph){
+/* style 只影响 lift 的**时间形状**,不改 dip/jmp/over —— 那三条被 check.js 的
+   球心断言和 T台导入姿势锁着。
+   setPoint 正=二段式:抬球提前开始也提前结束(0.22→0.58),到起跳(0.76)之间空出一段
+   "球停在置球点"的保持;负=一段式:抬球推后开始、一直延续到起跳之后,读成一个连贯动作。
+   未配置的球星 setPoint=0,得到的曲线和今天**逐位相同**。 */
+function shotCurves(ph,style){
+  const sp=style&&Number(style.setPoint)||0;
   const loadIn=ease01(ph/0.32);
   const rise=ease01((ph-0.58)/0.28);
   return {
     dip:loadIn*(1-rise),
-    lift:ease01((ph-0.28)/0.48),
+    lift:ease01((ph-(0.28-sp))/(0.48-2*sp)),
     rise,
     jmp:ease01((ph-0.76)/0.22),
     over:Math.max(0,ph-1)
@@ -675,9 +681,13 @@ function applyReleaseFeetPose(o,state,baseFootY){
   for(let index=0;index<2;index++){
     const a=release[index===0?"left":"right"],b=land[index===0?"left":"right"]||a;
     const accent=RELEASE_FEET_AIR_ACCENT[index===0?"left":"right"];
-    const targetHip=mixN(a.hip,b.hip,landBlend)+accent.hip*airAccentWeight;
-    const targetKnee=mixN(a.knee,b.knee,landBlend)+accent.knee*airAccentWeight;
-    const targetAnkle=mixN(a.ankle,b.ankle,landBlend)+accent.ankle*airAccentWeight;
+    /* 个人踢腿幅度。倍数必须乘在**幅度**上,不能乘在 kickWeight 上 ——
+       kickWeight 上面被 clamp(0,1) 卡死,乘出去的 >1(米勒 1.6)会被直接吃掉。 */
+    const kickScale=o.shotStyle&&Number(o.shotStyle.kick);
+    const ks=Number.isFinite(kickScale)?kickScale:1;
+    const targetHip=mixN(a.hip,b.hip,landBlend)+accent.hip*airAccentWeight*ks;
+    const targetKnee=mixN(a.knee,b.knee,landBlend)+accent.knee*airAccentWeight*ks;
+    const targetAnkle=mixN(a.ankle,b.ankle,landBlend)+accent.ankle*airAccentWeight*ks;
     o.legs[index].rotation.x=mixN(o.legs[index].rotation.x,targetHip,targetWeight);
     o.knees[index].rotation.x=mixN(o.knees[index].rotation.x,targetKnee,targetWeight);
     o.ankles[index].rotation.x=mixN(o.ankles[index].rotation.x,targetAnkle,targetWeight);
@@ -1527,6 +1537,11 @@ function poseGuy(o,c,lk,landingImpact){
      over/jmp/land 三项维持原样 —— 最高点的 -0.03*jmp 是 T台导入姿势的一部分，
      被 check.js 的球心断言锁着，不能动。 */
   o.g.rotation.x=-DIP_LEAN*load - 0.06*c.over - 0.03*c.jmp + 0.08*land;
+  /* 个人后仰。只在**离地之后**(乘 c.jmp)叠加,所以蓄力和落地的躯干角一个字没动,
+     check.js 锁的那几帧不受影响;同时脚已经离地,不会影响触地解算。
+     applyReleaseFeetPose 会用 o.g.rotation.x 反算落脚高度,这里的增量它会一并补偿。 */
+  const styleLean=o.shotStyle&&Number(o.shotStyle.lean)||0;
+  if(styleLean)o.g.rotation.x+=styleLean*c.jmp;
   const footY=(poseFootBottomY(o.legs[0].rotation.x+torsoLean,o.knees[0].rotation.x,o.ankles[0].rotation.x,
     o.footRoots&&o.footRoots[0]&&o.footRoots[0].rotation.x,o.toeRoots&&o.toeRoots[0]&&o.toeRoots[0].rotation.x)+
     poseFootBottomY(o.legs[1].rotation.x+torsoLean,o.knees[1].rotation.x,o.ankles[1].rotation.x,
@@ -1565,6 +1580,35 @@ function tuneGuideHandPose(o,c,ready){
 /* 传球接近时恢复 T台导入前的接球路径；球到手后不再一帧切换，先用 0.28 秒
    从接球终点缓冲到旧版 ready/当前蓄力目标。右手目标必须与 incoming 末帧使用
    同一条兼容分支，否则第一人称会在接球瞬间出现一整圈掌面旋转。 */
+/* ---------------- 取球伸手 ----------------
+   poseCatchHands 播的是**编排好的接球动画**,它不朝任何世界坐标伸手 —— 所以光有
+   G.passCatch.target 手是不会过去的。第一版就栽在这:身体转过去了、手还垂着,
+   看起来像"站着等球自己飞过来",正是要修的那个问题。
+
+   这里不做 IK(方块角色不需要,而且会和现有姿势系统打架),而是按目标的**方位**
+   算一个够得着的伸手姿势:抬肩前伸 + 伸肘 + 朝球架一侧外展 + 上身微前倾。
+   reach=0 时一个字都不写,所以不影响任何投篮帧。 */
+function applyRackReachPose(o,reach,side){
+  const k=clamp(Number(reach)||0,0,1);
+  if(!o||!o.arms||!o.elbows||k<=0.001)return false;
+  const s=side<0?-1:1;
+  /* 球架球心约 0.86m、肩高约 1.36m、水平约 0.5m ⇒ 手要往前下方约 45°。
+     IDLE_ARM_X 是垂手,负值把手臂前抬,所以这里减。 */
+  const fwd=-1.05*k;
+  for(let i=0;i<2;i++){
+    const arm=o.arms[i],el=o.elbows[i];
+    if(!arm||!el)continue;
+    arm.rotation.x=mixN(arm.rotation.x,IDLE_ARM_X+fwd,k);
+    /* 两只手都朝球架那一侧外展:近侧展得多、远侧要跨过身体,所以给不同的量,
+       双手才会合拢在同一颗球上,而不是各伸各的。 */
+    const out=(i===0?.34:.20)*s*(i===0?1:-1);
+    arm.rotation.z=mixN(arm.rotation.z,out*k,k);
+    el.rotation.x=mixN(el.rotation.x,-0.28*k,k);
+  }
+  if(o.g)o.g.rotation.x+=0.10*k;                 // 上身跟着够过去一点
+  if(o.g)o.g.userData.rackReach=k;
+  return true;
+}
 function poseCatchHands(o,state,dt){
   if(!o||!o.arms||!o.elbows||!o.handRoots)return;
   const shoot=o.arms[0],guide=o.arms[1],shootEl=o.elbows[0],guideEl=o.elbows[1];
@@ -1660,9 +1704,12 @@ function poseCatchHands(o,state,dt){
   }
   if(o.g)o.g.userData.catchPosePhase="incoming";
 }
-function poseBallPos(v,c){
+/* 出手点高低。偏移随 lift 淡入 —— 持球待机和蓄力的球心保持原值,
+   只有真正举球之后才拉开个人差异。 */
+function poseBallPos(v,c,style){
+  const rel=style&&Number(style.release)||0;
   v.set(-0.13+0.04*c.jmp,
-    0.82+0.23*(1-c.dip)+0.7*c.lift+0.52*c.jmp,
+    0.82+0.23*(1-c.dip)+0.7*c.lift+0.52*c.jmp+rel*c.lift,
     0.34-0.05*c.lift-0.18*c.jmp);
   return v;
 }
@@ -1670,7 +1717,7 @@ function updPose(dt){
   const s=curShot();
   const ideal=s?weatherAdjustedIdeal(s,false):IDEAL;
   poseK=G.charging?G.power/ideal:Math.max(0,poseK-dt*4.5);
-  const base=shotCurves(poseK);
+  const base=shotCurves(poseK,player&&player.shotStyle);
   const phys=globalThis.AIBAShotPhysics
     ?AIBAShotPhysics.update({charging:G.charging,dt,ideal,rate:playerChargeRate(),curve:base})
     :null;
@@ -1723,7 +1770,7 @@ function updPose(dt){
     if(noisePhase>0&&noisePhase<1)applyShotPoseNoise(player,noisePhase,G.shotPoseNoiseKey||0);
     else if(player.g)player.g.userData.shotPoseNoisePhase=noisePhase;
   }
-  poseBallPos(pBall.position,c);
+  poseBallPos(pBall.position,c,player&&player.shotStyle);
 }
 
 /* 主角的走路速度。poseRunCycle 的相位是按**位移**推进的,所以必须喂真实速度;
@@ -1759,40 +1806,92 @@ function passCatchPointAt(pos,face){
   return V3(pos.x-d.x*.25,EYE+P.eyeDip+P.jump-.3,pos.z-d.z*.25);
 }
 let passing=null;
+/* 有球架的点位改成"自己从架上拿",没有球架的点位(百分大战 / 绝杀)仍然是传球。
+   真实三分大赛没人给你传球 —— 架子就摆在手边,抽一颗投一颗。
+
+   实现上**不另造一套状态机**:接球那一整条链路(passing → updPass → poseCatchHands →
+   canShoot → 球进手)已经被测试覆盖得很细,重写风险远大于收益。
+   这里只换两件事 —— 球的起点(架上那颗球的真实位置)和飞行时长(近得多),
+   并且跳过传球人的挥臂和传球音。下游一个字都不用改。 */
+function rackPickupSource(shot){
+  if(!shot||shot.rack==null)return null;
+  const props=window.AIBA.runtime.service("rendering:props");
+  if(!props||!props.takeRackBall)return null;
+  const stands=props.getRackBalls&&props.getRackBalls().regularStands;
+  const stand=stands&&stands[shot.rack];
+  if(!stand||!stand.visible)return null;          // 架子没显示就还是走传球
+  /* 无限球模式(投篮机/百分大战)出手时不摘球,架子会被拿空 —— 空了就补满,
+     视觉上永远是一架球,但"最低那颗被抽走"的动作照常发生。 */
+  const balls=props.getRackBalls().regular[shot.rack]||[];
+  const next=balls.findIndex(m=>m&&m.visible);
+  if(next<0){props.refillRackBalls(shot.rack);}
+  const idx=Number.isFinite(shot.ball)&&shot.ball>=0&&balls[shot.ball]&&balls[shot.ball].visible
+    ?shot.ball:Math.max(0,props.getRackBalls().regular[shot.rack].findIndex(m=>m&&m.visible));
+  return props.takeRackBall(shot.rack,idx);
+}
 function startPass(targetPos,face){
   const s=curShot();if(!s||G.buzzed)return;
   const hasTarget=!!(targetPos&&typeof targetPos.clone==="function");
   const target=hasTarget?targetPos.clone():P.pos.clone();
   const targetFace=Number.isFinite(face)?face:P.face;
-  passer.g.rotation.y=faceTo(passer.g.position,hasTarget?target:P.pos);
-  passerBall.visible=false;
-  const from=V3(passer.g.position.x,1.25,passer.g.position.z);
   const catchP=hasTarget?passCatchPointAt(target,targetFace):eyePos();
   if(!hasTarget)catchP.y-=0.3;
-  const dur=passFlightSeconds(from.distanceTo(catchP));
+  const pickup=rackPickupSource(s);
+  const from=pickup||V3(passer.g.position.x,1.25,passer.g.position.z);
+  if(!pickup){
+    passer.g.rotation.y=faceTo(passer.g.position,hasTarget?target:P.pos);
+    passerBall.visible=false;
+  }
+  /* 取球要给足时间才读得出"转身—伸手—端起来"三拍。0.2 秒只够球闪一下,
+     那正是上一版看起来像"球自己飞过来"的原因。 */
+  const dur=pickup?.62:passFlightSeconds(from.distanceTo(catchP));
   const mesh=new THREE.Mesh(ballGeo,shotMat(s));
   mesh.position.copy(from);scene.add(mesh);
-  passing={mesh,from,to:catchP,t:0,dur};
+  const props=window.AIBA.runtime.service("rendering:props");
+  passing={mesh,from,to:catchP,t:0,dur,pickup:!!pickup,
+    side:(pickup&&props&&props.getRackSide)?props.getRackSide():1};
   G.passCatch={active:true,progress:0,target:catchP.clone()};
-  passer.arms.forEach(a=>{a.rotation.x=-1.5;});
-  passer.elbows.forEach(e=>{e.rotation.x=-0.9;});
-  tween(0.3,k=>{
-    passer.arms.forEach(a=>{a.rotation.x=-1.5+k*1.15;});
-    passer.elbows.forEach(e=>{e.rotation.x=-0.9+k*0.8;});
-  });
-  blipBus(sfxBus||master,300,0.06,"sine",0.07,200);
-  noiseBus(sfxBus||master,0.055,0.035,900,4600);
+  if(!pickup){
+    passer.arms.forEach(a=>{a.rotation.x=-1.5;});
+    passer.elbows.forEach(e=>{e.rotation.x=-0.9;});
+    tween(0.3,k=>{
+      passer.arms.forEach(a=>{a.rotation.x=-1.5+k*1.15;});
+      passer.elbows.forEach(e=>{e.rotation.x=-0.9+k*0.8;});
+    });
+    blipBus(sfxBus||master,300,0.06,"sine",0.07,200);
+    noiseBus(sfxBus||master,0.055,0.035,900,4600);
+  }else{
+    noiseBus(sfxBus||master,0.035,0.02,1400,5200);   // 抓球的短促摩擦声,不是传球音
+  }
 }
 function updPass(dt){
   if(!passing)return;
   passing.t+=dt;const k=Math.min(1,passing.t/passing.dur);
   const p=passing;
-  p.mesh.position.lerpVectors(p.from,p.to,k);
-  p.mesh.position.y+=Math.sin(k*Math.PI)*0.65;
+  if(p.pickup){
+    /* 取球分三拍,球**不是**一开始就飞:
+         0 ~ HOLD   球稳稳待在架上,手(poseCatchHands 跟着 passCatch.target 走)伸过去
+         HOLD ~ 1   抓到了,球和手一起收回持球位
+       上一版是全程线性插值 —— 球在第一帧就离架起飞,所以怎么看都是"飞过来"。 */
+    const HOLD=.46;
+    const kb=k<HOLD?0:ease01((k-HOLD)/(1-HOLD));
+    p.mesh.position.lerpVectors(p.from,p.to,kb);
+    p.mesh.position.y+=Math.sin(kb*Math.PI)*0.05;
+    /* 转身量:伸手过程中转过去,收球过程中转回来。峰值 0.5rad(29°)——
+       "轻微转身"够看清架子,又不会把人转到背对篮筐。 */
+    const turn=k<HOLD?ease01(k/HOLD):1-ease01((k-HOLD)/(1-HOLD));
+    G.pickupTurn=p.side*0.50*turn;
+    G.pickupReach=turn;
+  }else{
+    p.mesh.position.lerpVectors(p.from,p.to,k);
+    p.mesh.position.y+=Math.sin(k*Math.PI)*0.65;
+    G.pickupTurn=0;G.pickupReach=0;
+  }
   if(G.passCatch){G.passCatch.active=k<1;G.passCatch.progress=k;G.passCatch.target.copy(p.mesh.position);}
   p.mesh.rotation.x-=dt*10;
   if(k>=1){
-    scene.remove(p.mesh);passing=null;passerBall.visible=true;
+    scene.remove(p.mesh);const wasPickup=p.pickup;passing=null;G.pickupTurn=0;G.pickupReach=0;
+    if(!wasPickup)passerBall.visible=true;
     if(G.passCatch){
       G.passCatch.active=true;G.passCatch.settling=true;G.passCatch.settle=0;G.passCatch.progress=1;
     }
@@ -1888,7 +1987,7 @@ function updWalk(dt){
 globalThis.AIBASetShotAnimationMode=setShotAnimationMode;
 globalThis.AIBAShotAnimation=Object.freeze({getMode:getShotAnimationMode,setMode:setShotAnimationMode,isTstage:isTstageShotAnimation,isReleaseFeet:isReleaseFeetShotAnimation});
 window.AIBA.runtime.register("rendering:motion",Object.freeze({
-  ease01,shotCurves,poseFootBottomY,runCadence,runLegAngles,runFootSpan,solveRunSwing,runFootPhase,runLegFromFoot,solveRunLegTarget,runFootGroundY,runLiftFootSole,poseRunCycle,regroundRunPose,poseRunFingers,poseHandJoints,setFingerChainPose,fingerCurlValue,poseThumbJoints,setFootRoll,resetFootRoll,poseShootingHandToBall,poseGuidePalmToBall,applyHandFollowThroughPose,captureShotPose,applyShotSetPose,applyActionTimingPose,applyShotPoseNoise,applyShotFollowThroughPose,applyTstageShotCyclePose,tstageShotCycleDuration,tstageShotLowerBody,applyReleaseFeetPose,tstageStaticPose,tstageDunkBallLocal,applyTstageDunkPose,getShotAnimationMode,setShotAnimationMode,isTstageShotAnimation,isReleaseFeetShotAnimation,poseGuy,poseBallPos,shotStanceBlend,tuneGuideHandPose,poseCatchHands,updPose,
+  ease01,shotCurves,applyRackReachPose,poseFootBottomY,runCadence,runLegAngles,runFootSpan,solveRunSwing,runFootPhase,runLegFromFoot,solveRunLegTarget,runFootGroundY,runLiftFootSole,poseRunCycle,regroundRunPose,poseRunFingers,poseHandJoints,setFingerChainPose,fingerCurlValue,poseThumbJoints,setFootRoll,resetFootRoll,poseShootingHandToBall,poseGuidePalmToBall,applyHandFollowThroughPose,captureShotPose,applyShotSetPose,applyActionTimingPose,applyShotPoseNoise,applyShotFollowThroughPose,applyTstageShotCyclePose,tstageShotCycleDuration,tstageShotLowerBody,applyReleaseFeetPose,tstageStaticPose,tstageDunkBallLocal,applyTstageDunkPose,getShotAnimationMode,setShotAnimationMode,isTstageShotAnimation,isReleaseFeetShotAnimation,poseGuy,poseBallPos,shotStanceBlend,tuneGuideHandPose,poseCatchHands,updPose,
   startPass,updPass,walkTo,updWalk,
   getState:()=>({poseK,landT,passing,walk})
 }));

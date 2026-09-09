@@ -350,6 +350,13 @@ function updPlayCam(dt){
     }
     fpLookY=fpLookY==null?fpTarget:fpLookY+(fpTarget-fpLookY)*Math.min(1,dt*7);
     rig.look.set(HOOP.x,fpLookY,HOOP.z);
+    /* 取球时视线要真的转向球架。第一人称的 look 一直死盯 HOOP,
+       所以身体转过去了、镜头没动 —— 玩家在 FP 下永远看不到架子,
+       球仍然是"凭空出现在手里"。这里按取球进度把视线朝球(还在架上)插过去,
+       0.85 的上限保证篮筐不会完全出画,收球时自己插回来。 */
+    const reach=Number(G.pickupReach)||0;
+    if(reach>0.001&&G.passCatch&&G.passCatch.target)
+      rig.look.lerp(G.passCatch.target,Math.min(.85,reach*.85));
     camSnap=true;
   }else if(CAM.mode===1){
     if(isBattle||isRush||isContest){

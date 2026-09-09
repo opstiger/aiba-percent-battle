@@ -105,6 +105,12 @@ function shotProfileFor(star){
   return CONFIG.shotProfileFor?CONFIG.shotProfileFor(star):(SHOT_PROFILES[star&&(star.id||star.n)]||DEFAULT_SHOT_PROFILE);
 }
 function playerShotProfile(){return shotProfileFor(G.myStar);}
+/* 动作风格。和 shotProfileFor 并列:那个管手感,这个只管动作外观。
+   未列出的球星拿到全中性值,逐位维持今天的动作。 */
+const DEFAULT_SHOT_STYLE=CONFIG.DEFAULT_SHOT_STYLE;
+function shotStyleFor(star){
+  return CONFIG.shotStyleFor?CONFIG.shotStyleFor(star):DEFAULT_SHOT_STYLE;
+}
 function playerSweetZone(){
   const base=DIFFS[G.diff].zone*playerShotProfile().window;
   return base*((G.practice||G.tutorial||G.interactiveTutorial)?1.5:1);

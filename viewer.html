@@ -58,6 +58,7 @@ window.V3=function(x,y,z){return new THREE.Vector3(x,y,z);};
 <script src="src/core/runtime.js"></script>
 <script src="src/config.js"></script>
 <script src="src/rendering/materials.js"></script>
+<script src="src/rendering/model-detail.js?v=2.27.1-rackbox"></script>
 <script src="src/rendering/characters.js"></script>
 <script src="src/rendering/equipment-visuals.js"></script>
 <script src="src/gear.js"></script>
@@ -84,6 +85,7 @@ const renderer=window.renderer;   // 复用上面那个(建模模块加载时就
 renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
 stage.appendChild(renderer.domElement);
 const scene=new THREE.Scene();
+window.scene=scene; // Shared character module attaches its grounding shadow to this scene.
 const camera=new THREE.PerspectiveCamera(28,1,.1,60);
 
 /* 中性摄影棚布光:一盏主光 + 一盏补光 + 环境光。刻意不带任何场景色,
@@ -238,6 +240,7 @@ build();buildUI();resize();
 /* 给 capture.mjs 一个明确的"画完了"信号,不用靠 sleep 猜 */
 window.__viewerReady=true;
 window.__viewerDraw=draw;
+window.__viewerModel=()=>({guy,camera,root}); // Read/use actual rig for modelling QA, not a duplicate model.
 /* 连画 n 帧测单帧耗时。viewer 平时是按需重绘的,不跑 rAF 循环,
    所以要测帧率必须显式连画。返回中位数,避免第一帧编译着色器的尖峰污染结果。 */
 window.__viewerBench=function(n){

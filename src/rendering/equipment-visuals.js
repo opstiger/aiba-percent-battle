@@ -271,7 +271,9 @@
     const main=material(color),dark=material(shade(color,.23)),light=material(0xf3f6f6),accent=material(shade(color,1.25),{emissive:color,emissiveIntensity:.06});
     (guy.shoes||[]).forEach(shoe=>shoe.material.color.setHex(color));
     (guy.ankles||[]).forEach((ankle,index)=>{
-      const group=new THREE.Group(),side=index===0?-1:1;ankle.add(group);groups.push(group);
+      const group=new THREE.Group(),side=index===0?-1:1;
+      const articulated=!!(global.AIBAModelDetail?.enabled&&guy.footRoots?.[index]&&guy.toeRoots?.[index]);
+      (articulated?guy.footRoots[index]:ankle).add(group);groups.push(group);
       if(id==="shoes-blaze"){
         box(group,.038,.072,.19,side*.096,-.012,.025,accent,0,0,side*.12);
         ellipsoid(group,.064,.014,.055,0,-.004,.17,light);
@@ -294,6 +296,20 @@
         cylinder(group,.052,.064,.065,8,0,-.035,-.13,accent,Math.PI/2,0,0);
         ellipsoid(group,.072,.016,.052,0,-.01,.18,light);
         box(group,.035,.075,.18,side*.096,-.005,.025,main,0,0,side*.08);
+      }
+      if(articulated){
+        group.children.forEach(mesh=>{
+          const p=mesh.geometry.parameters;
+          // Keep the four equipment identities, but their overlays should read as
+          // thin reinforcing panels, not a second complete shoe over the base shoe.
+          if(p.width&&p.width<.05&&p.depth>.14){mesh.scale.x=.65;mesh.scale.y=.65;}
+          if(p.width>.20&&mesh.position.y<-.06)mesh.scale.y=.45;
+          if(!p.width&&mesh.position.z>=.14)mesh.scale.y*=.65;
+        });
+        const toe=guy.toeRoots[index],toeKit=new THREE.Group();toeKit.name="shoeToeEquipment";
+        toeKit.position.copy(toe.position).multiplyScalar(-1);toe.add(toeKit);groups.push(toeKit);
+        // Only front-cap pieces move with toe flexion. Midsole and heel remain on foot.
+        group.children.slice().filter(m=>m.position.z>=.14).forEach(m=>toeKit.add(m));
       }
     });
     disposeUnusedMaterials(groups,[main,dark,light,accent]);

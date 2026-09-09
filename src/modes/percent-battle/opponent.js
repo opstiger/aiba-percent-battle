@@ -138,13 +138,16 @@
     if(!spot||!guy)return;
     if(spot.super&&(G.superStock||0)<=0){OPP.forceMove=true;oppPickSpot();return;}
     cancelOppPass(false);
-    OPP.possessionSuperChanceId=spot.super?(G.superChanceId||0):0;
+    /* 对手也走"拿球即认领":谁先站上中场谁投,另一边这一轮就没有球。 */
+    OPP.possessionSuperChanceId=spot.super
+      ?(battle.battleClaimSuperChance?battle.battleClaimSuperChance("opp"):(G.superChanceId||0))
+      :0;
     guy.ball.visible=false;oppPasser.g.visible=true;
     oppPasser.g.rotation.y=faceTo(oppPasser.g.position,OPP.pos);
     oppPasserBall.visible=false;
     const from=V3(oppPasser.g.position.x,1.25,oppPasser.g.position.z);
     const to=OPP.pos.clone();to.y=1.38;
-    const mesh=new global.THREE.Mesh(ballGeo,spot.super?matGold:(spot.deep!=null?matDeep:matBall));
+    const mesh=new global.THREE.Mesh(ballGeo,spot.super?superBallMat():(spot.deep!=null?matDeep:matBall));
     mesh.position.copy(from);scene.add(mesh);
     OPP.ballOut={mesh,from,to,t:0,dur:clamp(.3+from.distanceTo(to)*.045,.42,.78)};
     OPP.phase="receive";OPP.t=0;OPP.fired=false;
@@ -154,7 +157,7 @@
   function oppBeginLoad(){
     const spot=BATTLE_SPOTS[OPP.spotIdx],guy=OPP.guy;
     attachOppBall();
-    guy.ball.visible=true;guy.ball.material=spot.super?matGold:(spot.deep!=null?matDeep:matBall);
+    guy.ball.visible=true;guy.ball.material=spot.super?superBallMat():(spot.deep!=null?matDeep:matBall);
     OPP.phase="load";OPP.t=0;OPP.fired=false;OPP.shotPose=null;
     OPP.shootDur=clamp((0.9-DIFFS[G.diff].ai*0.5)/shotProfileFor(G.myStar||OPP.o).speed,0.5,1.08);
   }
@@ -213,7 +216,7 @@
     const flightTime=shotFlightTime(0.78+distance*0.062,G.myStar||opponent,spot);
     const velocity=V3((target.x-start.x)/flightTime,(target.y-start.y)/flightTime+4.9*flightTime,(target.z-start.z)/flightTime);
     OPP.shotPose=captureShotPose?captureShotPose(OPP.guy):null;
-    const mesh=new global.THREE.Mesh(ballGeo,spot.super?matGold:(spot.deep!=null?matDeep:matBall));
+    const mesh=new global.THREE.Mesh(ballGeo,spot.super?superBallMat():(spot.deep!=null?matDeep:matBall));
     mesh.position.copy(start);scene.add(mesh);
     const blob=new global.THREE.Mesh(blobGeo,blobMat.clone());blob.rotation.x=-Math.PI/2;blob.position.set(start.x,0.02,start.z);scene.add(blob);
     balls.push({mesh,blob,p0:start.clone(),v0:velocity,tf:flightTime,t:0,phase:"fly",outcome:made?"swish":"rimout",
@@ -221,8 +224,14 @@
       rec:[],timeLeft:0,hot:false,startPos:start.clone(),silent:true,opp:true,sp:spot,collided:false,superChanceId:OPP.possessionSuperChanceId||0});
     OPP.guy.ball.visible=false;
   }
+  /* 对手的 10 分球也用本次机会的随机色,和玩家看到的是同一颗球。 */
+  function superBallMat(){
+    const mats=runtime&&runtime.service("rendering:materials");
+    return mats&&mats.superBallMaterial?mats.superBallMaterial(G.superSkin||0):matGold;
+  }
   function oppScore(ball){
     if(ball.super)battle.battleConsumeSuperChance(ball);
+    else if(battle.battleNoteNormalScore)battle.battleNoteNormalScore();
     const previousMe=G.score,previousOpponent=G.battleOppScore;
     G.battleOppScore+=ball.val;triggerStreetCrowdReaction("oppMake",ball.val);bloomOnScore(ball.val);
     const ending=G.battleOppScore>=BATTLE_TARGET;if(ending)beginFinalAudioWindow();
@@ -262,11 +271,11 @@
         sBounce();oppBeginLoad();
       }
     }else if(OPP.phase==="load"){
-      const phase=Math.min(1.05,OPP.t/OPP.shootDur*1.05),curve=shotCurves(phase);
+      const phase=Math.min(1.05,OPP.t/OPP.shootDur*1.05),curve=shotCurves(phase,guy&&guy.shotStyle);
       const groundLift=poseGuy(guy,curve,0);
       const stance=shotStanceBlend(curve,true);
       guy.g.position.set(OPP.pos.x,groundLift+Math.max(0,curve.jmp*0.55-curve.over*0.28),OPP.pos.z);
-      guy.g.rotation.y=faceTo(OPP.pos,HOOP)+SHOT_STANCE_YAW*stance;
+      guy.g.rotation.y=faceTo(OPP.pos,HOOP)+(guy&&guy.lefty?-1:1)*(SHOT_STANCE_YAW+(guy&&guy.shotStyle&&Number(guy.shotStyle.turn)||0))*stance;
       // poseGuy 内部已由 applyShotSetPose 统一写入与玩家相同的松手前姿势。
       /* fired 先置位、再调 oppFireBall,一旦它抛异常就永远停在 load:
          守卫是 `!OPP.fired`,而 phase="land" 那一步已经被异常跳过 —— 对手会僵在
@@ -280,12 +289,12 @@
       }
     }else if(OPP.phase==="land"){
       const progress=Math.min(1,OPP.t/.36),settle=progress*progress;
-      const curve=shotCurves(1.02*(1-settle));
+      const curve=shotCurves(1.02*(1-settle),guy&&guy.shotStyle);
       const landing=progress>.72?Math.sin((progress-.72)/.28*Math.PI)*.12:0;
       const poseY=poseGuy(guy,curve,landing);
       const jump=Math.max(0,curve.jmp*0.55-curve.over*0.28);
       guy.g.position.set(OPP.pos.x,poseY+jump,OPP.pos.z);
-      guy.g.rotation.y=faceTo(OPP.pos,HOOP)+SHOT_STANCE_YAW*shotStanceBlend(curve,false);
+      guy.g.rotation.y=faceTo(OPP.pos,HOOP)+(guy&&guy.lefty?-1:1)*(SHOT_STANCE_YAW+(guy&&guy.shotStyle&&Number(guy.shotStyle.turn)||0))*shotStanceBlend(curve,false);
       const extend=ease01(OPP.t/.105),recover=ease01((OPP.t-.105-.24)/.38);
       const followState={active:OPP.t<.105+.24+.38,extend,follow:extend*(1-recover),recover};
       if(global.AIBAShotMotion&&OPP.shotPose)global.AIBAShotMotion.applyFollowThroughPose(guy,followState,OPP.shotPose);

@@ -185,6 +185,35 @@ const matGold=new THREE.MeshPhongMaterial({map:texGold,bumpMap:texBallRelief,bum
 const matDeep=new THREE.MeshPhongMaterial({map:texDeep,bumpMap:texBallRelief,bumpScale:.0018,shininess:5,specular:0x183f1b});
 const ballGeo=new THREE.SphereGeometry(0.16,32,20);
 
+/* ---------------- 中场 10 分球配色 ----------------
+   原来固定荧光绿。10 分机会是全场最稀有的事件,却和普通深远球共用一个外观,
+   出现时缺少"这颗球不一样"的第一眼信号。改成每次机会随机换一色。
+   贴图**懒加载**:五套 512x256 的球皮如果开机就全建,启动多花约 40ms 且大部分用不上;
+   真正开出 10 分机会才建,并且建过一次就缓存。 */
+const SUPER_BALL_SKINS=Object.freeze([
+  {n:"荧光绿",base:"#54e05a",dark:"#1f7a26",spec:0x183f1b},
+  {n:"斩男粉",base:"#ff5fa2",dark:"#8c1f4f",spec:0x4a1830},
+  {n:"水晶蓝",base:"#3fb9ff",dark:"#12557f",spec:0x143a52},
+  {n:"土豪金",base:"#ffc02e",dark:"#8a5c07",spec:0x4d3508},
+  {n:"暴力紫",base:"#a86bff",dark:"#4a1f8c",spec:0x2e1852}
+]);
+const superBallMats=new Array(SUPER_BALL_SKINS.length).fill(null);
+function superBallMaterial(index){
+  const i=((index|0)%SUPER_BALL_SKINS.length+SUPER_BALL_SKINS.length)%SUPER_BALL_SKINS.length;
+  if(!superBallMats[i]){
+    const c=SUPER_BALL_SKINS[i];
+    superBallMats[i]=new THREE.MeshPhongMaterial({map:realBallTex(c.base,c.dark),
+      bumpMap:texBallRelief,bumpScale:.0018,shininess:5,specular:c.spec});
+  }
+  return superBallMats[i];
+}
+/* 走可复现随机通道:?seed=N 固定时,同一局开出的颜色序列也固定。 */
+function rollSuperBallSkin(){
+  const roll=typeof aibaRoll==="function"?aibaRoll():Math.random();
+  return Math.floor(roll*SUPER_BALL_SKINS.length)%SUPER_BALL_SKINS.length;
+}
+
 window.AIBA.runtime.register("rendering:materials",Object.freeze({
-  pixTex,realBallTex,triBallTex,texBall,texGold,texDeep,texBallRelief,matBall,matGold,matDeep,ballGeo
+  pixTex,realBallTex,triBallTex,texBall,texGold,texDeep,texBallRelief,matBall,matGold,matDeep,ballGeo,
+  SUPER_BALL_SKINS,superBallMaterial,rollSuperBallSkin
 }));

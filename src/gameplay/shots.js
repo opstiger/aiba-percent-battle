@@ -91,7 +91,13 @@ function shotBase(shot){
 }
 function shotMat(shot){
   if(!shot)return matBall;
-  return (shot.super||shot.deep!=null)?matDeep:(shot.money?matGold:matBall);
+  /* 10 分球用本次机会随机到的颜色;深远球仍是原来的绿色。
+     原来两者共用 matDeep,10 分球在画面上和普通深远球分不开。 */
+  if(shot.super){
+    const mats=window.AIBA.runtime.service("rendering:materials");
+    return mats&&mats.superBallMaterial?mats.superBallMaterial(G.superSkin||0):matDeep;
+  }
+  return shot.deep!=null?matDeep:(shot.money?matGold:matBall);
 }
 function shotIdeal(shot){
   if(shot&&shot.super)return IDEAL_HALF;
@@ -257,10 +263,10 @@ function releaseShot(power,shot){
      把它落到篮筐外缘，给玩家一个可读的擦框/砸框反馈，结果仍然严格算 miss。 */
   const dramaticMiss=outcome==="miss"&&al>.3;
   // hide rack ball in contest mode; battle mode has infinite balls at each spot.
-  if(!isBattle&&!isRush){
-    if(shot.deep!=null)deepBalls[shot.deep].visible=false;
-    else{const m=rackBalls[shot.rack][shot.ball];if(m)m.visible=false;}
-  }
+  /* 常规架上的球现在是**拿球那一刻**就从架上消失的(motion.js 的 rackPickupSource),
+     这里再摘一次就是重复处理 —— 会把已经滚到新槽位的另一颗球误当成本次这颗藏掉。
+     深远球没有架子、仍然是"出手即消失"。 */
+  if(!isBattle&&!isRush&&shot.deep!=null)deepBalls[shot.deep].visible=false;
   // spawn from the hands (any camera mode)
   const p0=new THREE.Vector3();ballWorldPos(p0);
   handBall.visible=false;pBall.visible=false;
@@ -389,6 +395,7 @@ function madeBall(b){
   if(G.mode==="battle"){
     if(G.state!=="battle"||G.battleOver)return;
     if(b.super)battleConsumeSuperChance(b);
+    else battleNoteNormalScore();
     const _pm=G.score,_po=G.battleOppScore;
     G.score+=b.val;G.streak++;G.missRun=0;
     bloomOnScore(b.val);

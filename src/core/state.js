@@ -10,6 +10,8 @@ const G={
   semiScore:0,finalScore:0,tiebreakN:0,cheer:0,tNow:0,
   battleSpot:2,battleOpp:null,battleOppScore:0,battleNext:1.2,battleOver:false,finalRun:false,
   battleStock:null,battleReadyAt:null,superStock:0,superSeenMe:0,superSeenOpp:0,
+  superStreak:0,superTakenBy:null,superSkin:0,
+  pickupTurn:0,pickupReach:0,
   superChanceId:0,superResolvedId:0,battleChargeSuperChanceId:0,
   rush:null,rushResultRecord:null,audioCueLast:null,passCatch:null,
   shotPoseNoiseKey:0,lastTransition:null

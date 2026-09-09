@@ -2,7 +2,10 @@ CLAUDE.md
 *.DS_Store
 .DS_Store
 backup/
+# QA 截图/审计产物：本地证据,不进仓库(当前已 122MB)
+artifacts/
 docs/*
+!docs/MODELING_PLAN-20260908.md
 !docs/ARCHITECTURE.md
 !docs/MODULAR_REFACTOR_PLAN.md
 !docs/PROJECT_STATE.md

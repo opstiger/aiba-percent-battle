@@ -139,11 +139,12 @@ function buildHoop(){
   const conn=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.07,0.32),rimM);
   conn.position.set(0,3.05,-8.42);grp.add(conn);
   // net
-  netMesh=new THREE.Mesh(
+  netMesh=window.AIBAModelDetail?.enabled?AIBAModelDetail.net():new THREE.Mesh(
     new THREE.CylinderGeometry(0.28,0.16,0.45,8,3,true),
     new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:0.75}));
   netMesh.position.set(HOOP.x,HOOP.y-0.26,HOOP.z);grp.add(netMesh);
   prepareNet(netMesh);
+  if(window.AIBAModelDetail?.enabled)AIBAModelDetail.hoopHardware(grp,BOARD_Z,BASE_Z,1,bFrameM);
   scene.add(grp);
 
   // 远端装饰篮筐：让场馆在俯拍/回放里真正读成一块全场。
@@ -166,6 +167,14 @@ function buildHoop(){
   farBaseBox.position.set(0,0.21,FAR_BASE_Z-0.15);farGrp.add(farBaseBox);
   const farBoard=new THREE.Mesh(new THREE.BoxGeometry(1.9,1.1,0.12),boardMat);
   farBoard.position.set(0,3.5,COURT.farBaseline-.96);farGrp.add(farBoard);
+  if(window.AIBAModelDetail?.enabled){
+    // Far board had no frame. Match the existing near board, without moving glass.
+    for(const sign of [-1,1]){
+      AIBAModelDetail.box(farGrp,1.96,.09,.16,0,3.5+sign*.55,FAR_BOARD_Z,bFrameM);
+      AIBAModelDetail.box(farGrp,.09,1.14,.16,sign*.95,3.5,FAR_BOARD_Z,bFrameM);
+    }
+    AIBAModelDetail.hoopHardware(farGrp,FAR_BOARD_Z,FAR_BASE_Z,-1,bFrameM);
+  }
   for(let i=0;i<8;i++){
     const a=i/8*Math.PI*2;
     const seg=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.07,0.09),rimM);
@@ -174,7 +183,7 @@ function buildHoop(){
   }
   const farConn=new THREE.Mesh(new THREE.BoxGeometry(.12,.07,.32),rimM);
   farConn.position.set(0,HOOP.y,COURT.farHoopZ+.42);farGrp.add(farConn);
-  farNet=new THREE.Mesh(
+  farNet=window.AIBAModelDetail?.enabled?AIBAModelDetail.net():new THREE.Mesh(
     new THREE.CylinderGeometry(.28,.16,.45,8,3,true),
     new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:.6}));
   farNet.position.set(0,HOOP.y-.26,COURT.farHoopZ);farGrp.add(farNet);

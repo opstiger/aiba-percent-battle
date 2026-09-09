@@ -54,6 +54,10 @@ function buildStands(){
      即使暗部也能读得出是材料而不是洞。 */
   const stepColor=new THREE.Color(0x2b3242);
   const up=new THREE.Vector3(0,1,0),mm=new THREE.Matrix4();
+  /* 阶段 5：顺手把每条通道两侧的扶手落点收集起来。
+     通道中心在**两个块之间**,即 ac_s + sector/2;扶手立在通道净宽的两个边上。
+     这里只记坐标,几何交给 model-detail.railParts 生成并烘成单个网格。 */
+  const railLanes=AIBAModelDetail?.enabled?Object.create(null):null;
   for(let ti=0;ti<BOWL_TIERS.length;ti++){
     const T=BOWL_TIERS[ti];
     for(let r=0;r<T.rows;r++){
@@ -69,6 +73,18 @@ function buildStands(){
          改成块内按角度细分、box 首尾相接(不留缝),块与块之间才是通道。 */
       const skew=T.rows>1?k*AISLE_SKEW:0;
       const sector=Math.PI*2/AISLE_COUNT;
+      if(railLanes){
+        for(let s=0;s<AISLE_COUNT;s++){
+          const aa=((s+1)/AISLE_COUNT)*Math.PI*2+skew;      // 通道中心角
+          const [ax,az]=bowlPt(aa,rx,rz);
+          const dA=(AISLE_W/2)/(Math.hypot(ax,az)||1);
+          for(const side of [-1,1]){
+            const [px,pz]=bowlPt(aa+dA*side,rx,rz);
+            const key=ti+"|"+s+"|"+side;
+            (railLanes[key]||(railLanes[key]=[])).push([px,y,pz]);
+          }
+        }
+      }
       /* 通道半角。除了净宽本身,还要补偿 STEP_OVERLAP 让相邻 box 多伸出去的那一截,
          否则实际净宽会被吃掉 —— 上层段长大,被吃掉得更多。 */
       const overAng=(Math.PI*2/BOWL_SEG)*(STEP_OVERLAP-1)/2;
@@ -116,6 +132,14 @@ function buildStands(){
     }
   }
   if(stepParts.length)bakeVoxelMesh(indoorRoot,stepParts);
+  if(railLanes){
+    /* 扶手 + 记者区合并成**一个**网格。它们都在球场外围、不投有效阴影,
+       所以显式关掉 castShadow：阴影 pass 的提交量按计划要压,不靠减观众。 */
+    const parts=AIBAModelDetail.railParts(Object.values(railLanes),0x8d97a6,0.92)
+      .concat(AIBAModelDetail.pressRow(COURT.nearBaseline-0.95,[-5.6,-4.1,-2.6,2.6,4.1,5.6]));
+    const mesh=bakeVoxelMesh(indoorRoot,parts,{materialKey:"arenaFixtures"});
+    mesh.name="arenaFixtures";mesh.castShadow=false;mesh.receiveShadow=false;
+  }
   // banner walls
   const banners=[["aiBA PERCENT BATTLE","#13213f","#ffd23f"],["MINE-DEW 深远三分区","#0c3a14","#9dff8d"],["像素之夜 PIXEL NIGHT","#3a1240","#ff9df1"]];
   /* 横幅墙外移并**抬高到看台上方**(y 3.6→9.2)。

@@ -64,7 +64,8 @@
     G.shots=[];G.canShoot=false;G.blindToasted=false;G.cutQ=[];G.cutAway=null;G.missRun=0;G.posted=[];
     G.battleSpot=2;G.battleOppScore=0;G.battleNext=1.15;G.battleOver=false;
     G.battleStock=[5,5,5,5,5,1,1,0];G.battleReadyAt=Array(BATTLE_SPOTS.length).fill(0);
-    G.superStock=0;G.superSeenMe=0;G.superSeenOpp=0;G.superChanceId=0;G.superResolvedId=0;G.battleChargeSuperChanceId=0;G._battleUiAcc=0;
+    G.superStock=0;G.superSeenMe=0;G.superSeenOpp=0;G.superChanceId=0;G.superResolvedId=0;
+    G.superStreak=0;G.superTakenBy=null;G.superSkin=0;G.battleChargeSuperChanceId=0;G._battleUiAcc=0;
     G.battleCalls={};G.battleScoreEvents=0;G.battleCutCount=0;G.battleLastCutAt=-1e9;G.battleLastCutEvent=-1e9;G.battleCutLockUntil=0;
     G.battleClock=null;G.battleResultRecord=null;G.battleControl=VISION.enabled?"vision":"touch";
     G.stats={best:0,moneyM:0,moneyT:0,deepM:0,deepT:0};

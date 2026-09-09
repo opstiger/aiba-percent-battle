@@ -104,6 +104,9 @@
       fpHidden.forEach(c=>{c.visible=false;});
     }
     const rig=new THREE.Group();rig.name="fpSharedPoseRig";rig.visible=false;
+    /* 第一人称的手是真实手臂的克隆,挂在 scene 下 —— **不会**继承球员身上的镜像缩放。
+       不在这里补一次,就会出现"第三人称左手投、第一人称右手投"。 */
+    if(player.lefty)rig.scale.x=-1;
     const shoot=mirrorArm(player.arms[0],"fpShootingArm");
     const guide=mirrorArm(player.arms[1],"fpGuideArm");
     rig.add(shoot.clone,guide.clone);scene.add(rig);
@@ -303,7 +306,8 @@
     const s=curShot();
     const ideal=s?weatherAdjustedIdeal(s,false):IDEAL;
     poseK=G.charging?G.power/ideal:Math.max(0,poseK-dt*4.5);
-    const base=shotCurves(poseK);
+    const style=player&&player.shotStyle||null;
+    const base=shotCurves(poseK,style);
     const tutorialHold=!!(global.AIBAInteractiveTutorial&&
       typeof global.AIBAInteractiveTutorial.isHoldingRelease==="function"&&
       global.AIBAInteractiveTutorial.isHoldingRelease());
@@ -332,7 +336,27 @@
     const stance=shotStanceBlend(c,G.canShoot||G.charging);
     // 第三人称
     player.g.position.set(P.pos.x,0,P.pos.z);
-    player.g.rotation.y=P.face+(P.walking?0:SHOT_STANCE_YAW*stance);
+    /* 个人侧身直接加在**现成的** SHOT_STANCE_YAW 上。
+       不能单独往 rotation.y 上累加:那是朝向,每帧被整值重写,累加会越转越歪。 */
+    const styleTurn=style&&Number(style.turn)||0;
+    /* G.pickupTurn 是取球时朝球架转过去的那一下(updPass 里按三拍算好的)。
+       它加在**朝向**上而不是姿势里,所以第一人称的视线会跟着一起转过去 ——
+       玩家在第一人称下能看见架子、看见自己伸手,而不是球凭空出现在手里。 */
+    const pickupTurn=Number(G.pickupTurn)||0;
+    /* 侧身和风格 turn 是**世界偏航**,不吃角色身上的局部 X 镜像 —— 左手球员必须显式取反,
+       否则身体会朝错的一侧打开(投篮手在左、却仍然向左开肩)。
+       pickupTurn 不在这里取反:它的方向已经由球架侧(rackSideFor)决定过一次了,
+       再反一次就会转向反方向、背对球架。 */
+    const mir=player.lefty?-1:1;
+    player.g.rotation.y=P.face+pickupTurn+(P.walking?0:mir*(SHOT_STANCE_YAW+styleTurn)*stance);
+    /* 出手后的前后位移。沿"球员→篮筐"的水平方向偏移,所以正值永远是"向篮筐",
+       和球员站在哪个点无关。只在离地后(c.jmp)生效,站定时位置一个字没动。 */
+    const styleDrift=style&&Number(style.drift)||0;
+    if(styleDrift&&c.jmp>0){
+      const dx=HOOP.x-P.pos.x,dz=HOOP.z-P.pos.z,L=Math.hypot(dx,dz)||1;
+      const k=styleDrift*c.jmp;
+      player.g.position.x+=dx/L*k;player.g.position.z+=dz/L*k;
+    }
     if(P.walking){
       /* 走路统一走 poseRunCycle —— 它才是"全项目唯一的一套跑动姿势"(motion.js)。
          这里原本是另抄的一条正弦:步频写死 dt*9(和真实位移脱钩,脚在地上滑)、
@@ -348,6 +372,11 @@
       if(typeof regroundRunPose==="function")regroundRunPose(player);
       // 最后几步仍保持步态，但接球手势提前覆盖上肢，形成“转身收步同时迎球”。
       if(catchState&&catchState.active)poseCatchHands(player,catchState,dt);
+      /* 从球架取球时,用伸手姿势盖掉编排好的接球手型 —— poseCatchHands 播的是
+         固定的迎球动画,不朝球架伸,于是"身体转过去了、手还垂着",看起来仍然像
+         球自己飞过来。reach 归零后这一行什么都不写,投篮帧逐位不受影响。 */
+      if(G.pickupReach>0&&typeof applyRackReachPose==="function")
+        applyRackReachPose(player,G.pickupReach,Math.sign(G.pickupTurn||1));
     }else{
       /* 站定:清掉步态专属量并重新采样速度,否则人会一直歪着、
          下次起步第一帧还会把瞬移当成高速。 */
@@ -366,6 +395,11 @@
       if(follow.active)applyFollowThroughPose(player,follow);
       // 飞行阶段迎球；到手后由同一控制器短暂缓冲到持球帧，禁止一帧换骨架。
       if(catchState&&catchState.active)poseCatchHands(player,catchState,dt);
+      /* 从球架取球时,用伸手姿势盖掉编排好的接球手型 —— poseCatchHands 播的是
+         固定的迎球动画,不朝球架伸,于是"身体转过去了、手还垂着",看起来仍然像
+         球自己飞过来。reach 归零后这一行什么都不写,投篮帧逐位不受影响。 */
+      if(G.pickupReach>0&&typeof applyRackReachPose==="function")
+        applyRackReachPose(player,G.pickupReach,Math.sign(G.pickupTurn||1));
       /* T台版只覆盖非接球阶段的上肢最终写入；接球优先级更高，避免球还没
          到手时 shot_cycle 把迎球手型抢回去。腿、躯干、球和所有状态仍由游戏链控制。 */
       if(!(catchState&&catchState.active)&&tstageShotPhase!=null&&typeof applyTstageShotCyclePose==="function")
@@ -374,7 +408,7 @@
         applyReleaseFeetPose(player,releaseFeetPhase,gameFootY);
     }
     // 球挂在投篮手 handRig 上，伸肘与压腕期间连续随手，真正 release 后才隐藏/脱离。
-    if(!ballAttached)poseBallPos(pBall.position,c);
+    if(!ballAttached)poseBallPos(pBall.position,c,style);
     // 先完成真实球员姿势，再把同一组肩肘腕与手指结果镜像给第一人称。
     animFpRig();
     if(pendingRelease&&followAge>=BALL_RELEASE_AT)completePendingRelease();

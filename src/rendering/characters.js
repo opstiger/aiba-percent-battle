@@ -110,6 +110,8 @@ function updGroundShadows(){
 }
 
 function voxelGuy(){
+  const detail=window.AIBAModelDetail;
+  const detailOn=!!(detail&&detail.enabled);
   const g=new THREE.Group();
   const mS=new THREE.MeshLambertMaterial({color:0xf4c89c});  // 皮肤
   const mJ=new THREE.MeshLambertMaterial({color:0x2fae4a});  // 球衣
@@ -152,7 +154,8 @@ function voxelGuy(){
     kneeBlend.name="kneeBlend";                               // 随小腿转动并包住大腿末端
     const kneeCap=addSoft(kneeBlend,0.105,0.055,0.05,mS,0,0,0.092,.016,2);
     kneeCap.name="kneeCap";
-    addSoft(kn,0.15,0.22,0.165,mS,0,-0.18,0,.028,2);          // 小腿上端伸入膝关节包
+    const calf=addSoft(kn,0.15,0.22,0.165,mS,0,-0.18,0,.028,2);
+    calf.name="calf";if(detailOn)detail.profile(calf,.82,1,.88,1);
     addSoft(kn,0.165,0.095,0.18,mSock, 0,-0.295,0.006,.024,2);// 袜子
     add(kn,0.17,0.024,0.185,mJ, 0,-0.252,0.006);              // 袜口队色细条
     addSoft(kn,0.185,0.020,0.20,mSock,0,-0.243,0.006,.006,2); // 袜口外翻(在小腿上留暗边)
@@ -168,8 +171,8 @@ function voxelGuy(){
     sh.position.set(0,-0.02,0.015);ank.add(sh);
     round(ank,.094,.043,.085,sh.material,0,-.037,.155);        // 圆润鞋头(随鞋面色)
     addSoft(ank,0.178,0.12,0.10,sh.material,  0,-0.005,-0.115,.024,2); // 鞋跟(随鞋面色)
-    add(ank,0.045,0.082,0.185,mLace, -0.078,-0.01,0.03);      // 外侧鞋身暗条
-    add(ank,0.045,0.082,0.185,mLace,  0.078,-0.01,0.03);      // 内侧鞋身暗条
+    add(ank,detailOn?.016:.045,detailOn?.050:.082,detailOn?.14:.185,mLace,detailOn?-.091:-.078,-0.01,0.03);
+    add(ank,detailOn?.016:.045,detailOn?.050:.082,detailOn?.14:.185,mLace,detailOn?.091:.078,-0.01,0.03);
     round(ank,.072,.014,.06,mSole,0,-.006,.19);               // 鞋头高光边
     addSoft(ank,0.12,0.10,0.075,mSock, 0,0.03,-0.015,.018,2); // 鞋舌
     add(ank,0.10,0.04,0.11,mLace, 0,0.052,0.04);              // 鞋带
@@ -186,6 +189,17 @@ function voxelGuy(){
       if(!child)return;
       child.position.y-=toe.position.y;child.position.z-=toe.position.z;toe.add(child);
     });
+    if(detailOn){
+      // Replace the two lace slabs, leaving the foot/toe pivots and sole envelope intact.
+      [shoeParts[8],shoeParts[10],shoeParts[11]].forEach(m=>{m.parent.remove(m);m.geometry.dispose();});
+      const kit=new THREE.Group();kit.name="shoeLaces";kit.position.copy(toe.position).multiplyScalar(-1);toe.add(kit);
+      for(let row=0;row<3;row++)for(const sign of [-1,1]){
+        const lace=add(kit,.078,.009,.009,mLace,sign*.015,.085-row*.009,-.018+row*.025);
+        lace.rotation.y=sign*.45;
+      }
+      // Heel counter is on the rear foot, never on the independently flexing toe.
+      const counter=addSoft(foot,.17,.065,.021,mLace,0,.004,-.161,.006,2);counter.name="heelCounter";
+    }
     const ankleBlend=addSoft(ank,0.158,0.13,0.145,mSock,0,0.035,-0.065,.036,3);
     ankleBlend.name="ankleBlend";                             // 袜筒与球鞋共同包住踝 pivot
     kn.add(ank);lg.add(kn);
@@ -195,20 +209,38 @@ function voxelGuy(){
   });
   // ---- 盆骨/短裤腰(填补躯干与腿之间) ----
   addSoft(g,0.50,0.22,0.27,mP,0,0.88,0,.045,3);
-  add(g,0.52,0.05,0.29,mJ,0,0.98,0);                         // 提高腰线,拉长腿部视觉比例
-  add(g,0.42,0.035,0.28,mP,0,0.765,0);                       // 球裤下摆暗线
+  if(!detailOn){
+    add(g,0.52,0.05,0.29,mJ,0,0.98,0);
+    add(g,0.42,0.035,0.28,mP,0,0.765,0);
+  }
   // ---- 躯干 ----
   const bodyF=new THREE.MeshLambertMaterial({color:0xffffff});
   const bodyB=new THREE.MeshLambertMaterial({color:0xffffff});
   const body=new THREE.Mesh(roundedBoxGeometry(0.5,0.52,0.27,.048,3),[mJ,mJ,mJ,mJ,bodyF,bodyB]);
   body.position.y=1.13;g.add(body);
-  add(g,0.045,0.43,0.21,mP,-0.255,1.13,0);                    // 左侧条纹(短裤色)
-  add(g,0.045,0.43,0.21,mP, 0.255,1.13,0);                    // 右侧条纹
-  add(g,0.035,0.40,0.285,mJ,-0.285,1.12,0);                  // 外侧球衣薄边
-  add(g,0.035,0.40,0.285,mJ, 0.285,1.12,0);                  // 外侧球衣薄边
+  if(detailOn){
+    detail.profile(body,.94,1);
+    for(const sign of [-1,1]){
+      const seam=add(g,.018,.43,.21,mP,sign*.245,1.13,0);
+      seam.rotation.z=-sign*.034;
+    }
+  }else{
+    add(g,0.045,0.43,0.21,mP,-0.255,1.13,0);
+    add(g,0.045,0.43,0.21,mP, 0.255,1.13,0);
+    add(g,0.035,0.40,0.285,mJ,-0.285,1.12,0);
+    add(g,0.035,0.40,0.285,mJ, 0.285,1.12,0);
+  }
   add(g,0.30,0.07,0.21,mJ, 0,1.40,0);                        // 领口
-  add(g,0.19,0.05,0.29,mP, -0.105,1.34,0.006);               // V领左边
-  add(g,0.19,0.05,0.29,mP,  0.105,1.34,0.006);               // V领右边
+  if(detailOn){
+    for(const sign of [-1,1]){
+      const collar=add(g,.14,.024,.020,mP,sign*.061,1.353,.139);
+      collar.rotation.z=sign*.34;
+    }
+    add(g,.24,.024,.020,mP,0,1.382,-.137);
+  }else{
+    add(g,0.19,0.05,0.29,mP, -0.105,1.34,0.006);
+    add(g,0.19,0.05,0.29,mP,  0.105,1.34,0.006);
+  }
   add(g,0.12,0.055,0.215,mP, -0.19,1.385,0);                 // 左肩滚边
   add(g,0.12,0.055,0.215,mP,  0.19,1.385,0);                 // 右肩滚边
   add(g,0.50,0.035,0.29,mP,0,0.88,0);                        // 球衣下摆压线
@@ -221,8 +253,10 @@ function voxelGuy(){
      袜口压在小腿上。下面每片都比它盖住的那件宽 2~4cm、低 1~3cm,
      主光一斜就在下缘留出一道暗边,那道边就是布料"有厚度"的读感。
      全部是新增节点,不改动上面任何既有网格,check.js 的几何断言不受影响。 */
-  addSoft(g,0.545,0.030,0.315,mJ,0,0.845,0,.008,2);           // 球衣下摆外伸(在短裤上留暗边)
-  addSoft(g,0.455,0.028,0.305,mP,0,0.748,0,.008,2);           // 球裤下摆外伸(在大腿上留暗边)
+  if(!detailOn){
+    addSoft(g,0.545,0.030,0.315,mJ,0,0.845,0,.008,2);
+    addSoft(g,0.455,0.028,0.305,mP,0,0.748,0,.008,2);
+  }
   add(g,0.235,0.032,0.185,mP,0,1.373,0.032);                  // 领口内侧(胸口投影)
   /* 下摆单独留一层很薄的布片，跑动时做低幅度二级弹簧；不参与身体/脚底解算，
      站定时回到零，避免把整件球衣当硬板。前后各一片是为了转身时仍能读到摆动。 */
@@ -291,12 +325,14 @@ function voxelGuy(){
     shoulder.name="shoulderBlend";shoulder.position.y=-.045;sh2.add(shoulder);
     const up=new THREE.Mesh(roundedBoxGeometry(.14,.265,.16,.018,2),mS);
     up.name="upperArm";up.position.y=-.1775;sh2.add(up);
+    if(detailOn)detail.profile(up,.94,1);
     const sl=new THREE.Mesh(roundedBoxGeometry(.148,.285,.168,.02,2),new THREE.MeshLambertMaterial({color:0x111111}));
     sl.position.y=-.19;sl.visible=false;sh2.add(sl);          // 贴身护臂(默认隐藏)
     const el=new THREE.Group();el.position.y=-0.32;          // 肘 pivot
     const elbowBlend=addSoft(el,0.142,0.135,0.156,mS,0,-0.025,0.004,.044,3);
     elbowBlend.name="elbowBlend";                            // 圆角肘包同时压住大臂和前臂
     const fo=soft(0.125,0.27,0.145,mS,.026,2);fo.position.y=-0.145;el.add(fo); // 前臂伸入肘包
+    fo.name="forearm";if(detailOn)detail.profile(fo,.90,1);
     const wr=soft(0.14,0.06,0.155,new THREE.MeshLambertMaterial({color:0xffffff}),.018,2);
     wr.position.y=-0.27;wr.visible=false;el.add(wr);          // 护腕(默认隐藏)
     const handRoot=new THREE.Group();
@@ -495,11 +531,15 @@ function faceTex(skinHex){
   });
   CHARACTER_TEXTURE_CACHE.set(key,tex);return tex;
 }
-function jerseyTex(base,trim,num,big){
-  const key=["jersey",base,trim,num,big?1:0].join(":");
+/* mirror:给左手球员用的预翻转版本。角色整体做了 scale.x=-1,号码会跟着左右翻,
+   "13" 读成反的。先把贴图翻一次,几何再翻一次,最终就是正的。
+   贴图缓存的 key 必须带上这个标志,否则左右手球员会互相拿到对方的号码。 */
+function jerseyTex(base,trim,num,big,mirror){
+  const key=["jersey",base,trim,num,big?1:0,mirror?1:0].join(":");
   if(CHARACTER_TEXTURE_CACHE.has(key))return CHARACTER_TEXTURE_CACHE.get(key);
   const c="#"+base.toString(16).padStart(6,"0"),t="#"+trim.toString(16).padStart(6,"0");
   const tex=pixTex(72,72,(g)=>{
+    if(mirror){g.translate(72,0);g.scale(-1,1);}
     g.fillStyle=c;g.fillRect(0,0,72,72);
     g.fillStyle="rgba(255,255,255,.07)";g.fillRect(0,0,72,5);
     g.fillStyle="rgba(0,0,0,.16)";g.fillRect(0,62,72,10);
@@ -515,16 +555,34 @@ function jerseyTex(base,trim,num,big){
   CHARACTER_TEXTURE_CACHE.set(key,tex);return tex;
 }
 function dressGuy(o,jersey,shorts,num){
+  const mir=!!(o&&o.lefty);
   o.mJ.color.setHex(jersey);o.mP.color.setHex(shorts);
-  o.bodyF.map=jerseyTex(jersey,shorts,num,false);o.bodyF.color.setHex(0xffffff);o.bodyF.needsUpdate=true;
-  o.bodyB.map=jerseyTex(jersey,shorts,num,true);o.bodyB.color.setHex(0xffffff);o.bodyB.needsUpdate=true;
+  o.bodyF.map=jerseyTex(jersey,shorts,num,false,mir);o.bodyF.color.setHex(0xffffff);o.bodyF.needsUpdate=true;
+  o.bodyB.map=jerseyTex(jersey,shorts,num,true,mir);o.bodyB.color.setHex(0xffffff);o.bodyB.needsUpdate=true;
 }
 function applyStarStyle(guy,star){
+  /* lefty 必须在 dressGuy **之前**定好:号码贴图要根据它决定用不用预翻转版本。 */
+  guy.lefty=!!(window.AIBA_CONFIG&&window.AIBA_CONFIG.shootingHandFor
+    &&window.AIBA_CONFIG.shootingHandFor(star)==="left");
   randomizeOutfit(guy);
   dressGuy(guy,star.col[0],star.col[1],star.num);
   const body=window.AIBA_CONFIG&&window.AIBA_CONFIG.bodyProfileFor?window.AIBA_CONFIG.bodyProfileFor(star):null;
   const bodyH=body&&Number(body.h)||1,bodyW=body&&Number(body.w)||1;
-  guy.g.scale.set(bodyW,bodyH,bodyW);guy.bodyProfile={h:bodyH,w:bodyW};
+  /* ---------------- 左手球员 ----------------
+     整体沿局部 X 镜像。为什么可以这么干:three r128 的 renderBufferDirect 会检查
+     matrixWorld.determinant()<0 并翻转正面绕序,所以背面剔除和光照都是对的 ——
+     我上一轮把这条风险说大了。
+     好处是**姿势代码一个字都不用改**:接球、蓄力侧身、出手、跟随、踢腿全部自动反过来,
+     体验和右手完全对称。
+     代价只有两个,下面各自处理:
+       1) 世界偏航角(侧身/风格 turn)要取反 —— 它们在父坐标系里,不吃这个局部镜像
+       2) 号码/脸贴图会左右翻(见 dressGuy 里的 lefty 分支) */
+  guy.g.scale.set(guy.lefty?-bodyW:bodyW,bodyH,bodyW);guy.bodyProfile={h:bodyH,w:bodyW};
+  /* 投篮动作风格挂在角色对象上,而不是每帧去查 G.myStar:
+     对手/对位球员也是通过这条路拿到自己的风格,姿势代码因此完全不需要知道
+     "谁是玩家" —— 百分大战里两边动作自然就不一样。 */
+  guy.shotStyle=window.AIBA_CONFIG&&window.AIBA_CONFIG.shotStyleFor
+    ?window.AIBA_CONFIG.shotStyleFor(star):null;
   if(star.skin!=null){
     guy.mS.color.setHex(star.skin);
     guy.mFace.map=faceTex(star.skin);guy.mFace.color.setHex(0xffffff);guy.mFace.needsUpdate=true;
@@ -611,6 +669,7 @@ function bakeActorSegments(guy){
     const parts=[],drop=[];
     seg.children.forEach(child=>{
       if(!child.isMesh||keep.has(child)||child.children.length)return;
+      if(child.geometry?.userData?.aibaProfile)return; // Do not rebuild shaped limbs as plain cubes.
       const mat=child.material,gp=child.geometry&&child.geometry.parameters;
       if(!mat||Array.isArray(mat)||mat.map||mat.transparent)return;   // 贴图/多材质/透明:保持独立
       if(!gp||gp.width==null||gp.height==null||gp.depth==null)return; // 非 Box:跳过
