@@ -1309,7 +1309,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.25.0-lefty','src/rendering/characters.js?v=2.25.0-lefty','src/rendering/camera.js?v=2.24.0-pickup','src/rendering/motion.js?v=2.26.0-reach','src/shot-motion.js?v=2.26.0-reach','src/gameplay/shots.js?v=2.23.0-rack','src/modes/last-shot/squad.js?v=2.19.9-hy4b-life','src/modes/last-shot/sequence.js?v=2.19.10-backspin1'])
+for(const token of ['src/rendering/props.js?v=2.27.0-rackslope','src/rendering/characters.js?v=2.25.0-lefty','src/rendering/camera.js?v=2.24.0-pickup','src/rendering/motion.js?v=2.27.0-rackslope','src/shot-motion.js?v=2.26.0-reach','src/gameplay/shots.js?v=2.23.0-rack','src/modes/last-shot/squad.js?v=2.19.9-hy4b-life','src/modes/last-shot/sequence.js?v=2.19.10-backspin1'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);

@@ -1805,6 +1805,22 @@ function passCatchPointAt(pos,face){
   const d=V3(Math.sin(face),0,Math.cos(face));
   return V3(pos.x-d.x*.25,EYE+P.eyeDip+P.jump-.3,pos.z-d.z*.25);
 }
+/* 从球架拿球用的持球点,和接传球那个**不是**同一个。
+   passCatchPointAt 给的是 pos-d*0.25 —— 在身体中心**后方** 0.25m。
+   传球是从正面飞来、球到位时人已经转好,那个点没露馅;但从体侧架子上拿球,
+   起点在侧前方、终点在身后,直线插值会横穿躯干(实测最深 168mm)。
+
+   这里把终点放到**胸前** 0.33m。这个数是算出来的,不是试出来的:躯干盒半深 0.135m,
+   球半径实测 0.16m(游戏里的球比真球大),所以球心在 0.295m 以外才不可能和躯干相交。
+   取 0.33 留 3.5cm 余量 —— 先按 0.30 做过一版,实测还差 3.7mm 就是漏了球半径是 0.16 不是 0.12。
+   而低位槽也放在球员前方 0.33m(props.js 里的后撤量与此配对) —— 起点和终点同一个前向偏移,
+   世界空间里那条直线整段都停在躯干前面,不是"绕过去",是压根不进去。 */
+function rackHoldPointAt(pos,face,side){
+  const d=V3(Math.sin(face),0,Math.cos(face));
+  const perp=V3(d.z,0,-d.x);                 // 球员左手边
+  const lat=side*.06;                        // 略偏抓球那一侧,不影响后面进口袋
+  return V3(pos.x+d.x*.33+perp.x*lat,EYE+P.eyeDip+P.jump-.3,pos.z+d.z*.33+perp.z*lat);
+}
 let passing=null;
 /* 有球架的点位改成"自己从架上拿",没有球架的点位(百分大战 / 绝杀)仍然是传球。
    真实三分大赛没人给你传球 —— 架子就摆在手边,抽一颗投一颗。
@@ -1834,9 +1850,21 @@ function startPass(targetPos,face){
   const hasTarget=!!(targetPos&&typeof targetPos.clone==="function");
   const target=hasTarget?targetPos.clone():P.pos.clone();
   const targetFace=Number.isFinite(face)?face:P.face;
-  const catchP=hasTarget?passCatchPointAt(target,targetFace):eyePos();
-  if(!hasTarget)catchP.y-=0.3;
+  /* 先问出是不是"从架上拿",再决定持球点 —— 两条路的终点不一样(见 rackHoldPointAt)。
+
+     ⚠ 取球必须**不分有没有走位**都走胸前那个点。原来只有 hasTarget 那一支能改到,
+     而 shots.js 里是 `samePos?readyBall():walkTo(...)` —— 同一点位连投时 walkInfo
+     是 null,hasTarget=false,于是落回 eyePos()(同样是 P.pos-d*0.25,身后 0.25m)。
+     三分大赛一个架子 5 球都在同一点位,5 次里有 4 次走的是这条无走位分支,
+     那正是"球从身体穿过去"最常出现的一次。 */
   const pickup=rackPickupSource(s);
+  const props0=window.AIBA.runtime.service("rendering:props");
+  const pickSide=(pickup&&props0&&props0.getRackSide)?props0.getRackSide():1;
+  const anchor=hasTarget?target:P.pos.clone();
+  const anchorFace=hasTarget?targetFace:P.face;
+  const catchP=pickup?rackHoldPointAt(anchor,anchorFace,pickSide)
+    :(hasTarget?passCatchPointAt(target,targetFace):eyePos());
+  if(!pickup&&!hasTarget)catchP.y-=0.3;
   const from=pickup||V3(passer.g.position.x,1.25,passer.g.position.z);
   if(!pickup){
     passer.g.rotation.y=faceTo(passer.g.position,hasTarget?target:P.pos);
@@ -1847,9 +1875,7 @@ function startPass(targetPos,face){
   const dur=pickup?.62:passFlightSeconds(from.distanceTo(catchP));
   const mesh=new THREE.Mesh(ballGeo,shotMat(s));
   mesh.position.copy(from);scene.add(mesh);
-  const props=window.AIBA.runtime.service("rendering:props");
-  passing={mesh,from,to:catchP,t:0,dur,pickup:!!pickup,
-    side:(pickup&&props&&props.getRackSide)?props.getRackSide():1};
+  passing={mesh,from,to:catchP,t:0,dur,pickup:!!pickup,side:pickSide};
   G.passCatch={active:true,progress:0,target:catchP.clone()};
   if(!pickup){
     passer.arms.forEach(a=>{a.rotation.x=-1.5;});

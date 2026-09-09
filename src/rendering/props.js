@@ -19,9 +19,13 @@ let rackSide=1;                // +1 = 摆在球员右手边, -1 = 左手边
    验证方法别再推符号了,直接问"架子和哪只手同侧":
      toRack·toGuide = +0.995 / toRack·toShoot = -0.995 → 架子在辅助手一侧。
 
-   还有一件必须对的事:**坡度的低端要朝向球员**,不然他得伸到架子最远端去够球。
-   做法是右侧架整体转 180° —— 于是局部 +X(最低那一格)永远指回球员站的方向,
-   几何一份就够,不用为左右各做一套。 */
+   坡度朝向:**低端朝篮筐**,长轴顺着球员→篮筐这条线,不是横在身前。
+   上一版把长轴摆成横的、低端指回球员胸口,后果是最低那颗球落在离身体中线只有
+   0.35m 的地方(还在球员**后方** 0.1m),抬球进口袋时必然扫过躯干 —— 实测最深
+   侵入 168mm、38 帧里 33 帧穿模。改成顺着出手线之后,球员站在最低球**后面**,
+   伸手方向和抬球方向一致,球一路在体侧外。
+   做法:rotation.y=atan2(-dir.z,dir.x) 让局部 +X(最低那一格)指向篮筐。
+   顺带一个好处:箱体的长广告面(局部 ±Z)转成了正对球员/镜头那一侧。 */
 function currentRackSide(){
   const cfg=window.AIBA_CONFIG;
   return (cfg&&cfg.rackSideFor)?cfg.rackSideFor(typeof G!=="undefined"?G.myStar:null):1;
@@ -32,11 +36,16 @@ function placeRacks(side){
     const stand=rackStands[ri];if(!stand)return;
     const dir=HOOP.clone().sub(r.p);dir.y=0;dir.normalize();
     const perp=V3(dir.z,0,-dir.x);                       // 球员的**左**手边(见上面的坐标提醒)
-    /* 0.95m 横向 + 0.10m 后撤:够得着,又不站在出手线上挡视线。 */
-    const base=r.p.clone().addScaledVector(perp,rackSide*0.95).addScaledVector(dir,-0.10);
+    /* 横向 0.80m:箱体转成顺出手线之后,它在横向只占 BD/2≈0.23m,
+       近侧边缘离球员中线还有 0.57m(躯干半宽 0.25m),站着不会压到。
+       后撤 0.27m:低位槽在局部 +X=+0.60,于是最低那颗球正好落在球员**前方**
+       0.33m —— 球员站在拿球位后面,这是"拿球转身不穿身体"的关键。
+       0.33 与 motion.js 的 rackHoldPointAt 是**配对**的:两端同一个前向偏移,
+       中间那条直线才会整段停在躯干前面。改一个就要改另一个。 */
+    const base=r.p.clone().addScaledVector(perp,rackSide*0.80).addScaledVector(dir,-0.27);
     stand.position.set(base.x,0.45,base.z);
-    stand.rotation.y=Math.atan2(dir.x,dir.z)+(rackSide>0?Math.PI:0);
-    const perpEff=perp.clone().multiplyScalar(rackSide>0?-1:1);  // 局部 +X 的世界方向
+    stand.rotation.y=Math.atan2(-dir.z,dir.x);           // 局部 +X → 篮筐方向
+    const perpEff=dir.clone();                            // 局部 +X 的世界方向
     rackFrames[ri]={base:base.clone(),perp:perpEff};
     seatRackBalls(ri,rackNextIndex[ri]||0,false);
   });
