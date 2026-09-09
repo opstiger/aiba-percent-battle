@@ -128,6 +128,22 @@
      返回值 +1/-1 是沿 props.js 里 perp=(dir.z,0,-dir.x) 的倍数,
      而 perp 指向球员的**左**手边 —— 所以右手球员取 +1。 */
   function rackSideFor(star){return shootingHandFor(star)==="left"?-1:1;}
+  /* 绕架习惯。走位是两点直线,而球架沿出手线往站位**后方**伸约 1m,
+     正好压在相邻点位的弦上 —— 球员必须在最后一段绕开它。
+     绕前(front)= 从靠篮筐那一端抄进去,路径短、显得急;
+     绕后(back) = 从远离篮筐那一端兜过去,路径长、显得稳。
+     这是个人习惯,和出手动作一样按球星分,没配的一律 front。 */
+  const RACK_DETOURS=Object.freeze({
+    curry:"front",lillard:"front",a03:"front",ionescu:"front",
+    thompson:"front",nova24:"front",taurasi:"front",k24:"front",
+    miller:"back",bird:"back",korver:"back",allen:"back",
+    "sue-bird":"back",stojakovic:"back",t01:"back",v15:"back",
+    j23:"back",h13:"back"
+  });
+  function rackDetourFor(star){
+    const m=RACK_DETOURS[star&&(star.id||star.n)];
+    return m==="back"?"back":"front";
+  }
   function shotStyleFor(star){
     const raw=SHOT_STYLES[star&&(star.id||star.n)];
     return raw?Object.assign({},DEFAULT_SHOT_STYLE,raw):DEFAULT_SHOT_STYLE;
@@ -189,6 +205,8 @@
     shotStyleFor,
     shootingHandFor,
     rackSideFor,
+    RACK_DETOURS,
+    rackDetourFor,
     shotFlightTime,
     bodyProfileFor
   });

@@ -1955,7 +1955,19 @@ function walkTo(shot,cb,opts){
   /* 长距离走位不能再被短时长上限截断：底角到弧顶约 9.4m 时，3.4s
      会把实际峰值重新推到接近 4m/s，步频和摆臂都会变成冲刺。上限放到
      5.4s，仍保留短距离的灵敏度，但让 WALK_CRUISE 真正决定巡航速度。 */
-  const dur=clamp(from.distanceTo(to)/WALK_CRUISE,0.55,5.4);
+  /* 绕架:球架沿出手线往站位后方伸约 1m,压在相邻点位的弦上,走直线会穿过去。
+     直线真的撞上时才在最后插一个绕行点(绕前/绕后按球星习惯,见 config.rackDetourFor)。
+     时长按**折线总长**算,不按直线距离 —— 否则绕路那一趟人会自己加速跑完。 */
+  let via=null;
+  if(shot&&shot.rack!=null){
+    const rp=window.AIBA.runtime.service("rendering:props");
+    const cfg=window.AIBA_CONFIG;
+    if(rp&&rp.rackDetourWaypoint&&cfg&&cfg.rackDetourFor)
+      via=rp.rackDetourWaypoint(shot.rack,from,cfg.rackDetourFor(typeof G!=="undefined"?G.myStar:null));
+  }
+  const legA=via?from.distanceTo(via):0;
+  const total=legA+(via?via.distanceTo(to):from.distanceTo(to));
+  const dur=clamp(total/WALK_CRUISE,0.55,5.4);
   const overlapPass=!!(opts&&opts.overlapPass);
   let passStartK=1;
   if(overlapPass){
@@ -1967,7 +1979,7 @@ function walkTo(shot,cb,opts){
     passStartK=clamp((dur-passDur+.03)/dur,0,.98);
   }
   P.walking=true;G.moving=true;P.walkT=0;
-  walk={from,to,t:0,dur,decel:0,fMove:faceTo(from,to),f1:faceTo(to,HOOP),cb,step:0,
+  walk={from,to,via,legA,total,t:0,dur,decel:0,fMove:faceTo(from,via||to),f1:faceTo(to,HOOP),cb,step:0,
     overlapPass,passStartK,passStarted:false,callbackCalled:false};
 }
 function updWalk(dt){
@@ -1979,11 +1991,23 @@ function updWalk(dt){
   /* 位移走 smoothstep,不是线性 —— 线性的话人是"匀速滑出去、到点急停",
      没有起步蹬地也没有收步。加减速之后步频也跟着变(poseRunCycle 的相位由
      实际位移驱动),所以一条缓动同时修好了"起步收步"和"腿频不跟脚"。 */
-  P.pos.lerpVectors(walk.from,walk.to,walkEase(k));
+  const ease=walkEase(k);
+  /* 有绕行点时走折线。参数按**弧长**分配到两段,拐点处速度才是连续的;
+     直接把 k 二等分会让长短不一的两段一快一慢。 */
+  let segFace=walk.fMove;
+  if(walk.via){
+    const d=ease*walk.total,legB=Math.max(1e-6,walk.total-walk.legA);
+    if(d<=walk.legA){
+      P.pos.lerpVectors(walk.from,walk.via,walk.legA>1e-6?d/walk.legA:1);
+    }else{
+      P.pos.lerpVectors(walk.via,walk.to,(d-walk.legA)/legB);
+      segFace=faceTo(walk.via,walk.to);      // 拐过去之后朝向跟着第二段走
+    }
+  }else P.pos.lerpVectors(walk.from,walk.to,ease);
   /* 朝向:转身从巡航末段就开始,并在减速碎步期间完成,避免到点后从静止慢慢转身。 */
   const turnK=clamp((k-WALK_TURN_START)/(WALK_TURN_END-WALK_TURN_START),0,1);
-  let sweep=walk.f1-walk.fMove;while(sweep>Math.PI)sweep-=2*Math.PI;while(sweep<-Math.PI)sweep+=2*Math.PI;
-  const tgt=walk.fMove+sweep*(turnK*turnK*(3-2*turnK));
+  let sweep=walk.f1-segFace;while(sweep>Math.PI)sweep-=2*Math.PI;while(sweep<-Math.PI)sweep+=2*Math.PI;
+  const tgt=segFace+sweep*(turnK*turnK*(3-2*turnK));
   let d=tgt-P.face;while(d>Math.PI)d-=2*Math.PI;while(d<-Math.PI)d+=2*Math.PI;
   P.face+=d*Math.min(1,dt*WALK_TURN_RATE);
   if(walk.overlapPass&&!walk.passStarted&&k>=walk.passStartK){

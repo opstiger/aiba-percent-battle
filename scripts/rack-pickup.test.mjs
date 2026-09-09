@@ -112,59 +112,70 @@ const R=await page.evaluate(({FRAMES})=>{
   return {ballR:+ballR.toFixed(4),frames,rackInfo,count:spec.length};
 },{FRAMES:60});
 
-/* ---------------- 第二段:走位路线会不会撞上球架 ----------------
-   坡度转成顺出手线之后,箱体从球员站位往**身后**延伸约 1m(上一版是往两侧)。
-   这是这次改动带来的新风险,而且用户明确要过:"记得球员别穿模,要绕过篮球架啥的"。
-   这里不靠动画抽样(抽样只覆盖跑到的那几帧),直接算几何:
-   每个球架的世界包围盒 vs 相邻点位之间的走位线段,取最小水平距离。 */
+/* ---------------- 第二段:走位会不会撞上球架 ----------------
+   坡度转成顺出手线之后,箱体从球员站位往**身后**延伸约 1m(上一版是往两侧),
+   正好压在相邻点位的弦上。用户要的解法是"走完直线最后绕过去",绕前/绕后按个人习惯。
+   这里不靠动画抽样(只覆盖跑到的那几帧),直接算几何:
+   把 props.rackDetourWaypoint 给出的折线拿来,逐段量到箱体的最小水平距离。
+
+   ⚠ 必须用**有向**包围盒。Box3.setFromObject 是世界轴对齐盒,斜放的
+     1.46×0.46 箱体 AABB 会膨胀到近 1.5×1.5,把站位整个包进去,量出"间隙 0"的假红。 */
 const W=await page.evaluate(()=>{
   const props=window.AIBA.runtime.service("rendering:props");
-  const stands=props.getRackBalls().regularStands||[];
-  /* ⚠ 不能用 Box3.setFromObject:那是**世界轴对齐**盒。架子现在是斜的,
-     一个 1.46×0.46 的斜箱体的 AABB 会膨胀到近 1.5×1.5,把球员站位整个包进去,
-     于是量出"间隙 0"的假红(第一版就是这么错的,只有恰好轴对齐的那个架子读数正常)。
-     这里改成真正的**有向包围盒**:先求箱体在自己局部空间的 AABB,
-     查询点用 worldToLocal 转进去再比 —— 旋转就自然消掉了。 */
-  const boxes=[];
-  for(let i=0;i<stands.length;i++){
-    const st=stands[i];if(!st)continue;
-    st.updateMatrixWorld(true);
-    const inv=new THREE.Matrix4().copy(st.matrixWorld).invert();
-    const lb=new THREE.Box3();
-    st.traverse(c=>{
-      if(!c.isMesh||!c.geometry)return;
-      c.updateMatrixWorld(true);
-      c.geometry.computeBoundingBox();
-      const b=c.geometry.boundingBox.clone();
-      b.applyMatrix4(new THREE.Matrix4().copy(inv).multiply(c.matrixWorld));
-      lb.union(b);
-    });
-    if(lb.isEmpty())continue;
-    boxes.push({i,st,minx:lb.min.x,maxx:lb.max.x,minz:lb.min.z,maxz:lb.max.z});
-  }
-  const spots=RACKS.map(r=>({x:r.p.x,z:r.p.z}));
-  const _t=new THREE.Vector3();
-  /* 点到有向箱体的水平距离(在箱体内部时为 0) */
-  const dPointBox=(x,z,b)=>{
-    _t.set(x,0.45,z);b.st.worldToLocal(_t);
-    const dx=Math.max(b.minx-_t.x,0,_t.x-b.maxx),dz=Math.max(b.minz-_t.z,0,_t.z-b.maxz);
-    return Math.hypot(dx,dz);
-  };
-  /* 线段对矩形:线段上取 200 个采样点,够密(点位间距 3~5m ⇒ 步长 2~3cm) */
-  const dSegBox=(a,c,b)=>{
-    let m=Infinity;
-    for(let t=0;t<=200;t++){const u=t/200;
-      m=Math.min(m,dPointBox(a.x+(c.x-a.x)*u,a.z+(c.z-a.z)*u,b));}
-    return m;
-  };
-  const standing=[],path=[];
-  for(const b of boxes){
-    standing.push({rack:b.i,d:+dPointBox(spots[b.i].x,spots[b.i].z,b).toFixed(3)});
+  const spots=RACKS.map(r=>r.p);
+  const CLEAR=0.34;
+  const standing=[],legs=[],modes={};
+  for(let i=0;i<spots.length;i++)
+    standing.push({rack:i,d:+props.rackPointDist(i,spots[i].x,spots[i].z).toFixed(3)});
+  for(const mode of ["front","back"]){
+    const rows=[];
     for(let k=0;k+1<spots.length;k++){
-      path.push({seg:k+"→"+(k+1),rack:b.i,d:+dSegBox(spots[k],spots[k+1],b).toFixed(3)});
+      const ri=k+1,from=spots[k].clone(),to=spots[ri];
+      const straight=+props.rackSegDist(ri,from.x,from.z,to.x,to.z).toFixed(3);
+      const via=props.rackDetourWaypoint(ri,from,mode);
+      let d,how;
+      if(via){
+        d=Math.min(props.rackSegDist(ri,from.x,from.z,via.x,via.z),
+                   props.rackSegDist(ri,via.x,via.z,to.x,to.z));
+        how="绕"+(mode==="front"?"前":"后");
+      }else{d=straight;how="直行";}
+      rows.push({seg:k+"→"+ri,rack:ri,straight,d:+d.toFixed(3),how});
     }
+    modes[mode]=rows;
   }
-  return {standing,path,boxes:boxes.length};
+  /* ---- 运行时验证:真跑一次走位,逐帧记录球员**实际**位置 ----
+     上面量的是 rackDetourWaypoint 这个辅助函数的输出。它算得好,不等于
+     walkTo/updWalk 真的用上了 —— 折线插值、时长按总长重算、朝向跟随分段,
+     任何一处没接上,球员照样直着穿过去。所以这里必须跑真的走位链路。 */
+  const loop=window.AIBA.runtime.service("core:game-loop");
+  window.__freeze=true;loop.clock.getDelta=()=>1/60;
+  const live={};
+  for(const [mode,star] of [["front","curry"],["back","miller"]]){
+    const rows=[];
+    for(let k=0;k+1<spots.length;k++){
+      const ri=k+1;
+      const shot=(G.seq||[]).find(x=>x&&x.rack===ri);
+      if(!shot){rows.push({seg:k+"→"+ri,d:null,note:"没有该架的 shot"});continue;}
+      G.myStar={id:star};
+      P.pos.copy(spots[k]);P.walking=false;G.moving=false;
+      walkTo(shot,function(){},{});
+      let m=Infinity,n=0,dev=0;
+      for(let i=0;i<600&&P.walking;i++){
+        window.animate();n++;
+        m=Math.min(m,props.rackPointDist(ri,P.pos.x,P.pos.z));
+        /* 偏离直线多少 —— 用来确认"确实绕了",而不是恰好直线也够开 */
+        const ax=spots[k].x,az=spots[k].z,bx=spots[ri].x,bz=spots[ri].z;
+        const vx=bx-ax,vz=bz-az,L2=vx*vx+vz*vz;
+        const t=L2>0?Math.max(0,Math.min(1,((P.pos.x-ax)*vx+(P.pos.z-az)*vz)/L2)):0;
+        dev=Math.max(dev,Math.hypot(P.pos.x-(ax+vx*t),P.pos.z-(az+vz*t)));
+      }
+      rows.push({seg:k+"→"+ri,d:+m.toFixed(3),frames:n,dev:+dev.toFixed(2),done:!P.walking});
+    }
+    live[mode]=rows;
+  }
+  window.__freeze=false;
+
+  return {standing,modes,CLEAR,live};
 });
 
 await BROWSER.close();server.close();
@@ -193,29 +204,44 @@ if(worst.pen>0.005){                       // 5mm 容差:留给圆角与摆臂�
   console.log("❌ 取球穿模: 球穿过躯干");bad=true;
 }else console.log("✅ 取球全程球心在躯干外");
 
-/* 躯干半宽 0.25m。站位要求 ≥0.25(站着不压到箱体);
-   走位线段允许比站位宽松些,但仍要 ≥0.10 —— 低于这个数就是擦着箱体走过去。 */
-const TORSO_HALF=0.25,PATH_MIN=0.10;
-console.log("\n走位/站位与球架的水平间隙("+W.boxes+" 个箱体):");
-const stBad=W.standing.filter(r=>r.d<TORSO_HALF);
-console.log("  站位最小间隙 "+Math.min(...W.standing.map(r=>r.d)).toFixed(3)+
+/* 躯干半宽 0.25m,留一点余量当 0.28。 */
+console.log("\n站位与球架的水平间隙:");
+const stBad=W.standing.filter(r=>r.d<0.25);
+console.log("  最小 "+Math.min(...W.standing.map(r=>r.d)).toFixed(3)+
   "m   逐架: "+W.standing.map(r=>"#"+r.rack+"="+r.d).join(" "));
-const pMin=W.path.reduce((a,b)=>b.d<a.d?b:a);
-console.log("  走位最小间隙 "+pMin.d+"m  (线段 "+pMin.seg+" vs 架 #"+pMin.rack+")");
-const pBad=W.path.filter(r=>r.d<PATH_MIN);
 if(stBad.length){console.log("  ❌ 站位压到箱体: "+stBad.map(r=>"#"+r.rack+"="+r.d).join(" "));bad=true;}
 else console.log("  ✅ 站位不压箱体");
-/* 走位那条**只报不判**,理由是它是既有缺陷、不是球架转向引入的:
-   同一套量法在改动前的 3f82da1 上跑出来是同样的 4 段、同样的 0。
-   成因:walkTo 走的是两点之间的**直线**(updWalk 对 from/to 线性插值),
-   而每个架子沿出手线往站位后方伸约 1m,正好压在相邻点位的弦上。
-   真要修得动走位路径(改成沿三分线绕行,或给架子一个外偏角),
-   那是另一件事,会牵动 walk-arms / shot-animation 的时序,不该顺手塞进这次改动。
-   ⚠ 修好之后请把下面这段改成硬判定(bad=true),别让它一直停在警告。 */
-if(pBad.length){
-  console.log("  ⚠ 走位直线穿过箱体(**既有缺陷**,改动前后数字一致,本次不判失败):");
-  console.log("     "+pBad.map(r=>r.seg+"/#"+r.rack+"="+r.d).join("  "));
-}else console.log("  ✅ 走位不压箱体");
+
+console.log("\n走位绕架(阈值 "+W.CLEAR+"m):");
+for(const mode of ["front","back"]){
+  const rows=W.modes[mode];
+  const worstSeg=rows.reduce((a,b)=>b.d<a.d?b:a);
+  const clipped=rows.filter(r=>r.d<W.CLEAR);
+  console.log("  ["+(mode==="front"?"绕前":"绕后")+"] 最小间隙 "+worstSeg.d+
+    "m ("+worstSeg.seg+")   逐段: "+rows.map(r=>r.seg+" "+r.how+"→"+r.d).join("  "));
+  const detoured=rows.filter(r=>r.how!=="直行").length;
+  console.log("        直线原本会撞的段: "+rows.filter(r=>r.straight<W.CLEAR).length+
+    "/"+rows.length+"，实际插入绕行点: "+detoured);
+  if(clipped.length){
+    console.log("        ❌ 仍然穿过箱体: "+clipped.map(r=>r.seg+"="+r.d).join(" "));bad=true;
+  }else console.log("        ✅ 全段不压箱体");
+}
+
+console.log("\n运行时实测(真跑 walkTo,逐帧量球员位置):");
+for(const [mode,star] of [["front","库里"],["back","米勒"]]){
+  const rows=W.live[mode]||[];
+  const ok=rows.filter(r=>r.d!=null);
+  if(!ok.length){console.log("  ["+star+"] 没采到");bad=true;continue;}
+  const worst=ok.reduce((a,b)=>b.d<a.d?b:a);
+  console.log("  ["+star+"/"+(mode==="front"?"绕前":"绕后")+"] 最小间隙 "+worst.d+
+    "m ("+worst.seg+")   逐段: "+ok.map(r=>r.seg+"→"+r.d+"(偏离直线 "+r.dev+"m)").join("  "));
+  const clip=ok.filter(r=>r.d<0.25);            // 运行时按躯干半宽判,不加余量
+  const noDev=ok.filter(r=>r.dev<0.15);
+  if(clip.length){console.log("        ❌ 实际走位压到箱体: "+clip.map(r=>r.seg+"="+r.d).join(" "));bad=true;}
+  else if(noDev.length){console.log("        ❌ 有段几乎没偏离直线,说明绕行点没接进 walkTo: "+
+    noDev.map(r=>r.seg).join(" "));bad=true;}
+  else console.log("        ✅ 实际走位都绕开了箱体");
+}
 
 console.log("");
 process.exit(bad?1:0);

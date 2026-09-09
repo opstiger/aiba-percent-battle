@@ -65,6 +65,84 @@ function rackSlotWorld(ri,i,out){
   return (out||new THREE.Vector3()).set(
     f.base.x+f.perp.x*p.x, 0.45+p.y, f.base.z+f.perp.z*p.x);
 }
+/* ---------------- 绕架走位 ----------------
+   坡度转成顺出手线之后,箱体从站位往**后方**伸约 1m,正好压在相邻点位的弦上,
+   走直线会直接穿过去(实测 5 个点位里 4 段间隙 = 0)。
+   这里给走位提供一个**绕行点**:球员照走直线,最后一段从箱体的一端拐进站位。
+   绕哪一端是个人习惯,见 config.js 的 rackDetourFor —— front 从靠篮筐那端抄进去,
+   back 从远离篮筐那端兜过去。
+
+   ⚠ 只有直线**真的**撞上箱体时才给绕行点。否则从没有架子的那一侧过来的走位
+     也会被硬塞一个拐点,看起来像无缘无故绕了个圈。 */
+const rackFootprint=[];                     // 每个架子的局部半尺寸,量一次缓存
+function rackHalfExtent(ri){
+  if(rackFootprint[ri])return rackFootprint[ri];
+  const st=rackStands[ri];if(!st)return null;
+  st.updateMatrixWorld(true);
+  const inv=new THREE.Matrix4().copy(st.matrixWorld).invert();
+  const lb=new THREE.Box3();
+  st.traverse(c=>{
+    if(!c.isMesh||!c.geometry)return;
+    c.updateMatrixWorld(true);
+    c.geometry.computeBoundingBox();
+    const b=c.geometry.boundingBox.clone();
+    b.applyMatrix4(new THREE.Matrix4().copy(inv).multiply(c.matrixWorld));
+    lb.union(b);
+  });
+  if(lb.isEmpty())return null;
+  return (rackFootprint[ri]={minx:lb.min.x,maxx:lb.max.x,minz:lb.min.z,maxz:lb.max.z});
+}
+/* 世界点到箱体的水平距离。必须在箱体**局部**空间算 —— 用世界轴对齐包围盒
+   会把斜放的 1.46×0.46 箱体膨胀到近 1.5×1.5,量出一堆假的"撞上了"。 */
+const _dp=new THREE.Vector3();
+function rackPointDist(ri,x,z){
+  const st=rackStands[ri],e=rackHalfExtent(ri);
+  if(!st||!e)return Infinity;
+  _dp.set(x,0.45,z);st.worldToLocal(_dp);
+  const dx=Math.max(e.minx-_dp.x,0,_dp.x-e.maxx);
+  const dz=Math.max(e.minz-_dp.z,0,_dp.z-e.maxz);
+  return Math.hypot(dx,dz);
+}
+function rackSegDist(ri,ax,az,bx,bz){
+  let m=Infinity;
+  for(let t=0;t<=120;t++){const u=t/120;
+    m=Math.min(m,rackPointDist(ri,ax+(bx-ax)*u,az+(bz-az)*u));}
+  return m;
+}
+const RACK_WALK_CLEAR=0.34;                  // 躯干半宽 0.25 + 9cm 余量(搜索取的是最短可行绕行,余量薄了会贴着箱体走)
+const RACK_DETOUR_LAT=0.20;                  // 绕行点离出手线的横向偏移
+const RACK_DETOUR_STEPS=[0.6,0.9,1.2,1.5,1.8,2.1,2.4];   // 上限 2.4m:再远就不像绕行像跑圈了,超了就换另一侧
+/* 返回绕行点(世界坐标)或 null。mode:"front" 从靠篮筐那端绕 / "back" 从远端绕。
+
+   绕行点**不能**放在箱体中心线上:那样从绕行点斜切回站位时正好擦过箱体角
+   (实测只剩 8.8cm)。正确的形状是"绕过端头之后贴着出手线进站位" ——
+   横向压到 0.20m,最后一段就整段待在箱体的横向带之外。
+
+   往外要走多远取决于上一个点位有多远(斜线越平,越晚才越过端头),
+   所以不写死,按 RACK_DETOUR_STEPS 递增搜索,取第一个两段都够开的。
+   一个都不成立就返回 null —— 宁可不绕,也不要给一个仍然穿模的假路径。 */
+function rackDetourWaypoint(ri,from,mode){
+  const st=rackStands[ri],f=rackFrames[ri],e=rackHalfExtent(ri);
+  if(!st||!st.visible||!f||!e)return null;
+  const to=RACKS[ri]&&RACKS[ri].p;if(!to||!from)return null;
+  if(rackSegDist(ri,from.x,from.z,to.x,to.z)>=RACK_WALK_CLEAR)return null;  // 本来就不撞
+  const axis=f.perp;                          // 局部 +X 的世界方向 = 指向篮筐
+  const lat=V3(axis.z,0,-axis.x).multiplyScalar(rackSide*RACK_DETOUR_LAT);
+  const trySide=(sgn)=>{
+    for(const d of RACK_DETOUR_STEPS){
+      const w=V3(to.x+axis.x*sgn*d+lat.x, 0, to.z+axis.z*sgn*d+lat.z);
+      if(rackPointDist(ri,w.x,w.z)<RACK_WALK_CLEAR)continue;
+      if(rackSegDist(ri,from.x,from.z,w.x,w.z)<RACK_WALK_CLEAR)continue;
+      if(rackSegDist(ri,w.x,w.z,to.x,to.z)<RACK_WALK_CLEAR)continue;
+      return w;
+    }
+    return null;
+  };
+  const pref=(mode==="back")?-1:1;
+  /* 首选那一侧绕不过去就换另一侧 —— 真人也是这样,后面被挡就从前面绕。
+     直接返回 null 会退回直线,而那条直线是**确定**穿模的,比绕反了更糟。 */
+  return trySide(pref)||trySide(-pref);
+}
 /* 把"还没被拿走"的球重新落位:下一颗永远排在**最低**那一格,后面的依次往高处排。
    这样视觉顺序和 shot.ball 的逻辑顺序天然一致 —— 花球(第 5 颗)排在最高、最后才拿到,
    和真实三分大赛的钱球位置一样。animate=true 时用补间滚下来,而不是瞬移。 */
@@ -181,6 +259,7 @@ function buildHands(){
 
 window.AIBA.runtime.register("rendering:props",Object.freeze({
   buildRacks,resetRackBalls,buildHands,placeRacks,currentRackSide,rackSlotWorld,
+  rackDetourWaypoint,rackPointDist,rackSegDist,
   getRackSide:()=>rackSide,seatRackBalls,takeRackBall,refillRackBalls,
   getRackBalls:()=>({regular:rackBalls,deep:deepBalls,regularStands:rackStands,deepStands,halfCourt:halfCourtBall}),
   getHands:()=>({group:hands,ball:handBall})
