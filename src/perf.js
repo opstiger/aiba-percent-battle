@@ -71,7 +71,7 @@
 
   /* ---- 挂钩视觉模式开关（函数声明 → window 全局）---- */
   function wrapVision(){
-    ["enableVisionControl","disableVisionControl"].forEach(name=>{
+    ["enableVisionControl","disableVisionControl","suspendVisionControl"].forEach(name=>{
       const orig=global[name];
       if(typeof orig!=="function"||orig.__perf)return;
       const fn=function(){
@@ -84,10 +84,26 @@
     });
   }
 
+  /* ⚠ 光包函数是不够的,这里踩过一个只在手机上出现的坑:
+       enableVisionControl() 会**先**把 VISION.desired=true,再 await getUserMedia。
+       包装器随即 applyForVision() → 手机上 setThin(true),藏掉 2/5 近场观众。
+       随后摄像头授权被拒(手机上很常见,非 HTTPS 也会失败),vision.js 的 catch 里
+       **直接**写 VISION.desired=false,并不走 disableVisionControl ——
+       于是包装器再也不会被触发,瘦身永久留着:桌面一切正常,手机上场边观众
+       凭空少掉 2/5,看起来就是"各种透明"。
+     所以这里再加一道**周期性自愈**:applyForVision 在状态没变时是 O(1) 直接返回,
+     700ms 一次的代价可以忽略,但任何绕过包装器改 VISION.desired 的路径都能被兜住。 */
+  let healTimer=0;
+  function startSelfHeal(){
+    if(healTimer)return;
+    healTimer=global.setInterval(applyForVision,700);
+  }
+
   function boot(){
     freezeStatic();
     wrapVision();
     applyForVision();
+    startSelfHeal();
   }
 
   // 主脚本已在本脚本之前跑完 boot()/animate()，场景已就绪
@@ -98,6 +114,7 @@
     freezeStatic,
     setThin,
     applyForVision,
+    startSelfHeal,
     stats:()=>({frozen:frozenCount,thinned,people:people().length,hidden:people().filter(p=>p&&p.g&&!p.g.visible).length})
   };
 })(window);

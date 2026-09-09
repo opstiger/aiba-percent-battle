@@ -545,7 +545,7 @@ if(!entryHtml.includes('<script src="src/rendering/character-visuals.js?v=2.16.2
 if(entryHtml.indexOf('src/roster-style.js?v=2.24.0-hair')>entryHtml.indexOf('src/rendering/character-visuals.js?v=2.16.2-human-proportion'))fail("voxel pro visuals must wrap roster styling");
 if(!entryHtml.includes('<script src="src/hero-moments.js?v=1.80"></script>'))fail("hero moments script missing");
 if(!entryHtml.includes('<script src="src/hot-hand.js?v=2.19.9-flame"></script>'))fail("hot hand script missing");
-if(!entryHtml.includes('<script src="src/perf.js?v=2.20-arena4"></script>'))fail("perf script missing");
+if(!entryHtml.includes('<script src="src/perf.js?v=2.29.0-lodheal"></script>'))fail("perf script missing");
 if(!entryHtml.includes('<script src="src/perf-settings.js?v=2.19.9-customcam1"></script>'))fail("perf settings script missing");
 if(!entryHtml.includes('<script src="src/face-overlays.js?v=1.2-disabled"></script>'))fail("face overlays retirement shim missing");
 if(!entryHtml.includes('<script src="src/haptics.js?v=1.80"></script>'))fail("haptics script missing");

@@ -219,15 +219,24 @@
   let rtScene=null,rtA=null,rtB=null,rtW=0,rtH=0;
   const size=new THREE.Vector2();
 
-  function makeRT(w,h,depth){
+  /* opts.depthBuffer —— 真正的 Z-buffer,**画场景的 RT 必须有**;
+     opts.depthTexture —— 只为景深读深度用,可有可无。
+     ⚠ 这两件事以前是同一个开关,踩过一个只在手机上出现的坑:
+       FX_MODE 在 pointer:coarse 下是 "lite",而 lite 档建 rtScene 时传的是 false,
+       于是整个 3D 场景被画进一个**没有深度缓冲**的 RT —— 没有 Z-buffer 就没有遮挡,
+       观众躯干被座椅盖掉、架上的球被箱体盖掉、球员的腿被地板盖掉,
+       表现出来就是"各种透明、球不见了",而桌面走 full 档一切正常。
+       所以这里拆成两个字段,depthBuffer 恒为 true。 */
+  function makeRT(w,h,opts){
+    const wantDepthTex=!!(opts&&opts.depthTexture);
     const rt=new THREE.WebGLRenderTarget(w,h,{
       minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter,
       format:THREE.RGBAFormat,type:THREE.UnsignedByteType,
-      depthBuffer:!!depth,stencilBuffer:false
+      depthBuffer:!!(opts&&opts.depthBuffer),stencilBuffer:false
     });
     /* 关键:sRGB 编码的 RT,场景写进来的像素和写进画布时一模一样 */
     if(THREE.sRGBEncoding)rt.texture.encoding=THREE.sRGBEncoding;
-    if(depth&&hasDepth){
+    if(wantDepthTex&&hasDepth){
       rt.depthTexture=new THREE.DepthTexture(w,h);
       rt.depthTexture.type=THREE.UnsignedShortType;
     }
@@ -244,11 +253,15 @@
     if(w===rtW&&h===rtH&&rtScene)return;
     disposeRT(rtScene);disposeRT(rtA);disposeRT(rtB);
     rtW=w;rtH=h;
-    rtScene=makeRT(w,h,LITE?false:true);
+    /* 场景 RT:Z-buffer 恒开(轻量档也得有,否则整场没有遮挡);
+       深度贴图只有 full 档跑景深时才需要。 */
+    rtScene=makeRT(w,h,{depthBuffer:true,depthTexture:!LITE});
     if(LITE){rtA=rtB=null;return;}
-    /* 模糊链跑在 1/8 分辨率上:泛光和柔化都不需要细节,却省掉 63/64 的填充率 */
+    /* 模糊链跑在 1/8 分辨率上:泛光和柔化都不需要细节,却省掉 63/64 的填充率。
+       这两张只画全屏四边形,不需要任何深度。 */
     const bw=Math.max(2,w>>BLUR_SHIFT),bh=Math.max(2,h>>BLUR_SHIFT);
-    rtA=makeRT(bw,bh,false);rtB=makeRT(bw,bh,false);
+    rtA=makeRT(bw,bh,{depthBuffer:false,depthTexture:false});
+    rtB=makeRT(bw,bh,{depthBuffer:false,depthTexture:false});
   }
 
   function drawPass(mat,target){
@@ -328,7 +341,15 @@
     get(){return Object.assign({},P);},
     setEnabled(on){P.enabled=!!on;},
     isActive(){return P.enabled&&!failed;},
-    hasDepth,coarse:COARSE,weak:WEAK,mode:FX_MODE
+    hasDepth,coarse:COARSE,weak:WEAK,mode:FX_MODE,
+    /* 给回归测试用:场景 RT 到底有没有 Z-buffer。
+       没有的话整场就没有遮挡判定 —— 这条只在 pointer:coarse 的 lite 档翻过车,
+       桌面走 full 档永远是 true,所以断言必须在**手机上下文**里跑才有意义。 */
+    rtInfo(){return rtScene?{
+      w:rtW,h:rtH,
+      depthBuffer:!!rtScene.depthBuffer,
+      depthTexture:!!rtScene.depthTexture
+    }:null;}
   };
   window.AIBAGrade=API;
   window.AIBA.runtime.register("rendering:grade",Object.freeze(API));

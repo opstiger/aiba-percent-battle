@@ -4,6 +4,51 @@
 
 ## 最新交接（优先于下方历史记录）
 
+### 2026-09-09 手机端场边观众凭空消失（最新）
+
+用户报"手机上打开会出现各种透明，电脑正常，Chrome 手机模拟也复现"。查到一条**只有触屏设备能走到**的链路：
+
+1. `enableVisionControl()`（`vision.js:701`）**先**把 `VISION.desired=true`，再 `await getUserMedia`。
+2. `perf.js` 的包装器随即 `applyForVision()` → `wantThin=isMobile()&&visionOn()` 成立 → `setThin(true)`，藏掉近场观众的 2/5。
+3. 摄像头授权被拒（手机上很常见；非 HTTPS 必失败），`vision.js:713` 的 catch 里**直接**写 `VISION.desired=false`，**不走 `disableVisionControl`**。
+4. `perf.js` 只包了 `enableVisionControl`/`disableVisionControl` 两个函数 → `applyForVision` 再没被触发 → **瘦身永久留着**。
+
+桌面 `isMobile()` 恒为 false，`wantThin` 永远 false，所以这条只在手机/触屏模拟下可见。
+
+**修法**（`perf.js`）：包装名单加上 `suspendVisionControl`，并加一道 **700ms 周期性自愈**——`applyForVision` 在状态没变时是 O(1) 直接返回，代价可忽略，但任何绕过包装器改 `VISION.desired` 的路径都能兜住。不指望 vision 的每条分支都记得通知 perf。
+
+**验收**：`scripts/mobile-lod.test.mjs`（新增）。实测手机 `desired=true → thin=true/hidden=5`，直接回落 `desired=false` 后 2.4s → `thin=false/hidden=0`；桌面全程不瘦身。变异测试：换回旧 `perf.js` 立刻红（`thin=true hidden=5` 不消，exit 1）。
+⚠ 测试里特意先断言"手机上确实会瘦身"，否则"自愈成功"会退化成永远成立的空断言。
+
+#### 真正的病根：lite 档的场景 RT 没有 Z-buffer（已修）
+
+上面那条 LOD 只是次要问题。用户报的"各种透明、球不见了"，根因在 `grade.js`：
+
+```js
+FX_MODE = COARSE ? "lite" : "full"          // 所有触屏设备都走 lite
+rtScene = makeRT(w,h, LITE?false:true)      // 这个 flag 同时接到了 depthBuffer
+depthBuffer: !!depth                        // → lite 档 = false
+```
+
+于是**整个 3D 场景被渲染进一个没有深度缓冲的 RT**。没有 Z-buffer 就没有遮挡判定：观众躯干被座椅/广告牌盖掉、架上的球被箱体盖掉、球员的腿被地板盖掉——全部表现为"透明/消失"。桌面走 full 档，`depthBuffer:true`，所以一切正常。那个 flag 的本意只是"要不要深度**贴图**做景深"，两件事被错误地绑在了一个开关上。
+
+**修法**：`makeRT(w,h,opts)` 拆成 `depthBuffer` / `depthTexture` 两个字段；场景 RT 的 `depthBuffer` **恒为 true**，深度贴图仍只在 full 档建；模糊链那两张只画全屏四边形，两者都不要。
+
+**验收**：`scripts/fx-depth.test.mjs`（新增）+ `AIBAGrade.rtInfo()`。实测手机 `mode=lite / depthBuffer=true / depthTexture=false`，桌面 `full / true / true`。变异测试：改回 `depthBuffer:!LITE` 立刻红。
+⚠ 断言顺序有讲究：**先证明手机上下文确实走 lite 档**，否则"lite 档有深度"是空断言。
+
+**排查时走过的弯路（写下来省得再走一遍）**
+- 一开始盯着"手机少建人"（近场观众 12 vs 30）看图找不同。那个副作用是：少建人 → 消耗随机数变少 → **后续所有随机摆放整体错位**，两张图布局根本不同，很容易把"布局不同"误读成"物件丢失"。
+- 数据层面查不出问题：同视口下只让 `pointer:coarse` 变化，近场观众 body 网格和架上球的可见性/顶点数/世界坐标/材质**两边完全一致**。因为这压根不是场景数据问题，是光栅化阶段的遮挡问题。
+- 暗角不是嫌疑：`d=(vUv-0.5)*vec2(aspect,1.0)`，竖屏 aspect≈0.46 时暗角反而更弱。
+- **决定性的一步是 `?fx=0`**：关掉后期，手机模拟立刻恢复正常 → 锁定 `grade.js`。碰到"只有某类设备不对"，先用 `?fx=0` / `?shadows=0` / `?quality=low` 这几个开关二分，比对着图猜快得多。
+
+**已确认存在但属正常的设备分支**（别当 bug 改）
+- `core.js`：`AA_COARSE_POINTER` → 关抗锯齿、阴影贴图 512（桌面 1024）；渲染倍率 coarse 1.12~1.24 / 桌面 1.48。
+- `core.js:293`：`deviceMemory<=2` 或 `?quality=low` 关阴影。
+- `spectators.js`：近场观众 12（桌面 30）、街头人群 16（桌面 26）；`environments.js`：雨滴 88/150、杂草 96/176。
+  ⚠ 副作用：手机少建人 → 消耗的随机数变少 → **后续所有随机摆放整体错位**。拿手机图和桌面图做视觉比对时务必先意识到这点，否则会把"布局不同"误读成"物件丢失"（我就误判过一次）。
+
 ### 2026-09-09 球架坡向修正 + 取球不再穿身体（最新）
 
 用户报的是"每次拿球，球都是从身体穿过去的"，附截图。查下来是三件事叠在一起，都已修并有逐帧数字。
