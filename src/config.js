@@ -18,10 +18,17 @@
 
   const SCENE_PRESETS=Object.freeze({
     indoor:{name:"室内经典",type:"indoor",weather:"none",progression:"none",desc:"木地板、看台与球馆灯光"},
-    outdoorSunny:{name:"晴天街头",type:"outdoor",weather:"sunny",progression:"none",desc:"蓝天、围栏与城市公园"},
-    rainyCourt:{name:"雨天街头",type:"outdoor",weather:"rain",progression:"none",desc:"湿润球场、阴云与轻量雨势"},
-    flowerCourt:{name:"鲜花球场",type:"outdoor",weather:"sunny",progression:"flowerBloom",desc:"从杂草到花海，每次得分都会永久生长"},
-    beachSunset:{name:"西海岸夕阳",type:"outdoor",weather:"sunny",progression:"sunsetToNight",desc:"海边黄昏随比分推进至夜场"}
+    outdoorSunny:{name:"晴天 · 都会街头",type:"outdoor",weather:"sunny",progression:"none",desc:"摩天楼之间，城市车流从街场旁经过"},
+    rainyCourt:{name:"雨天 · 京都雨巷",type:"outdoor",weather:"rain",progression:"none",desc:"木屋瓦檐、暖灯与雨中的石板巷"},
+    /* preset ID 保持 flowerCourt 不动(存档与进度依赖它),只更新用户可见的
+       名称与说明:场景已从"赭土村落"改为峡谷雨林,旧名会误导。 */
+    flowerCourt:{name:"鲜花 · 峡谷雨林",type:"outdoor",weather:"sunny",progression:"flowerBloom",desc:"瀑布与巨树环绕的峡谷石场，天光自崖顶洒落，得分唤醒花海"},
+    /* 湘南海岸高校:一侧校舍铁丝网、一侧防波堤与大海,远景电线杆与架空线。
+       progression 用 none —— 夜转场是 beachSunset 的招牌,两张都做会撞。 */
+    /* 地中海半岛:锚点是蓝海+白建筑。主篮筐朝海湾,所以海在篮筐后方而不是侧面。 */
+    medCliff:{name:"午后 · 地中海半岛",type:"outdoor",weather:"sunny",progression:"none",desc:"半岛崖顶的海盐蓝球场，一侧白墙村落石阶，篮筐之外是深蓝海湾与远帆"},
+    shonanCoast:{name:"夏末 · 湘南海岸",type:"outdoor",weather:"sunny",progression:"none",desc:"海边高校的水泥外场，铁丝网外是防波堤、电车线与夕照的海平线"},
+    beachSunset:{name:"夕阳 · 西海岸",type:"outdoor",weather:"sunny",progression:"sunsetToNight",desc:"开放海滨旧街场，日落后酒店与路灯渐次点亮"}
   });
 
   const WEATHER_SHOT_MODIFIERS=Object.freeze({

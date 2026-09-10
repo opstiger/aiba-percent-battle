@@ -2,6 +2,7 @@
 (function(global){
   "use strict";
 
+  const craft=new URLSearchParams(location.search).get("craft")!=="classic";
   const enabled=new URLSearchParams(location.search).get("gear")==="classic"?false:true;
 
   function colorOf(value,fallback){
@@ -108,6 +109,13 @@
     box(group,.095,.026,.032,0,1.782,-.186,dark);          // 后扣
     box(group,.034,.036,.05,-.05,1.782,-.186,main);
     box(group,.034,.036,.05,.05,1.782,-.186,main);
+    if(craft){
+      // Crown seams and an inset brim underside, keeping the approved cap envelope.
+      box(group,.012,.087,.034,0,1.8,.190,dark);
+      box(group,.218,.005,.14,0,1.733,.249,dark,.06,0,0);
+      box(group,.042,.018,.035,0,1.891,-.012,dark);
+      for(const side of [-1,1])box(group,.015,.014,.023,side*.155,1.815,.096,dark);
+    }
   }
   /* 镜片要用装备自己的颜色。原来这里收到的 main 是 accent(默认青色),
      于是"太阳镜"(配置色 #111111)渲染成一副发光的青色镜片 ——
@@ -297,8 +305,20 @@
         ellipsoid(group,.072,.016,.052,0,-.01,.18,light);
         box(group,.035,.075,.18,side*.096,-.005,.025,main,0,0,side*.08);
       }
+      if(craft){
+        const stitching=new THREE.Group();stitching.name="equipmentStitching";group.add(stitching);
+        // Inset heel eyelets and a split side panel differentiate performance footwear.
+        for(const face of [-1,1]){
+          box(stitching,.008,.038,.087,face*.099,.004,-.088,dark);
+          for(let j=0;j<3;j++)box(stitching,.009,.006,.013,face*.104,.025,-.12+j*.027,light);
+          for(let j=0;j<3;j++)box(stitching,.009,.012,.047,face*.097,-.021,.004+j*.053,accent);
+        }
+        box(stitching,.09,.012,.012,0,.053,-.145,light);
+        if(global.AIBAModelDetail)AIBAModelDetail.batch(stitching);
+      }
       if(articulated){
         group.children.forEach(mesh=>{
+          if(!mesh.isMesh)return;
           const p=mesh.geometry.parameters;
           // Keep the four equipment identities, but their overlays should read as
           // thin reinforcing panels, not a second complete shoe over the base shoe.

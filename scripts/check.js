@@ -9,7 +9,7 @@ const childProcess=require("child_process");
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
 const legacyEntry="legacy.html";
-const snapshot="block-3pt-kingv2.19.10-modular.html";
+const snapshot="block-3pt-kingv2.21.0-modular.html";
 const requiredFiles=[
   entry,
   legacyEntry,
@@ -30,6 +30,8 @@ const requiredFiles=[
   "src/roster-style.js",
   "src/rendering/character-visuals.js",
   "src/rendering/equipment-visuals.js",
+  "src/rendering/environment-craft.js",
+  "src/rendering/world-places.js",
   "src/hero-moments.js",
   "src/hot-hand.js",
   "src/result-stats.js",
@@ -116,7 +118,7 @@ for(const file of ["core/error-boundary","core/foundation","data/dialogue","core
   const version=file==="core/state"?"2.24.0-pickup":"refactor39";
   if(!entryHtml.includes(`<script src="src/${file}.js?v=${version}"></script>`))fail(`next shell module missing ${file}`);
 }
-if(!entryHtml.includes('<script src="src/data/game-config.js?v=2.19.10-style"></script>'))fail("next game config cache version missing");
+if(!entryHtml.includes('<script src="src/data/game-config.js?v=2.21.0-style"></script>'))fail("next game config cache version missing");
 if(!entryHtml.includes('<script src="src/data/tstage-motion-pack.js?v=2.19.9-tstage2-airjordan"></script>'))fail("T台 motion pack missing");
 
 if(entryHtml.indexOf('src/core/runtime.js')>entryHtml.indexOf('src/config.js'))fail("next runtime must load before config");
@@ -139,7 +141,7 @@ for(const [file,version] of Object.entries(percentBattleVersions)){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js?v=${version}"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
 const lastShotModules=["config","squad","sequence","index"];
-const lastShotVersions={config:"2.19.9-lsvoice",squad:"2.19.9-hy4b-life",sequence:"2.19.10-backspin1",index:"2.19.9-hy4b-state"};
+const lastShotVersions={config:"2.19.9-lsvoice",squad:"2.19.9-hy4b-life",sequence:"2.21.0-backspin1",index:"2.19.9-hy4b-state"};
 for(const file of lastShotModules){
   if(!entryHtml.includes(`<script src="src/modes/last-shot/${file}.js?v=${lastShotVersions[file]}"></script>`))fail(`next Last Shot ${file} module missing`);
 }
@@ -458,8 +460,8 @@ for(const token of ["const GAME_VERSION=","const G={","function triggerMakeRunVo
   if(entryHtml.includes(token))fail("next entry still contains inline shell ownership "+token);
 }
 if(entryHtml.includes("/* Renderer, camera, adaptive quality and base lights are owned"))fail("next entry still contains generated ownership placeholders");
-if(entryHtml.indexOf('src/core/foundation.js?v=refactor39')>entryHtml.indexOf('src/data/game-config.js?v=2.19.10-style'))fail("foundation must load before game config");
-if(entryHtml.indexOf('src/data/game-config.js?v=2.19.10-style')>entryHtml.indexOf('src/core/state.js?v=2.24.0-pickup'))fail("game config must load before runtime state");
+if(entryHtml.indexOf('src/core/foundation.js?v=refactor39')>entryHtml.indexOf('src/data/game-config.js?v=2.21.0-style'))fail("foundation must load before game config");
+if(entryHtml.indexOf('src/data/game-config.js?v=2.21.0-style')>entryHtml.indexOf('src/core/state.js?v=2.24.0-pickup'))fail("game config must load before runtime state");
 if(entryHtml.indexOf('src/core/state.js?v=2.24.0-pickup')>entryHtml.indexOf('src/services/audio-cues.js?v=refactor39'))fail("runtime state must load before audio cues");
 if(entryHtml.indexOf('src/services/audio-cues.js?v=refactor39')>entryHtml.indexOf('src/audio.js?v=2.19.9-clutchvoice'))fail("audio cues must load before audio engine");
 if(entryHtml.indexOf('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>')>entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=2.19.9-hy4b-state"></script>'))fail("legacy adapter must load before Rack Rush module");
@@ -481,14 +483,14 @@ for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"]
 if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js?v=2.25.0-lefty"></script>'))fail("Percent Battle opponent cache version missing");
 if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js?v=2.22.0-super"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.19.9-pregame-dunk-hang1"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
-for(const token of ["v2.19.10 MODULAR","MODULAR / v2.19.10"])
+for(const token of ["v2.21.0 MODULAR","MODULAR / v2.21.0"])
   if(!entryHtml.includes(token))fail("visible version token missing "+token);
-if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.19.10";'))fail("GAME_VERSION must be v2.19.10");
+if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.21.0";'))fail("GAME_VERSION must be v2.21.0");
 /* GAME_VERSION 会随成绩上报(见 percent-battle/state.js 的 version 字段)。它住在
    game-config.js 里,所以这个文件的 ?v= token 必须跟着发版号走 —— 只改常量不改 token,
    浏览器会继续用缓存里的旧副本,上报的版本号就是错的。实测踩过。 */
 const gcToken=(entryHtml.match(/src\/data\/game-config\.js\?v=([^"]+)"/)||[])[1]||"";
-if(gcToken.indexOf("2.19.10")!==0)fail("game-config cache token must start with 2.19.10 so the bumped GAME_VERSION actually reaches the browser (got "+gcToken+")");
+if(gcToken.indexOf("2.21.0")!==0)fail("game-config cache token must start with 2.21.0 so the bumped GAME_VERSION actually reaches the browser (got "+gcToken+")");
 const playerMeterGradient='<linearGradient id="ppGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#2e8bff"/><stop offset="55%" stop-color="#39d3ff"/><stop offset="78%" stop-color="#ffd23f"/><stop offset="100%" stop-color="#ff4040"/></linearGradient>';
 if(!entryHtml.includes(playerMeterGradient))fail("player power fill must preserve the original single-sweet-zone gradient");
 if((entryHtml.match(/class="ppSweet"/g)||[]).length!==1)fail("player power must expose exactly one sweet-zone marker");
@@ -527,7 +529,7 @@ for(const token of ["const NBA_DNA_ENABLED=false","if(!NBA_DNA_ENABLED)","return
 if(/<script src="src\/nba-dna\//.test(entryHtml))
   fail("NBA DNA 未上线期间不应加载它的脚本（42KB 首屏开销）");
 if(!entryHtml.includes('<script src="src/assets-manifest.js?v=20260726-bkyx1"></script>'))fail("assets manifest script missing");
-if(!entryHtml.includes('<script src="src/config.js?v=2.28.0-detour"></script>'))fail("config script missing");
+if(!entryHtml.includes('<script src="src/config.js?v=2.24.0-med"></script>'))fail("config script missing");
 if(!entryHtml.includes('<script src="src/player-select.js?v=2.15.5-hand-follow"></script>'))fail("player select script missing");
 if(!entryHtml.includes('<script src="src/player-locker-preview.js?v=2.19.9-humanfingers1"></script>'))fail("player locker preview script missing");
 if(!entryHtml.includes('<script src="src/player-id.js?v=2.19.7-timeout"></script>'))fail("player id script missing");
@@ -536,7 +538,7 @@ if(!entryHtml.includes('<script src="src/leaderboard-ui.js?v=1.94"></script>'))f
 if(!entryHtml.includes('<script src="src/share.js?v=2.01"></script>'))fail("share script missing");
 if(!entryHtml.includes('<script src="src/shot-physics.js?v=2.07-late-diag"></script>'))fail("shot physics script missing");
 if(!entryHtml.includes('<script src="src/result-stats.js?v=1.78"></script>'))fail("result stats script missing");
-if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.19.10-model1"></script>'))fail("equipment visual script missing");
+if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.21.0-craft"></script>'))fail("equipment visual script missing");
 if(!entryHtml.includes('<script src="src/gear.js?v=2.19.8-rivalgear"></script>'))fail("gear script missing");
 if(!entryHtml.includes('<script src="src/avatar-customizer.js?v=2.15.5-hand-follow"></script>'))fail("avatar customizer script missing");
 if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.26.0-reach"></script>'))fail("shot motion script missing");
@@ -549,7 +551,7 @@ if(!entryHtml.includes('<script src="src/perf.js?v=2.29.0-lodheal"></script>'))f
 if(!entryHtml.includes('<script src="src/perf-settings.js?v=2.19.9-customcam1"></script>'))fail("perf settings script missing");
 if(!entryHtml.includes('<script src="src/face-overlays.js?v=1.2-disabled"></script>'))fail("face overlays retirement shim missing");
 if(!entryHtml.includes('<script src="src/haptics.js?v=1.80"></script>'))fail("haptics script missing");
-if(!entryHtml.includes('<script src="src/visual-director.js?v=2.22.0-refl"></script>'))fail("visual director script missing");
+if(!entryHtml.includes('<script src="src/visual-director.js?v=2.24.0-med"></script>'))fail("visual director script missing");
 if(!entryHtml.includes('<script src="src/audio.js?v=2.19.9-clutchvoice"></script>'))fail("audio script missing");
 if(!entryHtml.includes('<script src="src/vision.js?v=2.19.9-fold"></script>'))fail("vision script missing");
 if(!entryHtml.includes('<script src="src/ui/icons.js?v=1"></script>'))fail("local SVG icon script missing");
@@ -1059,7 +1061,7 @@ const renderingEnvironments=read("src/rendering/environments.js");
 for(const token of ['runtime.register("rendering:environments"',"function buildOutdoorPark","function buildFlowerCourt","function buildBeachSunset","function applyScenePreset","function updateEnvironment"])
   if(!renderingEnvironments.includes(token))fail("rendering environments token missing "+token);
 if(renderingEnvironments.includes("const rackBalls="))fail("rendering environments must not own gameplay props");
-for(const token of ['src/rendering/arena.js?v=2.21.1-fixtures','src/rendering/spectators.js?v=2.20.6-bigarena','src/rendering/hoop.js?v=2.19.10-model1','src/rendering/environments.js?v=2.25.0-norim'])
+for(const token of ['src/rendering/arena.js?v=2.21.1-fixtures','src/rendering/spectators.js?v=2.24.0-med','src/rendering/hoop.js?v=2.21.0-model1','src/rendering/environments.js?v=2.24.0-med'])
   if(!entryHtml.includes(token))fail("next entry missing court element module "+token);
 for(const token of ["function buildStands(","function buildNearCourtCrowd(","function buildHoop(","function applyScenePreset("])
   if(entryHtml.includes(token))fail("next entry still contains inline court element "+token);
@@ -1309,7 +1311,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.28.0-detour','src/rendering/characters.js?v=2.25.0-lefty','src/rendering/camera.js?v=2.24.0-pickup','src/rendering/motion.js?v=2.28.0-detour','src/shot-motion.js?v=2.26.0-reach','src/gameplay/shots.js?v=2.23.0-rack','src/modes/last-shot/squad.js?v=2.19.9-hy4b-life','src/modes/last-shot/sequence.js?v=2.19.10-backspin1'])
+for(const token of ['src/rendering/props.js?v=2.28.0-detour','src/rendering/characters.js?v=2.21.0-craft','src/rendering/camera.js?v=2.24.0-pickup','src/rendering/motion.js?v=2.28.0-detour','src/shot-motion.js?v=2.26.0-reach','src/gameplay/shots.js?v=2.23.0-rack','src/modes/last-shot/squad.js?v=2.19.9-hy4b-life','src/modes/last-shot/sequence.js?v=2.21.0-backspin1'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1326,7 +1328,12 @@ for(const token of ["function groundCelebrateRoot","function prepareCelebrateGro
 const percentBattleState=read("src/modes/percent-battle/state.js");
 if(!percentBattleState.includes("function resetBattleState(){\n    stopVictoryCine();"))
   fail("Percent Battle reset must cancel stale victory cinematics");
-for(const token of ["function attachShowBall","getWorldPosition(_showReleasePos)","function setAIShowActors","poseGuy(g,c,0)","G.myStar||show.o"])
+/* poseGuy(g,c,0) → poseGuy(g,c,landing):原来只守"用 poseGuy 落地",现在连
+   "出手后要回落"和"要按球星风格出手"一起守住。三分大赛的 AI 表演以前
+   shotCurves 不传 style(18 种风格全丢)、ph 钳死在 1.03 之后人僵在最高点 0.7 秒。
+   真正的行为验收在 scripts/ai-show-shot.test.mjs,这里只挡住手滑改回去。 */
+for(const token of ["function attachShowBall","getWorldPosition(_showReleasePos)","function setAIShowActors",
+                    "poseGuy(g,c,landing)","c=shotCurves(it.ph,style)","c=shotCurves(1.02*(1-settle),style)","G.myStar||show.o"])
   if(!presentationCinematics.includes(token))fail("contest opponent presentation fix missing "+token);
 if(/applyShotSetPose\(g|tuneGuideHandPose\(g/.test(presentationCinematics))fail("contest presentation must not overwrite poseGuy hand transforms");
 const presentationPregame=read("src/presentation/pregame.js");
@@ -1350,7 +1357,7 @@ if(pregameGameFlow.includes("poseBallPos(ball.position,curve)"))fail("pregame wa
 const presentationBattle=read("src/presentation/battle.js");
 for(const token of ['runtime.register("presentation:battle"',"function updBattleCut","function checkBattleOvertake","function battleScoreCallout"])
   if(!presentationBattle.includes(token))fail("presentation battle token missing "+token);
-for(const token of ['src/rendering/effects.js?v=refactor27','src/presentation/cinematics.js?v=2.19.9-hy4b-life','src/presentation/pregame.js?v=2.19.10-backspin1','src/presentation/battle.js?v=refactor30'])
+for(const token of ['src/rendering/effects.js?v=refactor27','src/presentation/cinematics.js?v=2.30.0-aishot','src/presentation/pregame.js?v=2.21.0-backspin1','src/presentation/battle.js?v=refactor30'])
   if(!entryHtml.includes(token))fail("next entry missing presentation module "+token);
 for(const token of ["function startHero(","function startAIShow(","function startVictoryCine(","function startPreGameShow(","function battleScoreCallout(","function startConfetti("])
   if(entryHtml.includes(token))fail("next entry still contains inline presentation "+token);
@@ -1761,7 +1768,7 @@ for(const token of ["function updateCameraDirector(","AIBACamera.isEditing","AIB
   if(!cameraSource.includes(token))fail("camera director token missing "+token);
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.23.0-rack','src/presentation/replay.js?v=2.19.10-backspin1','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.19.10-backspin1','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.19.9-customcam1','src/core/scene-init.js?v=2.19.9-ceiling'])
+for(const token of ['src/gameplay/shots.js?v=2.23.0-rack','src/presentation/replay.js?v=2.21.0-backspin1','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.21.0-backspin1','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.19.9-customcam1','src/core/scene-init.js?v=2.19.9-ceiling'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);

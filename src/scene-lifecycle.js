@@ -6,7 +6,7 @@
     if(!layer)return;
     layer.target=0;
     if(Array.isArray(layer.data))layer.data.forEach(item=>{item.grow=0;});
-    [layer.stems,layer.petalsA,layer.petalsB,layer.centers].forEach(mesh=>{if(mesh)mesh.count=0;});
+    [layer.stems,layer.petals,layer.centers].forEach(mesh=>{if(mesh)mesh.count=0;});
   }
 
   function resetFlower(){

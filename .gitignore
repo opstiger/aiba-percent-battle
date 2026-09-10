@@ -6,6 +6,8 @@ backup/
 artifacts/
 docs/*
 !docs/MODELING_PLAN-20260908.md
+!docs/MODEL_CRAFT-20260909.md
+!docs/WORLD_PLACES_PLAN-20260910.md
 !docs/ARCHITECTURE.md
 !docs/MODULAR_REFACTOR_PLAN.md
 !docs/PROJECT_STATE.md

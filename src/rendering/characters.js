@@ -201,6 +201,16 @@ function voxelGuy(){
       const counter=addSoft(foot,.17,.065,.021,mLace,0,.004,-.161,.006,2);counter.name="heelCounter";
     }
     const ankleBlend=addSoft(ank,0.158,0.13,0.145,mSock,0,0.035,-0.065,.036,3);
+    if(detailOn&&new URLSearchParams(location.search).get("craft")!=="classic"){
+      const sockKit=new THREE.Group();sockKit.name="sockKnit";ank.add(sockKit);
+      for(let row=0;row<3;row++)add(sockKit,.159,.008,.146,mLace,0,.03+row*.021,-.065);
+      // Baked within a single ankle segment; same extents as the existing sock cuff.
+      detail.batch(sockKit);
+      const heelKit=new THREE.Group();heelKit.name="heelStitch";foot.add(heelKit);
+      for(const side of [-1,1])for(let row=0;row<3;row++)
+        add(heelKit,.006,.009,.042,mSole,side*.087,-.02+row*.019,-.119);
+      detail.batch(heelKit);
+    }
     ankleBlend.name="ankleBlend";                             // 袜筒与球鞋共同包住踝 pivot
     kn.add(ank);lg.add(kn);
     g.add(lg);legs.push(lg);knees.push(kn);ankles.push(ank);shoes.push(sh);
@@ -538,13 +548,33 @@ function jerseyTex(base,trim,num,big,mirror){
   const key=["jersey",base,trim,num,big?1:0,mirror?1:0].join(":");
   if(CHARACTER_TEXTURE_CACHE.has(key))return CHARACTER_TEXTURE_CACHE.get(key);
   const c="#"+base.toString(16).padStart(6,"0"),t="#"+trim.toString(16).padStart(6,"0");
-  const tex=pixTex(72,72,(g)=>{
+  const craft=new URLSearchParams(location.search).get("craft")!=="classic";
+  const tex=pixTex(craft?144:72,craft?144:72,(g)=>{
+    if(craft)g.scale(2,2);
     if(mirror){g.translate(72,0);g.scale(-1,1);}
     g.fillStyle=c;g.fillRect(0,0,72,72);
     g.fillStyle="rgba(255,255,255,.07)";g.fillRect(0,0,72,5);
     g.fillStyle="rgba(0,0,0,.16)";g.fillRect(0,62,72,10);
     g.fillStyle=t;g.fillRect(0,0,4,72);g.fillRect(68,0,4,72);
     g.fillRect(4,4,64,3);
+    if(craft){
+      // Woven mesh, panel seams and stitched hem. Same UVs and mirrored numbers.
+      g.fillStyle="rgba(0,0,0,.10)";
+      for(let y=9;y<63;y+=3)for(let x=7+(y%2);x<66;x+=3)g.fillRect(x,y,.7,1);
+      g.fillStyle="rgba(255,255,255,.23)";
+      for(let y=9;y<61;y+=2){g.fillRect(5.5,y,.5,1);g.fillRect(66,y,.5,1);}
+      g.fillStyle="rgba(0,0,0,.12)";g.fillRect(7,9,3,50);g.fillRect(62,9,3,50);
+      g.fillStyle="rgba(255,255,255,.17)";g.fillRect(11,21,1,38);g.fillRect(60,21,1,38);
+      g.fillStyle=t;g.fillRect(6,63,60,1);g.fillStyle="rgba(255,255,255,.3)";
+      for(let x=8;x<64;x+=2)g.fillRect(x,65,.8,.5);
+      if(!big){
+        g.fillStyle="#e9e5d7";g.fillRect(10,11,5,6);g.fillRect(10,58,11,5);
+        g.fillStyle="#263638";g.fillRect(11,59,2,3);g.fillRect(14,59,6,.7);g.fillRect(14,61,4,.5);
+        g.fillStyle=t;g.fillRect(57,12,4,1);g.fillRect(59,10,4,1);
+      }else{
+        g.fillStyle=t;g.fillRect(25,11,22,2);g.fillRect(29,15,14,1);
+      }
+    }
     if(num===""||num==null)return;
     if(!big){g.fillStyle="rgba(255,255,255,.82)";g.font="bold 7px Orbitron, monospace";g.textAlign="center";g.fillText("aiBA",36,17);}
     g.font="bold "+(big?40:32)+"px Orbitron, monospace";g.textAlign="center";

@@ -122,6 +122,14 @@ const R=await page.evaluate(({FRAMES})=>{
      1.46×0.46 箱体 AABB 会膨胀到近 1.5×1.5,把站位整个包进去,量出"间隙 0"的假红。 */
 const W=await page.evaluate(()=>{
   const props=window.AIBA.runtime.service("rendering:props");
+  /* ⚠ 必须先钉死惯用手再量几何。球架摆哪一侧由 currentRackSide() → G.myStar 的
+     惯用手决定,而 G.myStar 是开局随机选的 —— 不钉住的话,同一份代码在不同种子下
+     量到的是**镜像的两套布局**,右手那套直线穿架、左手那套不穿,断言就会时红时绿。
+     (实测:某次跑出 side=-1,"直线原本会撞的段 0/4",于是判定"绕行点没接进 walkTo",
+      其实绕行点好好的,只是那一侧本来就不用绕。) */
+  window.AIBA.runtime.service("rendering:characters");
+  G.myStar={id:"curry"};                       // 右手,rackSide=+1
+  props.placeRacks(props.currentRackSide());
   const spots=RACKS.map(r=>r.p);
   const CLEAR=0.34;
   const standing=[],legs=[],modes={};
@@ -157,6 +165,7 @@ const W=await page.evaluate(()=>{
       const shot=(G.seq||[]).find(x=>x&&x.rack===ri);
       if(!shot){rows.push({seg:k+"→"+ri,d:null,note:"没有该架的 shot"});continue;}
       G.myStar={id:star};
+      props.placeRacks(props.currentRackSide());   // 换星之后必须重新摆架,否则量的是上一位的布局
       P.pos.copy(spots[k]);P.walking=false;G.moving=false;
       walkTo(shot,function(){},{});
       let m=Infinity,n=0,dev=0;
@@ -175,7 +184,25 @@ const W=await page.evaluate(()=>{
   }
   window.__freeze=false;
 
-  return {standing,modes,CLEAR,live};
+  const stands=props.getRackBalls().regularStands||[];
+  const diag={scene:(typeof currentScenePreset!=="undefined")?currentScenePreset:"?",
+    side:props.getRackSide?props.getRackSide():"?",
+    stands:stands.slice(0,3).map((st,i)=>{
+      if(!st)return null;
+      const w=new THREE.Vector3();st.getWorldPosition(w);
+      const lb=new THREE.Box3();
+      st.updateMatrixWorld(true);
+      const inv=new THREE.Matrix4().copy(st.matrixWorld).invert();
+      st.traverse(c=>{if(!c.isMesh||!c.geometry)return;c.updateMatrixWorld(true);
+        c.geometry.computeBoundingBox();const bb=c.geometry.boundingBox.clone();
+        bb.applyMatrix4(new THREE.Matrix4().copy(inv).multiply(c.matrixWorld));lb.union(bb);});
+      return {i,vis:st.visible,rotY:+st.rotation.y.toFixed(3),
+        world:[+w.x.toFixed(2),+w.z.toFixed(2)],
+        localX:[+lb.min.x.toFixed(2),+lb.max.x.toFixed(2)],
+        localZ:[+lb.min.z.toFixed(2),+lb.max.z.toFixed(2)]};
+    }),
+    spots:spots.slice(0,3).map(p=>[+p.x.toFixed(2),+p.z.toFixed(2)])};
+  return {standing,modes,CLEAR,live,diag};
 });
 
 await BROWSER.close();server.close();
@@ -205,6 +232,7 @@ if(worst.pen>0.005){                       // 5mm 容差:留给圆角与摆臂�
 }else console.log("✅ 取球全程球心在躯干外");
 
 /* 躯干半宽 0.25m,留一点余量当 0.28。 */
+console.log("[diag] "+JSON.stringify(W.diag));
 console.log("\n站位与球架的水平间隙:");
 const stBad=W.standing.filter(r=>r.d<0.25);
 console.log("  最小 "+Math.min(...W.standing.map(r=>r.d)).toFixed(3)+

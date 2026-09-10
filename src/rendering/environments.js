@@ -85,30 +85,80 @@ function buildRainWeather(){
   rainState={positions,geometry,count,reset,speed:mobile?12:15};
 }
 function writeFlowerInstance(state,layer,index,grow){
-  const d=layer.data[index],o=state.dummy,axis=state.axis.set(d.ax,d.ay,d.az).normalize();
+  const d=layer.data[index],o=state.dummy,place=environmentRoot.userData.placeState;
+  const wind=place?Math.sin(place.time*.9+d.x*.7+d.z*.3)*.045+Math.sin(place.time*1.7+d.z)*.018:0;
+  const axis=state.axis.set(d.ax+wind,d.ay,d.az+wind*.5).normalize();
   const eased=Math.pow(clamp(grow,0,1),.72),stemScale=Math.max(.001,eased),bloomScale=Math.max(.001,eased);
   state.quat.setFromUnitVectors(state.up,axis);
   o.position.set(d.x+axis.x*d.h*eased*.5,d.y+axis.y*d.h*eased*.5,d.z+axis.z*d.h*eased*.5);
   o.quaternion.copy(state.quat);o.scale.set(d.stem*stemScale,d.h*eased,d.stem*stemScale);o.updateMatrix();layer.stems.setMatrixAt(index,o.matrix);
   o.position.set(d.x+axis.x*d.h*eased,d.y+axis.y*d.h*eased,d.z+axis.z*d.h*eased);
-  o.quaternion.copy(state.quat);o.rotateY(d.rot);o.scale.set(d.size*bloomScale,d.size*bloomScale,d.size*bloomScale);o.updateMatrix();layer.petalsA.setMatrixAt(index,o.matrix);
-  o.quaternion.copy(state.quat);o.rotateY(d.rot+Math.PI/2);o.scale.set(d.size*bloomScale,d.size*bloomScale*(d.type?1:.7),d.size*bloomScale);o.updateMatrix();layer.petalsB.setMatrixAt(index,o.matrix);
-  o.quaternion.copy(state.quat);o.rotateY(d.rot*.5);o.scale.set(d.core*bloomScale,d.core*bloomScale,d.core*bloomScale);o.updateMatrix();layer.centers.setMatrixAt(index,o.matrix);
+  /* 按 type 取花型:同一套几何靠 scale 与倾角组合出花骨朵/向日葵/雏菊/
+     霸王花/草叶。锥体长轴先在局部转到朝外(rotateX),再绕 Y 辐射;配合
+     PETAL_GEO 的底面已归到原点,花瓣是"从花心向外长出去",而不是以花心
+     为中心两侧各伸一半(后者看起来像一根穿过去的棍)。
+     换算:原几何 .13×.075×.31;锥体 radius/height 均为 .5(直径 1.0),
+     故 x=.13、y(长轴)=.31/.5=.62、z=.075。 */
+  const SH=FLOWER_SHAPES[d.type%FLOWER_SHAPES.length];
+  const pk=d.size*bloomScale*SH.petal;
+  /* ⚠ 花瓣必须**辐射一圈**,不能只放两片。原来是 petalsA/petalsB 两个
+     InstancedMesh 各一片、互成 90°,拼出来是个"十字",无论 tilt 怎么调都读作
+     花骨朵 —— 用户原话"花全部变成了花苞不打开了",根因就在这里,不是 tilt。
+     当时不敢加片数是怕多 InstancedMesh 多 draw call;其实把两个 mesh 合成
+     **一个 mesh、每朵 FLOWER_PETALS 个实例**,draw call 反而从 2 降到 1,
+     多出来的只是实例矩阵写入(而且 count 会随开花进度收敛)。 */
+  for(let pi=0;pi<FLOWER_PETALS;pi++){
+    o.quaternion.copy(state.quat);
+    o.rotateX(-Math.PI/2+SH.tilt);
+    o.rotateY(d.rot+pi*(Math.PI*2/FLOWER_PETALS));
+    o.scale.set(pk*.13,pk*.62,pk*.075);o.updateMatrix();
+    layer.petals.setMatrixAt(index*FLOWER_PETALS+pi,o.matrix);
+  }
+  const ck=d.core*bloomScale*SH.core;
+  o.quaternion.copy(state.quat);o.rotateY(d.rot*.5);
+  o.scale.set(ck*.12,ck*.105*SH.fat,ck*.12);o.updateMatrix();layer.centers.setMatrixAt(index,o.matrix);
 }
+/* 花型表:同一套低模几何,靠 scale 与倾角组合出不同形态 ——
+   刻意**不新增 InstancedMesh**,因为花海是按得分逐朵生长的,层数是 draw call
+   的硬成本;每加一种花型就多 4 个 InstancedMesh,花海层一多就很贵。
+     petal 瓣大小 / core 心大小 / tilt 瓣倾角(负=收拢朝上,正=外翻) / fat 心高矮 */
+const FLOWER_SHAPES=[
+  {petal:0.60,core:1.50,tilt:-1.15,fat:1.60},   // 0 花骨朵:瓣收拢贴梗、心拉成苞
+  {petal:1.30,core:1.00,tilt:-0.12,fat:0.55},   // 1 向日葵:大瓣平铺、扁而大的盘
+  {petal:0.90,core:0.62,tilt:-0.32,fat:0.70},   // 2 雏菊:小瓣小盘
+  {petal:1.55,core:1.10,tilt: 0.42,fat:1.00},   // 3 霸王花:大瓣外翻、粗心
+  {petal:0.42,core:0.30,tilt:-1.35,fat:1.20}    // 4 草叶:细长
+];
+/* 花瓣几何:锥体自带弧度;并把**底面平移到原点**,这样花瓣是"从花心向外",
+   而不是以花心为中心向两侧各伸一半(后者看起来像一根穿过去的棍)。
+   段数只用 4(6 三角形),不会把花海的三角形预算撑爆。 */
+const FLOWER_PETALS=6;                       // 每朵花的花瓣数,合并进同一个 InstancedMesh
+const PETAL_GEO=new THREE.ConeGeometry(.5,.5,4);PETAL_GEO.translate(0,.25,0);
+const CORE_GEO=new THREE.SphereGeometry(.5,5,4);
 function makeFlowerLayer(state,data,name){
   const total=data.length;
   const stemMat=new THREE.MeshLambertMaterial({color:0xffffff});
   const petalMat=new THREE.MeshLambertMaterial({color:0xffffff,emissive:0x5a1d2d,emissiveIntensity:0});
   const coreMat=new THREE.MeshLambertMaterial({color:0xffffff,emissive:0x5b390e,emissiveIntensity:0});
   const layer={name,data,total,target:0,stems:new THREE.InstancedMesh(new THREE.BoxGeometry(.052,1,.052),stemMat,total),
-    petalsA:new THREE.InstancedMesh(new THREE.BoxGeometry(.13,.075,.31),petalMat,total),
-    petalsB:new THREE.InstancedMesh(new THREE.BoxGeometry(.13,.075,.31),petalMat,total),
-    centers:new THREE.InstancedMesh(new THREE.BoxGeometry(.12,.105,.12),coreMat,total),stemMat,petalMat,coreMat};
-  const meshes=[layer.stems,layer.petalsA,layer.petalsB,layer.centers];
+    /* 花瓣改低模锥体压扁后朝外辐射:原来是 .13×.075×.31 的**扁方块**,
+       两片交叉读起来就是"几块方块",不像花。锥体自带弧度且压扁后像一片有
+       厚度的花瓣,段数只用 4(6 个三角形),不会把花海的三角形预算撑爆。
+       花心同理改用低模球,不再是方块。
+       不同花型靠 SHAPES 的 scale/倾角组合出来,不新增 InstancedMesh
+       —— 花海是按得分逐朵生长的,层数是 draw call 的硬成本。 */
+    petals:new THREE.InstancedMesh(PETAL_GEO,petalMat,total*FLOWER_PETALS),
+    centers:new THREE.InstancedMesh(CORE_GEO,coreMat,total),stemMat,petalMat,coreMat};
+  const meshes=[layer.stems,layer.petals,layer.centers];
+  const _c=new THREE.Color();
   data.forEach((d,i)=>{
     layer.stems.setColorAt(i,new THREE.Color(state.stemPalette[d.stemColor%state.stemPalette.length]));
-    layer.petalsA.setColorAt(i,new THREE.Color(state.flowerPalette[d.color%state.flowerPalette.length]));
-    layer.petalsB.setColorAt(i,new THREE.Color(state.flowerPalette[(d.color+(d.type?0:2))%state.flowerPalette.length]));
+    /* 同一朵的花瓣不给同一个颜色:交替取相邻色,边缘才有深浅,
+       否则六片同色又变成一块纯色饼。 */
+    for(let pi=0;pi<FLOWER_PETALS;pi++){
+      const ci=(d.color+(pi%2?1:0))%state.flowerPalette.length;
+      layer.petals.setColorAt(i*FLOWER_PETALS+pi,_c.set(state.flowerPalette[ci]));
+    }
     layer.centers.setColorAt(i,new THREE.Color(state.corePalette[d.coreColor%state.corePalette.length]));
   });
   meshes.forEach(mesh=>{mesh.count=0;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;environmentRoot.add(mesh);});
@@ -117,21 +167,22 @@ function makeFlowerLayer(state,data,name){
 function setFlowerLayerTarget(state,layer,target){
   target=clamp(target|0,0,layer.total);if(target<=layer.target)return;
   const old=layer.target;layer.target=target;
-  [layer.stems,layer.petalsA,layer.petalsB,layer.centers].forEach(mesh=>{mesh.count=target;});
+  layer.stems.count=target;layer.centers.count=target;
+  layer.petals.count=target*FLOWER_PETALS;      // 花瓣是每朵 N 个实例
   for(let i=old;i<target;i++){
     layer.data[i].grow=-Math.min(.62,(i-old)*.024);
     writeFlowerInstance(state,layer,i,0);
   }
-  [layer.stems,layer.petalsA,layer.petalsB,layer.centers].forEach(mesh=>{mesh.instanceMatrix.needsUpdate=true;});
+  [layer.stems,layer.petals,layer.centers].forEach(mesh=>{mesh.instanceMatrix.needsUpdate=true;});
 }
 function updateFlowerLayer(state,layer,dt){
   let changed=false;
   for(let i=0;i<layer.target;i++){
-    const d=layer.data[i];if(d.grow>=1)continue;
+    const d=layer.data[i];if(d.grow>=1&&!environmentRoot.userData.placeState)continue;
     d.grow=Math.min(1,d.grow+dt*(1.75+d.speed));
     writeFlowerInstance(state,layer,i,Math.max(0,d.grow));changed=true;
   }
-  if(changed)[layer.stems,layer.petalsA,layer.petalsB,layer.centers].forEach(mesh=>{mesh.instanceMatrix.needsUpdate=true;});
+  if(changed)[layer.stems,layer.petals,layer.centers].forEach(mesh=>{mesh.instanceMatrix.needsUpdate=true;});
 }
 function buildFlowerCourt(){
   const mobile=(window.matchMedia&&window.matchMedia("(pointer:coarse)").matches)||Math.min(innerWidth,innerHeight)<700;
@@ -156,12 +207,13 @@ function buildFlowerCourt(){
     weedsA.setColorAt(i,color);weedsB.setColorAt(i,color);
   }
   [weedsA,weedsB].forEach(mesh=>{mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;environmentRoot.add(mesh);});
+  if(environmentRoot.userData.placeState)state.windWeeds=[weedsA,weedsB].map(mesh=>({mesh,base:mesh.instanceMatrix.array.slice()}));
 
   const groundTotal=mobile?340:720,groundData=[];
   const addGround=(x,z,zone)=>{
     const h=zone===0?frnd(.3,.96):(zone===1?frnd(.2,.7):frnd(.13,.46));
     groundData.push({x,y:.012,z,ax:frnd(-.08,.08),ay:1,az:frnd(-.08,.08),h,size:frnd(.7,1.42),core:frnd(.72,1.12),stem:frnd(.72,1.18),
-      rot:frnd(0,Math.PI),type:pick(3),color:pick(state.flowerPalette.length),stemColor:pick(state.stemPalette.length),coreColor:pick(state.corePalette.length),grow:0,speed:frnd(0,.7)});
+      rot:frnd(0,Math.PI),type:pick(FLOWER_SHAPES.length),color:pick(state.flowerPalette.length),stemColor:pick(state.stemPalette.length),coreColor:pick(state.corePalette.length),grow:0,speed:frnd(0,.7)});
   };
   const outerCount=Math.floor(groundTotal*.54),edgeCount=Math.floor(groundTotal*.2);
   for(let i=0;i<outerCount;i++){
@@ -188,7 +240,7 @@ function buildFlowerCourt(){
 
   const structureData=[],addStructure=(x,y,z,ax,ay,az,hMin,hMax,sizeMin,sizeMax)=>{
     structureData.push({x,y,z,ax,ay,az,h:frnd(hMin,hMax),size:frnd(sizeMin,sizeMax),core:frnd(.78,1.2),stem:frnd(.72,1.15),rot:frnd(0,Math.PI),
-      type:pick(3),color:pick(state.flowerPalette.length),stemColor:pick(state.stemPalette.length),coreColor:pick(state.corePalette.length),grow:0,speed:frnd(.1,.9)});
+      type:pick(FLOWER_SHAPES.length),color:pick(state.flowerPalette.length),stemColor:pick(state.stemPalette.length),coreColor:pick(state.corePalette.length),grow:0,speed:frnd(.1,.9)});
   };
   const supportCount=mobile?24:44,boardCount=mobile?38:70,rimCount=mobile?22:38;
   for(let i=0;i<supportCount;i++){
@@ -350,6 +402,15 @@ function updateFlowerCourt(progress,dt){
   setFlowerLayerTarget(state,state.ground,Math.floor(groundT*state.ground.total));
   setFlowerLayerTarget(state,state.structure,Math.floor(structureT*state.structure.total));
   updateFlowerLayer(state,state.ground,dt);updateFlowerLayer(state,state.structure,dt);
+  if(state.windWeeds){
+    const time=environmentRoot.userData.placeState.time;
+    state.windWeeds.forEach(({mesh,base})=>{const a=mesh.instanceMatrix.array;
+      for(let i=0;i<mesh.count;i++){const j=i*16,wind=Math.sin(time*1.1+base[j+12]*.7+base[j+14])*.09;
+        // Bend each blade's local up column around its fixed root; no accumulated drift.
+        a[j+4]=base[j+4]+wind*base[j+5];a[j+6]=base[j+6]+wind*.5*base[j+5];a[j+12]=base[j+12]+wind*base[j+5]*.5;a[j+14]=base[j+14]+wind*base[j+5]*.25;
+      }mesh.instanceMatrix.needsUpdate=true;
+    });
+  }
   state.visible=state.ground.target;state.structureVisible=state.structure.target;
   const allVisible=state.visible+state.structureVisible;
   document.documentElement.dataset.flowerCount=String(allVisible);
@@ -378,6 +439,7 @@ function applyScenePreset(name,opts){
   currentWeather=preset.weather;
   indoorRoot.visible=!outdoor;
   rainState=null;
+  if(window.AIBAWorldPlaces)AIBAWorldPlaces.restore();
   disposeEnvironmentRoot(environmentRoot);disposeEnvironmentRoot(weatherRoot);if(outdoor&&window.AIBAVisual)environmentRoot.add(AIBAVisual.makeSkyDome(THREE,name,COURT.midZ));
   resetStreetCrowd();
   if(courtFloor){
@@ -392,6 +454,27 @@ function applyScenePreset(name,opts){
       hemi.color.setHex(0xffbd86);hemi.groundColor.setHex(0x51444b);hemi.intensity=.58;
       sun.color.setHex(0xffd5a0);sun.intensity=.9;sun.position.set(-14,15,-8);spot.intensity=0;camFill.intensity=.2;
       arenaLights.forEach(l=>{l.intensity=0;});
+    }else if(name==="medCliff"){
+      /* 下午 4~5 点(文档 §灯光):暖金阳光斜射,建筑受光面亮、背光面冷,
+         明暗对比要看得出来 —— 所以 sun 给足、ambient 压住,不能靠环境光洗平。 */
+      scene.background.setHex(0x2b7fb4);scene.fog.color.setHex(0xcfe0de);scene.fog.near=95;scene.fog.far=330;
+      ambient.color.setHex(0xe8eef0);ambient.intensity=.34;
+      hemi.color.setHex(0x9fd0e6);hemi.groundColor.setHex(0x9a8f74);hemi.intensity=.48;
+      sun.color.setHex(0xffe0ac);sun.intensity=1.25;sun.position.set(-26,17,6);
+      spot.intensity=0;camFill.intensity=.2;
+      arenaLights.forEach(l=>{l.intensity=0;});
+    }else if(name==="shonanCoast"){
+      /* 夏末傍晚金色夕阳(文档 §灯光):太阳压得很低并且在**海那一侧**(-x),
+         所以校舍受光面暖、朝球场的一面留冷影,明暗有方向。
+         不用 beachSunset 那套日落橙 —— 那是"日落时刻",这里要的是"放学时分"。 */
+      /* 雾别太厚:第一版 near46/far132 把海、校舍、远山一起洗成奶白,
+         "一侧校园一侧海"的对比全没了。拉到 58/190 仍有夏日海雾,但物体读得出。 */
+      scene.background.setHex(0x8fb6cd);scene.fog.color.setHex(0xd6cfb6);scene.fog.near=58;scene.fog.far=190;
+      ambient.color.setHex(0xf2e6cf);ambient.intensity=.40;
+      hemi.color.setHex(0xbcd6e4);hemi.groundColor.setHex(0x6b6a5c);hemi.intensity=.52;
+      sun.color.setHex(0xffcf8a);sun.intensity=1.05;sun.position.set(-34,9,-16);
+      spot.intensity=0;camFill.intensity=.2;
+      arenaLights.forEach(l=>{l.intensity=0;});
     }else if(rainy){
       scene.background.setHex(0x657987);scene.fog.color.setHex(0x758690);scene.fog.near=28;scene.fog.far=68;
       ambient.color.setHex(0xdce8ee);ambient.intensity=.32;
@@ -405,13 +488,17 @@ function applyScenePreset(name,opts){
       sun.color.setHex(0xffe2a3);sun.intensity=.9;sun.position.set(-12,22,14);spot.intensity=0;camFill.intensity=.2;
       arenaLights.forEach(l=>{l.intensity=0;});
     }
-    if(beach)buildBeachSunset();
-    else{
-      buildOutdoorPark(rainy,flower);
+    const place=window.AIBAWorldPlaces?.enabled;
+    if(place){
+      AIBAWorldPlaces.build(environmentRoot,name);
       if(rainy)buildRainWeather();
       if(flower)buildFlowerCourt();
+    }else{
+      if(beach)buildBeachSunset();
+      else{buildOutdoorPark(rainy,flower);if(rainy)buildRainWeather();if(flower)buildFlowerCourt();}
+      if(window.AIBAEnvironmentCraft)AIBAEnvironmentCraft.build(environmentRoot,name);
     }
-    buildStreetCrowd({beach,rainy,flower});
+    buildStreetCrowd({beach,rainy,flower,place:place?name:null});
   }else{
     /* 室内是唯一有"主光"的预设,四盏灯的分工见 rendering/core.js 顶部。
        这里必须把 core.js 的默认值逐项重写一遍 —— 切过一次户外场景再切回来,
@@ -487,6 +574,7 @@ function updateEnvironment(dt){
   updateRain(dt);
   updateFlowerCourt(progress,dt);
   updateBeachSunset(progress,dt);
+  if(window.AIBAWorldPlaces)AIBAWorldPlaces.update(dt,progress);
 }
 
 window.AIBA.runtime.register("rendering:environments",Object.freeze({

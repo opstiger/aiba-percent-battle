@@ -173,17 +173,42 @@ function updShow(dt){
       nextShowItem();
     }
   }else if(it.type==="shot"){
-    const ph=Math.min(1.03,show.t/(it.loadDur||0.72)*1.03);
-    const c=shotCurves(ph);show.c=c;
-    const y=poseGuy(g,c,0)+Math.max(0,c.jmp*0.55-c.over*0.55);
+    /* 三分大赛的电脑表演以前和玩家、和百分大战对手都不是同一套:
+         ① shotCurves(ph) **没传 shotStyle** —— 18 种球星出手风格在这里全丢,
+            所有 AI 都是同一套中性动作。rivals 身上其实是有的
+            (characters.js 的 applyStarStyle 会写 guy.shotStyle),只是没往下传。
+         ② ph 到 1.03 就被 Math.min 钳死,而 totalDur=loadDur+0.72~0.86,
+            于是出手后**整整 0.7 秒多**都拿着这条冻结曲线喂 poseGuy,
+            人就僵在最高点不下来,到点再瞬间弹回站姿 ——
+            用户原话"还会存在空中最高点停顿出手,很老的模式了"。
+       改成和 opponent.js 的 land 段同构:出手后把曲线按 settle 平方曲线降回去,
+       末段补一个落地缓冲,朝向也补上左手镜像和 style.turn。 */
+    const style=(g&&g.shotStyle)||null;
+    const mir=(g&&g.lefty)?-1:1;
+    const styleTurn=(style&&Number(style.turn))||0;
+    let c,landing=0;
+    if(it.fired){
+      it.landT=(it.landT||0)+dt;
+      /* 回落时长塞进 loadDur 之后的空档里,不改变整段表演的节拍(否则一轮 25 球会整体拖长) */
+      const settleDur=Math.max(.18,Math.min(.36,(it.totalDur||1.02)-(it.loadDur||0.72)));
+      const progress=Math.min(1,it.landT/settleDur),settle=progress*progress;
+      c=shotCurves(1.02*(1-settle),style);
+      landing=progress>.72?Math.sin((progress-.72)/.28*Math.PI)*.12:0;
+    }else{
+      it.ph=Math.min(1.03,show.t/(it.loadDur||0.72)*1.03);
+      c=shotCurves(it.ph,style);
+    }
+    show.c=c;
+    const y=poseGuy(g,c,landing)+Math.max(0,c.jmp*0.55-c.over*0.55);
     g.g.position.set(g.pos.x,y,g.pos.z);
-    const stance=shotStanceBlend(c,true);
-    g.g.rotation.y=faceTo(g.pos,HOOP)+SHOT_STANCE_YAW*stance;
+    const stance=shotStanceBlend(c,!it.fired);
+    g.g.rotation.y=faceTo(g.pos,HOOP)+mir*(SHOT_STANCE_YAW+styleTurn)*stance;
     /* 出手跟随必须走和玩家同一套 applyShotFollowThroughPose：
        applyHandFollowThroughPose 只压腕、不伸肩肘，出手后手臂会僵在最高点，
        看起来就是"球出去了人还悬停在空中"。这里捕获松手前姿势再交给共用控制器。 */
-    if(ph>=1.03&&!it.fired){
-      it.fired=true;it.followT=0;
+    /* 捕获要在本帧 poseGuy 之后:captureShotPose 读的是已经写进骨架的松手前姿势。 */
+    if(!it.fired&&it.ph>=1.03){
+      it.fired=true;it.followT=0;it.landT=0;
       it.shotPose=(typeof captureShotPose==="function")?captureShotPose(g):null;
       g.g.updateMatrixWorld(true);g.ball.getWorldPosition(_showReleasePos);
       g.ball.visible=false;

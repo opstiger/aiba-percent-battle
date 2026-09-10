@@ -1,5 +1,13 @@
 /* hoop & net */
 let netMesh,farNet,netPulse=0,netPulseAge=99,netPulseDir=0,lastNetPulse=0;
+const courtHoopRigs=[];
+function setPlaceHoops(active){
+  courtHoopRigs.forEach(rig=>rig.children.forEach(child=>{
+    if(child.userData.keepOutdoor)return;
+    if(active){if(child.userData.indoorVisibility===undefined)child.userData.indoorVisibility=child.visible;child.visible=false;}
+    else if(child.userData.indoorVisibility!==undefined){child.visible=child.userData.indoorVisibility;delete child.userData.indoorVisibility;}
+  }));
+}
 const NET_HEIGHT=.45;
 const netEase=t=>{t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);};
 function prepareNet(mesh){
@@ -134,16 +142,16 @@ function buildHoop(){
     const a=i/8*Math.PI*2;
     const seg=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.07,0.09),rimM);
     seg.position.set(HOOP.x+Math.cos(a)*0.3,HOOP.y,HOOP.z+Math.sin(a)*0.3);
-    seg.rotation.y=-a+Math.PI/2;grp.add(seg);
+    seg.userData.keepOutdoor=true;seg.rotation.y=-a+Math.PI/2;grp.add(seg);
   }
   const conn=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.07,0.32),rimM);
-  conn.position.set(0,3.05,-8.42);grp.add(conn);
+  conn.userData.keepOutdoor=true;conn.position.set(0,3.05,-8.42);grp.add(conn);
   // net
   netMesh=window.AIBAModelDetail?.enabled?AIBAModelDetail.net():new THREE.Mesh(
     new THREE.CylinderGeometry(0.28,0.16,0.45,8,3,true),
     new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:0.75}));
   netMesh.position.set(HOOP.x,HOOP.y-0.26,HOOP.z);grp.add(netMesh);
-  prepareNet(netMesh);
+  netMesh.userData.keepOutdoor=true;prepareNet(netMesh);
   if(window.AIBAModelDetail?.enabled)AIBAModelDetail.hoopHardware(grp,BOARD_Z,BASE_Z,1,bFrameM);
   scene.add(grp);
 
@@ -179,16 +187,17 @@ function buildHoop(){
     const a=i/8*Math.PI*2;
     const seg=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.07,0.09),rimM);
     seg.position.set(Math.cos(a)*.3,HOOP.y,COURT.farHoopZ+Math.sin(a)*.3);
-    seg.rotation.y=-a+Math.PI/2;farGrp.add(seg);
+    seg.userData.keepOutdoor=true;seg.rotation.y=-a+Math.PI/2;farGrp.add(seg);
   }
   const farConn=new THREE.Mesh(new THREE.BoxGeometry(.12,.07,.32),rimM);
-  farConn.position.set(0,HOOP.y,COURT.farHoopZ+.42);farGrp.add(farConn);
+  farConn.userData.keepOutdoor=true;farConn.position.set(0,HOOP.y,COURT.farHoopZ+.42);farGrp.add(farConn);
   farNet=window.AIBAModelDetail?.enabled?AIBAModelDetail.net():new THREE.Mesh(
     new THREE.CylinderGeometry(.28,.16,.45,8,3,true),
     new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:.6}));
   farNet.position.set(0,HOOP.y-.26,COURT.farHoopZ);farGrp.add(farNet);
-  prepareNet(farNet);
+  farNet.userData.keepOutdoor=true;prepareNet(farNet);
   scene.add(farGrp);
+  grp.name="nearHoopRig";farGrp.name="farHoopRig";courtHoopRigs.push(grp,farGrp);
 }
 /* light cones + jumbotron */
 let jumboCv,jumboTex;
