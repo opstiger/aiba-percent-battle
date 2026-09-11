@@ -454,6 +454,18 @@ function applyScenePreset(name,opts){
       hemi.color.setHex(0xffbd86);hemi.groundColor.setHex(0x51444b);hemi.intensity=.58;
       sun.color.setHex(0xffd5a0);sun.intensity=.9;sun.position.set(-14,15,-8);spot.intensity=0;camFill.intensity=.2;
       arenaLights.forEach(l=>{l.intensity=0;});
+    }else if(name==="arcticSnow"){
+      scene.background.setHex(0x081524);scene.fog.color.setHex(0x536c7c);scene.fog.near=48;scene.fog.far=180;
+      ambient.color.setHex(0xb8d1e5);ambient.intensity=.44;
+      hemi.color.setHex(0x9fbcd5);hemi.groundColor.setHex(0xc3d5da);hemi.intensity=.58;
+      sun.color.setHex(0xb9cfe5);sun.intensity=.42;sun.position.set(-14,20,-4);spot.intensity=0;camFill.intensity=.24;
+      arenaLights.forEach(l=>{l.intensity=0;});
+    }else if(name==="spanishQuarter"){
+      scene.background.setHex(0x6093af);scene.fog.color.setHex(0xcdbb9e);scene.fog.near=48;scene.fog.far=135;
+      ambient.color.setHex(0xd5dce0);ambient.intensity=.3;
+      hemi.color.setHex(0xb8ced8);hemi.groundColor.setHex(0x886e51);hemi.intensity=.45;
+      sun.color.setHex(0xffe0aa);sun.intensity=1.35;sun.position.set(-22,24,9);spot.intensity=0;camFill.intensity=.2;
+      arenaLights.forEach(l=>{l.intensity=0;});
     }else if(name==="medCliff"){
       /* 下午 4~5 点(文档 §灯光):暖金阳光斜射,建筑受光面亮、背光面冷,
          明暗对比要看得出来 —— 所以 sun 给足、ambient 压住,不能靠环境光洗平。 */

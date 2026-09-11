@@ -165,21 +165,21 @@ function resetStreetCrowd(){
   streetCrowd.people.length=0;
   streetCrowd.reaction=0;streetCrowd.miss=0;streetCrowd.last="idle";
 }
-function makeStreetBench(parent,cube,mat,x,z,rot){
+function makeStreetBench(parent,cube,mat,x,z,rot,y){
   const g=new THREE.Group();
   const seat=showBox(g,cube,mat,0,.36,0,1.45,.18,.42);
   const back=showBox(g,cube,mat,0,.72,.22,1.45,.55,.12);
   showBox(g,cube,mat,-.58,.17,-.12,.12,.34,.12);
   showBox(g,cube,mat,.58,.17,-.12,.12,.34,.12);
   seat.castShadow=back.castShadow=false;
-  g.position.set(x,0,z);g.rotation.y=rot;parent.add(g);
+  g.position.set(x,y||0,z);g.rotation.y=rot;parent.add(g);
   return g;
 }
 function makeStreetPerson(parent,cube,cfg,materials){
   const g=new THREE.Group(),skin=materials.skin[cfg.skin%materials.skin.length],hair=materials.hair[cfg.hair%materials.hair.length];
   const shirt=materials.shirts[cfg.shirt%materials.shirts.length],pants=materials.pants[cfg.pants%materials.pants.length];
   const shoe=materials.shoes[cfg.shoe%materials.shoes.length],phone=materials.phone,ballMat=materials.ball;
-  const seated=cfg.kind==="bench",scale=cfg.scale||1,coast=cfg.place==="beachSunset",rain=cfg.place==="rainyCourt",village=cfg.place==="flowerCourt";
+  const seated=cfg.kind==="bench",scale=cfg.scale||1,coast=cfg.place==="beachSunset",rain=cfg.place==="rainyCourt",village=cfg.place==="flowerCourt",winter=cfg.place==="arcticSnow",spanish=cfg.place==="spanishQuarter";
   const bodyY=seated?.76:.92,headY=seated?1.22:1.48;
   /* 与近场观众同样处理:躯干/头/帽/腿/脚烘焙成单块身体,坐姿的腿脚固定角度直接烘进
      几何体;原本 ±5° 的呼吸式微动改为整体轻微前倾。手臂/手机/球仍独立驱动。 */
@@ -189,7 +189,7 @@ function makeStreetPerson(parent,cube,cfg,materials){
     new THREE.Quaternion().setFromEuler(new THREE.Euler(rotX||0,0,0)),
     new THREE.Vector3(scale[0],scale[1],scale[2]));
   const body=bakeVoxelMesh(g,[
-    {color:shirt.color,matrix:bodyMat([0,bodyY-(rain?.06:0),0],[rain?.48:coast?.36:.42,seated?.55:rain?.9:.72,.25])},
+    {color:shirt.color,matrix:bodyMat([0,bodyY-(rain||winter?.06:0),0],[rain||winter?.48:coast?.36:.42,seated?.55:rain||winter?.9:.72,winter?.33:.25])},
     {color:skin.color,matrix:bodyMat([0,headY,-.02],[.31,.31,.28])},
     {color:hair.color,matrix:bodyMat([0,headY+.18,-.03],[.34,.12,.3])},
     {color:(coast?skin:pants).color,matrix:bodyMat([-.13,legY,legZ],[.13,legH,.13],seated?1.15:0)},
@@ -209,6 +209,18 @@ function makeStreetPerson(parent,cube,cfg,materials){
     armL.rotation.z=-.55;
   }
   if(cfg.place){
+    if(winter){
+      const trim=materials.shirts[(cfg.shirt+2)%8];
+      showBox(g,cube,shirt,0,headY+.17,-.02,.36,.17,.32);
+      showBox(g,cube,trim,0,headY+.09,-.025,.38,.06,.34);
+      showBox(g,cube,trim,0,1.28,-.025,.43,.12,.34);showBox(g,cube,trim,.13,1.08,-.19,.11,.3,.055);
+      for(let side of [-1,1]){showBox(g,cube,shirt,side*.31,1.04,0,.18,.43,.27);showBox(g,cube,pants,side*.34,.82,-.02,.13,.15,.15);showBox(g,cube,pants,side*.13,.14,-.04,.2,.21,.25);}
+    }
+    if(spanish){
+      for(let side of [-1,1])showBox(g,cube,materials.shirts[5],side*.285,1.11,0,.17,.07,.27);
+      showBox(g,cube,materials.shirts[5],0,1.22,-.15,.05,.18,.018);
+      if(cfg.index%4===0)showBox(g,cube,pants,0,headY+.19,-.035,.4,.075,.33);
+    }
     // Sleeves and a contrasting hem read as local casual clothes, not team uniforms.
     if(!coast)for(let side of [-1,1])showBox(g,cube,shirt,side*.285,seated?.88:rain?1.04:1.16,0,.16,rain?.42:.2,.26);
     showBox(g,cube,pants,0,seated?.52:.61,-.005,.43,.065,.26);
@@ -230,7 +242,9 @@ function makeStreetPerson(parent,cube,cfg,materials){
       const umbrella=new THREE.Mesh(new THREE.ConeGeometry(.64,.24,8),shirt);umbrella.position.set(.35,2.09,-.04);g.add(umbrella);
     }
   }
-  g.position.set(cfg.x,0,cfg.z);g.rotation.y=cfg.rot;g.scale.setScalar(scale);
+  /* cfg.y:场地有了真实高差(抬高的人行道、台阶、露台)之后,
+     观众必须站在那个面上,不能一律钉在 y=0 —— 否则脚会陷进人行道里。 */
+  g.position.set(cfg.x,cfg.y||0,cfg.z);g.rotation.y=cfg.rot;g.scale.setScalar(scale);
   parent.add(g);
   streetCrowd.people.push({g,body,arms:[armL,armR],phone:phoneMesh,ball,kind:cfg.kind,
     baseY:g.position.y,baseRot:cfg.rot,phase:cfg.phase,amp:cfg.amp||1});
@@ -251,11 +265,12 @@ function buildStreetCrowd(opts){
     shoes:[mat(0xffffff),mat(0x111111),mat(0xff4d6d),mat(0x68e6ff)],
     phone:mat(0x07131f),
     ball:new THREE.MeshLambertMaterial({color:0xf28b22,emissive:0x9a3d00,emissiveIntensity:.08}),
-    bench:mat(opts&&opts.beach?0x6d5341:0x27506a)
+    /* 长椅材质跟着场地走:老街是石凳,雨巷是深色木凳,不再一律蓝漆铁椅。 */
+    bench:mat(opts&&opts.beach?0x6d5341:place==="spanishQuarter"?0xb3a488:place==="rainyCourt"?0x4a3a2c:0x27506a)
   };
   if(place){materials.shirts.forEach(m=>m.dispose());materials.shirts=AIBAWorldPlaces.palettes[place].shirts.map(mat);root.userData.place=place;root.userData.random=localRandom;root.userData.clock=0;}
-  const benchDefs=opts&&opts.beach?[[-11.7,-4.8,Math.PI/2],[11.7,3.2,-Math.PI/2],[-6.2,21.8,Math.PI]]:[[-11.4,-5.2,Math.PI/2],[11.4,-1.5,-Math.PI/2],[-5.8,21.6,Math.PI],[5.8,21.6,Math.PI]];
-  benchDefs.forEach(b=>makeStreetBench(root,cube,materials.bench,b[0],b[1],b[2]));
+  const benchDefs=place==="arcticSnow"?[[11.5,9,-Math.PI/2]]:place==="shonanCoast"?[[-5.6,-13.98,Math.PI,.19],[-3.3,-13.98,Math.PI,.19]]:place==="rainyCourt"?[[-12.55,-4.4,Math.PI/2,.19],[-12.55,-2.5,Math.PI/2,.19]]:place==="spanishQuarter"?[[-12.35,-7,Math.PI/2,.19],[-12.35,-2.2,Math.PI/2,.19]]:opts&&opts.beach?[[-11.7,-4.8,Math.PI/2],[11.7,3.2,-Math.PI/2],[-6.2,21.8,Math.PI]]:[[-11.4,-5.2,Math.PI/2],[11.4,-1.5,-Math.PI/2],[-5.8,21.6,Math.PI],[5.8,21.6,Math.PI]];
+  benchDefs.forEach(b=>makeStreetBench(root,cube,materials.bench,b[0],b[1],b[2],b[3]||0));
   let spots=[
     [-11.45,-8.1,"filmer"],[-11.35,-5.4,"bench"],[-11.55,-2.4,"fan"],[-11.45,1.2,"fan"],[-11.5,4.6,"player"],[-11.4,8.1,"filmer"],[-11.55,12.2,"fan"],[-11.35,16.4,"bench"],
     [11.45,-7.2,"fan"],[11.35,-3.1,"player"],[11.5,.6,"filmer"],[11.45,4.2,"fan"],[11.55,8.7,"bench"],[11.35,13.4,"fan"],[11.45,17.8,"filmer"],
@@ -264,8 +279,20 @@ function buildStreetCrowd(opts){
   ];
   if(place){
     const layouts={
+      arcticSnow:[[-7.9,-11.5,"fan"],[6.4,-12.2,"filmer"],[11.5,9,"bench"],[-11.6,5.4,"quiet"],[10.8,-3,"player"],[12.8,15.3,"passer"]],
+      /* 老街:邻居坐在树下石凳、咖啡店门口站着人、拱道口有人穿过、阳台上有人探头
+         (阳台的人在 world-wonders 里)。人群跟着节点走,不沿边线排队(计划 §2.4/§B)。 */
+      spanishQuarter:[[-12.35,-7,"bench"],[-12.35,-2.2,"bench"],[-12.3,-5,"quiet",.19],[-12.4,.6,"fan",.19],
+        [-12.3,5,"player",.19],[-12.4,11.4,"fan",.19],[-12.3,16.2,"quiet",.19],[-15.4,8,"passer"],
+        [12.4,-7.4,"fan",.19],[12.35,-3.8,"filmer",.19],[12.4,2.4,"player",.19],[12.3,9.6,"fan",.19],[12.4,14.8,"quiet",.19],
+        [-2.6,-13.4,"fan"],[1.2,-13.8,"filmer"],[3.4,-13.2,"quiet"],[15.4,-2.7,"passer"],[4.05,-19.8,"passer"]],
       outdoorSunny:[[-7.5,-11.4,"filmer"],[-6.4,-11.7,"fan"],[-4.2,-12,"player"],[4.7,-11.8,"fan"],[6,-12.1,"filmer"],[8,-11.5,"fan"],[-10.3,-4,"fan"],[-11.3,-5.3,"bench"],[11,-6,"player"],[12,-4.8,"fan"],[-10.6,2,"filmer"],[11.6,1.5,"quiet"],[-12,8,"fan"],[11,8.5,"fan"],[-11,15,"filmer"],[11,16,"player"],[-6,21.8,"bench"],[5.8,21.8,"bench"],[8,22,"fan"],[-14.2,2.6,"passer"],[14.3,6.8,"passer"],[14.3,13,"passer"],[-13.7,11,"quiet"],[3,22,"filmer"]],
-      rainyCourt:[[-8.6,-12.5,"quiet"],[-7.2,-12.8,"fan"],[7.8,-12.6,"filmer"],[9,-12.8,"quiet"],[-12.9,-4.8,"bench"],[-13.8,-3.6,"quiet"],[13.2,2,"fan"],[14.1,3.2,"quiet"],[-12.5,13.4,"fan"],[12.6,14.3,"filmer"],[-5.8,21.6,"bench"],[14.6,10,"passer"]],
+      /* 雨巷:人集中在能避雨的地方 —— 檐下人行道(抬高 0.19)、小店门口、自行车棚,
+         巷子里只有一个撑伞走过的人。不沿边线均匀排队(计划 §2.4)。 */
+      rainyCourt:[[-12.55,-4.4,"bench"],[-12.55,-2.5,"bench"],[-12.5,-6.5,"fan",.19],[-12.45,-8.6,"quiet",.19],
+        [-12.5,-.4,"filmer",.19],[-11.7,-11.5,"passer"],[-12.5,10.2,"fan",.19],[-12.4,14.8,"quiet",.19],
+        [12.5,-8.8,"player",.19],[12.55,-6.2,"fan",.19],[12.45,3.6,"quiet",.19],[12.5,8.2,"fan",.19],[12.6,16.4,"passer",.19],
+        [-3.4,-14.5,"fan"],[1.5,-14.4,"filmer"],[4.5,-20.4,"passer"]],
       flowerCourt:[[-7.8,-11.6,"fan"],[-6.3,-12,"player"],[-4.5,-12.2,"fan"],[5.9,-12,"quiet"],[7,-11.5,"fan"],[-10,-3,"player"],[-11.2,-5.2,"bench"],[10.2,-1.5,"fan"],[11.1,-.4,"fan"],[-10.7,7,"quiet"],[-11.8,8.1,"fan"],[10.6,9.3,"player"],[-10.1,15.4,"filmer"],[11,16.5,"fan"],[-5.8,21.6,"bench"],[5.8,21.6,"bench"],[-14,11,"passer"],[14,14,"passer"]],
       /* 校园那侧(+x)靠铁丝网站着看,海那侧(-x)只有零星路过的人 —— 
          人群分布本身也在讲"一侧校园一侧海"。 */
@@ -273,25 +300,29 @@ function buildStreetCrowd(opts){
       medCliff:[[9.9,-8.2,"fan"],[10.3,-3.6,"quiet"],[10.1,1.4,"fan"],[10.4,6.2,"filmer"],[10,11.5,"player"],
         [-10.4,-4.8,"quiet"],[-10.8,3.2,"passer"],[-10.2,11,"fan"],
         [-4.4,-15.8,"filmer"],[3.2,-16.2,"fan"],[-2.6,26.8,"quiet"],[5.4,27.2,"passer"],[8.2,20.4,"fan"]],
-      shonanCoast:[[9.4,-9.5,"fan"],[9.6,-5.2,"player"],[9.3,-1,"quiet"],[9.7,3.4,"fan"],[9.4,7.8,"filmer"],
-        [9.6,12,"fan"],[-9.8,-6.4,"passer"],[-10.2,1.2,"quiet"],[-9.9,8.6,"passer"],
-        [-6.2,-14.2,"fan"],[4.8,-14.4,"filmer"],[-1.5,27.4,"quiet"],[3.6,27.6,"fan"]],
+      /* 湘南改版后海岸带在篮筐后方:人集中在朝海的人行道(抬高 .19)、校门口和自行车棚,
+         两条长椅朝海坐着看电车经过。+z 端超过铁丝网(z=26)的位置收回来。 */
+      shonanCoast:[[9.4,-9.5,"fan"],[9.6,-5.2,"player"],[9.3,-1,"quiet"],[9.7,3.4,"fan"],[9.4,7.8,"filmer"],[9.6,12,"fan"],
+        [-9.8,-6.4,"quiet"],[-10.2,1.2,"passer"],[-9.9,8.6,"fan"],
+        [-5.6,-13.98,"bench"],[-3.3,-13.98,"bench"],
+        [-7.6,-14.3,"fan",.19],[4.8,-14.3,"filmer",.19],[1.4,-14.3,"quiet",.19],
+        [-11.5,.4,"passer"],[-11.3,9.6,"player"],[-1.5,23.6,"quiet"],[3.6,23.8,"fan"]],
       beachSunset:[[-8.9,-13.6,"passer"],[-7.7,-13.4,"passer"],[-5.2,-12.7,"player"],[5.9,-13,"filmer"],[7.2,-13.5,"quiet"],[-11.8,-4.8,"bench"],[-12.5,-3.4,"quiet"],[11,-1,"fan"],[12.2,-.3,"player"],[11.7,3.2,"bench"],[-13,7,"passer"],[-14.2,8,"passer"],[12.4,11,"quiet"],[11.4,12,"fan"],[-10.8,16,"filmer"],[-6.2,21.8,"bench"],[6.4,22,"quiet"],[13.9,17,"passer"],[14.7,18,"passer"]]
     };spots=layouts[place];
   }
   const max=place?(mobile?Math.ceil(spots.length*.75):spots.length):(mobile?16:26),center=V3(0,0,COURT.midZ);
   let seatedIndex=0;
   spots.slice(0,max).forEach((s,i)=>{
-    const jitterX=srnd(-.45,.45),jitterZ=srnd(-.55,.55),pos=V3(s[0]+jitterX,0,s[1]+jitterZ);
+    const jitterX=srnd(-.45,.45),jitterZ=srnd(-.55,.55),pos=V3(s[0]+jitterX,s[3]||0,s[1]+jitterZ);
     let kind=s[2],rot=faceTo(pos,center);
     if(place&&kind==="bench"){
-      const seat=benchDefs[seatedIndex++];if(seat){pos.set(seat[0],0,seat[1]);rot=seat[2];}else kind="fan";
+      const seat=benchDefs[seatedIndex++];if(seat){pos.set(seat[0],seat[3]||0,seat[1]);rot=seat[2];}else kind="fan";
     }
-    makeStreetPerson(root,cube,{x:pos.x,z:pos.z,rot,kind,place,index:i,skin:i%4,hair:(i*2)%4,shirt:(i*3+(opts&&opts.rainy?1:0))%8,
+    makeStreetPerson(root,cube,{x:pos.x,y:pos.y,z:pos.z,rot,kind,place,index:i,skin:i%4,hair:(i*2)%4,shirt:(i*3+(opts&&opts.rainy?1:0))%8,
       pants:(i+2)%5,shoe:(i*5)%4,scale:srnd(.86,1.08),phase:srnd(0,Math.PI*2),amp:srnd(.72,1.2)},materials);
     if(place){const p=streetCrowd.people[streetCrowd.people.length-1],hype=kind==="fan"&&(place==="outdoorSunny"?i%2===1:place==="flowerCourt"?i%3===1:i%7===0);
       p.interest=kind==="passer"?0:kind==="quiet"?.08:hype?.98:kind==="bench"?.25:.55;
-      p.energy=hype?1:.25+localRandom()*.35;p.pendingAt=Infinity;p.response=0;p.responseSign=1;p.origin=pos.clone();p.baseY=0;}
+      p.energy=hype?1:.25+localRandom()*.35;p.pendingAt=Infinity;p.response=0;p.responseSign=1;p.origin=pos.clone();p.baseY=pos.y;}
   });
 }
 function triggerStreetCrowdReaction(kind,points){
@@ -315,7 +346,7 @@ function updStreetCrowd(t,dt){
       if(state.clock>=p.pendingAt){p.response=Math.max(p.response,p.pendingStrength);p.pendingAt=Infinity;}
       p.response=Math.max(0,p.response-dt*.38);const wave=Math.sin(state.clock*(3+p.amp)+p.phase),cheer=p.response*Math.max(0,p.responseSign),shock=p.response*Math.max(0,-p.responseSign);
       const active=p.interest>.9,base=active?.08*(.5+.5*Math.sin(state.clock*.7+p.phase)):0;
-      p.g.position.copy(p.origin);p.g.position.y=p.kind==="bench"?0:Math.max(0,wave)*(base+cheer*.16);
+      p.g.position.copy(p.origin);p.g.position.y=p.origin.y+(p.kind==="bench"?0:Math.max(0,wave)*(base+cheer*.16));
       p.g.rotation.y=p.baseRot+Math.sin(state.clock*.6+p.phase)*.025;
       p.arms[0].rotation.set(-.12*cheer,-0,-.08-.8*(cheer+base)+.22*shock);
       p.arms[1].rotation.set(-.12*cheer,0,.08+.8*(cheer+base)-.22*shock);

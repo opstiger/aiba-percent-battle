@@ -84,7 +84,7 @@
     guy[key]=null;
   }
 
-  function setHairVisible(guy,visible){if(guy&&guy.hairGrp)guy.hairGrp.visible=visible;}
+  function setHairVisible(guy,visible){if(guy)for(const group of new Set([guy.hairBase,guy.hairGrp,guy.hairTail]))if(group)group.visible=visible;}
   function setCustomHeadVisible(guy,visible){if(guy&&guy.customHeadGroup)guy.customHeadGroup.visible=visible;}
 
   function buildMask(group,main,dark){
@@ -189,13 +189,13 @@
     box(torso,.025,.025,.025,.055,1.22,.166,trim);
     (guy.arms||[]).forEach(arm=>{
       const sleeve=new THREE.Group();arm.add(sleeve);groups.push(sleeve);
-      roundedBox(sleeve,.166,.18,.186,.06,0,-.045,0,main);
+      roundedBox(sleeve,.157,.18,.178,.028,0,-.045,0,main);
       roundedBox(sleeve,.154,.285,.174,.022,0,-.19,0,main);
       roundedBox(sleeve,.158,.032,.178,.008,0,-.31,0,seam);
     });
     (guy.elbows||[]).forEach(elbow=>{
       const sleeve=new THREE.Group();elbow.add(sleeve);groups.push(sleeve);
-      ellipsoid(sleeve,.081,.052,.088,0,-.018,0,main);
+      roundedBox(sleeve,.146,.108,.165,.024,0,-.018,0,main);
       roundedBox(sleeve,.148,.245,.166,.025,0,-.14,0,main);
       roundedBox(sleeve,.153,.048,.172,.012,0,-.272,0,seam);
     });
@@ -229,6 +229,10 @@
       if(!list.some(m=>mats.indexOf(m)>=0))return;
       child.visible=false;hidden.push(child);
     });
+    // The garment replaces covered skin, so bent elbows cannot flash pale slivers.
+    const covered=[...(guy.upperArms||[]),...(guy.forearms||[]),...(guy.elbowBlends||[]),...(guy.arms||[]).map(a=>a.getObjectByName("shoulderBlend"))];
+    for(const mesh of covered)if(mesh?.visible){mesh.visible=false;hidden.push(mesh);}
+    if(guy.jerseyHem?.visible){guy.jerseyHem.visible=false;hidden.push(guy.jerseyHem);}
     guy[key+"HiddenKit"]=hidden;
   }
 
@@ -282,6 +286,30 @@
       const group=new THREE.Group(),side=index===0?-1:1;
       const articulated=!!(global.AIBAModelDetail?.enabled&&guy.footRoots?.[index]&&guy.toeRoots?.[index]);
       (articulated?guy.footRoots[index]:ankle).add(group);groups.push(group);
+      if(articulated){
+        // A performance kit modifies panels of the existing shoe, not its sole envelope.
+        // All four identities share the base last and retain independent toe articulation.
+        for(const face of [-1,1]){
+          roundedBox(group,.011,.041,.115,.004,face*.098,-.005,-.033,dark);
+          box(group,.012,.012,.072,face*.104,.006,.006,accent,0,0,face*.16);
+        }
+        if(id==="shoes-anchor"){
+          roundedBox(group,.18,.067,.038,.009,0,.009,-.139,main);
+          for(const face of [-1,1])box(group,.013,.061,.075,face*.099,.014,-.092,main,0,0,face*.09);
+        }else if(id==="shoes-marathon"){
+          for(const face of [-1,1])ellipsoid(group,.008,.016,.037,face*.104,-.059,-.078,accent);
+          box(group,.069,.028,.012,0,.057,-.139,main,-.12);
+        }else if(id==="shoes-blaze"){
+          for(const face of [-1,1])box(group,.012,.021,.139,face*.104,.003,.012,accent,.22,0,face*.14);
+          box(group,.055,.035,.012,0,.064,-.139,main,-.16);
+        }else{
+          for(const face of [-1,1]){
+            roundedBox(group,.012,.035,.07,.004,face*.104,-.042,-.09,dark);
+            box(group,.014,.012,.053,face*.109,-.039,-.09,accent);
+          }
+          box(group,.06,.034,.012,0,.061,-.139,main,-.12);
+        }
+      }else{
       if(id==="shoes-blaze"){
         box(group,.038,.072,.19,side*.096,-.012,.025,accent,0,0,side*.12);
         ellipsoid(group,.064,.014,.055,0,-.004,.17,light);
@@ -305,13 +333,14 @@
         ellipsoid(group,.072,.016,.052,0,-.01,.18,light);
         box(group,.035,.075,.18,side*.096,-.005,.025,main,0,0,side*.08);
       }
+      }
       if(craft){
         const stitching=new THREE.Group();stitching.name="equipmentStitching";group.add(stitching);
         // Inset heel eyelets and a split side panel differentiate performance footwear.
         for(const face of [-1,1]){
           box(stitching,.008,.038,.087,face*.099,.004,-.088,dark);
           for(let j=0;j<3;j++)box(stitching,.009,.006,.013,face*.104,.025,-.12+j*.027,light);
-          for(let j=0;j<3;j++)box(stitching,.009,.012,.047,face*.097,-.021,.004+j*.053,accent);
+          for(let j=0;j<3;j++)box(stitching,.006,.008,.024,face*.099,-.014,.012+j*.033,accent);
         }
         box(stitching,.09,.012,.012,0,.053,-.145,light);
         if(global.AIBAModelDetail)AIBAModelDetail.batch(stitching);
@@ -328,6 +357,8 @@
         });
         const toe=guy.toeRoots[index],toeKit=new THREE.Group();toeKit.name="shoeToeEquipment";
         toeKit.position.copy(toe.position).multiplyScalar(-1);toe.add(toeKit);groups.push(toeKit);
+        // Fine toe reinforcement follows the forefoot, rather than a second cap.
+        for(const face of [-1,1])box(toeKit,.006,.010,.042,face*.086,.009,.152,main,0,face*.16);
         // Only front-cap pieces move with toe flexion. Midsole and heel remain on foot.
         group.children.slice().filter(m=>m.position.z>=.14).forEach(m=>toeKit.add(m));
       }

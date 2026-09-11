@@ -28,7 +28,9 @@
     /* 地中海半岛:锚点是蓝海+白建筑。主篮筐朝海湾,所以海在篮筐后方而不是侧面。 */
     medCliff:{name:"午后 · 地中海半岛",type:"outdoor",weather:"sunny",progression:"none",desc:"半岛崖顶的海盐蓝球场，一侧白墙村落石阶，篮筐之外是深蓝海湾与远帆"},
     shonanCoast:{name:"夏末 · 湘南海岸",type:"outdoor",weather:"sunny",progression:"none",desc:"海边高校的水泥外场，铁丝网外是防波堤、电车线与夕照的海平线"},
-    beachSunset:{name:"夕阳 · 西海岸",type:"outdoor",weather:"sunny",progression:"sunsetToNight",desc:"开放海滨旧街场，日落后酒店与路灯渐次点亮"}
+    beachSunset:{name:"夕阳 · 西海岸",type:"outdoor",weather:"sunny",progression:"sunsetToNight",desc:"开放海滨旧街场，日落后酒店与路灯渐次点亮"},
+    arcticSnow:{name:"极光 · 雪原冰湖",type:"outdoor",weather:"none",progression:"none",desc:"扫雪硬场与冰湖林线，静夜极光在头顶缓慢舒展"},
+    spanishQuarter:{name:"红土 · 西班牙老街",type:"outdoor",weather:"sunny",progression:"none",desc:"陶土红街场嵌入老城住宅，百叶窗、阳台与巷口都是生活"}
   });
 
   const WEATHER_SHOT_MODIFIERS=Object.freeze({

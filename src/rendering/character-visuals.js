@@ -106,38 +106,13 @@
     // The shared rig already owns the rounded, deeply overlapped shoulder-to-arm blend.
     // Keep it visible so the prototype uses the same clean joint as the full roster.
 
-    guy.mP.color.setHex(0x10141c);
+    guy.mP.color.setHex(0x10141c).convertSRGBToLinear();
     guy.bodyF.map=proJerseyTex(star,false);guy.bodyF.color.setHex(0xffffff);guy.bodyF.needsUpdate=true;
     guy.bodyB.map=proJerseyTex(star,true);guy.bodyB.color.setHex(0xffffff);guy.bodyB.needsUpdate=true;
     guy.mFace.map=proFaceTex(star.skin||0x8d5524);guy.mFace.color.setHex(0xffffff);guy.mFace.needsUpdate=true;
 
-    const hoodieEquipped=gear.band==="head-hoodie"||(star.customTop&&star.customTop.id==="hoodie");
-    if(!hoodieEquipped){
-      // Torso outer layer: one strong trim line and a restrained accent keep the jersey readable at game scale.
-      const torso=addLayer(record,guy.g);
-      addBox(torso,.43,.17,.025,cloth,0,1.22,.151);
-      addBox(torso,.034,.47,.03,gold,-.244,1.10,.154);
-      addBox(torso,.034,.47,.03,gold,.244,1.10,.154);
-      addBox(torso,.16,.025,.034,gold,-.07,1.36,.16,-.48);
-      addBox(torso,.16,.025,.034,gold,.07,1.36,.16,.48);
-      addBox(torso,.11,.014,.034,cyan,0,1.285,.163);
-
-      // Narrow front/back straps preserve the tank-top read while exposing the deltoids and neck.
-      [-1,1].forEach(side=>{
-        [-1,1].forEach(depth=>{
-          const z=depth*.151,lean=side*.16;
-          addBox(torso,.082,.20,.022,cloth,side*.145,1.325,z,lean);
-          addBox(torso,.014,.18,.026,gold,side*.183,1.318,z+depth*.003,lean);
-        });
-      });
-    }
-
-    // Shorts panels stay attached to the thigh pivots, so the layer moves naturally during the jump.
-    guy.legs.forEach((leg,index)=>{
-      const panel=addLayer(record,leg),side=index===0?-1:1;
-      addBox(panel,.145,.16,.025,cloth,0,-.105,.124);
-      addBox(panel,.026,.17,.035,gold,side*.086,-.105,.128);
-    });
+    // The shared rig owns all jersey geometry. Profile identity belongs in
+    // its texture; duplicating chest plates, straps and shorts creates z-fighting.
 
     // Shooting sleeve stripe and guide-arm tattoo create an asymmetric, readable player identity.
     if(!gear.sleeve&&guy.arms&&guy.arms[1]){

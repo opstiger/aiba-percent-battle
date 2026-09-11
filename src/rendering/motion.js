@@ -1821,6 +1821,54 @@ function rackHoldPointAt(pos,face,side){
   const lat=side*.06;                        // 略偏抓球那一侧,不影响后面进口袋
   return V3(pos.x+d.x*.33+perp.x*lat,EYE+P.eyeDip+P.jump-.3,pos.z+d.z*.33+perp.z*lat);
 }
+/* ---------------- 供球员待机:真的把球拿在手里 ----------------
+   原来 passerBall 直接挂在 passer.g 的 (0,1.12,0.32),而两条胳膊只有传球那 0.3 秒动一下、
+   其余时间一直垂着 —— 画面上就是"球飘在胸前,没有人在拿它"。
+   修法不是把球往手边挪一点,而是把它挂到投球手的 **ballGrip**(handRoot 下的持球锚点,
+   和玩家蓄力出手用的是同一个,赛前演示 pregame.js 也走这个),手动到哪儿球就跟到哪儿;
+   再给两条胳膊一个真的持球姿势,加上呼吸与重心的小幅起伏。
+   传球本身从"把抬起的手放下来"一拍改成两拍:先收球到胸口,再双臂前送打直。
+   时序只读 G.tNow / tween,不摇随机数。 */
+/* 两只手不对称:持球手(arms[0],球挂在它的 ballGrip 上)在球下方托着,
+   另一只手从身体中线横过来扶在球侧 —— 完全对称会让两只手各在球的一边、
+   中间留一条缝,读起来还是"球夹在空气里"。 */
+const PASSER_HOLD=Object.freeze({
+  shoulder:-.50,elbow:-1.34,spread:.22,     // 持球手:托在腹前偏上
+  offShoulder:-.37,offElbow:-1.10,offSpread:-.42,   // 扶球手:更往中线收,高度和球齐平
+  windShoulder:-.26,windElbow:-2.02,        // 蓄:球收到胸口
+  sendShoulder:-1.26,sendElbow:-.18         // 送:肩前伸、肘打直
+});
+function mountPasserBall(guy,ball){
+  if(!guy||!ball)return false;
+  const grip=guy.ballGrips&&guy.ballGrips[0];
+  if(!grip)return false;
+  if(ball.parent!==grip){grip.add(ball);ball.position.set(0,0,0);}
+  return true;
+}
+function posePasserHold(guy,ball,t,phase){
+  if(!guy||!guy.arms||guy.arms.length<2||!guy.elbows||guy.elbows.length<2)return;
+  if((guy.g.userData.passerBusyUntil||0)>t)return;      // 传球动作期间不要抢方向盘
+  const H=PASSER_HOLD,breath=Math.sin(t*1.35+phase)*.05,shift=Math.sin(t*.42+phase)*.055;
+  // arms[0] 建在 -X 侧,正 z 才是往身体中线收;arms[1] 反过来。
+  guy.arms[0].rotation.x=H.shoulder+breath;
+  guy.arms[0].rotation.z=H.spread+shift*.35;
+  guy.elbows[0].rotation.x=H.elbow-breath*.55;
+  guy.arms[1].rotation.x=H.offShoulder+breath*.8;
+  guy.arms[1].rotation.z=H.offSpread-shift*.35;
+  guy.elbows[1].rotation.x=H.offElbow-breath*.45;
+  guy.g.rotation.z=shift*.045;                          // 重心轻微左右移,站桩最假
+  if(ball&&ball.parent&&ball.parent.name==="ballGrip")ball.rotation.y=t*.32+phase;
+}
+/* 每帧跑一次:供球员与对手供球员各自持球待机。updPass 每帧都会被 game-loop 调到。 */
+function updPasserIdle(){
+  const t=G.tNow;
+  if(typeof passer!=="undefined"&&passer&&passer.g.visible&&typeof passerBall!=="undefined"&&passerBall){
+    if(mountPasserBall(passer,passerBall)&&passerBall.visible)posePasserHold(passer,passerBall,t,0);
+  }
+  if(typeof oppPasser!=="undefined"&&oppPasser&&oppPasser.g&&oppPasser.g.visible&&typeof oppPasserBall!=="undefined"&&oppPasserBall){
+    if(mountPasserBall(oppPasser,oppPasserBall)&&oppPasserBall.visible)posePasserHold(oppPasser,oppPasserBall,t,2.1);
+  }
+}
 let passing=null;
 /* 有球架的点位改成"自己从架上拿",没有球架的点位(百分大战 / 绝杀)仍然是传球。
    真实三分大赛没人给你传球 —— 架子就摆在手边,抽一颗投一颗。
@@ -1865,7 +1913,14 @@ function startPass(targetPos,face){
   const catchP=pickup?rackHoldPointAt(anchor,anchorFace,pickSide)
     :(hasTarget?passCatchPointAt(target,targetFace):eyePos());
   if(!pickup&&!hasTarget)catchP.y-=0.3;
-  const from=pickup||V3(passer.g.position.x,1.25,passer.g.position.z);
+  /* 球从**手**上飞出去,不是从身体中心。passerBall 现在挂在 ballGrip 上,
+     它的世界坐标就是手里那颗球的位置 —— 起点用它,传球才接得上持球姿势。 */
+  let handFrom=null;
+  if(!pickup&&passerBall&&passerBall.parent){
+    passer.g.updateMatrixWorld(true);
+    handFrom=passerBall.getWorldPosition(new THREE.Vector3());
+  }
+  const from=pickup||handFrom||V3(passer.g.position.x,1.25,passer.g.position.z);
   if(!pickup){
     passer.g.rotation.y=faceTo(passer.g.position,hasTarget?target:P.pos);
     passerBall.visible=false;
@@ -1878,11 +1933,16 @@ function startPass(targetPos,face){
   passing={mesh,from,to:catchP,t:0,dur,pickup:!!pickup,side:pickSide};
   G.passCatch={active:true,progress:0,target:catchP.clone()};
   if(!pickup){
-    passer.arms.forEach(a=>{a.rotation.x=-1.5;});
-    passer.elbows.forEach(e=>{e.rotation.x=-0.9;});
-    tween(0.3,k=>{
-      passer.arms.forEach(a=>{a.rotation.x=-1.5+k*1.15;});
-      passer.elbows.forEach(e=>{e.rotation.x=-0.9+k*0.8;});
+    /* 两拍:0~35% 收球到胸口(蓄),35%~100% 双臂前送打直(送)。
+       原来只有"从抬高的位置放下来"一拍,读不出发力方向,也和持球姿势接不上。 */
+    const H=PASSER_HOLD;
+    passer.g.userData.passerBusyUntil=G.tNow+.52;
+    tween(0.46,k=>{
+      const wind=k<.35,u=wind?k/.35:(k-.35)/.65;
+      const sh=wind?H.shoulder+(H.windShoulder-H.shoulder)*u:H.windShoulder+(H.sendShoulder-H.windShoulder)*u;
+      const el=wind?H.elbow+(H.windElbow-H.elbow)*u:H.windElbow+(H.sendElbow-H.windElbow)*u;
+      passer.arms.forEach(a=>{a.rotation.x=sh;});
+      passer.elbows.forEach(e=>{e.rotation.x=el;});
     });
     blipBus(sfxBus||master,300,0.06,"sine",0.07,200);
     noiseBus(sfxBus||master,0.055,0.035,900,4600);
@@ -1891,6 +1951,7 @@ function startPass(targetPos,face){
   }
 }
 function updPass(dt){
+  updPasserIdle();
   if(!passing)return;
   passing.t+=dt;const k=Math.min(1,passing.t/passing.dur);
   const p=passing;

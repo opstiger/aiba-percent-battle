@@ -400,8 +400,13 @@ function updateCameraDirector(dt){
   if(G.state==="aishow"){updShowCam();return "show";}
   if(["menu","diff","intro","roundend","sim","bracket","champion","runnerup","eliminated","battleend","rushend","lsend"].includes(G.state)){
     const a=G.tNow*0.1;
-    rig.pos.set(Math.cos(a)*18,8+Math.sin(G.tNow*0.3)*0.5,COURT.midZ+Math.sin(a)*20);
-    rig.look.set(0,2.2,COURT.midZ);
+    /* 菜单环绕默认走 18×20、高 8m 的椭圆。世界地图把建筑和植被收到边线外 5~6m 之后,
+       这条椭圆会从屋脊或树冠里穿过去 —— 雨林场实测整屏被一团叶子糊住。
+       所以允许每张场地在 build 时往 placeState.menuOrbit 写一组
+       [半长轴x, 半长轴z, 机位高度, 注视高度];没写的场地保持原样。 */
+    const orbit=(typeof environmentRoot!=="undefined"&&environmentRoot?.userData?.placeState?.menuOrbit)||null;
+    rig.pos.set(Math.cos(a)*(orbit?orbit[0]:18),(orbit?orbit[2]:8)+Math.sin(G.tNow*0.3)*0.5,COURT.midZ+Math.sin(a)*(orbit?orbit[1]:20));
+    rig.look.set(0,orbit?orbit[3]:2.2,COURT.midZ);
     return "menu";
   }
   /* 绝杀观看阶段由模式接管转头镜头；球到手后再回到常规跟随。 */

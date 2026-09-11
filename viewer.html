@@ -59,8 +59,8 @@ window.V3=function(x,y,z){return new THREE.Vector3(x,y,z);};
 <script src="src/config.js"></script>
 <script src="src/rendering/materials.js"></script>
 <script src="src/rendering/model-detail.js?v=2.27.1-rackbox"></script>
-<script src="src/rendering/characters.js"></script>
-<script src="src/rendering/equipment-visuals.js"></script>
+<script src="src/rendering/characters.js?v=2.23.0"></script>
+<script src="src/rendering/equipment-visuals.js?v=2.23.0"></script>
 <script src="src/gear.js"></script>
 <script>
 (function(){
@@ -116,7 +116,7 @@ function buildSheet(slot){
   items.forEach(function(item,i){
     const g=voxelGuy();
     dressGuy(g,jersey,trim,Q.get("num")||"88");
-    g.mS.color.setHex(skin);
+    g.mS.color.setHex(skin).convertSRGBToLinear();
     g.mFace.map=faceTex(skin);g.mFace.color.setHex(0xffffff);g.mFace.needsUpdate=true;
     const EV=window.AIBAEquipmentVisuals;
     if(EV){
@@ -140,7 +140,7 @@ function build(){
   /* 脸部贴图在游戏里是 applyStarStyle 顺手做的,viewer 不走那条路,
      不补的话脸是一块白板,看装备时会误判成"脸没了"。固定肤色保证可复现。 */
   const skin=parseInt(Q.get("skin")||"0xf4c89c",16);
-  guy.mS.color.setHex(skin);
+  guy.mS.color.setHex(skin).convertSRGBToLinear();
   guy.mFace.map=faceTex(skin);guy.mFace.color.setHex(0xffffff);guy.mFace.needsUpdate=true;
   root.add(guy.g);
   applyGear();

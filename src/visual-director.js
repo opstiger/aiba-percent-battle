@@ -11,7 +11,9 @@
        那是 beachSunset 的日落;湘南要的是"放学时分"而不是"日落时刻"。 */
     shonanCoast:{top:0x3f6f96,horizon:0xf0c489,lower:0xe8d3ab},
     /* 下午 4~5 点的地中海:天顶还很蓝,近地平线泛暖白 —— 不是日落。 */
-    medCliff:{top:0x1f6fa8,horizon:0x9fd0e0,lower:0xe7dcc4}
+    medCliff:{top:0x1f6fa8,horizon:0x9fd0e0,lower:0xe7dcc4},
+    arcticSnow:{top:0x020911,horizon:0x101f31,lower:0x334859},
+    spanishQuarter:{top:0x3c7898,horizon:0xb8c9c0,lower:0xdac8a8}
   });
 
   function makeSkyDome(THREE,name,centerZ){
