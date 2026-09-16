@@ -9,7 +9,7 @@ const childProcess=require("child_process");
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
 const legacyEntry="legacy.html";
-const snapshot="block-3pt-kingv2.23.0-modular.html";
+const snapshot="block-3pt-kingv2.27.0-modular.html";
 const requiredFiles=[
   entry,
   legacyEntry,
@@ -119,7 +119,7 @@ for(const file of ["core/error-boundary","core/foundation","data/dialogue","core
   const version=file==="core/state"?"2.24.0-pickup":"refactor39";
   if(!entryHtml.includes(`<script src="src/${file}.js?v=${version}"></script>`))fail(`next shell module missing ${file}`);
 }
-if(!entryHtml.includes('<script src="src/data/game-config.js?v=2.23.0"></script>'))fail("next game config cache version missing");
+if(!entryHtml.includes('<script src="src/data/game-config.js?v=2.27.0"></script>'))fail("next game config cache version missing");
 if(!entryHtml.includes('<script src="src/data/tstage-motion-pack.js?v=2.19.9-tstage2-airjordan"></script>'))fail("T台 motion pack missing");
 
 if(entryHtml.indexOf('src/core/runtime.js')>entryHtml.indexOf('src/config.js'))fail("next runtime must load before config");
@@ -142,7 +142,7 @@ for(const [file,version] of Object.entries(percentBattleVersions)){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js?v=${version}"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
 const lastShotModules=["config","squad","sequence","index"];
-const lastShotVersions={config:"2.19.9-lsvoice",squad:"2.19.9-hy4b-life",sequence:"2.21.0-backspin1",index:"2.19.9-hy4b-state"};
+const lastShotVersions={config:"2.19.9-lsvoice",squad:"2.19.9-hy4b-life",sequence:"2.27.1-hidehud",index:"2.27.1-hidehud"};
 for(const file of lastShotModules){
   if(!entryHtml.includes(`<script src="src/modes/last-shot/${file}.js?v=${lastShotVersions[file]}"></script>`))fail(`next Last Shot ${file} module missing`);
 }
@@ -461,8 +461,8 @@ for(const token of ["const GAME_VERSION=","const G={","function triggerMakeRunVo
   if(entryHtml.includes(token))fail("next entry still contains inline shell ownership "+token);
 }
 if(entryHtml.includes("/* Renderer, camera, adaptive quality and base lights are owned"))fail("next entry still contains generated ownership placeholders");
-if(entryHtml.indexOf('src/core/foundation.js?v=refactor39')>entryHtml.indexOf('src/data/game-config.js?v=2.23.0'))fail("foundation must load before game config");
-if(entryHtml.indexOf('src/data/game-config.js?v=2.23.0')>entryHtml.indexOf('src/core/state.js?v=2.24.0-pickup'))fail("game config must load before runtime state");
+if(entryHtml.indexOf('src/core/foundation.js?v=refactor39')>entryHtml.indexOf('src/data/game-config.js?v=2.27.0'))fail("foundation must load before game config");
+if(entryHtml.indexOf('src/data/game-config.js?v=2.27.0')>entryHtml.indexOf('src/core/state.js?v=2.24.0-pickup'))fail("game config must load before runtime state");
 if(entryHtml.indexOf('src/core/state.js?v=2.24.0-pickup')>entryHtml.indexOf('src/services/audio-cues.js?v=refactor39'))fail("runtime state must load before audio cues");
 if(entryHtml.indexOf('src/services/audio-cues.js?v=refactor39')>entryHtml.indexOf('src/audio.js?v=2.19.9-clutchvoice'))fail("audio cues must load before audio engine");
 if(entryHtml.indexOf('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>')>entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=2.19.9-hy4b-state"></script>'))fail("legacy adapter must load before Rack Rush module");
@@ -484,14 +484,14 @@ for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"]
 if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js?v=2.25.0-lefty"></script>'))fail("Percent Battle opponent cache version missing");
 if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js?v=2.22.0-super"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.19.9-pregame-dunk-hang1"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
-for(const token of ["v2.23.0 MODULAR","MODULAR / v2.23.0"])
+for(const token of ["v2.27.0 MODULAR","MODULAR / v2.27.0"])
   if(!entryHtml.includes(token))fail("visible version token missing "+token);
-if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.23.0";'))fail("GAME_VERSION must be v2.23.0");
+if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.27.0";'))fail("GAME_VERSION must be v2.27.0");
 /* GAME_VERSION 会随成绩上报(见 percent-battle/state.js 的 version 字段)。它住在
    game-config.js 里,所以这个文件的 ?v= token 必须跟着发版号走 —— 只改常量不改 token,
    浏览器会继续用缓存里的旧副本,上报的版本号就是错的。实测踩过。 */
 const gcToken=(entryHtml.match(/src\/data\/game-config\.js\?v=([^"]+)"/)||[])[1]||"";
-if(gcToken.indexOf("2.23.0")!==0)fail("game-config cache token must start with 2.23.0 so the bumped GAME_VERSION actually reaches the browser (got "+gcToken+")");
+if(gcToken.indexOf("2.27.0")!==0)fail("game-config cache token must start with 2.27.0 so the bumped GAME_VERSION actually reaches the browser (got "+gcToken+")");
 const playerMeterGradient='<linearGradient id="ppGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#2e8bff"/><stop offset="55%" stop-color="#39d3ff"/><stop offset="78%" stop-color="#ffd23f"/><stop offset="100%" stop-color="#ff4040"/></linearGradient>';
 if(!entryHtml.includes(playerMeterGradient))fail("player power fill must preserve the original single-sweet-zone gradient");
 if((entryHtml.match(/class="ppSweet"/g)||[]).length!==1)fail("player power must expose exactly one sweet-zone marker");
@@ -529,8 +529,8 @@ for(const token of ["const NBA_DNA_ENABLED=false","if(!NBA_DNA_ENABLED)","return
    恢复上线时把脚本标签加回 index.html 即可。 */
 if(/<script src="src\/nba-dna\//.test(entryHtml))
   fail("NBA DNA 未上线期间不应加载它的脚本（42KB 首屏开销）");
-if(!entryHtml.includes('<script src="src/assets-manifest.js?v=20260726-bkyx1"></script>'))fail("assets manifest script missing");
-if(!entryHtml.includes('<script src="src/config.js?v=2.22.0-p1"></script>'))fail("config script missing");
+if(!entryHtml.includes('<script src="src/assets-manifest.js?v=2.27.0"></script>'))fail("assets manifest script missing");
+if(!entryHtml.includes('<script src="src/config.js?v=2.27.0"></script>'))fail("config script missing");
 if(!entryHtml.includes('<script src="src/player-select.js?v=2.15.5-hand-follow"></script>'))fail("player select script missing");
 if(!entryHtml.includes('<script src="src/player-locker-preview.js?v=2.19.9-humanfingers1"></script>'))fail("player locker preview script missing");
 if(!entryHtml.includes('<script src="src/player-id.js?v=2.19.7-timeout"></script>'))fail("player id script missing");
@@ -539,16 +539,16 @@ if(!entryHtml.includes('<script src="src/leaderboard-ui.js?v=1.94"></script>'))f
 if(!entryHtml.includes('<script src="src/share.js?v=2.01"></script>'))fail("share script missing");
 if(!entryHtml.includes('<script src="src/shot-physics.js?v=2.07-late-diag"></script>'))fail("shot physics script missing");
 if(!entryHtml.includes('<script src="src/result-stats.js?v=1.78"></script>'))fail("result stats script missing");
-if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.23.0"></script>'))fail("equipment visual script missing");
+if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.27.0"></script>'))fail("equipment visual script missing");
 if(!entryHtml.includes('<script src="src/gear.js?v=2.19.8-rivalgear"></script>'))fail("gear script missing");
 if(!entryHtml.includes('<script src="src/avatar-customizer.js?v=2.15.5-hand-follow"></script>'))fail("avatar customizer script missing");
-if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.26.0-reach"></script>'))fail("shot motion script missing");
-if(!entryHtml.includes('<script src="src/roster-style.js?v=2.24.0-hair"></script>'))fail("roster style script missing");
-if(!entryHtml.includes('<script src="src/rendering/character-visuals.js?v=2.23.0"></script>'))fail("voxel pro character visuals missing");
-if(entryHtml.indexOf('src/roster-style.js?v=2.24.0-hair')>entryHtml.indexOf('src/rendering/character-visuals.js?v=2.23.0'))fail("voxel pro visuals must wrap roster styling");
+if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.27.0-reach"></script>'))fail("shot motion script missing");
+if(!entryHtml.includes('<script src="src/roster-style.js?v=2.27.0"></script>'))fail("roster style script missing");
+if(!entryHtml.includes('<script src="src/rendering/character-visuals.js?v=2.24.0"></script>'))fail("voxel pro character visuals missing");
+if(entryHtml.indexOf('src/roster-style.js?v=2.27.0')>entryHtml.indexOf('src/rendering/character-visuals.js?v=2.24.0'))fail("voxel pro visuals must wrap roster styling");
 if(!entryHtml.includes('<script src="src/hero-moments.js?v=1.80"></script>'))fail("hero moments script missing");
 if(!entryHtml.includes('<script src="src/hot-hand.js?v=2.19.9-flame"></script>'))fail("hot hand script missing");
-if(!entryHtml.includes('<script src="src/perf.js?v=2.29.0-lodheal"></script>'))fail("perf script missing");
+if(!entryHtml.includes('<script src="src/perf.js?v=2.25.0"></script>'))fail("perf script missing");
 if(!entryHtml.includes('<script src="src/perf-settings.js?v=2.19.9-customcam1"></script>'))fail("perf settings script missing");
 if(!entryHtml.includes('<script src="src/face-overlays.js?v=1.2-disabled"></script>'))fail("face overlays retirement shim missing");
 if(!entryHtml.includes('<script src="src/haptics.js?v=1.80"></script>'))fail("haptics script missing");
@@ -1062,7 +1062,7 @@ const renderingEnvironments=read("src/rendering/environments.js");
 for(const token of ['runtime.register("rendering:environments"',"function buildOutdoorPark","function buildFlowerCourt","function buildBeachSunset","function applyScenePreset","function updateEnvironment"])
   if(!renderingEnvironments.includes(token))fail("rendering environments token missing "+token);
 if(renderingEnvironments.includes("const rackBalls="))fail("rendering environments must not own gameplay props");
-for(const token of ['src/rendering/arena.js?v=2.21.1-fixtures','src/rendering/spectators.js?v=2.23.0','src/rendering/hoop.js?v=2.21.0-model1','src/rendering/environments.js?v=2.22.0-p1'])
+for(const token of ['src/rendering/arena.js?v=2.25.0','src/rendering/spectators.js?v=2.27.0','src/rendering/hoop.js?v=2.21.0-model1','src/rendering/environments.js?v=2.22.0-p1'])
   if(!entryHtml.includes(token))fail("next entry missing court element module "+token);
 for(const token of ["function buildStands(","function buildNearCourtCrowd(","function buildHoop(","function applyScenePreset("])
   if(entryHtml.includes(token))fail("next entry still contains inline court element "+token);
@@ -1312,7 +1312,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.28.0-detour','src/rendering/characters.js?v=2.23.0','src/rendering/camera.js?v=2.23.0','src/rendering/motion.js?v=2.23.0','src/shot-motion.js?v=2.26.0-reach','src/gameplay/shots.js?v=2.23.0-rack','src/modes/last-shot/squad.js?v=2.19.9-hy4b-life','src/modes/last-shot/sequence.js?v=2.21.0-backspin1'])
+for(const token of ['src/rendering/props.js?v=2.28.0-detour','src/rendering/characters.js?v=2.28.0-families','src/rendering/camera.js?v=2.24.0','src/rendering/motion.js?v=2.27.1-foothang','src/shot-motion.js?v=2.27.0-reach','src/gameplay/shots.js?v=2.24.0-rack','src/modes/last-shot/squad.js?v=2.19.9-hy4b-life','src/modes/last-shot/sequence.js?v=2.27.1-hidehud'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1769,7 +1769,7 @@ for(const token of ["function updateCameraDirector(","AIBACamera.isEditing","AIB
   if(!cameraSource.includes(token))fail("camera director token missing "+token);
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.23.0-rack','src/presentation/replay.js?v=2.21.0-backspin1','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.21.0-backspin1','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.19.9-customcam1','src/core/scene-init.js?v=2.19.9-ceiling'])
+for(const token of ['src/gameplay/shots.js?v=2.24.0-rack','src/presentation/replay.js?v=2.21.0-backspin1','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.21.0-backspin1','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.27.0','src/core/scene-init.js?v=2.19.9-ceiling'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);
