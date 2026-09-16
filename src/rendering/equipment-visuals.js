@@ -230,7 +230,7 @@
       child.visible=false;hidden.push(child);
     });
     // The garment replaces covered skin, so bent elbows cannot flash pale slivers.
-    const covered=[...(guy.upperArms||[]),...(guy.forearms||[]),...(guy.elbowBlends||[]),...(guy.arms||[]).map(a=>a.getObjectByName("shoulderBlend"))];
+    const covered=[guy.g.getObjectByName("jerseyNeckInset"),...(guy.upperArms||[]),...(guy.forearms||[]),...(guy.elbowBlends||[]),...(guy.arms||[]).map(a=>a.getObjectByName("shoulderBlend"))];
     for(const mesh of covered)if(mesh?.visible){mesh.visible=false;hidden.push(mesh);}
     if(guy.jerseyHem?.visible){guy.jerseyHem.visible=false;hidden.push(guy.jerseyHem);}
     guy[key+"HiddenKit"]=hidden;
@@ -278,7 +278,8 @@
   function applyShoes(guy,item){
     if(!enabled||!guy)return false;
     clearKey(guy,"gearShoeGroups");
-    if(!item)return true;
+    if(!item){if(global.AIBABasketballShoes&&guy.defaultBasketballShoe)global.AIBABasketballShoes.apply(guy,"RetroHigh",guy.defaultBasketballShoe);return true;}
+    if(global.AIBABasketballShoes)global.AIBABasketballShoes.clear(guy);
     const color=colorOf(item.color),id=item.id,groups=[];
     const main=material(color),dark=material(shade(color,.23)),light=material(0xf3f6f6),accent=material(shade(color,1.25),{emissive:color,emissiveIntensity:.06});
     (guy.shoes||[]).forEach(shoe=>shoe.material.color.setHex(color));

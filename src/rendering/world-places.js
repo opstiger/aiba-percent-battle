@@ -5,11 +5,7 @@
   const palettes={
     outdoorSunny:{ground:"#626369",field:"#343e47",key:"#b95543",line:"#e2d5b4",shirts:[0xe3d4b9,0x344760,0xb95142,0x323239,0x769793,0xe0ab47,0xe5e1d4,0x657293]},
     rainyCourt:{ground:"#545d60",field:"#35565b",key:"#263f48",line:"#bcb99e",shirts:[0xc9ac65,0x384c52,0x9a6857,0x5e6b64,0xb6b9a4,0x313d50,0x826882,0x687b80]},
-    /* 鲜花场从"赭土村落"改成"热带峡谷石铺地":底色换成被雨水泡旧的湿石灰绿,
-       青苔与积水痕由 surface() 单独画上去。原赭土 #a07752 那套已被判定太土。
-       线色改米白 —— 灰石底上原来的暖黄线会糊掉。 */
-    /* §6:户外硬质 PU 场,主色深森林绿/深灰绿,白线。原来是灰石板(旧村落遗留),
-       在满屏绿色里读成一块水泥地,和"从雨林中切出来的球场"对不上。 */
+    // Jungle soil and worn hand-marked arc are painted by world-life, not a PU slab.
     flowerCourt:{ground:"#2f3a33",field:"#33513f",key:"#27402f",line:"#eef1e6",shirts:[0xe5c79a,0x3b6472,0xa04f36,0x7a7c47,0xc59356,0xeee2c1,0x514b70,0xc26f58]},
     /* 旧但干净的学校水泥外场:灰蓝 + 海盐绿,低饱和(文档 §4 球场设计)。
        刻意不用荧光街头配色。 */
@@ -29,13 +25,22 @@
        雨林一棵树几十个叶团、几十棵树,直接把场景从 11.3 万顶到 27.9 万;
        6×4 约 48 个,在叶团这个尺度上圆度已经足够,省掉三分之二。 */
     const blob=new THREE.SphereGeometry(1,6,4).toNonIndexed();
+    // Shared eroded, faceted rock profile: continuous rings replace horizontal stacks of boxes.
+    const rock=new THREE.CylinderGeometry(.43,.58,1,9,6,false);
+    const rp=rock.attributes.position;
+    for(let i=0;i<rp.count;i++){
+      const x=rp.getX(i),y=rp.getY(i),z=rp.getZ(i),a=Math.atan2(z,x);
+      const cut=1+.11*Math.sin(a*3+y*7)+.08*Math.cos(a*5-y*11);
+      rp.setXYZ(i,x*cut+.07*Math.sin(y*5),y+.025*Math.sin(a*3)*(1-y*y*4),z*cut+.035*Math.cos(y*9));
+    }
+    rock.computeVertexNormals();const rockFaces=rock.toNonIndexed();rockFaces.computeVertexNormals();rock.dispose();
     function add(shape,color,x,y,z,w,h,d,rx=0,ry=0,rz=0){
-      const geo=shape==="sphere"?sphere:shape==="blob"?blob:shape==="cone"?cone:cube,p=geo.attributes.position,a=geo.attributes.normal;
+      const geo=shape==="rock"?rockFaces:shape==="sphere"?sphere:shape==="blob"?blob:shape==="cone"?cone:cube,p=geo.attributes.position,a=geo.attributes.normal;
       matrix.compose(v.set(x,y,z),q.setFromEuler(e.set(rx,ry,rz)),n.set(w,h,d));normal.getNormalMatrix(matrix);c.set(color).convertSRGBToLinear();
       for(let i=0;i<p.count;i++){v.fromBufferAttribute(p,i).applyMatrix4(matrix);n.fromBufferAttribute(a,i).applyMatrix3(normal).normalize();pos.push(v.x,v.y,v.z);nor.push(n.x,n.y,n.z);col.push(c.r,c.g,c.b);}
     }
     return {add,box:(color,x,y,z,w,h,d,rx=0,ry=0,rz=0)=>add("box",color,x,y,z,w,h,d,rx,ry,rz),finish(parent,name,basic=false){
-      cube.dispose();sphere.dispose();blob.dispose();cone.dispose();if(!pos.length)return null;
+      cube.dispose();sphere.dispose();blob.dispose();cone.dispose();rockFaces.dispose();if(!pos.length)return null;
       const geo=new THREE.BufferGeometry();geo.setAttribute("position",new THREE.Float32BufferAttribute(pos,3));geo.setAttribute("normal",new THREE.Float32BufferAttribute(nor,3));geo.setAttribute("color",new THREE.Float32BufferAttribute(col,3));geo.computeBoundingSphere();
       const mesh=new THREE.Mesh(geo,basic?new THREE.MeshBasicMaterial({vertexColors:true}):new THREE.MeshLambertMaterial({vertexColors:true}));mesh.name=name;mesh.receiveShadow=true;parent.add(mesh);return mesh;
     }};
@@ -81,55 +86,6 @@
       for(const [ex,ez] of [[-10.2,-11.6],[10.4,-1.4],[-10.2,6.8]])for(let m=0;m<26;m++){
         g.fillStyle="rgba(168,170,158,.16)";
         g.beginPath();g.ellipse(ex+(r()-.5)*2.6,ez+(r()-.5)*3.4,.3+r()*.6,.22+r()*.4,r()*3.14,0,6.283);g.fill();
-      }
-    }
-    if(name==="flowerCourt"){
-      /* 峡谷石铺地:不规则石块 + 深缝 + 青苔 + 积水痕。
-         原来这里画的是"手绘几何织纹"(菱形编织 + 中圈放射三角),配赭土底色
-         读起来就是乡村土场 —— 已被判定"太土"。改成热带峡谷里被雨水泡旧的
-         石铺:灰绿湿石、缝里长青苔、低洼处留暗色积水痕(配合材质反光读成湿)。 */
-      const TONE=["#5d675e","#6a7369","#525c54","#77807a","#4b554e"];
-      /* 四边形带随机抖动:整齐的砖块会立刻读成"人造地砖",
-         峡谷里的石头该是乱砌的,所以每条边都抖一点。 */
-      const stone=(cx,cz,w,tone)=>{
-        const j=()=>(r()-.5)*w*.26;
-        g.fillStyle=tone;g.beginPath();
-        g.moveTo(cx-w/2+j(),cz-w/2+j());g.lineTo(cx+w/2+j(),cz-w/2+j());
-        g.lineTo(cx+w/2+j(),cz+w/2+j());g.lineTo(cx-w/2+j(),cz+w/2+j());
-        g.closePath();g.fill();
-      };
-      /* 场内:细密石板、缝窄,保证球感和线仍然读得清 */
-      /* 场内改成**微颗粒 PU**(§6:户外硬质场,不是石铺;之前的 0.62m 石板格
-         在满屏绿色里读成人造地砖)。做法是底色铺满 + 细密颗粒噪点,
-         颗粒尺度压到 4~9cm —— 远看是亚光胶面,近看有骨料感,不会盖住白线。
-         场外的乱砌湿石保留:那本来就该是谷底地面,正好和场内分出材质边界。 */
-      g.fillStyle=p.field;g.fillRect(-COURT.halfWidth,near,COURT.width,far-near);
-      for(let m=0;m<9000;m++){
-        const x=-COURT.halfWidth+r()*COURT.width,z=near+r()*(far-near);
-        const k=r();
-        g.fillStyle=k<.34?"rgba(28,44,34,.30)":k<.68?"rgba(96,128,102,.22)":"rgba(58,86,66,.26)";
-        g.beginPath();g.ellipse(x,z,.02+r()*.025,.018+r()*.022,r()*3.14,0,6.283);g.fill();
-      }
-      /* 极轻的辊涂条痕,避免颗粒看起来是均匀噪声 */
-      for(let z=near;z<far;z+=.34){
-        g.strokeStyle=(Math.round(z*3)%2)?"rgba(40,62,48,.10)":"rgba(88,116,94,.08)";
-        g.lineWidth=.13;g.beginPath();g.moveTo(-COURT.halfWidth,z);g.lineTo(COURT.halfWidth,z);g.stroke();
-      }
-      /* 场外:更大更乱的块石 */
-      for(let sd of [-1,1])for(let z=near-3;z<far+3;z+=1.1)
-        for(let d=0;d<7;d++)stone(sd*(8.5+d*1.1+((Math.floor(z)%2)?.3:0)),z+(d%2)*.3,1.04,TONE[(r()*TONE.length)|0]);
-      /* 青苔:沿缝与场边生长。场内刻意稀疏,否则会干扰读线和判断落点。 */
-      for(let m=0;m<300;m++){
-        const x=(r()-.5)*31,z=near-3+r()*(far-near+6);
-        if(Math.abs(x)<COURT.halfWidth&&z>near&&z<far&&r()<.72)continue;
-        g.fillStyle=r()<.5?"rgba(74,107,71,.32)":"rgba(96,129,80,.24)";
-        g.beginPath();g.ellipse(x,z,.18+r()*.44,.12+r()*.3,r()*3.14,0,6.283);g.fill();
-      }
-      /* 积水暗痕 */
-      for(let m=0;m<76;m++){
-        const x=(r()-.5)*31,z=near-3+r()*(far-near+6);
-        g.fillStyle=r()<.5?"rgba(34,48,54,.28)":"rgba(52,68,72,.18)";
-        g.beginPath();g.ellipse(x,z,.5+r()*1.6,.3+r()*.9,r()*3.14,0,6.283);g.fill();
       }
     }
     g.strokeStyle=p.line;g.lineWidth=name==="beachSunset"?.044:.065;
@@ -190,6 +146,7 @@
       for(let i=0;i<25;i++){let x=r()*28-14,z=near+r()*COURT.length;g.strokeStyle="rgba(51,56,51,.36)";g.lineWidth=.016;g.beginPath();g.moveTo(x,z);for(let j=0;j<6;j++){x+=(r()-.4)*.45;z+=r()*.4;g.lineTo(x,z);}g.stroke();}
       for(let i=0;i<180;i++){g.fillStyle=p.field;g.fillRect((r()-.5)*15.1,near+r()*COURT.length,.1+r()*.25,.025+r()*.065);}
     }
+    AIBAWorldLife.surface(g,name,p,r);
     const tex=new THREE.CanvasTexture(cv);tex.name=`placeSurface:${name}`;tex.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;return tex;
   }
   function restore(){
@@ -198,39 +155,28 @@
     setPlaceHoops(false);
   }
   function themeHoops(s,b){
-    /* 峡谷雨林要的是"专业篮球设施",不是废墟木架(§7):
-       深灰支架 + 玻璃篮板 + 白描边,底座少量苔藓做环境融合。
-       原来 flowerCourt 走的是木架木板(旧"赭土村落"遗留),读起来像野球场。 */
-    const canyon=s.name==="flowerCourt";
-    if(canyon){
-      [[-8.62,1],[COURT.farBaseline-.96,-1]].forEach(([z,dir])=>{
-        const base=z-dir*1.55,steel=0x2b3230;
-        b.box(steel,0,1.75,base,.24,3.5,.24);b.box(steel,0,3.46,z-dir*.76,.22,.22,1.55);
-        b.box(steel,0,2.9,base+dir*.45,.14,1.45,.14,-dir*.6);
-        b.box(0x333c38,0,.1,base,.8,.2,.8);
-        b.box(0x3a5c3e,0,.19,base,.86,.08,.86);                    // 底座苔藓
-        b.box(0xdae8ea,0,3.5,z,1.9,1.1,.1);                        // 玻璃板
-        [-1,1].forEach(a=>{
-          b.box(0x2b3230,0,3.5+a*.55,z+dir*.055,1.96,.07,.11);      // 上下边框
-          b.box(0x2b3230,a*.95,3.5,z+dir*.055,.07,1.17,.11);        // 左右边框
-          b.box(0xf2f6f6,a*.3,3.25,z+dir*.058,.035,.36,.014);       // 内框白线
-          b.box(0xf2f6f6,0,3.25+a*.18,z+dir*.058,.63,.035,.014);
-        });
-      });
-      setPlaceHoops(true);return;
-    }
-    const wood=false,rain=s.name==="rainyCourt",color=s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
+    const wood=s.name==="flowerCourt",rain=s.name==="rainyCourt",color=wood?0x5c5139:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
     [[-8.62,1],[COURT.farBaseline-.96,-1]].forEach(([z,dir])=>{
       const base=z-dir*1.55;
       b.box(color,0,1.75,base,.24,3.5,.24);b.box(color,0,3.46,z-dir*.76,.22,.22,1.55);
       b.box(color,0,2.9,base+dir*.45,.14,1.45,.14,-dir*.6);b.box(wood?0x66513b:0x757b76,0,.1,base,.75,.2,.75);
-      b.box(wood?0xad8054:rain?0xc5c1a9:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
+      b.box(wood?0xad8054:rain?0xc5c1a9:s.name==="spanishQuarter"?0x91988c:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
       for(let j=-2;j<=2;j++)if(wood)b.box(0x694c34,j*.34,3.5,z+dir*.062,.018,1.07,.006);
       const ink=wood?0xe4cca0:rain?0x704f40:0x384f56;
       [-1,1].forEach(a=>{b.box(ink,0,3.5+a*.51,z+dir*.066,1.86,.035,.012);b.box(ink,a*.915,3.5,z+dir*.066,.035,1.05,.012);
         b.box(ink,a*.3,3.25,z+dir*.069,.035,.36,.014);b.box(ink,0,3.25+a*.18,z+dir*.069,.63,.035,.014);});
       for(let x of [-.84,.84])for(let y of [3.04,3.96])b.box(0x494640,x,y,z+dir*.073,.035,.035,.025);
       if(wood)for(let j=0;j<6;j++)b.box(0xc3a976,0,1.3+j*.065,base,.26,.025,.27);
+      if(s.name==="spanishQuarter"||s.name==="beachSunset"){
+        const rr=rng(s.name==="spanishQuarter"?197:239);
+        for(let j=0;j<32;j++){
+          const x=(rr()-.5)*1.75,y=3.05+rr()*.94;
+          if(Math.abs(x)<.35&&y<3.47)continue;
+          b.box(j%3===0?0x6e4f36:s.name==="spanishQuarter"?0xb9794e:0x718e89,x,y,z+dir*.078,.03+rr()*.1,.015+rr()*.055,.008);
+        }
+        // Tag strokes stay outside the inner target rectangle.
+        for(let j=0;j<5;j++)b.box(s.name==="spanishQuarter"?0x99452e:0xbe7864,-.76+j*.11,3.77+Math.sin(j)*.06,z+dir*.084,.045,.21,.009,0,0,.28-j*.13);
+      }
     });setPlaceHoops(true);
   }
   function tree(s,b,x,z,style,scale=1){
@@ -721,9 +667,11 @@
       const steps=6;
       for(let i=0;i<steps;i++){
         const y0=i*topY/steps,hh=topY/steps*1.25,w=baseW*(1-i*.09);
-        bb.box(pick(CANYON.rock),x+(R()-.5)*1.8,y0+hh*.5,z+(R()-.5)*2.4,w,hh,depth,(R()-.5)*.05,(R()-.5)*.2,(R()-.5)*.06);
+        const stone=pick(CANYON.rock),xx=x+(R()-.5)*1.8,zz=z+(R()-.5)*2.4,rx=(R()-.5)*.05,ry=(R()-.5)*.2,rz=(R()-.5)*.06;
+        // Consume the old random stream, but build a single eroded column instead of six slabs.
+        if(i===0)bb.add("rock",stone,xx,topY*.51,zz,baseW,topY*1.08,depth,rx,ry,rz);
         /* 覆盖层:苔藓块 + 垂落藤蔓 + 岩缝蕨 */
-        if(R()<.82){bb.box(pick(CANYON.moss),x+(R()-.5)*w*.6,y0+hh*.62,z+(R()-.5)*2.2,w*(.4+R()*.5),hh*(.35+R()*.4),depth*.14);}
+        if(R()<.82){bb.add("rock",pick(CANYON.moss),x+(R()-.5)*w*.6,y0+hh*.62,z+(R()-.5)*2.2,w*(.4+R()*.5),hh*(.35+R()*.4),depth*.14);}
         if(R()<.7){const vl=2.5+R()*5;bb.box(pick(CANYON.leaf),x+(R()-.5)*w*.7,y0+hh-vl*.5,z+(R()-.5)*2,.16+R()*.2,vl,.16);}
         if(R()<.55)fern(bb,x+(R()-.5)*w*.6,y0+hh*.9,z+(R()-.5)*2,.9+R()*.7);
       }
@@ -755,12 +703,13 @@
     const cliffDark=(bb,x,z,baseW,topY,depth)=>{
       for(let i=0;i<6;i++){
         const y0=i*topY/6,hh=topY/6*1.25,w=baseW*(1-i*.09);
-        bb.box(darkRock[(R()*3)|0],x+(R()-.5)*1.8,y0+hh*.5,z+(R()-.5)*2.4,w,hh,depth,0,(R()-.5)*.2,0);
-        if(R()<.7)bb.box(0x25412c,x+(R()-.5)*w*.6,y0+hh*.62,z+(R()-.5)*2.2,w*(.4+R()*.5),hh*(.4+R()*.4),depth*.14);
+        const tone=darkRock[(R()*3)|0],xx=x+(R()-.5)*1.8,zz=z+(R()-.5)*2.4,rot=(R()-.5)*.2;
+        if(i===0)bb.add("rock",tone,xx,topY*.51,zz-3,baseW,topY*1.08,depth,0,rot,0);
+        if(R()<.7)bb.add("rock",0x25412c,x+(R()-.5)*w*.6,y0+hh*.62,z+(R()-.5)*2.2,w*(.4+R()*.5),hh*(.4+R()*.4),depth*.14);
       }
     };
     for(let i=-3;i<=3;i++)cliffDark(b,WF.x+i*15+(R()-.5)*4,WF.z-7+(R()-.5)*6,18,50+R()*20,16);
-    b.box(0x182223,WF.x,WF.top*.55,WF.z-1,34,WF.top*1.15,8);          // 剪影暗背板(加宽加高)
+    b.add("rock",0x182223,WF.x,WF.top*.55,WF.z-2,34,WF.top*1.15,8);
     // Continuous fall: no projecting mid-cliff shelf cutting through the water.
     b.box(0x2b4547,WF.x,WF.pool*.5,WF.z+16,26,WF.pool,14);            // 水潭
     /* ⚠ 必须站在暗背板**前面**。背板是 b.box(...,WF.z-1,34,...,8),深度 8,
@@ -1507,6 +1456,7 @@
     if(name==="shonanCoast")s.menuOrbit=[11.4,20,10.4,2.6];
     const b=batch(),builder=({outdoorSunny:city,rainyCourt:rainTown,flowerCourt:village,shonanCoast:shonan,medCliff:med,beachSunset:coast})[name];
     if(builder)builder(s,b);else AIBAWorldWonders.build(s,b,{batch,tree,facing});
+    AIBAWorldLife.build(s,b,{batch,rng});
     themeHoops(s,b);b.finish(root,`placeArchitecture:${name}`);clouds(s);makeBirdPool(s);
     if(name==="outdoorSunny"){scene.fog.near=52;scene.fog.far=145;}
     if(name==="shonanCoast"){scene.fog.near=58;scene.fog.far=190;}
@@ -1524,14 +1474,11 @@
       hemi.color.setHex(0xbcd0c4);hemi.groundColor.setHex(0x3c4a42);hemi.intensity=.5;
       sun.color.setHex(0xfff4dd);sun.intensity=1.15;sun.position.set(-6,26,-4);
     }
-    /* 地面材质:雨天与峡谷都该是"湿"的,需要水膜反光;晴天街头/海边是干的水泥旧涂层。
-       峡谷 clearcoat 给得比雨天更高 —— 石缝积水在顶部天光下形成明显的湿润高光,
-       这正是"湿漉漉"的观感来源。但 envMapIntensity 仍压到 .04:反射只靠这一层薄水膜,
-       不走环境贴图,避免重新引入此前那种大面积洗白过曝。 */
+    /* Rain has a water film; forest soil stays rough, with only a faint damp sheen. */
     const tex=surface(name),m=courtFloor.material;courtFloor.userData.placeTexture=tex;m.map=tex;m.color.setHex(0xffffff);m.roughnessMap=null;
     /* 湘南是旧水泥外场:干、亚光、几乎不反光(文档"偏旧但干净") */
-    m.roughness=name==="rainyCourt"?.62:(name==="flowerCourt"?.55:(name==="shonanCoast"?.92:(name==="medCliff"?.88:.95)));
-    m.clearcoat=name==="rainyCourt"?.12:(name==="flowerCourt"?.38:0);
+    m.roughness=name==="rainyCourt"?.62:(name==="flowerCourt"?.91:(name==="shonanCoast"?.92:(name==="medCliff"?.88:.95)));
+    m.clearcoat=name==="rainyCourt"?.12:(name==="flowerCourt"?.06:0);
     if(m.clearcoatRoughness!==undefined)m.clearcoatRoughness=(name==="rainyCourt"||name==="flowerCourt")?.22:.5;
     m.envMapIntensity=.04;m.needsUpdate=true;
     scene.traverse(o=>{if(["courtZone","courtLine","courtMark","nearCourtCrowdRoot"].includes(o.name)){o.userData.placeHidden=o.visible;o.visible=false;}});

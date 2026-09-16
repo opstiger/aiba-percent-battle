@@ -720,8 +720,36 @@ function updBackcourtShow(t){
     }
   });
 }
-/* crowd: grouped instanced meshes (no per-instance color needed) */
-const crowd={groups:[],dummy:new THREE.Object3D()};
+/* Crowd: tier batches, per-instance team colors and independent event envelopes. */
+const crowd={groups:[],dummy:new THREE.Object3D(),clock:0,teamKey:"",event:0,teamPanels:[]};
+function crowdTeams(){
+  const home=G.myStar?.col||[0xf0b72c,0x263f85],away=G.battleOpp?.col||G.opponents?.[0]?.col||[0xc24446,0xe6dbce];
+  // An alternate jersey separates two stars who happen to share a primary team color.
+  return [home[0],away[0]===home[0]?away[1]:away[0]];
+}
+function syncCrowdTeams(){
+  const colors=crowdTeams(),key=colors.join(":");if(crowd.teamKey===key)return;
+  crowd.teamKey=key;
+  crowd.teamPanels.forEach(p=>p.mesh.material.color.setHex(colors[p.team]).convertSRGBToLinear());
+  for(const group of crowd.groups){
+    group.seats.forEach((s,i)=>{
+      const col=s.team<0?CROWD_BODY[i%CROWD_BODY.length]:colors[s.team];
+      group.body.setColorAt(i,recede(col,.09,.09+(group.tier||0)*.045).convertSRGBToLinear());
+    });
+    if(group.body.instanceColor)group.body.instanceColor.needsUpdate=true;
+  }
+}
+function triggerArenaCrowdReaction(kind,points){
+  if(!indoorRoot.visible)return;
+  crowd.event++;const opponent=kind==="oppMake"||kind==="oppMiss",miss=kind==="miss"||kind==="oppMiss",winner=opponent?1:0;
+  for(const group of crowd.groups)for(const s of group.seats){
+    const fraction=(Math.sin(s.ph*91.7+crowd.event*12.3)*43758.5453)%1,u=Math.abs(fraction);
+    const supports=s.team===winner,neutral=s.team<0;
+    s.responseSign=neutral?(miss?-.15:.3):(supports?(miss?-.65:1):(miss?.4:-.4));
+    s.responseStart=crowd.clock+.06+u*.85;s.responseDuration=1.7+u*2.2;
+    s.responsePower=((points||0)>=5?1:.76)*(.42+s.amp*.45)*(neutral?.35:1);
+  }
+}
 /* 看台观众退到背景里,靠的不是"调暗一点",而是同时拿掉两样东西:
    饱和度(彩色块最抢眼)和亮度。纯降亮度会变成一堆深色但依然刺眼的色块。
    近场观众(spectators.js)不走这一层 —— 他们是中景,让灯光自己压。 */
@@ -730,33 +758,47 @@ function recede(hex,desat,dark){
   c.lerp(new THREE.Color(l,l,l),desat);
   return c.lerp(new THREE.Color(0x131824),dark);
 }
-/* 服色基色:中性深灰蓝/棕打底,留一个暗紫灰点缀。真实转播里看台是暗的中性块面,
-   不是彩色积木墙 —— 原来那套金黄/红/绿/橙就是"糖果色拼盘"的观感来源。 */
+/* Neutral supporters keep casual clothing; team followers use the actual roster colors. */
 const CROWD_BODY=[0x171a21,0x23272f,0x1c2534,0x2f3540,0x3a2f26,0x2a2029];
 const CROWD_HEAD=[0xf4c89c,0xd9a066,0x8d5524];
 function buildCrowd(seats){
   const bodyGeo=new THREE.BoxGeometry(0.55,0.75,0.4);
   const headGeo=new THREE.BoxGeometry(0.38,0.38,0.38);
+  const armGeo=new THREE.BoxGeometry(.115,.5,.13);armGeo.translate(0,-.22,0);
   /* 按"层 × 服色"分桶。同层共用该层暗度(BOWL_TIERS[t].dim),层与层之间亮度递减,
      于是看台从近到远自然压深 —— 这是"看台有纵深"的来源,
      也是把中景亮度压回去、保住"球场亮/看台暗"分层的手段。
      组数 = 层数 × 服色数,InstancedMesh 每组一次 draw call,量级仍然很小。 */
   const NT=BOWL_TIERS.length,NC=CROWD_BODY.length;
   const buckets=[];for(let i=0;i<NT*NC;i++)buckets.push([]);
-  seats.forEach(s=>{
+  seats.forEach((s,i)=>{
     const t=(s.t==null?1:s.t);
+    s.team=i%9===0?-1:(s.x>0?i%6===0?0:1:i%6===0?1:0);
+    s.responseStart=-100;s.responseDuration=0;s.responsePower=0;s.responseSign=0;
     buckets[t*NC+((Math.random()*NC)|0)].push(s);
   });
   buckets.forEach((arr,idx)=>{
     if(!arr.length)return;
     const t=Math.floor(idx/NC),c=idx%NC,dim=BOWL_TIERS[t].dim;
     const body=new THREE.InstancedMesh(bodyGeo,
-      new THREE.MeshLambertMaterial({color:recede(CROWD_BODY[c],dim,dim*.62)}),arr.length);
+      new THREE.MeshLambertMaterial({color:0xffffff}),arr.length);
     const head=new THREE.InstancedMesh(headGeo,
       new THREE.MeshLambertMaterial({color:recede(CROWD_HEAD[c%3],dim*.8,dim*.66)}),arr.length);
-    indoorRoot.add(body);indoorRoot.add(head);
-    crowd.groups.push({body,head,seats:arr,tier:t});   // tier 供 updCrowd 降频用
+    const arms=new THREE.InstancedMesh(armGeo,head.material,arr.length*2);
+    body.instanceMatrix.setUsage(THREE.DynamicDrawUsage);head.instanceMatrix.setUsage(THREE.DynamicDrawUsage);arms.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    // Animated instances move outside their construction-time bounds.
+    body.frustumCulled=head.frustumCulled=arms.frustumCulled=false;
+    indoorRoot.add(body);indoorRoot.add(head);indoorRoot.add(arms);
+    crowd.groups.push({body,head,arms,seats:arr,tier:t});
   });
+  crowd.teamKey="";syncCrowdTeams();
+  // Repeated color bands tie supporters to arena architecture, without a giant flat color wall.
+  for(const side of [-1,1])for(let j=0;j<4;j++){
+    const mesh=new THREE.Mesh(new THREE.BoxGeometry(2.1,.48,.08),new THREE.MeshLambertMaterial({color:crowdTeams()[side>0?1:0]}));
+    mesh.material.color.convertSRGBToLinear();
+    mesh.position.set(side*(4.5+j*2.25),7.1,-19.4);mesh.name="teamSupporterBanner";indoorRoot.add(mesh);crowd.teamPanels.push({mesh,team:side>0?1:0});
+  }
+  AIBACrowdLife.build();
 }
 /* 座位加密到四千级之后,每帧逐个算矩阵(body+head 两次)会明显吃 CPU,
    所以按层降频 —— 这是本轮唯一有真实性能代价的改动,降频点全部集中在这里,
@@ -764,10 +806,12 @@ function buildCrowd(seats){
 let _crowdTick=0;
 function updCrowd(t){
   if(!indoorRoot.visible)return;
+  crowd.clock=t;syncCrowdTeams();
+  AIBACrowdLife.update(t);
   _crowdTick++;
   /* 上层看台排数最多、离镜头最远 → 每 3 帧更新一次
      全场安静时只剩 sway(幅度 0.035m)→ 再降一半,肉眼分不出 */
-  const calm=((typeof G!=="undefined"?G.cheer:0)<.05);
+  const calm=!crowd.groups.some(g=>g.seats.some(s=>t<s.responseStart+s.responseDuration));
   const d=crowd.dummy;
   for(const g of crowd.groups){
     const tier=(g.tier==null?1:g.tier);
@@ -775,15 +819,26 @@ function updCrowd(t){
     if(calm&&(_crowdTick%2)!==0)continue;
     for(let i=0;i<g.seats.length;i++){
       const s=g.seats[i];
-      const jump=Math.max(0,Math.sin(t*9+s.ph))*0.4*G.cheer*s.amp;
-      const sway=Math.sin(t*1.4+s.ph)*0.035;
+      const age=t-s.responseStart,life=age>=0&&age<s.responseDuration?Math.sin(Math.PI*age/s.responseDuration):0;
+      const reaction=life*s.responsePower*s.responseSign;
+      const idle=Math.pow(Math.max(0,Math.sin(t*.41+s.ph*17.3)),24)*(i%13===0?.42:.03);
+      const cheer=Math.max(0,reaction),disappointed=Math.max(0,-reaction);
+      const jump=Math.max(0,Math.sin(t*(6.5+s.amp*2)+s.ph))*.33*cheer;
+      const sway=Math.sin(t*(.85+s.amp*.4)+s.ph)*.022;
       d.position.set(s.x,s.y+jump+sway,s.z);
-      d.rotation.y=Math.sin(s.ph)*0.4;
+      d.rotation.set(-disappointed*.17+Math.sin(t*.7+s.ph)*.025,Math.sin(s.ph)*.4+Math.sin(t*.38+s.ph)*.065,Math.sin(t*1.1+s.ph)*.023);
       d.updateMatrix();g.body.setMatrixAt(i,d.matrix);
       d.position.y+=0.58;d.updateMatrix();g.head.setMatrixAt(i,d.matrix);
+      for(const side of [-1,1]){
+        d.position.set(s.x+side*.31,s.y+.27+jump+sway,s.z);
+        d.rotation.set(-.1-disappointed*.7,0,side*(.12+(cheer+idle)*(1.85+.2*Math.sin(t*8+s.ph))));
+        d.updateMatrix();
+        g.arms.setMatrixAt(i*2+(side>0?1:0),d.matrix);
+      }
     }
     g.body.instanceMatrix.needsUpdate=true;
     g.head.instanceMatrix.needsUpdate=true;
+    g.arms.instanceMatrix.needsUpdate=true;
   }
   updUpperRibbon(t);
 }

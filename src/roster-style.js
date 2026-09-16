@@ -73,7 +73,7 @@
   function applyBody(guy,star){
     if(!guy||!guy.g)return;
     const bp=(cfg().bodyProfileFor?cfg().bodyProfileFor(star):null)||{h:1,w:1};
-    guy.g.scale.set(bp.w,bp.h,bp.w);
+    guy.g.scale.set(guy.lefty?-bp.w:bp.w,bp.h,bp.w);
     // 主角的球挂在体素层级里,反向补偿保持球为标准圆球
     if(typeof player!=="undefined"&&guy===player&&typeof pBall!=="undefined")
       pBall.scale.set(1/bp.w,1/bp.h,1/bp.w);

@@ -13,6 +13,30 @@ const VOXEL_HIP_X=.125;
    同样角度的横移降到毫米级。 */
 const HAIR_PIVOT_Y=1.78;
 const CHARACTER_TEXTURE_CACHE=new Map();
+/* One closed tank-top shell. Front/back panels share an outline, with sewn side gussets.
+   UVs preserve the existing 72-unit jersey artwork and left-handed number mirroring. */
+function jerseyPanelGeometry(){
+  const outline=[[-.218,-.26],[.218,-.26],[.232,-.1],[.23,.09],[.235,.12],[.24,.30],[.11,.30],[.082,.18],[-.082,.18],[-.11,.30],[-.24,.30],[-.235,.12],[-.23,.09],[-.232,-.1]];
+  const shape=new THREE.Shape(outline.map(([x,y])=>new THREE.Vector2(x,y))),flat=new THREE.ShapeGeometry(shape).toNonIndexed();
+  const pos=[],uv=[],groups=[];
+  for(const back of [false,true]){
+    const start=pos.length/3,a=flat.attributes.position;
+    for(let i=0;i<a.count;i+=3)for(const j of back?[0,2,1]:[0,1,2]){
+      const x=a.getX(i+j),y=a.getY(i+j),z=(back?-1:1)*(.124+.008*Math.cos(y*5));
+      pos.push(x,y,z);uv.push(back?.5-x/.5:.5+x/.5,.5+y/.52);
+    }
+    groups.push({start,count:pos.length/3-start,materialIndex:back?5:4});
+  }
+  for(let i=0;i<outline.length;i++){
+    const a=outline[i],b=outline[(i+1)%outline.length],start=pos.length/3;
+    for(const [p,back] of [[a,false],[a,true],[b,true],[a,false],[b,true],[b,false]]){
+      const z=(back?-1:1)*(.124+.008*Math.cos(p[1]*5));pos.push(p[0],p[1],z);uv.push(back?0:1,(p[1]+.26)/.52);
+    }
+    groups.push({start,count:6,materialIndex:Math.abs(a[0])>.21&&Math.abs(b[0])>.21?1:0});
+  }
+  flat.dispose();const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
+  groups.forEach(g=>geo.addGroup(g.start,g.count,g.materialIndex));geo.computeVertexNormals();geo.computeBoundingSphere();geo.name='tailoredJerseyPanels';return geo;
+}
 /* ---------------- 角色接地影 ----------------
    球有 blob 假影,角色一个都没有 —— 人就像贴在地板上,这才是"没有落地感"的直接来源。
 
@@ -171,10 +195,10 @@ function voxelGuy(){
     // Patella is part of the knee silhouette, never a second protruding pad.
     const calf=addSoft(kn,0.15,0.255,0.165,mS,0,-0.165,0,.018,3);
     calf.name="calf";if(detailOn)detail.profile(calf,.82,1,.88,1);
-    addSoft(kn,0.165,0.095,0.18,mSock, 0,-0.295,0.006,.024,2);// 袜子
-    add(kn,0.165,0.009,0.181,mJ, 0,-0.257,0.006);              // 袜口队色细条
-    addSoft(kn,0.166,0.012,0.18,mSock,0,-0.247,0.006,.004,2); // 袜口外翻(在小腿上留暗边)
-    add(kn,0.165,0.018,0.18,mP, 0,-0.322,0.008);              // 袜底暗线
+    addSoft(kn,0.165,0.095,0.18,mSock, 0,-0.295,0.006,.024,2).name="legacySock";// 袜子
+    add(kn,0.165,0.009,0.181,mJ, 0,-0.257,0.006).name="legacySock";              // 袜口队色细条
+    addSoft(kn,0.166,0.012,0.18,mSock,0,-0.247,0.006,.004,2).name="legacySock"; // 袜口外翻(在小腿上留暗边)
+    add(kn,0.165,0.018,0.18,mP, 0,-0.322,0.008).name="legacySock";              // 袜底暗线
     const ank=new THREE.Group();ank.position.y=-0.32;         // 踝 pivot
     /* 脚部拆成 ankle -> foot -> toe：踝关节负责小腿末端的补偿，foot 负责
        整体承重，toe 负责前脚掌蹬地。现有鞋面继续挂在 foot，保留旧外观。 */
@@ -256,14 +280,12 @@ function voxelGuy(){
   // ---- 躯干 ----
   const bodyF=new THREE.MeshLambertMaterial({color:0xffffff});
   const bodyB=new THREE.MeshLambertMaterial({color:0xffffff});
-  const body=new THREE.Mesh(roundedBoxGeometry(0.5,0.52,0.27,.048,3),[mJ,mJ,mJ,mJ,bodyF,bodyB]);
+  const body=new THREE.Mesh(detailOn?jerseyPanelGeometry():roundedBoxGeometry(0.5,0.52,0.27,.048,3),[mJ,detailOn?mP:mJ,mJ,mJ,bodyF,bodyB]);
+  body.name="jerseyShell";
   body.position.y=1.13;g.add(body);
   if(detailOn){
-    detail.profile(body,.94,1);
-    for(const sign of [-1,1]){
-      const seam=add(g,.010,.40,.192,mP,sign*.238,1.12,0);
-      seam.rotation.z=-sign*.034;
-    }
+    // The chest is visible inside the cut neckline; no floating collar or extra side strips.
+    const chest=addSoft(g,.40,.15,.21,mS,0,1.315,0,.018,2);chest.name="jerseyNeckInset";
   }else{
     add(g,0.045,0.43,0.21,mP,-0.255,1.13,0);
     add(g,0.045,0.43,0.21,mP, 0.255,1.13,0);
@@ -271,18 +293,12 @@ function voxelGuy(){
     add(g,0.035,0.40,0.285,mJ, 0.285,1.12,0);
   }
   // The torso owns the neckline; no second rectangular collar block.
-  if(detailOn){
-    for(const sign of [-1,1]){
-      const collar=add(g,.14,.024,.020,mP,sign*.061,1.353,.139);
-      collar.rotation.z=sign*.34;
-    }
-    add(g,.24,.024,.020,mP,0,1.382,-.137);
-  }else{
+  if(!detailOn){
     add(g,0.19,0.05,0.29,mP, -0.105,1.34,0.006);
     add(g,0.19,0.05,0.29,mP,  0.105,1.34,0.006);
   }
   // Armhole piping is narrow and follows the tank silhouette.
-  for(const side of [-1,1])addSoft(g,.018,.032,.205,mP,side*.224,1.364,0,.006,2);
+  if(!detailOn)for(const side of [-1,1])addSoft(g,.018,.032,.205,mP,side*.224,1.364,0,.006,2);
   // Single cloth hem: no rigid waist slab underneath it.
   /* 下摆单独留一层很薄的布片，跑动时做低幅度二级弹簧；不参与身体/脚底解算，
      站定时回到零，避免把整件球衣当硬板。前后各一片是为了转身时仍能读到摆动。 */
@@ -477,6 +493,22 @@ function setHair(o,style,colorHex){
   const tuft=(L,rx,ry,rz,x,y,z)=>{const b=new THREE.Mesh(new THREE.SphereGeometry(1,8,5),m);b.scale.set(rx,ry,rz);b.position.set(x,y,z);L.add(b);return b;};
   const lock=(L,r,h,x,y,z,rx,rz)=>{const b=new THREE.Mesh(new THREE.CylinderGeometry(r*.72,r,h,6),m);b.position.set(x,y,z);b.rotation.set(rx||0,0,rz||0);L.add(b);return b;};
   if(style==="bald")return;
+  if(style==="croppedCurls"){
+    tuft(B,.176,.043,.176,0,1.786,0);
+    for(const side of [-1,1])box(B,.035,.105,.255,side*.168,1.729,-.012);
+    box(B,.29,.12,.04,0,1.72,-.17);
+    for(let x=0;x<4;x++)for(let z=0;z<4;z++){
+      const px=(x-1.5)*.078,pz=(z-1.5)*.078;
+      tuft(B,.052,.031+.007*((x+z)%2),.052,px,1.81,pz);
+    }return;
+  }
+  if(style==="sidepart"){
+    tuft(B,.181,.065,.181,0,1.785,-.008);
+    box(B,.32,.23,.055,0,1.675,-.163);
+    for(const side of [-1,1])box(B,.045,.16,.27,side*.168,1.70,-.008);
+    for(let i=0;i<5;i++)box(S,.085,.045,.29,-.12+i*.055,1.82-i*.008,.025,0,-.13,-.12);
+    return;
+  }
   if(style==="buzz"){
     /* 寸头整层贴着头皮 → 全部归 B,不参与任何晃动(原来整组晃就会浮起来) */
     tuft(B,.178,.040,.178,0,1.79,0);
@@ -549,20 +581,23 @@ function setHair(o,style,colorHex){
 
 }
 /* 胡子:首次开启时构建,之后只切显隐 */
-function setBeard(o,on,colorHex){
-  o.beardGrp.visible=!!on;
-  if(colorHex!=null)o.beardMat.color.setHex(colorHex);
-  const G=o.beardGrp;
-  if(!on||G.children.length)return;
-  const m=o.beardMat;
-  const box=(w,h,d,x,y,z)=>{const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);b.position.set(x,y,z);G.add(b);};
-  box(0.30,0.07,0.05,0,1.515,0.165);        // 下巴
-  box(0.07,0.13,0.05,-0.15,1.555,0.165);    // 左颊
-  box(0.07,0.13,0.05, 0.15,1.555,0.165);    // 右颊
-  box(0.12,0.045,0.05,0,1.575,0.17);        // 上唇
-  box(0.08,0.035,0.052,-0.06,1.542,0.17);   // 下唇左
-  box(0.08,0.035,0.052, 0.06,1.542,0.17);   // 下唇右
+function setBeard(o,on,colorHex,style="full"){
+  const G=o.beardGrp;G.visible=!!on;
+  if(colorHex!=null)o.beardMat.color.setHex(colorHex).convertSRGBToLinear();
+  if(!on)return;
+  if(G.userData.style===style&&G.children.length)return;
+  for(const child of [...G.children]){child.geometry.dispose();G.remove(child);}G.userData.style=style;
+  const box=(w,h,d,x,y,z)=>{const b=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),o.beardMat);b.position.set(x,y,z);G.add(b);};
+  box(.12,.018,.014,0,1.579,.177); // restrained upper lip, never across the mouth
+  if(style==="moustache")return;
+  if(style==="goatee"){
+    box(.11,.055,.023,0,1.506,.172);for(const side of [-1,1])box(.022,.06,.018,side*.062,1.535,.177);return;
+  }
+  const full=style==="full";
+  box(full?.28:.27,full?.14:.026,full?.09:.017,0,full?1.475:1.516,full?.162:.175);
+  for(const side of [-1,1])box(full?.063:.028,full?.115:.085,full?.055:.015,side*.146,1.551,.167);
 }
+
 function faceTex(skinHex){
   const key="face:"+skinHex;
   if(CHARACTER_TEXTURE_CACHE.has(key))return CHARACTER_TEXTURE_CACHE.get(key);
@@ -594,6 +629,7 @@ function jerseyTex(base,trim,num,big,mirror){
     g.fillStyle="rgba(0,0,0,.05)";g.fillRect(0,65,72,7);
     g.fillStyle=t;g.fillRect(1,3,1,65);g.fillRect(70,3,1,65);
     if(craft){
+      g.strokeStyle=t;g.lineWidth=1.3;g.beginPath();g.moveTo(9,0);g.lineTo(20,0);g.lineTo(24,11);g.lineTo(48,11);g.lineTo(52,0);g.lineTo(63,0);g.stroke();
       // Woven mesh, panel seams and stitched hem. Same UVs and mirrored numbers.
       g.fillStyle="rgba(0,0,0,.045)";
       for(let y=9;y<63;y+=3)for(let x=7+(y%2);x<66;x+=3)g.fillRect(x,y,.7,1);
@@ -632,8 +668,10 @@ function applyStarStyle(guy,star){
   /* lefty 必须在 dressGuy **之前**定好:号码贴图要根据它决定用不用预翻转版本。 */
   guy.lefty=!!(window.AIBA_CONFIG&&window.AIBA_CONFIG.shootingHandFor
     &&window.AIBA_CONFIG.shootingHandFor(star)==="left");
-  randomizeOutfit(guy);
-  dressGuy(guy,star.col[0],star.col[1],star.num);
+  if(window.AIBABasketballShoes)AIBABasketballShoes.clear(guy);
+  // Named players start from a fixed kit, never a random spectator outfit.
+  guy.wrists.forEach(w=>{w.visible=false;});guy.sleeves.forEach(w=>{w.visible=false;});
+  dressGuy(guy,star.col[0],star.shortsColor!=null?star.shortsColor:star.col[1],star.num);
   const body=window.AIBA_CONFIG&&window.AIBA_CONFIG.bodyProfileFor?window.AIBA_CONFIG.bodyProfileFor(star):null;
   const bodyH=body&&Number(body.h)||1,bodyW=body&&Number(body.w)||1;
   /* ---------------- 左手球员 ----------------
@@ -659,12 +697,25 @@ function applyStarStyle(guy,star){
   if(star.headband){guy.headband.visible=true;guy.headband.material.color.setHex(star.headband);}
   else guy.headband.visible=false;
   if(star.wrist!=null)guy.wrists.forEach(w=>{w.visible=true;w.material.color.setHex(star.wrist);});
-  if(star.sleeve!=null)guy.sleeves.forEach((s,i)=>{s.visible=i===1||star.id==="a03";s.material.color.setHex(star.sleeve);});
+  if(star.sleeve!=null)guy.sleeves.forEach((s,i)=>{s.visible=i===(star.id==="a03"?0:1);s.material.color.setHex(star.sleeve);});
   const hc=star.hair!=null?star.hair:0x141414;
   setHair(guy, star.hairStyle||"short", hc);
-  setBeard(guy, !!star.beard, (typeof star.beard==="number")?star.beard:hc);
+  setBeard(guy, !!star.beard, (typeof star.beard==="number")?star.beard:hc,star.beardStyle||"full");
+  if(window.AIBAPlayerKit)AIBAPlayerKit.apply(guy,star);
+  /* 每个有名有姓的球星都按分配表拿到自己的品系+配色,袜子同源。
+     分配是 id 的确定性函数,并在全名册范围内保证 (品系,配色) 不重复 ——
+     同场两个人不会撞鞋。没有分配表(旧版/自定义球星)时退回乔丹那双。 */
+  const shoeFit=window.AIBAShoeColorways
+    ?AIBAShoeColorways.forStar(star,typeof LEGENDS!=="undefined"?LEGENDS:null):null;
+  guy.defaultBasketballShoe=shoeFit
+    ?{length:.44,colorway:shoeFit.colorway,family:shoeFit.family,sock:shoeFit.sock,sockStripe:shoeFit.sockStripe}
+    :((star.id==="j23"||new URLSearchParams(location.search).get("shoe")==="retro-high")?{colorway:"classicRedBlackWhite",length:.44}:null);
+  if(window.AIBABasketballShoes&&guy.defaultBasketballShoe)AIBABasketballShoes.apply(guy,"RetroHigh",guy.defaultBasketballShoe);
 }
 function randomizeOutfit(o){
+  o.defaultBasketballShoe=null;
+  if(window.AIBABasketballShoes)AIBABasketballShoes.clear(o);
+  if(window.AIBAPlayerKit)AIBAPlayerKit.clear(o);
   const pick=a=>a[(Math.random()*a.length)|0];
   const SC=[0xff4040,0xffffff,0x111111,0x00d0ff,0xffd23f,0xff8df0,0x7CFC6B];
   const BC=[0xff4040,0xffffff,0x111111,0xffd23f,0x00d0ff,0x9b59ff];
@@ -736,7 +787,7 @@ function bakeActorSegments(guy){
   segments.forEach(seg=>{
     const parts=[];
     seg.children.forEach(child=>{
-      if(!child.isMesh||keep.has(child)||child.children.length||!child.visible)return;
+      if(!child.isMesh||child.userData.shoeFitVisual||keep.has(child)||child.children.length||!child.visible)return;
       const mat=child.material;
       if(!mat||Array.isArray(mat)||mat.map||mat.transparent||mat.emissive?.getHex())return;
       child.updateMatrix();parts.push(child);

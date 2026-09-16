@@ -780,7 +780,9 @@
 
   /* 胜负判定单独导出,方便对着三关的分差跑结果矩阵(见 scripts/lastshot-outcome.test.mjs) */
   const outcome=Object.freeze({pointsToWin,possessionPoints,shotSucceeded,isOvertime});
-  const api=Object.freeze({beginLastShot,updateLastShot,updateLastShotCam,exitLastShot,finish,state,outcome});
+  /* hideHud 必须导出:index.js 是另一个 IIFE,直接写 hideLastShotHud() 会 ReferenceError,
+   而它正好在 showResult 里 beat.play() 之前,一崩整个结算演出就被跳过。 */
+  const api=Object.freeze({beginLastShot,updateLastShot,updateLastShotCam,exitLastShot,finish,state,outcome,hideHud:hideLastShotHud});
   Object.assign(global,{updateLastShot,updateLastShotCam,beginLastShot,exitLastShot});
   global.AIBALastShotSequence=api;
   runtime.register("mode:last-shot:sequence",api);

@@ -22,6 +22,8 @@
     if(typeof showCrew!=="undefined"&&Array.isArray(showCrew)){
       showCrew.forEach(c=>{if(c&&c.g&&c.g.traverse)c.g.traverse(o=>skip.add(o));});
     }
+    // Aisle walkers have animated transforms; keep their whole rigs live.
+    if(global.AIBACrowdLife)global.AIBACrowdLife.state.walkers.forEach(w=>w.g.traverse(o=>skip.add(o)));
     /* 灯和它们的 target 不能冻结。数量只有个位数,冻结省不下任何东西,
        但一旦冻上,`light.position.set(...)` 就**静默失效** ——
        matrixAutoUpdate=false 时 updateMatrixWorld 不会再用 position 重算 matrix,

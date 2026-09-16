@@ -122,6 +122,7 @@ function animate(){
   camera.updateMatrixWorld();
   updatePlayerPowerUI();
   updatePauseButton();
+  if(window.AIBABasketballShoes)AIBABasketballShoes.updateAll(realDt);
   renderer.render(scene,camera);if(window.AIBARecorder)AIBARecorder.tick({canvas:renderer.domElement});
   updSpotDots();
 }

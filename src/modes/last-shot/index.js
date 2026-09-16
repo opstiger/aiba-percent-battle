@@ -225,7 +225,7 @@
     if(!beat){renderResult(cfg,made,reason,practice,diag,pts);return;}
     if(G.state==="resultbeat"&&beat.active())return;
     if(typeof transitionState==="function")transitionState("resultbeat","last-shot-result-beat");else G.state="resultbeat";
-    applyCamMode();squadApi.show(false);hideLastShotHud();
+    applyCamMode();squadApi.show(false);seq.hideHud();
     const points=typeof pts==="number"?pts:(made?3:0);
     beat.play({
       eyebrow:practice?"LAST SHOT · PRACTICE":"LAST SHOT",

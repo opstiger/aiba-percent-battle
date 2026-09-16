@@ -1228,6 +1228,14 @@ function applyShotPoseNoise(o,phase,key){
    state 由调用方持有，需要 phase / idleT / lean / face 四个字段。 */
 function poseRunCycle(o,state,speed,dt,opts){
   if(!o||!o.legs||!state)return 0;
+  /* 起步首帧 / 卡顿帧的 dt 或 speed 可能是 NaN(0/0、时钟回绕)，这里一次性收口。
+     否则 NaN 顺着 run → state.phase / state.lean 写进 g.rotation.x、g.rotation.z 和
+     g.position.y；根节点自己下一帧会被重写而看不出问题，但任何对它做平滑积分的
+     下游(球鞋接地)会把这一帧永久锁成 NaN。实测:走位起步那一帧鞋整只消失且不可恢复。 */
+  dt=Number.isFinite(dt)?dt:1/60;
+  speed=Number.isFinite(speed)?speed:0;
+  if(!Number.isFinite(state.phase))state.phase=0;
+  if(!Number.isFinite(state.lean))state.lean=0;
   /* NPC/绝杀队员也会直接调用这个共享跑动循环，不能只依赖主角后续的 poseHandJoints；
      否则主角掌心相对、其他跑动角色却仍然掌心朝地。投篮/接球关键帧在后续阶段覆盖它。 */
   poseRunPalms(o);
@@ -1256,8 +1264,14 @@ function poseRunCycle(o,state,speed,dt,opts){
      .72m/s 是跑姿到直立腿姿的过渡带，不改变步频和脚的位移相位。 */
   const legActivity=clamp(speed/.72,0,1);
   state.runActive=gaitBlend;
-  const stepLen=Math.max(.12,runFootSpan(solvedSwing,run));
+  /* stepLen 走的是 solveRunSwing→runFootSpan 的数值解，解不出来时会返回 NaN；
+     Math.max(.12,NaN) 仍然是 NaN，于是相位、lean 和根节点高度整帧污染。
+     步长和相位增量各自兜底，坏帧退化成"这一帧不推进相位"，而不是写出 NaN。 */
+  const spanRaw=runFootSpan(solvedSwing,run);
+  const stepLen=Math.max(.12,Number.isFinite(spanRaw)?spanRaw:.12);
+  const prevPhase=Number.isFinite(state.phase)?state.phase:0;
   state.phase=(state.phase||0)+(speed*dt/stepLen)*Math.PI;
+  if(!Number.isFinite(state.phase))state.phase=prevPhase;
   state.idleT=(state.idleT||0)+dt;
   const s=Math.sin(state.phase),c=Math.cos(state.phase);
   const idle=Math.sin(state.idleT*1.7)*.03;
@@ -1340,6 +1354,13 @@ function poseRunCycle(o,state,speed,dt,opts){
   const gaitBounce=-(.004+run*.010)*(.5+.5*Math.cos(state.phase*2));
   const bodyBob=tstageRunBodyBob(state,hs)+gaitBounce*(supportTotal>.05?.35:1);
   o.g.position.y=POSE_STAND_FOOT_Y-footY*hs+bodyBob;
+  /* 最后一道闸:根节点只允许写出有限值。上面任何一条数值解退化都不该让整个角色
+     的世界矩阵变成 NaN —— 下游做平滑积分的系统(球鞋接地)会把它永久锁死。 */
+  if(!Number.isFinite(o.g.position.y))o.g.position.y=POSE_STAND_FOOT_Y;
+  if(!Number.isFinite(o.g.rotation.x))o.g.rotation.x=0;
+  if(!Number.isFinite(o.g.rotation.z))o.g.rotation.z=0;
+  if(!Number.isFinite(state.phase))state.phase=0;
+  if(!Number.isFinite(state.lean))state.lean=0;
   /* 解析包络只用于给出初始高度；真实鞋底可能因圆角鞋头、toeJoint 或
      T台脚掌滚转比公式更低。支撑脚必须落在 y=0，空中脚也不允许穿过地面。
      correction 为当前世界空间鞋底最低点：负值抬高角色，正值下压角色。 */
@@ -1453,6 +1474,10 @@ const BREATH_RATE=1.25,BREATH_AMP=0.010;
    只在真实比赛站定时启用，蓄力、起跳、走位和过场仍由各自姿势完全接管。 */
 const READY_BOUNCE_RATE=4.8,READY_BOUNCE_AMP=.012,READY_KNEE_FLEX=.060,READY_ANKLE_FLEX=.075;
 const READY_FOOT_ROLL=.12,LAND_FOOT_PITCH=.10;
+/* 起跳离地后脚掌自然下垂的幅度(正号=脚尖朝下,与 RUN_TOE_OFF_PITCH 同向)。
+   最高点踝关节本身是 -.18*jmp 的背屈,所以这里要先抵消掉再给出净下垂,
+   .52 大致等于净 19° —— 站立参考帧不受影响,因为它整条乘 c.jmp。 */
+const JUMP_FOOT_HANG=.52;
 const READY_PLAY_STATES=Object.freeze({round:1,tiebreak:1,battle:1,rackrush:1,lastshot:1});
 function poseGuy(o,c,lk,landingImpact){
   poseHandJoints(o,c);
@@ -1546,6 +1571,16 @@ function poseGuy(o,c,lk,landingImpact){
     o.footRoots&&o.footRoots[0]&&o.footRoots[0].rotation.x,o.toeRoots&&o.toeRoots[0]&&o.toeRoots[0].rotation.x)+
     poseFootBottomY(o.legs[1].rotation.x+torsoLean,o.knees[1].rotation.x,o.ankles[1].rotation.x,
       o.footRoots&&o.footRoots[1]&&o.footRoots[1].rotation.x,o.toeRoots&&o.toeRoots[1]&&o.toeRoots[1].rotation.x))*.5;
+  /* 空中脚掌下垂。**必须放在 footY 解算之后**:footY 会把 footRoot/toe 的俯仰
+     算进落脚高度并反推躯干 y,提前写就会顶高身体,撞上 check.js 锁到毫米的球心断言。
+     放在这里只改视觉朝向,接地解算与躯干高度一个字不动。
+     鞋挂在 footRig 上(旧脚网格挂在 ank),所以这条主要让新球鞋跟着脚踝摆下来。 */
+  const hangK=c.jmp*(1-clamp(land,0,1));
+  if(hangK>.001){
+    const hang=JUMP_FOOT_HANG*hangK;
+    setFootRoll(o,0,hang,hang*.34);
+    setFootRoll(o,1,hang*.88,hang*.30);
+  }
   if(o.g){
     o.g.userData.readyAnklePitch=[o.ankles[0].rotation.x,o.ankles[1].rotation.x];
     o.g.userData.readyFootRoll=readyPulse?READY_FOOT_ROLL:0;

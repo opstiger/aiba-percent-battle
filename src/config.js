@@ -43,23 +43,23 @@
     {id:"nova24",n:"N-24 夜航者",t:"VOXEL PRO 原型 · 双层战衣",r:94,col:[0x11151c,0xf4c542],accent:0x6ff3ff,num:24,
      skin:0x8d5524,shoe:0xf0f2ed,headband:false,wrist:0xf4c542,sleeve:0x0a0d12,hair:0x101010,hairStyle:"cornrows",beard:false,
      visualProfile:"voxel-pro-01",body:{h:1.02,w:.98}},
-    {id:"curry",n:"斯蒂芬·库里",t:"四届总冠军 · 历史三分王",r:97,col:[0x1d428a,0xffc72c],num:30},
+    {id:"curry",n:"斯蒂芬·库里",t:"四届总冠军 · 历史三分王",r:97,col:[0x1d428a,0xffc72c],num:30,skin:0xc99b76,hair:0x211b18,hairStyle:"croppedCurls",beard:0x211b18,beardStyle:"stubble",shoe:0xf4f4ef,headband:false,wrist:null,sleeve:null,shortsColor:0x1d428a},
     /* 全表第一个左手球星。hand:"left" 决定四件事:球架摆在哪一侧、取球往哪边转身、
        整副骨架左右镜像(guy.g.scale.x 取负,第一人称 rig 同理)、球衣号码贴图预翻转
        —— 不预翻转的话镜像会把号码照出反字。
        没有这个字段的球星一律按右手处理,所以老球星逐位不变。 */
     {id:"h13",n:"詹姆斯·哈登",t:"三届得分王 · 左手后撤步",r:93,col:[0xce1141,0xf7f7f7],num:13,hand:"left",
-     skin:0x8d5524,shoe:0xce1141,headband:false,wrist:0xf7f7f7,sleeve:0x111111,hair:0x14100d,hairStyle:"fade",beard:0x1a120c},
-    {id:"thompson",n:"克莱·汤普森",t:"四届总冠军 · 单节37分",r:93,col:[0xffc72c,0x1d428a],num:11},
-    {id:"allen",n:"雷·阿伦",t:"两届总冠军 · 致命底角",r:91,col:[0x007a33,0xffffff],num:20},
-    {id:"bird",n:"拉里·伯德",t:"三届总冠军 · 三届MVP",r:89,col:[0x007a33,0x111111],num:33},
-    {id:"miller",n:"雷吉·米勒",t:"五届全明星 · 关键三分",r:88,col:[0xfdbb30,0x002d62],num:31},
-    {id:"lillard",n:"达米安·利拉德",t:"八届全明星 · 超远三分",r:90,col:[0xe03a3e,0x111111],num:0},
-    {id:"korver",n:"凯尔·科沃尔",t:"全明星射手 · 接球投篮",r:86,col:[0xc8102e,0x26282a],num:26},
-    {id:"stojakovic",n:"佩贾·斯托贾科维奇",t:"两届三分大赛冠军",r:87,col:[0x5a2d81,0x8a8d8f],num:16},
-    {id:"ionescu",n:"萨布丽娜·约内斯库",t:"WNBA全明星 · 三分大赛纪录",r:91,col:[0x6eceb2,0x101820],num:20,sex:"f",hairStyle:"ponytail",hair:0x3a2410,skin:0xf4c89c},
-    {id:"taurasi",n:"戴安娜·陶乐西",t:"三届WNBA总冠军 · 历史得分王",r:92,col:[0x2b1a4e,0xe56020],num:3,sex:"f",hairStyle:"bun",hair:0x1a1210,skin:0xe8c39a},
-    {id:"sue-bird",n:"苏·伯德",t:"四届WNBA总冠军 · 传奇控卫",r:89,col:[0x2c5234,0xffc600],num:10,sex:"f",hairStyle:"ponytail",hair:0x4a2c12,skin:0xf4c89c}
+     skin:0x895a3c,shoe:0xd33238,headband:false,wrist:null,sleeve:0x111111,hair:0x171310,hairStyle:"fade",beard:0x171310,beardStyle:"full",shortsColor:0xce1141},
+    {id:"thompson",n:"克莱·汤普森",t:"四届总冠军 · 单节37分",r:93,col:[0xffc72c,0x1d428a],num:11,skin:0xc6a080,hair:0x29221c,hairStyle:"croppedCurls",beard:0x29221c,beardStyle:"stubble",shoe:0xeeeeea,headband:false,wrist:null,sleeve:null,shortsColor:0xffc72c},
+    {id:"allen",n:"雷·阿伦",t:"两届总冠军 · 致命底角",r:91,col:[0x007a33,0xffffff],num:20,skin:0xa87851,hair:0x211813,hairStyle:"bald",beard:false,beardStyle:"none",shoe:0xf3f3ee,headband:false,wrist:null,sleeve:null,shortsColor:0x007a33},
+    {id:"bird",n:"拉里·伯德",t:"三届总冠军 · 三届MVP",r:89,col:[0x007a33,0x111111],num:33,skin:0xe8bd98,hair:0xa78a4d,hairStyle:"sidepart",beard:false,beardStyle:"none",shoe:0x111111,headband:false,wrist:null,sleeve:null,shortsColor:0x007a33},
+    {id:"miller",n:"雷吉·米勒",t:"五届全明星 · 关键三分",r:88,col:[0xfdbb30,0x002d62],num:31,skin:0xac7b58,hair:0x211a15,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xeeeeea,headband:false,wrist:null,sleeve:null,shortsColor:0xfdbb30},
+    {id:"lillard",n:"达米安·利拉德",t:"八届全明星 · 超远三分",r:90,col:[0xe03a3e,0x111111],num:0,skin:0x986744,hair:0x1c1713,hairStyle:"buzz",beard:0x1c1713,beardStyle:"goatee",shoe:0xeeeeea,headband:false,wrist:null,sleeve:0x111111,shortsColor:0xe03a3e},
+    {id:"korver",n:"凯尔·科沃尔",t:"全明星射手 · 接球投篮",r:86,col:[0xc8102e,0x26282a],num:26,skin:0xe8c3a3,hair:0x65492e,hairStyle:"sidepart",beard:false,beardStyle:"none",shoe:0xeeeeea,headband:false,wrist:null,sleeve:null,shortsColor:0xc8102e},
+    {id:"stojakovic",n:"佩贾·斯托贾科维奇",t:"两届三分大赛冠军",r:87,col:[0x5a2d81,0x8a8d8f],num:16,skin:0xd5ae8b,hair:0x35271e,hairStyle:"short",beard:0x35271e,beardStyle:"stubble",shoe:0x111111,headband:false,wrist:null,sleeve:null,shortsColor:0x5a2d81},
+    {id:"ionescu",n:"萨布丽娜·约内斯库",t:"WNBA全明星 · 三分大赛纪录",r:91,col:[0x6eceb2,0x101820],num:20,sex:"f",hairStyle:"ponytail",hair:0x463020,skin:0xe5bc9c,beard:false,beardStyle:"none",shoe:0xd8eee5,headband:false,wrist:null,sleeve:null,shortsColor:0x6eceb2},
+    {id:"taurasi",n:"戴安娜·陶乐西",t:"三届WNBA总冠军 · 历史得分王",r:92,col:[0x2b1a4e,0xe56020],num:3,sex:"f",hairStyle:"bun",hair:0x29201b,skin:0xdbb28e,beard:false,beardStyle:"none",shoe:0xeeeeea,headband:false,wrist:null,sleeve:null,shortsColor:0x2b1a4e},
+    {id:"sue-bird",n:"苏·伯德",t:"四届WNBA总冠军 · 传奇控卫",r:89,col:[0x2c5234,0xffc600],num:10,sex:"f",hairStyle:"ponytail",hair:0x3c2a20,skin:0xe2b999,beard:false,beardStyle:"none",shoe:0xeeeeea,headband:false,wrist:null,sleeve:null,shortsColor:0x2c5234}
   ]);
 
   const DEFAULT_SHOT_PROFILE=Object.freeze({speed:1,window:1,arc:1,arcLabel:"标准弧线",label:"标准出手"});

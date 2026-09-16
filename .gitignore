@@ -11,6 +11,8 @@ docs/*
 !docs/WORLD_WONDERS_P1-20260910.md
 !docs/COURT_SPATIAL_DENSITY_PLAN-20260910.md
 !docs/FLOW_PLAYER_UPGRADE-20260910.md
+!docs/IMMERSIVE_COURTS_PLAN-20260911.md
+!docs/LIVING_WORLD_HANDOFF-20260911.md
 !docs/ARCHITECTURE.md
 !docs/MODULAR_REFACTOR_PLAN.md
 !docs/PROJECT_STATE.md
@@ -65,3 +67,7 @@ ball-line-review.html
 
 # 自动截图产物(每跑一次 ~7MB),不进版本库;要做基线对比就 --out 到别处再手动归档
 captures/
+
+!docs/SHOE_SYSTEM_PLAN-20260915.md
+
+!docs/RETROHIGH-20260916.md
