@@ -4,9 +4,13 @@
   "use strict";
   const KEY="aiba_onboard_v2";
   let seen={};
-  try{seen=JSON.parse(localStorage.getItem(KEY)||"{}")||{};}catch(e){}
+  try{
+    const parsed=JSON.parse(localStorage.getItem(KEY)||"{}");
+    if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))seen=parsed;
+    else seen={};
+  }catch(e){seen={};}
   function persist(){try{localStorage.setItem(KEY,JSON.stringify(seen));}catch(e){}}
-  function mark(k){seen[k]=1;persist();}
+  function mark(k){if(!seen||typeof seen!=="object"||Array.isArray(seen))seen={};seen[k]=1;persist();}
   const GG=()=>{try{return typeof G==="undefined"?null:G;}catch(e){return null;}};
   const playing=()=>{const g=GG();return g&&/^(round|tiebreak|battle|rackrush)$/.test(g.state);};
 

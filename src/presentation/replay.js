@@ -18,7 +18,19 @@ function startClip(){
   const h=G.highlights[rep.idx];
   rep.clip=h;rep.t=0;rep.scoredFx=false;
   rep.ghost.visible=true;rep.gBlob.visible=true;
-  rep.ghost.material=h.deep?matDeep:(h.money?matGold:matBall);
+  const ballMatExact=(h.mesh&&h.mesh.material)||(h.material)||(h.mat);
+  if(ballMatExact){
+    rep.ghost.material=ballMatExact;
+  }else if(h.super){
+    const mats=window.AIBA&&window.AIBA.runtime&&window.AIBA.runtime.service("rendering:materials");
+    rep.ghost.material=mats&&mats.superBallMaterial?mats.superBallMaterial(window.G&&window.G.superSkin||0):matGold;
+  }else if(h.deep!=null&&h.deep!==false){
+    rep.ghost.material=matDeep;
+  }else if(h.money){
+    rep.ghost.material=matGold;
+  }else{
+    rep.ghost.material=matBall;
+  }
   rep.spin={mesh:rep.ghost,v0:h.v0||HOOP.clone().sub(h.p0||h.startPos),backspin:h.backspin,sideSpin:h.sideSpin};
   rep.end=Math.min(h.rec[h.rec.length-1][0],h.tf+0.4);
   // random broadcast cameras — all positioned in front of the backboard (z > -8) so nothing blocks the view
@@ -51,6 +63,7 @@ function updReplay(dt){
   const photo=rep.t<REPLAY_PHOTO_DUR;
   const t=Math.min(Math.max(0,rep.t-REPLAY_PHOTO_DUR),rep.end);
   // 同步角色姿势:按回放时间映射投篮相位
+  let gripPos=null,gripQuat=null;
   if(player.g.visible){
     const ph=photo?0.98:Math.min(1.08,0.92+t/Math.max(0.01,h.tf)*0.18);
     const c=shotCurves(ph);
@@ -61,15 +74,30 @@ function updReplay(dt){
     const s=h.shooterPos||V3(h.startPos.x,0,h.startPos.z);
     player.g.position.set(s.x,y,s.z);
     player.g.rotation.y=h.shooterFace!=null?h.shooterFace:faceTo(s,HOOP);
+    player.g.updateMatrixWorld(true);
+    if(player.ballGrips&&player.ballGrips[0]){
+      gripPos=new THREE.Vector3();
+      player.ballGrips[0].getWorldPosition(gripPos);
+      gripQuat=new THREE.Quaternion();
+      player.ballGrips[0].getWorldQuaternion(gripQuat);
+    }
     passer.g.visible=false; // 回放期间隐藏传球者避免挡镜头
   }
   // interp position
   let j=1;while(j<h.rec.length&&h.rec[j][0]<t)j++;
   const a=h.rec[Math.max(0,j-1)],b2=h.rec[Math.min(j,h.rec.length-1)];
   const k=b2[0]>a[0]?(t-a[0])/(b2[0]-a[0]):0;
-  if(h.p0&&(photo||t<=h.rec[0][0]))rep.ghost.position.copy(h.p0);
-  else rep.ghost.position.set(a[1]+(b2[1]-a[1])*k,a[2]+(b2[2]-a[2])*k,a[3]+(b2[3]-a[3])*k);
-  poseBallSpinAtTime(rep.spin,t);
+  if(photo){
+    if(gripPos)rep.ghost.position.copy(gripPos);
+    else if(h.p0)rep.ghost.position.copy(h.p0);
+    if(gripQuat)rep.ghost.quaternion.copy(gripQuat);
+  }else if(h.p0&&t<=h.rec[0][0]){
+    rep.ghost.position.copy(h.p0);
+    poseBallSpinAtTime(rep.spin,t);
+  }else{
+    rep.ghost.position.set(a[1]+(b2[1]-a[1])*k,a[2]+(b2[2]-a[2])*k,a[3]+(b2[3]-a[3])*k);
+    poseBallSpinAtTime(rep.spin,t);
+  }
   rep.gBlob.position.set(rep.ghost.position.x,0.02,rep.ghost.position.z);
   const cut=h.tf*0.6;
   if(photo){

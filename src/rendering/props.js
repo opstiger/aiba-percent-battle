@@ -158,24 +158,34 @@ function seatRackBalls(ri,nextIndex,animate){
     rackSlotWorld(ri,slot,target);
     if(!animate){m.position.copy(target);continue;}
     const from=m.position.clone(),to=target.clone();
-    const spin=from.distanceTo(to)/0.16;        // 滚过的弧长 / 球半径 = 转过的弧度
+    const dist=from.distanceTo(to);
+    if(dist<0.001)continue;
+    const spin=dist/0.16;        // 滚过的弧长 / 球半径 = 转过的弧度
     const r0=m.rotation.x;
-    if(typeof tween==="function")tween(0.26,k=>{
-      m.position.lerpVectors(from,to,k);
-      m.rotation.x=r0+spin*k;                   // 滚动而不是平移
+    /* 物理重力滚落:球在斜导轨上受重力分量加速向下滚(s ∝ t^2),到挡球器时轻微缓冲就位。
+       不再是均匀或减速漂移,体现从静止受重力滚落的加速度。 */
+    if(typeof tween==="function")tween(0.24,k=>{
+      const kGrav=k<0.82?Math.pow(k/0.82,1.85):1+Math.sin((k-0.82)/0.18*Math.PI)*0.035;
+      m.position.lerpVectors(from,to,Math.min(1.035,kGrav));
+      m.rotation.x=r0+spin*k;
+    },()=>{
+      m.position.copy(to);
     });
     else m.position.copy(to);
   }
 }
 /* 取走最低那一颗。返回它的世界坐标,供球动画用它当起点 —— 球是从架子上拿的,
-   起点必须是架上真实的那个位置,不能是球员身上。 */
-function takeRackBall(ri,index,out){
+   起点必须是架上真实的那个位置,不能是球员身上。deferRoll=true 时不立即滚落上方球,
+   等球员手接触并抽离底层球时再触发,保证真实物理因果。 */
+function takeRackBall(ri,index,out,deferRoll){
   const balls=rackBalls[ri];if(!balls)return null;
   const b=Math.max(0,Math.min(balls.length-1,index|0));
   const m=balls[b];
   const pos=(out||new THREE.Vector3()).copy(m?m.position:rackSlotWorld(ri,rackSlotSpec().SLOTS-1)||new THREE.Vector3());
+  pos.rackIndex=ri;
+  pos.nextIndex=b+1;
   if(m)m.visible=false;
-  seatRackBalls(ri,b+1,true);
+  if(!deferRoll)seatRackBalls(ri,b+1,true);
   return pos;
 }
 /* 无限球模式(投篮机 / 百分大战)在架子空了之后补满,视觉上永远是一架球。 */

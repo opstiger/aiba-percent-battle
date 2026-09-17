@@ -10,8 +10,12 @@
   const GG=()=>{try{return typeof G==="undefined"?null:G;}catch(e){return null;}};
   const VV=()=>{try{return typeof VISION==="undefined"?null:VISION;}catch(e){return null;}};
   let seen={};
-  try{seen=JSON.parse(localStorage.getItem(KEY)||"{}")||{};}catch(e){}
-  function mark(k){seen[k]=1;try{localStorage.setItem(KEY,JSON.stringify(seen));}catch(e){}}
+  try{
+    const parsed=JSON.parse(localStorage.getItem(KEY)||"{}");
+    if(parsed&&typeof parsed==="object"&&!Array.isArray(parsed))seen=parsed;
+    else seen={};
+  }catch(e){seen={};}
+  function mark(k){if(!seen||typeof seen!=="object"||Array.isArray(seen))seen={};seen[k]=1;try{localStorage.setItem(KEY,JSON.stringify(seen));}catch(e){}}
 
   let overlay=null,raf=0,stepIdx=0,reps=0,lastPhase="idle",stepEnterAt=0,startAt=0,closed=false;
   const STEPS=[

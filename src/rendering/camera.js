@@ -34,7 +34,8 @@ const CAM={mode:0,names:CAM_BASE_NAMES.concat(["自定义视角 1","自定义视
 function cameraInPlay(){
   return G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||
     G.state==="rushintro"||G.state==="rushbetween"||G.state==="pregame"||G.state==="lastshot"||
-    G.state==="bootshot"||G.state==="resultbeat"||G.state==="victorycine"||G.state==="wincine";
+    G.state==="bootshot"||G.state==="resultbeat"||G.state==="victorycine"||G.state==="wincine"||
+    G.state==="cinematic";
 }
 function cameraNum(v,f){return Number.isFinite(Number(v))?Number(v):f;}
 function cameraAngle(v){
@@ -291,20 +292,26 @@ function autoFrameCam(rig,pPos,pJump,faceDir,opts){
   _afForward.copy(_afBack).negate();
   _afRight.crossVectors(_afForward,V3(0,1,0)).normalize();
   _afUp.crossVectors(_afRight,_afForward).normalize();
-  const vFov=camera.fov*Math.PI/180;
+  const vFov=(Number.isFinite(camera.fov)&&camera.fov>1?camera.fov:68)*Math.PI/180;
   const aspect=camera.aspect||(innerWidth/innerHeight)||1;
-  const hFov=2*Math.atan(Math.tan(vFov/2)*aspect);
+  const safeAspect=Number.isFinite(aspect)&&aspect>0.05?aspect:1;
+  const hFov=2*Math.atan(Math.tan(vFov/2)*safeAspect);
   const tanH=Math.tan(hFov/2),tanV=Math.tan(vFov/2);
+  const safeTanH=Number.isFinite(tanH)&&Math.abs(tanH)>0.001?Math.abs(tanH):0.5;
+  const safeTanV=Number.isFinite(tanV)&&Math.abs(tanV)>0.001?Math.abs(tanV):0.5;
   const marginX=opts.marginX||1.32,marginY=opts.marginY||1.24;
   let dist=0;
   _afPts.forEach(p=>{
     _afTmp.copy(p).sub(_afCenter);
     const x=_afTmp.dot(_afRight),y=_afTmp.dot(_afUp),z=_afTmp.dot(_afForward);
-    dist=Math.max(dist,Math.abs(x)*marginX/tanH-z,Math.abs(y)*marginY/tanV-z);
+    dist=Math.max(dist,Math.abs(x)*marginX/safeTanH-z,Math.abs(y)*marginY/safeTanV-z);
   });
+  if(!Number.isFinite(dist))dist=opts.minDist||5.2;
   dist=clamp(dist+(opts.pad==null?.45:opts.pad),opts.minDist||5.2,opts.maxDist||30);
-  rig.pos.copy(_afCenter).addScaledVector(_afBack,dist);
-  rig.look.copy(_afCenter);
+  if(Number.isFinite(dist)&&Number.isFinite(_afCenter.x)){
+    rig.pos.copy(_afCenter).addScaledVector(_afBack,dist);
+    rig.look.copy(_afCenter);
+  }
 }
 let fpLookY=null;
 const _fpBall=V3(0,0,0);

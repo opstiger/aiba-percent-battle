@@ -3,7 +3,8 @@
 const WC_T0=1.3, WC_T1=4.0, WC_T2=5.5, WC_T3=7.4;
 const winCine={on:false,win:true,t:0,gold:false,rec:null,recEnd:0,p0:null,
   shooter:null,loser:null,sPos:null,sFace:null,lPos:null,lFace:null,
-  ghost:null,gBlob:null,fxCrowd:false,heroStarted:false,ballHitFx:false,camSeed:0,heroType:0};
+  ghost:null,gBlob:null,fxCrowd:false,heroStarted:false,ballHitFx:false,camSeed:0,heroType:0,
+  ball:null,lastHandPos:null,relOffset:null};
 function poseShock(o,k){
   poseGuy(o,shotCurves(0),0);
   const up=-2.45*k;
@@ -30,17 +31,21 @@ function startWinCine(win,ball){
   // 把还在场的真实球藏掉,改用回放幽灵球
   balls.forEach(bb=>{bb.mesh.visible=false;bb.blob.visible=false;bb.silent=true;bb.life=Math.min(bb.life,0.02);});
   // 投篮者 / 失败者
+  const oppGuyPos=(OPP&&(OPP.pos||(OPP.guy&&OPP.guy.g?OPP.guy.g.position:null)))||V3(2,0,-4);
   if(win){
-    w.shooter=player; w.loser=OPP.guy;
-    w.sPos=P.pos.clone(); w.sFace=P.face;
+    w.shooter=player; w.loser=OPP&&OPP.guy;
+    w.sPos=(P.pos||V3(0,0,-4)).clone(); w.sFace=P.face||0;
   }else{
-    w.shooter=OPP.guy; w.loser=player;
-    w.sPos=(OPP.pos||OPP.guy.g.position).clone(); w.sFace=faceTo(w.sPos,HOOP);
+    w.shooter=OPP&&OPP.guy?OPP.guy:player; w.loser=player;
+    w.sPos=oppGuyPos.clone(); w.sFace=faceTo(w.sPos,HOOP);
   }
-  w.lPos=(win?(OPP.pos||OPP.guy.g.position):P.pos).clone();
+  w.lPos=(win?oppGuyPos:(P.pos||V3(0,0,-4))).clone();
   w.lFace=faceTo(w.lPos,HOOP);
-  if(OPP.guy)OPP.guy.active=true;
+  if(OPP&&OPP.guy)OPP.guy.active=true;
   // 制胜球轨迹数据
+  w.ball=ball;
+  w.lastHandPos=null;
+  w.relOffset=null;
   w.gold=!!(ball&&ball.super);
   if(ball&&ball.rec&&ball.rec.length>2){w.rec=ball.rec;w.recEnd=ball.rec[ball.rec.length-1][0];w.p0=(ball.p0||V3(w.sPos.x,2.05,w.sPos.z)).clone();}
   else{w.rec=null;w.recEnd=0;w.p0=V3(w.sPos.x,2.05,w.sPos.z);}
@@ -48,7 +53,20 @@ function startWinCine(win,ball){
     w.ghost=new THREE.Mesh(ballGeo,matBall);scene.add(w.ghost);
     w.gBlob=new THREE.Mesh(blobGeo,blobMat.clone());w.gBlob.rotation.x=-Math.PI/2;scene.add(w.gBlob);
   }
-  w.ghost.material=w.gold?matGold:matBall;
+  // 继承真实绝杀球的材质与外观
+  const ballMatExact=(ball&&ball.mesh&&ball.mesh.material)||(ball&&ball.material)||(ball&&ball.mat);
+  if(ballMatExact){
+    w.ghost.material=ballMatExact;
+  }else if(ball&&ball.super){
+    const mats=window.AIBA&&window.AIBA.runtime&&window.AIBA.runtime.service("rendering:materials");
+    w.ghost.material=mats&&mats.superBallMaterial?mats.superBallMaterial(window.G&&window.G.superSkin||0):matGold;
+  }else if(ball&&(ball.deep!=null&&ball.deep!==false)){
+    w.ghost.material=matDeep;
+  }else if(ball&&ball.money){
+    w.ghost.material=matGold;
+  }else{
+    w.ghost.material=matBall;
+  }
   w.ghost.visible=true;w.gBlob.visible=true;
   w.ghost.position.copy(w.p0);w.gBlob.position.set(w.p0.x,0.02,w.p0.z);
   w.spin={mesh:w.ghost,v0:ball&&ball.v0||HOOP.clone().sub(w.p0),backspin:ball&&ball.backspin,sideSpin:ball&&ball.sideSpin};
@@ -81,41 +99,74 @@ function updWinCine(dt){
   if(w.loser)w.loser.g.visible=true;
 
   /* ---- 投篮者姿态:出手→跟随动作定格 ---- */
+  // 阶段0(tt < WC_T0 = 1.3s): 角色起跳、抬手、出手
+  // ph 在 tt < WC_T_REL 时 < 1.0 (持球升空), 在 WC_T_REL 时达到 1.0 (出手脱手), 之后随摆压腕到 1.08
+  const PH_START=0.76, PH_END=1.08;
+  const WC_T_REL=WC_T0*((1.0-PH_START)/(PH_END-PH_START)); // ≈ 0.975s 达到物理出手瞬间
+  let ph=PH_END;
+  if(tt<WC_T0){
+    ph=PH_START+(PH_END-PH_START)*(tt/WC_T0);
+  }
+  let gripPos=null, gripQuat=null;
   if(tt<WC_T1){
-    let ph=tt<WC_T0?(0.82+0.26*(tt/WC_T0)):1.08;
     const sc=shotCurves(ph);
     const sy=poseGuy(w.shooter,sc,0)+Math.max(0,sc.jmp*0.55-sc.over*0.55);
     applyHandFollowThroughPose(w.shooter,ease01((ph-.94)/.12));
     w.shooter.g.position.set(w.sPos.x,sy,w.sPos.z);
     w.shooter.g.rotation.y=w.sFace;w.shooter.g.rotation.x=0;
+    w.shooter.g.updateMatrixWorld(true);
+    if(w.shooter.ballGrips&&w.shooter.ballGrips[0]){
+      gripPos=new THREE.Vector3();
+      w.shooter.ballGrips[0].getWorldPosition(gripPos);
+      gripQuat=new THREE.Quaternion();
+      w.shooter.ballGrips[0].getWorldQuaternion(gripQuat);
+    }
   }
 
   /* ---- 失败者姿态:震惊前保持站立,T2 起慢慢举手后仰 ---- */
-  if(tt<WC_T2){
-    poseGuy(w.loser,shotCurves(0),0);
-    w.loser.g.position.set(w.lPos.x,0,w.lPos.z);
-    w.loser.g.rotation.y=w.lFace;w.loser.g.rotation.x=0;
-  }else{
-    const k=clamp((tt-WC_T2)/0.7,0,1);
-    poseShock(w.loser,k);
-    w.loser.g.position.set(w.lPos.x,0,w.lPos.z);
-    w.loser.g.rotation.y=w.lFace;
+  if(w.loser){
+    if(tt<WC_T2){
+      poseGuy(w.loser,shotCurves(0),0);
+      w.loser.g.position.set(w.lPos.x,0,w.lPos.z);
+      w.loser.g.rotation.y=w.lFace;w.loser.g.rotation.x=0;
+    }else{
+      const k=clamp((tt-WC_T2)/0.7,0,1);
+      poseShock(w.loser,k);
+      w.loser.g.position.set(w.lPos.x,0,w.lPos.z);
+      w.loser.g.rotation.y=w.lFace;
+    }
   }
 
   /* ---- 幽灵球轨迹 ---- */
   let ballPos;
-  if(tt<WC_T0){
-    ballPos=w.rec?winCineBallAt(0):w.p0; w.ghost.visible=true;
+  if(tt<WC_T_REL){
+    // 出手前:球紧紧托在双手持球点,随球员身体起跳和双臂上推实时移动
+    ballPos=gripPos||w.p0;
+    w.lastHandPos=ballPos.clone();
+    w.ghost.position.copy(ballPos);
+    if(gripQuat)w.ghost.quaternion.copy(gripQuat);
+    w.ghost.visible=true;
   }else if(tt<WC_T1){
-    const prog=(tt-WC_T0)/(WC_T1-WC_T0);
-    ballPos=winCineBallAt(prog*w.recEnd); w.ghost.visible=true;
-    poseBallSpinAtTime(w.spin,prog*w.recEnd);
+    // 出手后:从手心自然飞出,沿物理轨迹飞行直至入网
+    const flightDur=WC_T1-WC_T_REL;
+    const prog=flightDur>0?clamp((tt-WC_T_REL)/flightDur,0,1):1;
+    const recT=prog*w.recEnd;
+    const pathPos=winCineBallAt(recT);
+    if(!w.relOffset){
+      const startPt=winCineBallAt(0);
+      w.relOffset=(w.lastHandPos||gripPos||w.p0).clone().sub(startPt);
+    }
+    const blend=Math.max(0,1-prog/0.15); // 起手平滑过渡,消除脱手帧微小跳跃
+    ballPos=pathPos.clone().addScaledVector(w.relOffset,blend);
+    w.ghost.position.copy(ballPos);
+    w.ghost.visible=true;
+    poseBallSpinAtTime(w.spin,recT);
   }else{
     // 已入网,藏球
     ballPos=HOOP; w.ghost.visible=false;w.gBlob.visible=false;
   }
   if(w.ghost.visible){
-    w.ghost.position.copy(ballPos);
+    w.gBlob.visible=true;
     w.gBlob.position.set(ballPos.x,0.02,ballPos.z);
     const bs=clamp(1.4-ballPos.y*0.12,0.3,1.4);w.gBlob.scale.set(bs,bs,1);
   }
@@ -126,7 +177,7 @@ function updWinCine(dt){
     // 出手特写:站在投篮者与篮筐之间,回看其上半身与出手
     const cp=w.sPos.clone().addScaledVector(sdir,2.5).addScaledVector(perp,side*1.35).setY(2.1);
     rig.pos.set(cp.x,cp.y+hb,cp.z);
-    const lk=w.sPos.clone().setY(1.85).lerp(w.p0,0.35);
+    const lk=w.sPos.clone().setY(1.85).lerp(ballPos,0.35);
     rig.look.set(lk.x,lk.y,lk.z);
     window.AIBASetIcon("heroTag","clapperboard","出手特写");
   }else if(tt<WC_T1){
