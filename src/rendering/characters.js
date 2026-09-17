@@ -703,8 +703,8 @@ function applyStarStyle(guy,star){
   setBeard(guy, !!star.beard, (typeof star.beard==="number")?star.beard:hc,star.beardStyle||"full");
   if(window.AIBAPlayerKit)AIBAPlayerKit.apply(guy,star);
   /* 每个有名有姓的球星都按分配表拿到自己的品系+配色,袜子同源。
-     分配是 id 的确定性函数,并在全名册范围内保证 (品系,配色) 不重复 ——
-     同场两个人不会撞鞋。没有分配表(旧版/自定义球星)时退回乔丹那双。 */
+     分配由球员 id 和球衣主色确定，使用已确认的四款鞋和四组配色。
+     同队球员可共享配色。没有分配表(旧版/自定义球星)时退回乔丹那双。 */
   const shoeFit=window.AIBAShoeColorways
     ?AIBAShoeColorways.forStar(star,typeof LEGENDS!=="undefined"?LEGENDS:null):null;
   guy.defaultBasketballShoe=shoeFit
@@ -733,6 +733,19 @@ function randomizeOutfit(o){
   setHair(o, pick(HS), hc);
   setBeard(o, Math.random()<0.3, hc);
 }
+// Non-roster actors use the same shoe assignment, without replacing their face or outfit.
+function ensurePlayerShoeKit(){
+  const star=(window.AIBASelectedStar&&AIBASelectedStar(LEGENDS,null))||G.myStar||LEGENDS[0];
+  if(player&&star){G.myStar=star;G.myNum=star.num;window.applyStarStyle(player,star);}
+}
+function equipActorShoes(guy,id,jersey){
+  if(!window.AIBAShoeColorways||!window.AIBABasketballShoes)return;
+  const star={id,col:[jersey,jersey]};
+  AIBABasketballShoes.clear(guy);
+  if(window.AIBAPlayerKit)AIBAPlayerKit.apply(guy,star);
+  guy.defaultBasketballShoe={length:.44,...AIBAShoeColorways.forStar(star)};
+  AIBABasketballShoes.apply(guy,"RetroHigh",guy.defaultBasketballShoe);
+}
 const BENCH=[V3(-9.3,0,-5),V3(-9.3,0,-2.5),V3(-9.3,0,0)];
 let player,pBall,passer,passerBall,oppPasser,oppPasserBall,rivals=[];
 function buildCharacters(){
@@ -756,6 +769,9 @@ function buildCharacters(){
   dressGuy(passer,0x6a727c,0x333a42,"");
   dressGuy(oppPasser,0x44546b,0x18202d,"");
   /* 递球员配色此后固定不变,按段烘焙掉上百次 draw call(玩家与对手保持全精度) */
+  equipActorShoes(player,"player-default",0x202832);
+  equipActorShoes(passer,"passer",0x6a727c);
+  equipActorShoes(oppPasser,"opp-passer",0x44546b);
   bakeActorSegments(passer);
   bakeActorSegments(oppPasser);
 }

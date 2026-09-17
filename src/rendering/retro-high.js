@@ -33,8 +33,9 @@
   let resource=cache.get(key);
   if(!resource){
    const buckets={},push=(name,pts)=>{const a=new THREE.Vector3(...pts[0]),b=new THREE.Vector3(...pts[1]),c=new THREE.Vector3(...pts[2]);if(b.sub(a).cross(c.sub(a)).lengthSq()<1e-15)return;(buckets[name]||(buckets[name]=[])).push(...pts.flat());};
+   const surfaces=[];
    function divide(geo,isCollar){const a=geo.attributes.position;const bands=isCollar?[[-1,.37],[.37,1]]:[[-1,.035],[.035,.11],[.11,1]];
-    for(let i=0;i<a.count;i+=3){const tri=[0,1,2].map(k=>[a.getX(i+k),a.getY(i+k),a.getZ(i+k)]);
+    for(let i=0;i<a.count;i+=3){const tri=[0,1,2].map(k=>[a.getX(i+k),a.getY(i+k),a.getZ(i+k)]);surfaces.push(tri);
      for(const [lo,hi]of bands){const poly=clip(clip(tri,1,lo,true),1,hi,false);for(let j=1;j<poly.length-1;j++){const pts=[poly[0],poly[j],poly[j+1]],mid=pts[0].map((_,k)=>pts.reduce((sum,p)=>sum+p[k],0)/3),n=new THREE.Vector3(...pts[1]).sub(new THREE.Vector3(...pts[0])).cross(new THREE.Vector3(...pts[2]).sub(new THREE.Vector3(...pts[0])));let name;
       if(isCollar){name=mid[1]>.37?'collar':mid[2]<-.12?'heelCounter':'quarterPanel';if(mid[2]>.14&&Math.abs(mid[0])<.113)name='tongue';}
       else name=hi===.035?(Math.abs(n.y)>Math.abs(n.x)+Math.abs(n.z)?'outsole':'outsoleEdge'):hi===.11?'midsole':mid[2]<-.10?'heelCounter':mid[2]>.43?(i<336&&Math.floor(i/6)%8===3?'toeBox':mid[2]>.65?'toeCap':'mudguard'):'quarterPanel';
@@ -46,11 +47,56 @@
    function addBox(name,w,h,d,x,y,z,rx=0){const g=new THREE.BoxGeometry(w,h,d).toNonIndexed();g.rotateX(rx);g.translate(x,y,z);const a=g.attributes.position;for(let i=0;i<a.count;i+=3)push(name,[0,1,2].map(k=>[a.getX(i+k),a.getY(i+k),a.getZ(i+k)]));g.dispose();}
    // Narrow eye stays sit on the accepted ramp. They do not widen its outer boundary.
    const slope=Math.atan2(.288,.35),rampLength=Math.hypot(.288,.35);
-   if(layout.addDetails)layout.addDetails({addBox,push,palette});else {
+   // Clip each marking against the actual triangles, then lift it off the outer
+   // surface. Interpolating an imaginary collar box buries markings at its taper.
+   function surfaceDetail(name,pts){
+    const n=new THREE.Vector3(...pts[1]).sub(new THREE.Vector3(...pts[0])).cross(new THREE.Vector3(...pts[2]).sub(new THREE.Vector3(...pts[0])));
+    const axis=Math.abs(n.x)>Math.abs(n.y)?0:1,uv=axis===0?[2,1]:[0,2];
+    const side=axis===0?Math.sign(pts.reduce((sum,p)=>sum+p[0],0)):1;
+    const cross=(a,b,c)=>(b[uv[0]]-a[uv[0]])*(c[uv[1]]-a[uv[1]])-(b[uv[1]]-a[uv[1]])*(c[uv[0]]-a[uv[0]]);
+    const candidates=surfaces.filter(t=>Math.abs(cross(...t))>1e-10 && (axis!==0||t.reduce((s,p)=>s+p[0],0)*side>0));
+    const depth=(t,p)=>{const area=cross(...t),u=cross(t[1],t[2],p)/area,v=cross(t[2],t[0],p)/area,w=1-u-v;
+     return u>=-1e-7&&v>=-1e-7&&w>=-1e-7?(u*t[0][axis]+v*t[1][axis]+w*t[2][axis])*side:-Infinity;};
+    for(const t of candidates){
+     let poly=pts.map(p=>p.slice());const winding=Math.sign(cross(...t));
+     for(let e=0;e<3&&poly.length;e++){
+      const out=[],a=t[e],b=t[(e+1)%3];
+      for(let i=0;i<poly.length;i++){const p=poly[i],q=poly[(i+1)%poly.length],dp=cross(a,b,p)*winding,dq=cross(a,b,q)*winding;
+       if(dp>=-1e-10)out.push(p);if((dp>=0)!==(dq>=0)){const f=dp/(dp-dq);out.push(p.map((v,k)=>v+(q[k]-v)*f));}}
+      poly=out;
+     }
+     if(poly.length<3)continue;
+     const center=poly[0].map((_,k)=>poly.reduce((s,p)=>s+p[k],0)/poly.length),d=depth(t,center);
+     if(candidates.some(other=>depth(other,center)>d+1e-6))continue;
+     const area=cross(...t);
+     for(const p of poly){const u=cross(t[1],t[2],p)/area,v=cross(t[2],t[0],p)/area;
+      p[axis]=u*t[0][axis]+v*t[1][axis]+(1-u-v)*t[2][axis]+side*(name==='brandMark'?.004:.002);}
+     for(let j=1;j<poly.length-1;j++)push(name,[poly[0],poly[j],poly[j+1]]);
+    }
+   }
+   if(layout.addDetails)layout.addDetails({addBox,push:surfaceDetail,palette});else {
    for(const side of [-1,1])addBox('eyestay',.017,.007,rampLength*.86,side*.097,.16+.288*.5+.004,.52-.35*.5+.004,slope);
    // Tongue lip has thickness, remains below the .46L collar crown.
    addBox('tongue',.16,.007,.039,0,.432,.195,slope);
    for(let i=0;i<6;i++){const t=.17+i*.118;addBox('laceBlock',.177-.018*t,.008,.018,0,.16+.288*t+.009,.52-.35*t+.007,slope);}
+   }
+   if(cfg.panelLayout==='RetroHighPanels'){
+    // Small airborne basketball-player silhouette. Same surface projection as the other marks.
+    const polygon=(side,points)=>{
+     const contour=points.map(([z,y])=>new THREE.Vector2(z,y));
+     for(const tri of THREE.ShapeUtils.triangulateShape(contour,[]))
+      surfaceDetail('brandMark',tri.map(i=>[side*.2,points[i][1],points[i][0]]));
+    };
+    const disc=(side,z,y,r)=>{const points=[];for(let i=0;i<10;i++){const a=i*Math.PI/5;points.push([z+Math.cos(a)*r,y+Math.sin(a)*r]);}polygon(side,points);};
+    for(const side of [-1,1]){
+     disc(side,.020,.349,.017);
+     polygon(side,[[.006,.327],[.036,.328],[.051,.275],[.014,.267],[-.002,.296]]);
+     polygon(side,[[.029,.321],[.045,.330],[.089,.312],[.134,.333],[.141,.320],[.090,.293],[.039,.307]]);
+     polygon(side,[[.007,.323],[-.012,.324],[-.041,.357],[-.065,.391],[-.054,.399],[-.023,.370],[.019,.338]]);
+     polygon(side,[[.020,.281],[.045,.280],[.096,.234],[.125,.207],[.116,.193],[.078,.218],[.022,.252]]);
+     polygon(side,[[.019,.277],[.035,.254],[-.008,.218],[-.062,.196],[-.070,.208],[-.027,.235]]);
+     disc(side,-.073,.408,.020);
+    }
    }
    const pos=[],cols=[],modules=[];
    for(const [name,verts]of Object.entries(buckets)){const start=pos.length/3;pos.push(...verts);const c=new THREE.Color(palette[name]||black).convertSRGBToLinear();for(let i=0;i<verts.length/3;i++)cols.push(c.r,c.g,c.b);modules.push({name,start,count:verts.length/3,triangles:verts.length/9});}

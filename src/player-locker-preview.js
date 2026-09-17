@@ -38,6 +38,7 @@
       else{
         if(typeof global.randomizeOutfit==="function")global.randomizeOutfit(guy);
         if(typeof global.dressGuy==="function")global.dressGuy(guy,0x202832,0x77e7ff,"?");
+        if(global.equipActorShoes)global.equipActorShoes(guy,"random-preview",0x202832);
       }
     }finally{global.AIBA_SUPPRESS_GEAR_VISUAL=previous;}
   }
@@ -224,6 +225,7 @@
   function clearGroup(group){
     while(group.children.length){
       const child=group.children.pop();
+      if(child.__shoePreviewGuy&&global.AIBABasketballShoes)global.AIBABasketballShoes.clear(child.__shoePreviewGuy);
       child.traverse&&child.traverse(obj=>{
         if(obj.geometry&&obj.geometry.dispose)obj.geometry.dispose();
         const mats=Array.isArray(obj.material)?obj.material:[obj.material];
@@ -265,6 +267,7 @@
     const key=(id||"__random")+":"+(star&&star.updatedAt||0)+(featured?":pose":":stand");
     if(cache.has(key))return cache.get(key);
     const guy=global.voxelGuy();
+    guy.g.__shoePreviewGuy=guy;
     dressPreview(guy,star,false);
     if(featured)featuredPose(guy,id);
     else idlePose(guy);
@@ -347,6 +350,7 @@
     const width=Math.max(140,Math.round(slot.clientWidth||210));
     const height=Math.max(160,Math.round(slot.clientHeight||220));
     const ctx=buildScene(width,height,false),guy=global.voxelGuy(),star=findStar(id);
+    guy.g.__shoePreviewGuy=guy;
     dressPreview(guy,star,true);idlePose(guy);ctx.rig.add(guy.g);
     const canvas=ctx.canvas,translate=global.AIBAI18N&&global.AIBAI18N.t;
     canvas.className="lockerOrbitCanvas";

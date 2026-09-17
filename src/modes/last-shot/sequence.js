@@ -88,6 +88,7 @@
   }
 
   function beginLastShot(practice){
+    if(global.ensurePlayerShoeKit)global.ensurePlayerShoeKit();
     /* 练习用玩家选的剧情，正式永远是当天那关（见 config.js::activeChallenge）。 */
     const cfg=cfgApi.activeChallenge?cfgApi.activeChallenge(!!practice):cfgApi.dailyChallenge();
     ensureAudio(false);hidePanel();music(false);resetProgressiveSceneForRun();

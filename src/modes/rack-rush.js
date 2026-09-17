@@ -63,6 +63,8 @@
     if(player._celeb)stopCelebrate(player);
   }
   function startRackRush(variant){
+    if(global.ensurePlayerShoeKit)global.ensurePlayerShoeKit();
+    G.mode="rackrush";
     variant=variant==="speed100"?"speed100":"classic";
     ensureAudio(false);hidePanel();music(false);resetProgressiveSceneForRun();resetRackRushState(variant);
     CAM.mode=1;global.AIBASetIcon("camBtn","camera",CAM.names[1]);ctx.setCamSnap(true);

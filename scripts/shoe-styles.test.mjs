@@ -7,9 +7,9 @@ const root=process.cwd(),out=path.join(root,process.env.AIBA_QA_OUT||'artifacts/
 const candidates=[import.meta.url,'/opt/homebrew/lib/node_modules/'],cache=path.join(process.env.HOME,'.npm/_npx');if(fs.existsSync(cache))for(const n of fs.readdirSync(cache))candidates.push(path.join(cache,n,'node_modules/'));
 let browser;for(const c of candidates){try{browser=await createRequire(c)('playwright').chromium.launch({args:['--mute-audio']});break;}catch{}}assert(browser);
 const FAMILIES=['RetroHighPanels','StripeMidPanels','CanvasHighPanels','AirRunnerPanels'];
-const LABEL={RetroHighPanels:'RetroHigh · 已验收基准',StripeMidPanels:'StripeMid · 三道斜带中帮',CanvasHighPanels:'CanvasHigh · 帆布高帮',AirRunnerPanels:'AirRunner · 缓震低帮'};
+const LABEL={RetroHighPanels:'RetroHigh · 篮球人物剪影',StripeMidPanels:'StripeMid · 三道斜带中帮',CanvasHighPanels:'CanvasHigh · 帆布高帮',AirRunnerPanels:'AirRunner · 缓震低帮'};
 /* 面数预算。RetroHigh 524 是已上线的参照,新品系不许翻倍——手机端还欠一个 400 面 LOD。 */
-const BUDGET={RetroHighPanels:560,StripeMidPanels:720,CanvasHighPanels:800,AirRunnerPanels:760};
+const BUDGET={RetroHighPanels:760,StripeMidPanels:720,CanvasHighPanels:800,AirRunnerPanels:760};
 const report={errors:[],families:{}};
 try{
  const ctx=await browser.newContext({viewport:{width:720,height:900},deviceScaleFactor:1});
@@ -24,8 +24,9 @@ try{
  await page.addScriptTag({path:path.join(root,'src/rendering/shoe-styles.js')});
 
  // The accepted RetroHigh must come out of this run byte-identical in structure.
- report.baseline=await page.evaluate(()=>{const s=createBasketballShoe({});return {triangles:s.userData.shoe.triangles,modules:s.userData.shoe.modules.map(m=>m.name).sort()};});
- assert.equal(report.baseline.triangles,524,'accepted RetroHigh triangle count must not move');
+ report.baseline=await page.evaluate(()=>{const s=createBasketballShoe({});return {triangles:s.userData.shoe.triangles,modules:s.userData.shoe.modules.map(m=>m.name).sort(),markTriangles:s.userData.shoe.modules.find(m=>m.name==='brandMark')?.triangles||0};});
+ assert.equal(report.baseline.triangles-report.baseline.markTriangles,524,'RetroHigh base geometry must not move');
+ assert(report.baseline.markTriangles>0,'RetroHigh must have the requested player silhouette');
 
  await page.evaluate(()=>{
   window.labScene=new THREE.Scene();labScene.background=new THREE.Color(0xd2d2d2);
@@ -50,7 +51,7 @@ try{
   };
  });
 
- const save=async(name)=>{const data=await page.evaluate(()=>{labScene.updateMatrixWorld(true);labCamera.updateMatrixWorld(true);renderer.render(labScene,labCamera);return renderer.domElement.toDataURL();});fs.writeFileSync(path.join(out,name+'.png'),Buffer.from(data.split(',')[1],'base64'));return name+'.png';};
+ const save=async(name)=>{const data=await page.evaluate(()=>{renderer.setSize(1000,Math.round(1000*(labCamera.top-labCamera.bottom)/(labCamera.right-labCamera.left)),false);labScene.updateMatrixWorld(true);labCamera.updateMatrixWorld(true);renderer.render(labScene,labCamera);return renderer.domElement.toDataURL();});fs.writeFileSync(path.join(out,name+'.png'),Buffer.from(data.split(',')[1],'base64'));return name+'.png';};
  /* 正交视锥按视角分别给:45° 看过去对角线更长,沿用侧视的框会把鞋头切掉。
     [名称, 相机位置, 视线目标, 半宽, 上, 下] */
  const VIEWS=[['side',[3,.20,.24],[0,.17,.24],.66,.44,-.20],
@@ -114,7 +115,7 @@ try{
    /* 正交的 top/bottom 是相对视线中心的。原来 lookAt y=.20 配 bottom=-.10,
       画面下沿正好落在 y=.10 —— 鞋(y 0~.2)被切掉一半,露出来全是躯干。
       这张图唯一的用处是看鞋和小腿的比例,所以框死在脚踝上下。 */
-   labCamera.left=-.34;labCamera.right=.34;labCamera.top=.30;labCamera.bottom=-.24;
+   labCamera.left=-.34;labCamera.right=.34;labCamera.top=.47;labCamera.bottom=-.24;
    labCamera.up.set(0,1,0);labCamera.position.set(1.9,.30,2.1);labCamera.lookAt(0,.15,.02);labCamera.updateProjectionMatrix();
    labScene.updateMatrixWorld(true);
    return {rigUnchanged:JSON.stringify(before)===JSON.stringify(after),
@@ -123,6 +124,34 @@ try{
   assert(fit.rigUnchanged,family+' must not touch the skeleton');
   report.onFoot[family]={...fit,image:await save(family.replace('Panels','')+'-onfoot')};
  }
+ report.poses=[];
+ for(const pose of ['prepare','jump','land','run']){
+  const result=await page.evaluate(pose=>{
+   baseRig.forEach(({n,p,q,s})=>{n.position.copy(p);n.quaternion.copy(q);n.scale.copy(s);});
+   let c={dip:0,lift:0,jmp:0,over:0};
+   if(pose==='prepare')c={dip:1,lift:.5,jmp:0,over:0};
+   if(pose==='jump')c={dip:0,lift:1,jmp:1,over:0};
+   subject.g.position.y=poseGuy(subject,c,pose==='land'?1:0,1);
+   if(pose==='run'){const state={phase:0,stride:0,bob:0};for(let i=0;i<24;i++)poseRunCycle(subject,state,1.6,1/60,{sway:true});}
+   const before=rigSnapshot();AIBABasketballShoes.update(subject,1/60,{snap:true,grounded:pose==='jump'?false:pose==='run'?[true,false]:true});
+   labCamera.top=.62;labCamera.bottom=-.25;labCamera.left=-.48;labCamera.right=.48;labCamera.updateProjectionMatrix();
+   return {pose,rigUnchanged:JSON.stringify(before)===JSON.stringify(rigSnapshot()),finite:subject.baseShoeKit.lastContacts.every(c=>Number.isFinite(c.after))};
+  },pose);
+  // Fitting may move only the shoe anchor, never the animation rig.
+  assert(result.finite);assert(result.rigUnchanged);report.poses.push({...result,image:await save('sock-'+pose)});
+ }
+ report.sockCoverage=await page.evaluate(()=>LEGENDS.map(star=>{
+  applyStarStyle(subject,star);
+  const checks=subject.knees.map(knee=>{
+   const sock=knee.getObjectByName('crewSock'),skin=knee.getObjectByName('shoeEquipped_calf');
+   if(!sock||!skin)return {covered:false};
+   const cuff=sock.position.y+sock.geometry.parameters.height*sock.scale.y/2;
+   const a=skin.geometry.attributes.position;let low=Infinity;
+   for(let i=0;i<a.count;i++)low=Math.min(low,a.getY(i)*skin.scale.y+skin.position.y);
+   return {covered:low>=cuff-.00601,cuff,lowestSkin:low};
+  });return {id:star.id,checks};
+ }));
+ assert(report.sockCoverage.every(s=>s.checks.every(c=>c.covered)),'all roster skin must end at the sock cuff');
  await page.evaluate(()=>{AIBABasketballShoes.clear(subject);subject.g.visible=false;});
 
  assert.deepEqual(report.errors,[],'no page errors');
@@ -131,8 +160,8 @@ try{
  const stamp='?b='+Date.now();
  const card=f=>`<section><h2>${LABEL[f]}</h2>
   <p class="meta">面数 <b>${report.families[f].triangles}</b> / 预算 ${BUDGET[f]} &nbsp;·&nbsp; ${report.families[f].meshes} Mesh / ${report.families[f].materials} 材质 &nbsp;·&nbsp; L=${report.families[f].length} 宽=${report.families[f].width} 高=${report.families[f].height}</p>
-  <div class="row">${Object.entries(report.families[f].views).map(([v,src])=>`<figure><img src="${src}${stamp}"><figcaption>${v}</figcaption></figure>`).join('')}</div>
-  <div class="row"><figure><img src="${report.families[f].flat.side}${stamp}"><figcaption>纯轮廓(单色)</figcaption></figure><figure><img src="${report.onFoot[f].image}${stamp}"><figcaption>上脚 L=.44</figcaption></figure></div>
+  <div class="row">${Object.entries(report.families[f].views).map(([v,src])=>`<figure><a href="${src}${stamp}" target="_blank"><img src="${src}${stamp}"></a><figcaption>${v}</figcaption></figure>`).join('')}</div>
+  <div class="row"><figure><a href="${report.families[f].flat.side}${stamp}" target="_blank"><img src="${report.families[f].flat.side}${stamp}"></a><figcaption>纯轮廓(单色)</figcaption></figure><figure><a href="${report.onFoot[f].image}${stamp}" target="_blank"><img src="${report.onFoot[f].image}${stamp}"></a><figcaption>上脚 L=.44</figcaption></figure></div>
   <details><summary>面片分区 (${report.families[f].modules.length} 个)</summary><p class="mods">${report.families[f].modules.map(m=>m.name+' '+m.triangles).join(' · ')}</p></details>
  </section>`;
  fs.writeFileSync(path.join(out,'review.html'),`<!doctype html><meta charset="utf-8"><title>球鞋四品系 · 灰模评审</title>
@@ -148,10 +177,10 @@ p.mods{color:#7d7d86;font-size:11.5px;word-break:break-all;margin:6px 0 0}
 .note{background:#232428;border-left:3px solid #6f7580;padding:12px 16px;margin:18px 0 8px;color:#b9b9c2;font-size:13px}</style>
 <h1>球鞋四品系 · 灰模评审</h1>
 <p class="sub">生成于 ${new Date().toISOString().slice(0,16).replace('T',' ')} &nbsp;·&nbsp; 全部使用已验收 L=1 鞋楦(前掌 .39 / 中足 .30 / 后跟 .32 / 脚头 .17 / 脚背 .29)</p>
-<div class="note">这是<b>生产几何</b>去色后的样子，不是另做的一套实验灰模——通过即可直接进配色阶段。<br>
-四套标识均为原创几何，刻意不复刻任何厂商注册商标。<br>
-本轮未接入游戏：<code>shoe-styles.js</code> 尚未挂进 index.html。</div>
-${FAMILIES.map(card).join('\n')}`);
+<div class="note">这是<b>本地实际几何</b>的去色评审稿，先检查鞋型、图案边界及袜口。<br>
+图案更新：三条平行四边形、白圈星形与六角折线、勾形、篮球人物剪影。发布面数优化仍待。<br>
+本轮为本地修改后的实际鞋模型：侧面装饰贴合真实曲面，袜口以下皮肤裁切。未发布，等待外观验收。</div>
+${FAMILIES.map(card).join('\n')}<section><h2>袜口动作检查 · 低帮鞋</h2><div class="row">${report.poses.map(p=>`<figure><a href="${p.image}${stamp}" target="_blank"><img src="${p.image}${stamp}"></a><figcaption>${p.pose}</figcaption></figure>`).join('')}</div></section>`);
  fs.writeFileSync(path.join(out,'report.json'),JSON.stringify(report,null,2));
  console.log('PASS 四品系灰模：同一鞋楦 / 单 Mesh 单材质 / 面数在预算内 / 骨架未变');
  console.log('评审页 '+path.relative(root,path.join(out,'review.html')));

@@ -278,6 +278,11 @@
   function applyShoes(guy,item){
     if(!enabled||!guy)return false;
     clearKey(guy,"gearShoeGroups");
+    // Performance items retain their gameplay stats; the approved player shoe is
+    // the visual source for both saved equipment and newly selected equipment.
+    if(global.AIBABasketballShoes&&guy.defaultBasketballShoe){
+      global.AIBABasketballShoes.apply(guy,"RetroHigh",guy.defaultBasketballShoe);return true;
+    }
     if(!item){if(global.AIBABasketballShoes&&guy.defaultBasketballShoe)global.AIBABasketballShoes.apply(guy,"RetroHigh",guy.defaultBasketballShoe);return true;}
     if(global.AIBABasketballShoes)global.AIBABasketballShoes.clear(guy);
     const color=colorOf(item.color),id=item.id,groups=[];

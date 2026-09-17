@@ -11,7 +11,7 @@ A cyberpunk voxel 3D basketball game that runs entirely in your browser — shoo
 - Vercel (auto-deployed): https://aiba-percent-battle.vercel.app/
 - GitHub Pages (mirror): https://opstiger.github.io/aiba-percent-battle/
 
-Current version: `v2.23.0`
+Current version: `v2.28.0`
 
 | Home | Percent Battle | Locker room | Motion control |
 |---|---|---|---|

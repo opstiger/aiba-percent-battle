@@ -55,6 +55,12 @@
    else{push(name,[A,C,B]);push(name,[A,D,C]);}
   }
  }
+ // Author flat silhouettes in (z,y); the factory conforms them to the real shell.
+ function sidePolygon(push,name,side,points){
+  const contour=points.map(([z,y])=>new THREE.Vector2(z,y));
+  for(const tri of THREE.ShapeUtils.triangulateShape(contour,[]))
+   push(name,tri.map(i=>[side*.2,points[i][1],points[i][0]]));
+ }
  // A disc on the side wall, for badge-style marks.
  function wallDisc(push,name,side,{z,v,rz,rv,seg=8}){
   const c=facet(z,v,side);
@@ -115,6 +121,8 @@
   return [side*(shellHalfW(spec,z,w)+PROUD+lift),yc,z];
  }
  function shellBand(push,name,side,spec,{z0,z1,y0,y1,h,seg=2,lift=0}){
+  // Surface clipping supplies the folds without redundant input subdivisions.
+  seg=1;
   /* 厚度必须沿带子的法向加,不能只沿 Y:带子一陡,Y 方向的 h 在垂直方向上
      就趋近于零,三道斜带会变成三根尖刺。 */
   const dz=z1-z0,dy=y1-y0,len=Math.hypot(dz,dy)||1,nz=-dy/len*h/2,ny=dz/len*h/2;
@@ -159,10 +167,9 @@
   shoeType:'StripeMid',collarType:'ShellMid',outsoleType:'Cupsole',
   shellSpec:STRIPE_SHELL,
   buildShell:()=>shell(STRIPE_SHELL),
-  classifyPanel({isCollar,center,defaultPanel}){
-   if(isCollar)return center[1]>.295?'collar':center[2]>.145&&Math.abs(center[0])<.115?'tongue':center[2]<-.12?'heelCounter':'quarterPanel';
-   if(defaultPanel==='toeBox'||defaultPanel==='toeCap'||defaultPanel==='mudguard')return center[2]>.585?'shellToe':'toeBox';
-   return defaultPanel;
+  classifyPanel({isCollar,defaultPanel}){
+   if(isCollar)return 'quarterPanel';
+   return ['outsole','outsoleEdge','midsole'].includes(defaultPanel)?defaultPanel:'toeBox';
   },
   addDetails({push}){
    for(const side of [-1,1]){
@@ -170,93 +177,74 @@
     /* 三道斜带画在鞋帮壳的侧面板上。鞋楦的竖直侧壁在中足只有 ~.11 世界单位高,
        画什么都是细线;壳的侧面板(y .165~.330)才是整只鞋最大的一块可视面。 */
     for(let i=0;i<3;i++){const z=.205-i*.100;
-     shellBand(push,'stripePanel',side,STRIPE_SHELL,{z0:z,z1:z-.100,y0:.178,y1:.266,h:.054,seg:2});}
+     sidePolygon(push,'stripePanel',side,[[z+.026,.180],[z-.026,.180],[z-.126,.270],[z-.074,.270]]);}
     /* 这个品系的标识就是三道斜带本身。原来在后跟又加了两道斜杠,不但和第三条
        带子撞在一起,也让侧面同时出现两套语言。删掉,只留一套。 */
    }
    for(let i=0;i<3;i++)roofBand(push,'shellToe',{z0:.700-i*.048,z1:.678-i*.048,k:.58});
    for(const side of [-1,1]){
-    eyestay(push,side,{from:.455,to:.065});
+
     // 后跟拉环:删掉撞车的斜杠标识后这里是一整片空白。
     shellBand(push,'eyestay',side,STRIPE_SHELL,{z0:-.205,z1:-.130,y0:.292,y1:.292,h:.026,seg:1});
    }
-   instepLaces(push,{from:.44,to:.075,rows:5});
+   instepLaces(push,{from:.47,to:.22,rows:5});
   }
  };
 
  /* ---------------- CanvasHigh ----------------
-    薄壳高帮。橡胶包头 + 一圈围条 + 侧面圆形贴片。标识:圆盘上一道折线(原创)。 */
+    薄壳高帮。橡胶包头 + 一圈围条 + 侧面圆形贴片。标识:白圈内五角星与六角折线。 */
  const CANVAS_SHELL={top:.440,bottom:.195,topFlare:1.02,outerW:.146,innerW:.130,frontOuter:.455,frontInner:.160,backOuter:.216,backInner:.201,dip:.008,frontDrop:.046};
  const canvasHigh={
   shoeType:'CanvasHigh',collarType:'CanvasHigh',outsoleType:'Vulcanized',
   shellSpec:CANVAS_SHELL,
   buildShell:()=>shell(CANVAS_SHELL),
-  classifyPanel({isCollar,center,defaultPanel}){
-   if(isCollar)return center[1]>.355?'collar':center[2]>.135&&Math.abs(center[0])<.106?'tongue':center[2]<-.12?'heelCounter':'quarterPanel';
-   // Vulcanised build: the foxing band and the toe bumper are colour regions on the
-   // existing surface, so they wrap the shape exactly instead of sitting on it.
+  classifyPanel({isCollar,defaultPanel}){
+   if(isCollar)return 'quarterPanel';
    if(defaultPanel==='midsole')return 'foxingTape';
-   if(defaultPanel==='toeCap')return 'toeBumper';
-   if(defaultPanel==='toeBox'||defaultPanel==='mudguard')return center[2]>.545?'toeBumper':'quarterPanel';
-   return defaultPanel;
+   return ['outsole','outsoleEdge'].includes(defaultPanel)?defaultPanel:'quarterPanel';
   },
   addDetails({push}){
    for(const side of [-1,1]){
     /* 中底整条已经被 classifyPanel 归成 foxingTape 了,再画一条围条只会和它重叠打架。
        这里只在围条正上方补一道细的深色压边,让"硫化围条"这个结构读得出来。 */
-    wallBand(push,'toeBumper',side,{z0:-.215,z1:.690,v0:.17,v1:.17,vw:.07,seg:8});
+    wallBand(push,'toeBumper',side,{z0:-.215,z1:.690,v0:.17,v1:.17,vw:.07,seg:3});
     /* 徽标必须画在鞋帮壳上:高帮的可视侧面几乎都是壳,鞋楦侧壁只到 y≈.18。
        折线多抬一层 PROUD,避免和圆盘共面闪烁。 */
-    shellDisc(push,'sidePatch',side,CANVAS_SHELL,{z:.070,y:.318,rz:.072,ry:.058,seg:8});
-    /* 圆盘里放一道粗斜杠。原来是折线,和 AirRunner 的箭头撞成同一个符号了 ——
-       四个品系必须各有各的语言:三道斜带 / 圆盘斜杠 / 折角箭头。 */
-    shellBand(push,'brandMark',side,CANVAS_SHELL,{z0:.028,z1:.112,y0:.284,y1:.352,h:.026,seg:1,lift:PROUD});
+    shellDisc(push,'sidePatch',side,CANVAS_SHELL,{z:.070,y:.318,rz:.078,ry:.078,seg:16});
+    const star=[];
+    for(let i=0;i<10;i++){const angle=Math.PI/2+i*Math.PI/5,r=i%2?.016:.036;
+     star.push([.105+Math.cos(angle)*r,.318+Math.sin(angle)*r]);}
+    sidePolygon(push,'brandMark',side,star);
+    // Six-corner chevron beside the star, inside the same white badge.
+    sidePolygon(push,'brandMark',side,[[-.004,.318],[.023,.350],[.041,.350],[.014,.318],[.041,.286],[.023,.286]]);
    }
-   // 后跟竖向压条 + 上沿拉环:rear45 下后跟原来是一整片空白。
-   /* shellBand 沿 (z,y) 走向铺带,z0===z1 会退化成零面积,画不了竖条。
-      后跟用两道横带:上沿拉环 + 下方一道压边,比一条竖条更像鞋的结构。 */
-   for(const side of [-1,1]){
-    shellBand(push,'brandMark',side,CANVAS_SHELL,{z0:-.185,z1:-.085,y0:.398,y1:.398,h:.022,seg:1});
-    shellBand(push,'heelCounter',side,CANVAS_SHELL,{z0:-.205,z1:-.045,y0:.276,y1:.276,h:.070,seg:1});
-   }
-   for(let i=0;i<3;i++)roofBand(push,'toeBumper',{z0:.715-i*.040,z1:.692-i*.040,k:.60});
-   for(const side of [-1,1])eyestay(push,side,{from:.470,to:.180,v:1.22,vw:.22,seg:3});
+   roofBand(push,'toeBumper',{z0:.725,z1:.55,k:.60});
    rampLaces(push,{z0:.475,y0:.168,z1:.205,y1:.402,rows:6,width:.158});
   }
  };
 
  /* ---------------- AirRunner ----------------
-    低帮缓震。敞口低鞋帮 + 中底气窗 + 后跟稳定片。标识:双折角箭头(原创)。 */
+    低帮缓震。敞口低鞋帮 + 中底气窗 + 后跟稳定片。标识:勾形。 */
  const AIR_SHELL={top:.243,bottom:.140,outerW:.172,innerW:.142,frontOuter:.30,frontInner:.175,backOuter:.246,backInner:.224,dip:.008,frontDrop:.030};
  const airRunner={
   shoeType:'AirRunner',collarType:'RunnerLow',outsoleType:'CushionedLow',
   shellSpec:AIR_SHELL,
   buildShell:()=>shell(AIR_SHELL),
-  classifyPanel({isCollar,center,defaultPanel}){
-   if(isCollar)return center[1]>.215?'collar':center[2]>.14&&Math.abs(center[0])<.118?'tongue':center[2]<-.12?'heelClip':'quarterPanel';
-   // The window is a band in the middle of the midsole, not the whole sidewall.
-   if(defaultPanel==='midsole')return Math.abs(center[0])>.126&&center[2]>-.15&&center[2]<.24?'airWindow':'midsole';
-   if(defaultPanel==='heelCounter')return 'heelClip';
-   if(defaultPanel==='toeCap'||defaultPanel==='toeBox')return 'toeBox';
-   return defaultPanel;
+  classifyPanel({isCollar,defaultPanel}){
+   if(isCollar)return 'quarterPanel';
+   return ['outsole','outsoleEdge','midsole'].includes(defaultPanel)?defaultPanel:'toeBox';
   },
   addDetails({push}){
    for(const side of [-1,1]){
     // Chamber dividers across the window band, low on the wall.
-    for(let i=0;i<3;i++){const z=-.09+i*.115;
-     wallBand(push,'midsole',side,{z0:z,z1:z-.034,v0:.05,v1:.05,vw:.26,seg:1});}
-    wallBand(push,'heelClip',side,{z0:-.240,z1:-.060,v0:.28,v1:.86,vw:.42,seg:3});
-    /* 箭头画在壳上,理由同 StripeMid 的斜带。收到侧面板的一半宽度以内 ——
-       第一版整条横跨侧面,像贴了个三倍尺寸的 logo。
-       两段在顶点各多走 .012 互相压住,否则法向加厚会在夹角处留一个缺口。 */
-    /* 两臂必须同 dz / 同 |dy| 才对称;顶点各多走 .012 互相压住,避免法向加厚留缺口。 */
-    shellBand(push,'brandMark',side,AIR_SHELL,{z0:.132,z1:.014,y0:.164,y1:.216,h:.030,seg:2});
-    shellBand(push,'brandMark',side,AIR_SHELL,{z0:.038,z1:-.080,y0:.216,y1:.164,h:.030,seg:2});
+    wallBand(push,'airWindow',side,{z0:-.14,z1:.23,v0:.10,v1:.10,vw:.35,seg:2});
+    // Short descending stroke and long ascending stroke form a single solid tick.
+    sidePolygon(push,'brandMark',side,[[.140,.194],[.075,.165],[-.095,.230],[.069,.143],[.145,.181]]);
    }
    // 后跟拉环:rear45 下后跟原来是一整片空白。
-   for(const side of [-1,1])shellBand(push,'brandMark',side,AIR_SHELL,{z0:-.215,z1:-.140,y0:.206,y1:.206,h:.024,seg:1});
-   for(const side of [-1,1])eyestay(push,side,{from:.415,to:.025,v:1.24,vw:.24});
-   instepLaces(push,{from:.40,to:.035,rows:5,k:.62});
+
+
+   instepLaces(push,{from:.43,to:.205,rows:5,k:.62});
   }
  };
 

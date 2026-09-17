@@ -9,6 +9,7 @@
   }=ctx;
 
   function startPractice(){
+    if(global.ensurePlayerShoeKit)global.ensurePlayerShoeKit();
     ensureAudio(false);leaveArenaAudio();hidePanel();music(false);resetProgressiveSceneForRun();
     G.practice=true;G.moneyRack=(Math.random()*5)|0;
     G.seq=[0,1,2].map(ball=>({rack:2,ball,val:1,money:false,deep:null}));

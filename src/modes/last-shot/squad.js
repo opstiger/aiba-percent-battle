@@ -136,6 +136,7 @@ function foeKit(allyJersey){
       const ally=actor.ally;
       const jersey=ally?(id==="ally0"?shade(allyJersey,-0.28):allyJersey):foeJersey;
       chars.dressGuy(actor.guy,jersey,shade(jersey,-0.45),"");
+      if(global.equipActorShoes)global.equipActorShoes(actor.guy,"last-shot-"+id,jersey);
     });
   }
 

@@ -1,15 +1,8 @@
-/* 14 shared shoe colorways plus the per-star assignment.
- *
- * Shared, not per-player: the factory bakes colour into vertex colours, so one
- * colorway = one cached geometry. 14 keeps the resource count flat while still
- * letting every star's shoes agree with their jersey.
- *
- * Two rules the assignment has to satisfy at once:
- *   1. the shoe reads as part of the kit  -> colorway is the nearest of the 14 to
- *      the jersey's main colour;
- *   2. nobody on court wears the same shoe -> (family, colorway) pairs are unique
- *      across the roster; a star whose first choice is taken falls to the next
- *      nearest. Order is fixed, so the result is the same on every machine.
+/* Approved four-family / four-palette wardrobe. Legacy palettes remain registered
+ * for saved references and lab tools. Player assignment uses only the approved
+ * sixteen combinations, selected deterministically by identity and jersey color.
+ * Matching teammates may share a combination; palette fidelity takes precedence
+ * over the previous requirement to give every player a unique colorway.
  */
 (()=>{
  if(!window.AIBARetroHigh||!window.AIBAShoeStyles)throw Error('shoe-colorways.js must load after shoe-styles.js');
@@ -51,53 +44,49 @@
  /* 品系按球员风格分派,不是随机:控卫/现代射手走低帮,经典射手走帆布高帮,
     乔丹保持已上线的 RetroHigh。没列到的球星走 id 哈希兜底,同一个人每次进游戏一样。 */
  const FAMILY_BY_STAR=Object.freeze({
-  j23:'RetroHighPanels',
+  j23:'RetroHighPanels',k24:'RetroHighPanels',a03:'RetroHighPanels',v15:'RetroHighPanels',t01:'RetroHighPanels',
   curry:'AirRunnerPanels',thompson:'AirRunnerPanels',lillard:'AirRunnerPanels',ionescu:'AirRunnerPanels',
   bird:'CanvasHighPanels',allen:'CanvasHighPanels',miller:'CanvasHighPanels',korver:'CanvasHighPanels',
   h13:'StripeMidPanels',stojakovic:'StripeMidPanels',taurasi:'StripeMidPanels',
   'sue-bird':'StripeMidPanels',nova24:'StripeMidPanels'
  });
- /* 已验收上线的外观不能被这次分配改掉:乔丹保持 v2.27.0 的 classicRedBlackWhite
-    (它在工厂原有的四套里,不占 14 套共享配色的名额)。 */
- const PINNED_COLORWAY=Object.freeze({j23:'classicRedBlackWhite'});
+ // Jordan uses the approved red/black palette.
+ const PINNED_COLORWAY=Object.freeze({j23:'approved_RetroHighPanels_red'});
  function hash(id){let h=2166136261;const s=String(id||'');for(let i=0;i<s.length;i++){h^=s.charCodeAt(i);h=Math.imul(h,16777619);}return h>>>0;}
  const rgb=c=>[(c>>16)&255,(c>>8)&255,c&255];
  // Weighted RGB distance — close enough for snapping a jersey to one of 14 swatches.
  function distance(a,b){const [r1,g1,b1]=rgb(a),[r2,g2,b2]=rgb(b);
   return 2*(r1-r2)**2+4*(g1-g2)**2+3*(b1-b2)**2;}
 
- let table=null,tableKey='';
- function assign(stars){
-  const list=(stars||[]).filter(s=>s&&s.id);
-  const key=list.map(s=>s.id).join(',');
-  if(table&&tableKey===key)return table;
-  const taken=new Set(),out={};
-  // Fixed iteration order keeps the outcome identical across machines and runs.
-  for(const star of list.slice().sort((a,b)=>a.id<b.id?-1:a.id>b.id?1:0)){
-   const family=FAMILY_BY_STAR[star.id]||FAMILIES[hash(star.id)%FAMILIES.length];
-   const jersey=(star.col&&star.col[0])!=null?star.col[0]:0x808080;
-   const ranked=NAMES.slice().sort((a,b)=>distance(SPECS[a].main,jersey)-distance(SPECS[b].main,jersey));
-   let colorway=PINNED_COLORWAY[star.id]||ranked.find(n=>!taken.has(family+':'+n))||ranked[0];
-   taken.add(family+':'+colorway);
-   out[star.id]={family,colorway,...socksFor(colorway)};
-  }
-  table=out;tableKey=key;return out;
+ const APPROVED=Object.freeze({
+  mono:{main:0x252932,accent:0x8a9097,light:0xf0eee7,dark:0x171a20},
+  red:{main:0xad292b,accent:0x241d22,light:0xf0e9df,dark:0x201c20},
+  blue:{main:0x234573,accent:0xc99b50,light:0xf1e5ce,dark:0x142238},
+  green:{main:0x315b47,accent:0xc2a17b,light:0xeee9d9,dark:0x1b3028}
+ });
+ const approvedNames=[];
+ for(const family of FAMILIES)for(const [id,p]of Object.entries(APPROVED)){
+  const name='approved_'+family+'_'+id,canvas=family==='CanvasHighPanels',air=family==='AirRunnerPanels';
+  AIBARetroHigh.registerColorway(name,{outsole:p.dark,outsoleEdge:p.dark,midsole:p.light,foxingTape:p.light,
+   toeBox:p.light,toeCap:p.main,toeBumper:p.light,shellToe:p.light,mudguard:p.main,
+   quarterPanel:canvas?p.main:p.light,stripePanel:p.main,sidePatch:0xf1eee5,airWindow:p.accent,
+   heelCounter:p.main,heelClip:p.main,collar:p.main,tongue:p.dark,eyestay:p.main,
+   laceBlock:canvas?p.light:p.dark,brandMark:canvas?p.dark:air?p.main:p.dark});
+  approvedNames.push(name);
  }
  function socksFor(colorway){
-  // 钉住的配色不在 SPECS 里,袜子退回红黑白那套,和已上线的乔丹一致。
-  const spec=SPECS[colorway]||SPECS.redBlackWhite;
+  const id=String(colorway).split('_').pop(),spec=APPROVED[id]||SPECS[colorway]||SPECS.redBlackWhite;
   return {sock:spec.light||LIGHT,sockStripe:spec.main};
  }
- /* 单个球星的鞋。没有名册时(自定义球星、预览)也要给出稳定结果。 */
- function forStar(star,roster){
-  if(!star||!star.id)return null;
-  const map=assign(roster&&roster.length?roster:[star]);
-  if(map[star.id])return map[star.id];
-  const family=FAMILY_BY_STAR[star.id]||FAMILIES[hash(star.id)%FAMILIES.length];
-  const jersey=(star.col&&star.col[0])!=null?star.col[0]:0x808080;
-  const colorway=PINNED_COLORWAY[star.id]||NAMES.slice().sort((a,b)=>distance(SPECS[a].main,jersey)-distance(SPECS[b].main,jersey))[0];
+ function forStar(star){
+  if(!star)return null;
+  const id=star.id||star.n||'custom',family=FAMILY_BY_STAR[id]||FAMILIES[hash(id)%FAMILIES.length];
+  const jersey=star.col?.[0]??0x252932;
+  const tone=id==='j23'?'red':Object.keys(APPROVED).sort((a,b)=>distance(APPROVED[a].main,jersey)-distance(APPROVED[b].main,jersey))[0];
+  const colorway='approved_'+family+'_'+tone;
   return {family,colorway,...socksFor(colorway)};
  }
+ function assign(stars){return Object.fromEntries((stars||[]).filter(s=>s&&s.id).map(s=>[s.id,forStar(s)]));}
  window.AIBAShoeColorways=Object.freeze({names:NAMES,specs:SPECS,families:FAMILIES,pinned:PINNED_COLORWAY,
-  palette,assign,forStar,socksFor,familyByStar:FAMILY_BY_STAR});
+  palette,assign,forStar,socksFor,familyByStar:FAMILY_BY_STAR,approved:APPROVED,approvedNames});
 })();

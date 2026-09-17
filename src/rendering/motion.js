@@ -1926,7 +1926,7 @@ function rackPickupSource(shot){
   if(next<0){props.refillRackBalls(shot.rack);}
   const idx=Number.isFinite(shot.ball)&&shot.ball>=0&&balls[shot.ball]&&balls[shot.ball].visible
     ?shot.ball:Math.max(0,props.getRackBalls().regular[shot.rack].findIndex(m=>m&&m.visible));
-  return props.takeRackBall(shot.rack,idx);
+  return props.takeRackBall(shot.rack,idx,null,true);
 }
 function startPass(targetPos,face){
   const s=curShot();if(!s||G.buzzed)return;
@@ -1965,7 +1965,7 @@ function startPass(targetPos,face){
   const dur=pickup?.62:passFlightSeconds(from.distanceTo(catchP));
   const mesh=new THREE.Mesh(ballGeo,shotMat(s));
   mesh.position.copy(from);scene.add(mesh);
-  passing={mesh,from,to:catchP,t:0,dur,pickup:!!pickup,side:pickSide};
+  passing={mesh,from,to:catchP,t:0,dur,pickup:!!pickup,side:pickSide,rack:pickup?pickup.rackIndex:null,nextIndex:pickup?pickup.nextIndex:null,rackRolled:false};
   G.passCatch={active:true,progress:0,target:catchP.clone()};
   if(!pickup){
     /* 两拍:0~35% 收球到胸口(蓄),35%~100% 双臂前送打直(送)。
@@ -1991,11 +1991,19 @@ function updPass(dt){
   passing.t+=dt;const k=Math.min(1,passing.t/passing.dur);
   const p=passing;
   if(p.pickup){
-    /* 取球分三拍,球**不是**一开始就飞:
-         0 ~ HOLD   球稳稳待在架上,手(poseCatchHands 跟着 passCatch.target 走)伸过去
-         HOLD ~ 1   抓到了,球和手一起收回持球位
-       上一版是全程线性插值 —— 球在第一帧就离架起飞,所以怎么看都是"飞过来"。 */
+    /* 取球物理因果链:
+         0 ~ HOLD   球稳稳待在架上,手伸向底球。上方球全部静止在原本格位,不提前动作。
+         k >= HOLD  手接触并开始将球抽离底格(kb>0)。底层球离开瞬间,上方球因失去支承,
+                    在斜导轨重力分量下自然加速滑落填充下一格(seatRackBalls)。
+         HOLD ~ 1   球跟随双手收回到持球位。 */
     const HOLD=.46;
+    if(k>=HOLD&&!p.rackRolled){
+      p.rackRolled=true;
+      if(p.rack!=null&&p.nextIndex!=null){
+        const props=window.AIBA&&window.AIBA.runtime&&window.AIBA.runtime.service("rendering:props");
+        if(props&&props.seatRackBalls)props.seatRackBalls(p.rack,p.nextIndex,true);
+      }
+    }
     const kb=k<HOLD?0:ease01((k-HOLD)/(1-HOLD));
     p.mesh.position.lerpVectors(p.from,p.to,kb);
     p.mesh.position.y+=Math.sin(kb*Math.PI)*0.05;

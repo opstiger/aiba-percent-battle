@@ -76,6 +76,8 @@
     if(player._celeb)stopCelebrate(player);resetRackBalls();
   }
   function startBattle(){
+    if(global.ensurePlayerShoeKit)global.ensurePlayerShoeKit();
+    G.mode="battle";
     ensureAudio(false);hidePanel();music(false);resetProgressiveSceneForRun();benchSetup();ctx.refreshBench();resetBattleState();
     CAM.mode=1;global.AIBASetIcon("camBtn","camera",CAM.names[1]);G._preSuperCam=null;ctx.setCamSnap(true);
     enterArenaAudio(1);$("scoreNum").textContent="0";$("hudStreak").style.display="none";
