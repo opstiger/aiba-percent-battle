@@ -31,6 +31,18 @@ html[data-scan-overlay="menu"] #scan{opacity:.018}
 #hudScore .sm{font-size:11px;color:#bbb;text-shadow:2px 2px 0 #000}
 #hudRound{position:absolute;top:max(10px,env(safe-area-inset-top));left:12px;font-size:12px;color:#9fd1ff;
   text-shadow:2px 2px 0 #000;line-height:1.7;font-weight:bold}
+/* 绝杀比分 HUD。桌面单行大比分;窄屏由下方媒体查询拆回短行。 */
+#hudRound.lsScore{width:auto;max-width:min(340px,calc(100vw - 160px))}
+.lsScoreBox{background:rgba(10,14,24,.88);border:1.5px solid #283750;border-radius:8px;
+  padding:4px 10px;display:inline-block;box-shadow:0 4px 16px rgba(0,0,0,.45)}
+.lsScoreLine{font-size:16px;font-weight:900;letter-spacing:1px;color:#fff;
+  font-family:Orbitron,monospace;white-space:nowrap}
+.lsScoreLine .lsHome{color:#7ee7ff}
+.lsScoreLine .lsAway{color:#cdd6e3}
+.lsScoreLine .lsNum{color:#ffd23f;font-size:18px}
+.lsScoreLine .lsNum.away{color:#ff8d7a}
+.lsScoreLine .lsSep{color:#55667e;font-size:13px}
+.lsScoreStatus{font-size:11px;font-weight:700;margin-top:2px}
 #hudRack{position:absolute;top:58px;left:50%;transform:translateX(-50%);text-align:center}
 #hudRackName{font-size:13px;color:#fff;text-shadow:2px 2px 0 #000;font-weight:bold}
 #hudDots{margin-top:5px;display:flex;gap:6px;justify-content:center}
@@ -461,6 +473,14 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
   #hudScore{top:max(8px,env(safe-area-inset-top));right:max(62px,calc(env(safe-area-inset-right) + 58px));width:52px}
   #hudScore .big{font-size:32px;line-height:.95}
   #hudScore .sm{font-size:9px;letter-spacing:0}
+  /* 窄屏:队名各占一行,回到 88px 槽位能装下的排版,不再压到 #hudTarget 上。 */
+  #hudRound.lsScore{width:88px;max-width:88px}
+  #hudRound.lsScore .lsScoreBox{display:block;padding:3px 5px}
+  #hudRound.lsScore .lsScoreLine{font-size:13px;letter-spacing:0;white-space:normal;line-height:1.25}
+  #hudRound.lsScore .lsHome,#hudRound.lsScore .lsAway{display:block;font-size:9px;letter-spacing:0}
+  #hudRound.lsScore .lsNum{font-size:14px}
+  #hudRound.lsScore .lsSep{font-size:11px}
+  #hudRound.lsScore .lsScoreStatus{font-size:9px;line-height:1.2;margin-top:1px}
   #hud[data-mode="practice"] #hudRound,#hud[data-mode="practice"] #hudScore{display:none!important}
   #battleScore{top:max(8px,env(safe-area-inset-top));width:min(310px,calc(100vw - 112px));min-width:0;min-height:72px;
     flex-direction:row;flex-wrap:wrap;align-items:center;justify-content:center;gap:2px 8px;padding:7px 10px 8px;

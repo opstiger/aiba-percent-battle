@@ -30,21 +30,28 @@
   function state(){return LS;}
 
   /* ---------------- HUD ---------------- */
+  /* 比分 HUD 走类名而不是内联样式:窄屏(375px 竖屏)的 #hudRound 被 styles.css
+     锁成 88px 宽,内联字号媒体查询管不着,单行队名会被挤成七八行,还会压到
+     下面的 #hudTarget("练习模式 · 不计成绩")上,两层文字叠在一起读不了。
+     桌面保留单行大比分,窄屏由 CSS 拆回短行 —— 88px 这个尺寸本来就是为它定的。 */
   function updScoreHUD(homeScore, awayScore){
     const cfg = LS.cfg;
     if(!cfg)return;
     const diff = awayScore - homeScore;
     const statusText = diff > 0 ? `落后 ${diff} 分` : (diff === 0 ? "平分 · 绝杀一投" : "反超领先！");
     const statusColor = diff > 0 ? "#ff8d7a" : (diff === 0 ? "#ffd23f" : "#7CFC6B");
-    $("hudRound").innerHTML=`<div style="background:rgba(10,14,24,0.88);border:1.5px solid #283750;border-radius:8px;padding:4px 10px;display:inline-block;box-shadow:0 4px 16px rgba(0,0,0,0.6);text-align:center;">`
-      +`<div style="font-size:16px;font-weight:900;letter-spacing:1px;color:#fff;font-family:Orbitron,monospace">`
-      +`<span style="color:#7ee7ff">${cfg.homeName}</span> <span style="color:#ffd23f;font-size:18px">${homeScore}</span>`
-      +` <span style="color:#55667e;font-size:13px">:</span> `
-      +`<span style="color:#ff8d7a;font-size:18px">${awayScore}</span> <span style="color:#cdd6e3">${cfg.awayName}</span>`
+    const box=$("hudRound");
+    box.classList.add("lsScore");
+    box.innerHTML=`<div class="lsScoreBox">`
+      +`<div class="lsScoreLine">`
+      +`<span class="lsHome">${cfg.homeName}</span> <b class="lsNum">${homeScore}</b>`
+      +` <span class="lsSep">:</span> `
+      +`<b class="lsNum away">${awayScore}</b> <span class="lsAway">${cfg.awayName}</span>`
       +`</div>`
-      +`<div style="font-size:11px;font-weight:700;margin-top:2px;color:${statusColor}">`
-      +`★ ${statusText} ★</div></div>`;
+      +`<div class="lsScoreStatus" style="color:${statusColor}">★ ${statusText} ★</div>`
+      +`</div>`;
   }
+
   function hudSetup(cfg){
     const hud=$("hud");
     hud.dataset.mode="lastshot";hud.style.display="block";
@@ -64,6 +71,7 @@
   }
 
   function hideLastShotHud(){
+    const scoreBox=$("hudRound");if(scoreBox)scoreBox.classList.remove("lsScore");
     const hud=$("hud");
     if(hud){hud.dataset.mode="";hud.style.display="none";}
     const skipBtn=document.getElementById("lsSkipBtn");
@@ -77,6 +85,9 @@
     G.mode="lastshot";G.diff=G.diff||"normal";
     G.score=0;G.streak=0;G.missRun=0;G.shotIdx=0;G.shots=[];
     G.stats={best:0,moneyM:0,moneyT:0,deepM:0,deepT:0};
+    /* 本模式不走 goDiff/pregame,这些字段得自己兜底:
+       命中路径要读 G.posted(反超检测与目标 UI),打铁路径要读 G.opponents(垃圾话),
+       出手弧线要读 G.myStar。缺任何一个都会在球落地那一刻抛异常。 */
     G.posted=[];G.opponents=[];
     if(!G.myStar)G.myStar=LEGENDS[0];
     if(G.myNum==null)G.myNum=23;
