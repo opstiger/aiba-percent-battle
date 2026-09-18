@@ -5,20 +5,15 @@ backup/
 # QA 截图/审计产物：本地证据,不进仓库(当前已 122MB)
 artifacts/
 docs/*
-!docs/MODELING_PLAN-20260908.md
-!docs/MODEL_CRAFT-20260909.md
-!docs/WORLD_PLACES_PLAN-20260910.md
-!docs/WORLD_WONDERS_P1-20260910.md
-!docs/COURT_SPATIAL_DENSITY_PLAN-20260910.md
-!docs/FLOW_PLAYER_UPGRADE-20260910.md
-!docs/IMMERSIVE_COURTS_PLAN-20260911.md
-!docs/LIVING_WORLD_HANDOFF-20260911.md
+# 公开仓库只保留架构说明与代码/测试直接引用的文档。
+# 其余是带日期的内部计划、AI 会话交接日志与迭代记录,留在本地。
 !docs/ARCHITECTURE.md
 !docs/MODULAR_REFACTOR_PLAN.md
-!docs/PROJECT_STATE.md
-# 配音需求表要交给别的工具/会话去生成音频,不进库就等于没人看得到
+!docs/MODELING_PLAN-20260908.md
+# 配音需求表要交给别的工具/会话去生成音频,而 boot-shot.js 的注释直接引用 v3。
 !docs/需求迭代/
-!docs/需求迭代/音频配音需求表-v2.md
+docs/需求迭代/*
+!docs/需求迭代/音频配音需求表-v3-情绪重做.md
 assets/aiba-covers/*.MOV
 assets/aiba-covers/MJ24.mp4
 assets/aiba-covers/tmac1.mp4
@@ -73,10 +68,7 @@ captures/
 !docs/RETROHIGH-20260916.md
 
 # ---- 发布卫生:以下内容不进公开仓库 ----
-# 本地历史版本归档。git 历史与 tag 才是版本回溯的正途。
-backup/
-# 评审/回归产物,每轮都会重生成
-artifacts/
+# backup/ 与 artifacts/ 已在文件开头忽略
 # AI 工具的本地配置
 .claude/
 # 配音生成脚本(要连外部 API,可能带密钥)
