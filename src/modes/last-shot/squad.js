@@ -54,7 +54,7 @@
     guy.elbows[hand].rotation.x=-0.62+0.34*bounce;
   }
   const REACTION_ALLY_MADE=["raise","point","rush","push","hug","crash","retrieve"];
-  const REACTION_FOE_MADE=["fall","head","invalid","kneel","freeze"];
+  const REACTION_FOE_MADE=["head","invalid","kneel","freeze","sad"];
   const REACTION_ALLY_MISS=["sad","head","slow","retrieve"];
   const REACTION_FOE_MISS=["raise","point","rush"];
   const FOUL_ALLY_MAKE=["raise","point","rush"];
@@ -263,6 +263,10 @@ function foeKit(allyJersey){
      这里只负责把 actor 的状态喂进去，再补一个转向。 */
   function poseRunner(actor,speed,dt,lookAt){
     motion.poseRunCycle(actor.guy,actor,speed,dt,{defensive:actor.defensive,hs:actor.hs||1});
+    if(!actor.reaction){
+      actor.guy.g.rotation.z=0;
+      actor.guy.g.rotation.x=0;
+    }
     if(lookAt){
       const want=faceTo(actor.guy.g.position,lookAt);
       actor.face+=angleDelta(actor.face,want)*Math.min(1,dt*7);
@@ -428,9 +432,9 @@ function foeKit(allyJersey){
       guy.arms[0].rotation.x=-.78;guy.arms[1].rotation.x=-.68;
       guy.knees[0].rotation.x=.58;guy.knees[1].rotation.x=.48;
     }else if(action==="fall"){
-      const k=clamp((t-.22)/.42,0,1);guy.g.rotation.z=.95*k;guy.g.position.y=Math.max(.12,STAND_FOOT_Y*(1-k));
-      guy.arms[0].rotation.x=-.95;guy.arms[0].rotation.z=-.78;
-      guy.arms[1].rotation.x=-.82;guy.arms[1].rotation.z=.72;
+      const k=clamp((t-.22)/.42,0,1);guy.g.rotation.z=0;guy.g.position.y=Math.max(.12,STAND_FOOT_Y*(1-k*.4));
+      guy.arms[0].rotation.x=-.95;guy.arms[0].rotation.z=-.28;
+      guy.arms[1].rotation.x=-.82;guy.arms[1].rotation.z=.28;
       guy.knees[0].rotation.x=.92*k;guy.knees[1].rotation.x=.64*k;
     }else if(action==="head"){
       guy.arms[0].rotation.x=-1.24;guy.arms[0].rotation.z=-.54;
@@ -678,7 +682,21 @@ function foeKit(allyJersey){
       actor.guy.g.position.x=p.x;actor.guy.g.position.z=p.z;
       actor.defensive=!actor.ally;
       actor.face=faceTo(p,HOOP);
-      actor.guy.g.rotation.y=actor.ally?actor.face:actor.face+Math.PI;
+      const rotY=actor.ally?actor.face:actor.face+Math.PI;
+      actor.guy.g.rotation.set(0,rotY,0);
+      actor.guy.g.position.y=STAND_FOOT_Y;
+      actor.reaction=null;actor.reactionT=0;
+      actor.vx=0;actor.vz=0;actor.speed=0;
+      actor.chasing=false;actor.putback=null;actor.outlet=null;
+      actor.contestJump=null;actor.contestPending=null;actor.pressure=0;actor.handsUp=0;
+      actor.closeoutT=0;actor.onBallPhase=null;
+      actor.trail=[];
+      if(actor.guy.legs)actor.guy.legs.forEach(l=>l.rotation.set(0,0,0));
+      if(actor.guy.knees)actor.guy.knees.forEach(k=>k.rotation.set(0,0,0));
+      if(actor.guy.ankles)actor.guy.ankles.forEach(a=>a.rotation.set(0,0,0));
+      if(actor.guy.arms)actor.guy.arms.forEach(a=>a.rotation.set(0,0,0));
+      if(actor.guy.elbows)actor.guy.elbows.forEach(e=>e.rotation.set(0,0,0));
+      if(actor.guy.headRoot)actor.guy.headRoot.rotation.set(0,0,0);
     });
   }
 

@@ -23,12 +23,28 @@
   const LS={
     on:false,t:0,phase:"idle",cfg:null,practice:false,
     passed:false,released:false,resolved:false,pass:null,
-    lookYaw:0,timedOut:false,reactionT:0,reactionStarted:false
+    lookYaw:0,timedOut:false,shotMade:false,callStyle:"both_target",
+    introT:0,introDur:1.8,reactionT:0,reactionStarted:false
   };
 
   function state(){return LS;}
 
   /* ---------------- HUD ---------------- */
+  function updScoreHUD(homeScore, awayScore){
+    const cfg = LS.cfg;
+    if(!cfg)return;
+    const diff = awayScore - homeScore;
+    const statusText = diff > 0 ? `落后 ${diff} 分` : (diff === 0 ? "平分 · 绝杀一投" : "反超领先！");
+    const statusColor = diff > 0 ? "#ff8d7a" : (diff === 0 ? "#ffd23f" : "#7CFC6B");
+    $("hudRound").innerHTML=`<div style="background:rgba(10,14,24,0.88);border:1.5px solid #283750;border-radius:8px;padding:4px 10px;display:inline-block;box-shadow:0 4px 16px rgba(0,0,0,0.6);text-align:center;">`
+      +`<div style="font-size:16px;font-weight:900;letter-spacing:1px;color:#fff;font-family:Orbitron,monospace">`
+      +`<span style="color:#7ee7ff">${cfg.homeName}</span> <span style="color:#ffd23f;font-size:18px">${homeScore}</span>`
+      +` <span style="color:#55667e;font-size:13px">:</span> `
+      +`<span style="color:#ff8d7a;font-size:18px">${awayScore}</span> <span style="color:#cdd6e3">${cfg.awayName}</span>`
+      +`</div>`
+      +`<div style="font-size:11px;font-weight:700;margin-top:2px;color:${statusColor}">`
+      +`★ ${statusText} ★</div></div>`;
+  }
   function hudSetup(cfg){
     const hud=$("hud");
     hud.dataset.mode="lastshot";hud.style.display="block";
@@ -36,12 +52,7 @@
     $("midBtn").style.display="none";$("hudStreak").style.display="none";
     $("scoreNum").textContent=cfg.scoreHome;
     $("hudTimer").style.display="block";
-    // 窄屏(375px 竖屏)放不下完整队名,拆成短行,否则会折行成乱码样
-    $("hudRound").innerHTML=`<b>${cfg.scoreHome} : ${cfg.scoreAway}</b>`
-      +`<br><span style='font-size:9px;color:#8894a6'>${cfg.homeName} / ${cfg.awayName}</span>`
-      /* 平局关(CORNER BURIED)差值是 0,不能写成"落后 0 分" */
-      +`<br><span style='color:${cfg.scoreAway>cfg.scoreHome?"#ff8d7a":"#ffd76a"}'>`
-      +`${cfg.scoreAway>cfg.scoreHome?`落后 ${cfg.scoreAway-cfg.scoreHome} 分`:"平分 · 进了就赢"}</span>`;
+    updScoreHUD(cfg.scoreHome, cfg.scoreAway);
     $("hudTarget").textContent=LS.practice?"练习模式 · 不计成绩":"每日挑战 · 仅此一次";
     updClock(cfg.gameClock);
   }
@@ -55,6 +66,8 @@
   function hideLastShotHud(){
     const hud=$("hud");
     if(hud){hud.dataset.mode="";hud.style.display="none";}
+    const skipBtn=document.getElementById("lsSkipBtn");
+    if(skipBtn)skipBtn.remove();
   }
 
   /* ---------------- 进场 ---------------- */
@@ -64,64 +77,116 @@
     G.mode="lastshot";G.diff=G.diff||"normal";
     G.score=0;G.streak=0;G.missRun=0;G.shotIdx=0;G.shots=[];
     G.stats={best:0,moneyM:0,moneyT:0,deepM:0,deepT:0};
-    /* 本模式不走 goDiff/pregame,这些字段得自己兜底:
-       命中路径要读 G.posted(反超检测与目标 UI),打铁路径要读 G.opponents(垃圾话),
-       出手弧线要读 G.myStar。缺任何一个都会在球落地那一刻抛异常。 */
     G.posted=[];G.opponents=[];
     if(!G.myStar)G.myStar=LEGENDS[0];
     if(G.myNum==null)G.myNum=23;
     G.running=false;G.buzzed=false;G.canShoot=false;G.charging=false;G.power=0;
     G.moving=false;G.glideCam=false;G.blindToasted=false;
     G.passCatch=null;
-    // 单球赛制:一次出手就是全部。deep=null 走常规三分弧线。
     G.seq=[{rack:3,ball:0,val:3,money:false,deep:null,p:cfg.shotSpot.p,lastShot:true}];
     balls.slice().forEach(b=>{scene.remove(b.mesh);scene.remove(b.blob);});balls.length=0;
     const passing=ctx.getPassing();if(passing){scene.remove(passing.mesh);ctx.setPassing(null);}
     resetRackBalls();confPts.visible=false;
     rivals.forEach(rv=>{rv.active=false;rv.g.visible=false;});
     if(player._celeb)stopCelebrate(player);
-    Object.assign(LS,{on:true,t:0,phase:"live",cfg,practice:!!practice,
+    const CALL_STYLES=["both_target","both_clap","single_wave"];
+    Object.assign(LS,{on:true,t:0,phase:"intro",cfg,practice:!!practice,
       passed:false,released:false,resolved:false,pass:null,lookYaw:0,timedOut:false,
+      shotMade:false,callStyle:CALL_STYLES[(Math.random()*CALL_STYLES.length)|0],
+      cutFrom:null,cutDur:0,introT:0,introDur:1.8,
       reactionT:0,reactionStarted:false,reactionDuration:0,finishMade:false,finishReason:"shot",
       celeb:null,madeAt:null,buzzAt:null,boardStarted:false,buzzed:false,foul:null,foulCallT:0,
       board:null,ftReady:false,ftBall:null,ftWait:0,ftIntro:0});
   }
 
+  function finishIntro(){
+    if(!LS.on||LS.phase!=="intro")return;
+    LS.phase="live";
+    LS.t=0;
+    const skipBtn=document.getElementById("lsSkipBtn");
+    if(skipBtn)skipBtn.remove();
+    if(typeof whistle==="function")whistle();
+    if(typeof sGo==="function")sGo();
+    toast("看球 · 球会分到你手上","#ffd23f");
+  }
+  function skipIntro(){
+    if(LS.phase==="intro")finishIntro();
+  }
+
   function beginLastShot(practice){
+    if(global.AIBABootShot){
+      if(typeof global.AIBABootShot.abort==="function")global.AIBABootShot.abort();
+      else if(typeof global.AIBABootShot.skip==="function")global.AIBABootShot.skip();
+    }
     if(global.ensurePlayerShoeKit)global.ensurePlayerShoeKit();
-    /* 练习用玩家选的剧情，正式永远是当天那关（见 config.js::activeChallenge）。 */
     const cfg=cfgApi.activeChallenge?cfgApi.activeChallenge(!!practice):cfgApi.dailyChallenge();
     ensureAudio(false);hidePanel();music(false);resetProgressiveSceneForRun();
     resetState(cfg,practice);
     squadApi.build(cfg);
     squadApi.place(0);
     squadApi.show(true);
-    squadApi.startPostShot();
     squadApi.setHandlerBall(true);
-    // 你站在配置的三分线外投篮点,面向篮筐
+    // 配置切入起点与战术跑位，或默认直接站定投篮点
     const spot=cfg.shotSpot.p;
-    P.pos.copy(spot);P.face=faceTo(spot,HOOP);P.walking=false;P.jump=0;P.eyeDip=0;
-    LS.spot=spot.clone();LS.footT=0;   // 碎步围绕这个基准点游走，出手前必须收回来
+    LS.spot=spot.clone();
+    if(cfg.playerCut){
+      LS.cutFrom=cfg.playerCut.from.clone();
+      LS.cutDur=cfg.playerCut.arriveT||3.0;
+      P.pos.copy(LS.cutFrom);
+      P.walking=true;
+    }else{
+      LS.cutFrom=spot.clone();
+      LS.cutDur=0;
+      P.pos.copy(spot);
+      P.walking=false;
+    }
+    const handler=squadApi.handler();
+    P.face=faceTo(P.pos,handler?handler.pos:HOOP);
+    if(player&&player.g){
+      player.g.position.set(P.pos.x,0,P.pos.z);
+      player.g.rotation.y=P.face;
+    }
+    P.jump=0;P.eyeDip=0;
+    LS.footT=0;
     LS.lookYaw=P.face;
-    // 强制第一人称:这是模式的核心体验,不允许切镜头
     CAM.mode=0;if(global.AIBASetIcon)global.AIBASetIcon("camBtn","camera",CAM.names[0]);
     ctx.setCamSnap(true);
     hudSetup(cfg);
     G.state="lastshot";G.running=true;
     enterArenaAudio(.92);
     applyCamMode();
-    // 本模式自己管递球员,隐藏共用的两个背景递球角色
     passer.g.visible=false;oppPasser.g.visible=false;
     handBall.visible=false;pBall.visible=false;$("pFill").style.height="0%";
     calibrateTilt();
     broadcastSting("danger");
+
+    // 动态同步球场中央吊挂大屏比分特写
+    if(global.updateCenterScoreboard){
+      const diff=cfg.scoreAway-cfg.scoreHome;
+      global.updateCenterScoreboard({
+        title:cfg.title||"THE LAST SHOT",
+        score:`${cfg.scoreHome} : ${cfg.scoreAway}`,
+        clock:`Q4  00:0${cfg.gameClock.toFixed(1)}`,
+        subColor:diff>0?"#ff8d7a":"#ffd23f"
+      });
+    }
+
+    // 悬浮跳过特写小按钮
+    const oldSkip=document.getElementById("lsSkipBtn");
+    if(oldSkip)oldSkip.remove();
+    const skipBtn=document.createElement("button");
+    skipBtn.id="lsSkipBtn";
+    skipBtn.textContent="跳过特写 ▸";
+    skipBtn.style.cssText="position:fixed;top:18px;right:18px;z-index:99999;background:rgba(20,25,35,0.85);color:#ffd23f;border:1px solid rgba(255,210,63,0.6);border-radius:16px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px);box-shadow:0 2px 10px rgba(0,0,0,0.5);";
+    skipBtn.onclick=skipIntro;
+    document.body.appendChild(skipBtn);
+
     if(cfg.crowdMood==="away"&&typeof boo==="function")boo();
     if(cfg.commentaryEvent==="lastshot_commentary_finals")playAudioEvent("lastshot_commentary_finals");
     else if(cfg.commentaryEvent==="lastshot_commentary_g7")playAudioEvent("lastshot_commentary_g7");
     else if(cfg.commentaryEvent==="lastshot_commentary_corner")playAudioEvent("lastshot_commentary_corner");
     else if(typeof playAudioEvent==="function")playAudioEvent("lastshot_commentary");
     else paSay(cfg.commentary,true);
-    toast("看球 · 球会分到你手上","#ffd23f");
   }
 
   /* ---------------- 传球:核心把球分给你 ---------------- */
@@ -366,7 +431,10 @@
     if(!LS.ftReady&&LS.ftBall){
       if(ballSettled(LS.ftBall)){
         const made=!!LS.ftBall.made;
-        if(made)f.made++;
+        if(made){
+          f.made++;
+          updScoreHUD(LS.cfg.scoreHome+possessionPoints(),LS.cfg.scoreAway);
+        }
         f.taken++;LS.ftBall=null;LS.ftWait=0;
         toast(made?"罚球命中":"罚球偏出",made?"#7CFC6B":"#ff8d7a");
         crowdSwell&&crowdSwell(made?.3:.12,made?1.1:.7);
@@ -403,11 +471,14 @@
   const MAKE_OUTCOMES={swish:true,rattle:true,bank:true};
   function ballSettled(ball){
     if(!ball||!ball.mesh)return false;
-    return !!(ball.made||ball.rimSoundPlayed||ball.bounces>0||ball.phase!=="fly");
+    // 弹筐入网(rattle且rin)或打板入网(bankdrop)仍在进球进程中，绝不能算已落定！
+    if(ball.phase==="fly"||ball.phase==="bankdrop")return false;
+    if(ball.phase==="rattle"&&ball.rin)return false;
+    return !!(ball.made||ball.bounces>0||ball.phase==="roll"||(ball.phase==="fall"&&!ball.made)||ball.phase==="free");
   }
   function gazeTarget(ball){
     if(!ball||!ball.mesh)return null;
-    if(ballSettled(ball))return null;
+    if(ball.made||ball.rimSoundPlayed||ball.bounces>0||ball.phase!=="fly"||ballSettled(ball))return null;
     return ball.mesh.position;
   }
 
@@ -415,6 +486,15 @@
   function updateLastShot(dt){
     if(!LS.on||G.state!=="lastshot")return;
     const cfg=LS.cfg;
+
+    // 开局大屏特写与运镜阶段
+    if(LS.phase==="intro"){
+      LS.introT+=dt;
+      updClock(cfg.gameClock);
+      if(LS.introT>=LS.introDur)finishIntro();
+      return;
+    }
+
     // 犯规判罚先留在现场，让球员和观众完成反应，再走向罚球线。
     if(LS.phase==="foulcall"){updateFoulCall(dt);return;}
     // 罚球阶段：比赛钟停表，只跑罚球流程
@@ -448,16 +528,35 @@
       if(LS.foul&&!LS.reactionStarted&&(!activeBall||ballSettled(activeBall))){
         startFoulCall();return;
       }
-      if(!LS.reactionStarted&&activeBall&&activeBall.made){
-        if(LS.madeAt==null)LS.madeAt=LS.t;
-        if(LS.t-LS.madeAt>=CELEBRATE_DELAY){
-          startResultReaction(true,"shot",RESULT_REACTION_SECONDS);
-          if(typeof playAudioEvent==="function")playAudioEvent("lastshot_make");
+      if(activeBall&&activeBall.made){
+        if(!LS.shotMade){
+          LS.shotMade=true;
+          const newHome=cfg.scoreHome+possessionPoints();
+          updScoreHUD(newHome,cfg.scoreAway);
+          if(global.updateCenterScoreboard){
+            const diff=cfg.scoreAway-newHome;
+            global.updateCenterScoreboard({
+              title:cfg.title||"THE LAST SHOT",
+              score:`${newHome} : ${cfg.scoreAway}`,
+              clock:`Q4  00:00.0`,
+              subColor:diff<=0?"#7CFC6B":"#ffd23f"
+            });
+          }
+          crowdSwell&&crowdSwell(1.0,5.0);
+          if(typeof cheerSound==="function")cheerSound(true);
+        }
+        if(!LS.reactionStarted){
+          if(LS.madeAt==null)LS.madeAt=LS.t;
+          if(LS.t-LS.madeAt>=CELEBRATE_DELAY){
+            startResultReaction(true,"shot",RESULT_REACTION_SECONDS);
+            if(typeof playAudioEvent==="function")playAudioEvent("lastshot_make");
+          }
         }
       }
       // 球已经打铁落定：进入抢篮板，不是庆祝
       if(!LS.reactionStarted&&activeBall&&ballSettled(activeBall)&&!activeBall.made&&!LS.boardStarted){
         LS.boardStarted=true;LS.board=squadApi.startRebound(activeBall.mesh.position);
+        crowdSwell&&crowdSwell(0.35,2.5);
       }
       updateRebound(dt,activeBall);
       /* 时间走完，但球还在空中：不能直接判负。真实规则是出手在结束前、球进了就算，
@@ -465,6 +564,7 @@
       if(!LS.reactionStarted&&clock<=0&&(!activeBall||ballSettled(activeBall))){
         if(LS.buzzAt==null)LS.buzzAt=LS.t;
         if(LS.t-LS.buzzAt>=BUZZER_DELAY){
+          if(activeBall&&activeBall.made)LS.shotMade=true;
           const _m=shotSucceeded();
           startResultReaction(_m,_m?"shot":(isOvertime()?"overtime":"shot"),RESULT_REACTION_SECONDS);
           if(typeof playAudioEvent==="function"){
@@ -493,6 +593,7 @@
 
     if(!LS.released&&G.shotIdx>0){
       LS.released=true;LS.phase="flight";G.running=false;
+      squadApi.startPostShot();
       /* 记下这一投的诊断数据，供结算时告诉玩家"下次该怎么调"。
          err = 实际力度 - 理想力度；contest = 出手瞬间的干扰强度。 */
       const shot=G.seq&&G.seq[0];
@@ -672,7 +773,22 @@
   }
   function updateBodyState(dt){
     if(!LS.on||!LS.spot)return;
-    if(LS.released||LS.phase==="flight"||LS.phase==="reaction")return;
+    if(LS.phase==="reaction")return;
+    if(LS.released||LS.phase==="flight"){
+      // 出手后飞行阶段：保持压腕跟随动作（Follow-through Hold）与向前专注凝视
+      if(!LS.reactionStarted&&player&&player.arms&&player.elbows){
+        const guy=player;
+        guy.arms[0].rotation.set(-2.38,0,-0.12);
+        guy.elbows[0].rotation.set(-0.25,0,0);
+        if(guy.handRoots)guy.handRoots[0].rotation.set(0.95,0,-0.06);
+        guy.arms[1].rotation.set(-2.15,0,0.28);
+        guy.elbows[1].rotation.set(-0.48,0,0);
+        if(guy.handRoots)guy.handRoots[1].rotation.set(-0.15,Math.PI*0.5,0.12);
+        if(squadApi.guardArms)squadApi.guardArms(guy);
+        if(global.AIBAShotMotion&&global.AIBAShotMotion.syncFp)global.AIBAShotMotion.syncFp();
+      }
+      return;
+    }
     const handler=squadApi.handler();
     /* 球一到手就必须朝篮筐——传球飞行结束后 LS.pass 会被清空，如果这里还退回
        "看持球人"，身体会转回左路的核心，投篮手直接被甩出画面左侧(实测腕 NDC
@@ -692,18 +808,107 @@
     let d=want-LS.lookYaw;while(d>Math.PI)d-=6.283185307;while(d<-Math.PI)d+=6.283185307;
     // 传球途中要跟上插值,不能再用慢平滑,否则接到球那一刻会硬切
     LS.lookYaw+=d*Math.min(1,dt*(LS.pass?14:4.5));
-    /* 等球的时候你不是一根木桩：小碎步左右调整找空位。幅度必须小(位置 ±0.18m)——
-       够有"人在动"的呼吸感，又不至于让你觉得瞄准点在飘。
-       球一进入传球段就收住，出手时脚下必须是稳的。 */
+
     LS.footT=(LS.footT||0)+dt;
-    LS.settle=LS.pass?1-clamp(LS.pass.t/Math.max(1e-3,LS.pass.dur),0,1):1;
-    const sway=Math.sin(LS.footT*1.15)*0.18*LS.settle;
-    const drift=Math.sin(LS.footT*0.74+1.7)*0.10*LS.settle;
-    const side=V3(Math.cos(LS.lookYaw),0,-Math.sin(LS.lookYaw));
-    P.pos.x=LS.spot.x+side.x*sway+Math.sin(LS.lookYaw)*drift;
-    P.pos.z=LS.spot.z+side.z*sway+Math.cos(LS.lookYaw)*drift;
+    const cutDur=LS.cutDur||0;
+    const isCutting=cutDur>0.05&&LS.t<cutDur;
+    if(isCutting){
+      const cutP=clamp(LS.t/cutDur,0,1);
+      // 三次平滑曲线切入
+      const cutEase=cutP*cutP*(3-2*cutP);
+      const from=LS.cutFrom||LS.spot;
+      const dx=LS.spot.x-from.x,dz=LS.spot.z-from.z;
+      const dist=Math.hypot(dx,dz)||1;
+      // 沿外侧微弧线绕掩护切出，增加真实战术跑位曲线感
+      const perpX=-dz/dist,perpZ=dx/dist;
+      const outward=(perpX*LS.spot.x+perpZ*LS.spot.z)>0?1:-1;
+      const arch=Math.sin(cutP*Math.PI)*0.32*outward;
+      P.pos.x=from.x+dx*cutEase+perpX*arch;
+      P.pos.z=from.z+dz*cutEase+perpZ*arch;
+      P.walking=(cutP<0.95);
+    }else{
+      P.walking=false;
+      LS.settle=LS.pass?1-clamp(LS.pass.t/Math.max(1e-3,LS.pass.dur),0,1):1;
+      const sway=Math.sin(LS.footT*1.15)*0.12*LS.settle;
+      const drift=Math.sin(LS.footT*0.74+1.7)*0.06*LS.settle;
+      const side=V3(Math.cos(LS.lookYaw),0,-Math.sin(LS.lookYaw));
+      P.pos.x=LS.spot.x+side.x*sway+Math.sin(LS.lookYaw)*drift;
+      P.pos.z=LS.spot.z+side.z*sway+Math.cos(LS.lookYaw)*drift;
+    }
     // 第三人称模型必须朝着你实际在看的方向，否则两个视角是两个人
     P.face=LS.lookYaw;
+    if(player&&player.g){
+      player.g.position.set(P.pos.x,0,P.pos.z);
+      player.g.rotation.y=P.face;
+      player.g.quaternion.setFromEuler(player.g.rotation);
+      player.g.updateMatrixWorld(true);
+    }
+
+    // 张手要球靶心手势与接球呼叫（Target Hands & Ball Calling）
+    // 接球等待期间保持双手前伸张开做靶心，面向持球核心
+    const readyStart=cutDur>0.05?Math.max(0,cutDur-0.9):0;
+    const readyK=clamp((LS.t-readyStart)/0.7,0,1);
+    const passCatchActive=G.passCatch&&G.passCatch.active;
+    if(!inHand&&!LS.pass&&!passCatchActive&&readyK>0.02&&player&&player.arms&&player.elbows){
+      const guy=player;
+      if(guy.knees){
+        guy.knees[0].rotation.x=0.28*readyK;
+        guy.knees[1].rotation.x=0.28*readyK;
+      }
+      guy.g.position.y=-0.04*readyK;
+
+      const style=LS.callStyle||"both_target";
+      if(style==="both_clap"){
+        // 鼓掌拍手要球：掌心相对，节奏合掌
+        const clapCycle=Math.sin(LS.t*9.6);
+        const clapK=Math.max(0,clapCycle)*readyK;
+        const armInward=0.16+0.12*clapK;
+        guy.arms[0].rotation.set(-1.35+0.04*clapK,0,armInward*readyK);
+        guy.elbows[0].rotation.set(-0.68+0.08*clapK,0,0);
+        guy.arms[1].rotation.set(-1.35+0.04*clapK,0,-armInward*readyK);
+        guy.elbows[1].rotation.set(-0.68+0.08*clapK,0,0);
+        if(guy.handRoots){
+          guy.handRoots[0].rotation.set(-0.15*readyK,-Math.PI*0.5,(-0.10+0.06*clapK)*readyK);
+          guy.handRoots[1].rotation.set(-0.15*readyK,Math.PI*0.5,(0.10-0.06*clapK)*readyK);
+        }
+      }else if(style==="single_wave"){
+        // 单手高举挥动要球，另一手在前护持迎球
+        const waveCycle=Math.sin(LS.t*7.5)*readyK;
+        guy.arms[0].rotation.set(-1.82+0.15*waveCycle,0,-0.18*readyK);
+        guy.elbows[0].rotation.set(-0.52+0.08*waveCycle,0,0);
+        if(guy.handRoots){
+          guy.handRoots[0].rotation.set(0,-Math.PI*0.5,waveCycle*0.28*readyK);
+        }
+        guy.arms[1].rotation.set(-1.32,0,-0.20*readyK);
+        guy.elbows[1].rotation.set(-0.68,0,0);
+        if(guy.handRoots){
+          guy.handRoots[1].rotation.set(-0.20*readyK,Math.PI*0.5,0.10*readyK);
+        }
+      }else{
+        // 默认双手张开靶心（both_target）：掌心相对，虎口朝上迎球
+        const pulse=Math.sin(LS.t*5.2)*0.035*readyK;
+        const armX=-1.35+pulse;
+        const elbX=-0.65-pulse*0.5;
+        guy.arms[0].rotation.set(armX,0,0.18*readyK);
+        guy.elbows[0].rotation.set(elbX,0,0);
+        guy.arms[1].rotation.set(armX,0,-0.18*readyK);
+        guy.elbows[1].rotation.set(elbX,0,0);
+        if(guy.handRoots){
+          guy.handRoots[0].rotation.set(-0.20*readyK,-Math.PI*0.5,-0.10*readyK);
+          guy.handRoots[1].rotation.set(-0.20*readyK,Math.PI*0.5,0.10*readyK);
+        }
+      }
+      if(guy.fingerJoints){
+        guy.fingerJoints.forEach((fingers,handIdx)=>{
+          fingers.forEach((f,idx)=>{
+            f.rotation.x=0.15*readyK;
+            f.rotation.z=(handIdx===0?1:-1)*(idx-1.5)*0.12*readyK;
+          });
+        });
+      }
+      if(squadApi.guardArms)squadApi.guardArms(guy);
+      if(global.AIBAShotMotion&&global.AIBAShotMotion.syncFp)global.AIBAShotMotion.syncFp();
+    }
   }
   function updateLastShotCam(dt){
     if(LS.on&&LS.celeb&&updateCelebrateCam())return true;
@@ -716,14 +921,25 @@
       const e=k*k*(3-2*k);
       target.lerp(V3(HOOP.x,HOOP.y+0.15,HOOP.z),e);
     }
-    // 双脚交替落地的上下起伏，频率是碎步的两倍
-    const bob=Math.sin((LS.footT||0)*2.30)*0.015*(LS.settle==null?1:LS.settle);
+    // 跑位时高步频起伏，站定后呼吸起伏
+    const bob=P.walking?Math.sin(LS.t*11.0)*0.032:Math.sin((LS.footT||0)*2.30)*0.015*(LS.settle==null?1:LS.settle);
     const eye=V3(P.pos.x,1.78+P.eyeDip+bob,P.pos.z);
     const dir=V3(Math.sin(LS.lookYaw),0,Math.cos(LS.lookYaw));
-    /* 抬升量与共用第一人称保持一致(camera.js FP_RISE)。原本写死 +0.28 会让观看阶段的
-       相机站到 2.06m——比防守人头顶还高，接球时双手被压出画面下缘。 */
     rig.pos.set(eye.x-dir.x*0.85,eye.y+(typeof FP_RISE==="number"?FP_RISE:0.05),eye.z-dir.z*0.85);
     rig.look.copy(target);
+
+    if(LS.phase==="intro"){
+      const cz=typeof COURT!=="undefined"&&COURT.midZ!=null?COURT.midZ:4.745;
+      const boardCam=V3(0,11.6,cz-7.6);
+      const boardLook=V3(0,12.6,cz);
+      const k=clamp(LS.introT/Math.max(1e-3,LS.introDur),0,1);
+      // 前 0.4 秒定格特写转播大屏，后 1.4 秒平滑俯冲落到第一人称视角
+      const p=clamp((k-0.22)/(1-0.22),0,1);
+      const ease=p*p*(3-2*p);
+      rig.pos.lerpVectors(boardCam,rig.pos.clone(),ease);
+      rig.look.lerpVectors(boardLook,target,ease);
+      if(typeof hands!=="undefined"&&hands)hands.visible=(ease>0.85);
+    }
     return true;
   }
 
@@ -740,7 +956,7 @@
   function possessionPoints(){
     const foul=LS.foul;
     if(foul)return (foul.andOne?SHOT_PTS:0)+(foul.made||0);
-    const made=G.shots.length?!!G.shots[G.shots.length-1].made:(G.score>0);
+    const made=LS.shotMade||(G.shots.length?!!G.shots[G.shots.length-1].made:(G.score>0));
     return made?SHOT_PTS:0;
   }
   function shotSucceeded(){return possessionPoints()>=pointsToWin();}
@@ -748,11 +964,14 @@
   function isOvertime(){const p=possessionPoints();return p>0&&p===pointsToWin()-1;}
   function finish(made,reason){
     if(LS.resolved)return;
-    leaveArenaAudio();
     setCelebrateView(false);
     hideLastShotHud();
     LS.resolved=true;LS.on=false;LS.phase="done";
     G.running=false;G.canShoot=false;G.passCatch=null;
+    // 比赛结束延后淡出球馆音频，保证出比分与卡片期间欢呼与环境音平滑连贯
+    setTimeout(()=>{
+      if(G.state!=="lastshot"&&!LS.on)leaveArenaAudio();
+    },4800);
     /* 结算收口音。延后一拍是因为出手瞬间的 lastshot_make/miss 还在响,
        两条叠在一起就成了互相盖住的噪音。刚好追平走加时那一档。 */
     if(typeof playAudioEvent==="function"){

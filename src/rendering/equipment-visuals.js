@@ -32,9 +32,9 @@
     }
     position.needsUpdate=true;geometry.computeVertexNormals();return geometry;
   }
-  function roundedBox(parent,w,h,d,r,x,y,z,mat){
+  function roundedBox(parent,w,h,d,r,x,y,z,mat,rx,ry,rz){
     const mesh=new THREE.Mesh(roundedBoxGeometry(w,h,d,r,3),mat);
-    mesh.position.set(x,y,z);parent.add(mesh);return mesh;
+    mesh.position.set(x,y,z);mesh.rotation.set(rx||0,ry||0,rz||0);parent.add(mesh);return mesh;
   }
   function ellipsoid(parent,rx,ry,rz,x,y,z,mat){
     const mesh=new THREE.Mesh(new THREE.SphereGeometry(1,10,6),mat);
@@ -69,6 +69,9 @@
   }
   function clearKey(guy,key){
     if(!guy)return;
+    if(key==="gearHeadGroup"||key==="customHeadGroup"){
+      setBeardVisible(guy,true);
+    }
     const hiddenKey=key+"HiddenKit";
     if(guy[hiddenKey]){
       guy[hiddenKey].forEach(mesh=>{mesh.visible=true;});
@@ -86,17 +89,75 @@
 
   function setHairVisible(guy,visible){if(guy)for(const group of new Set([guy.hairBase,guy.hairGrp,guy.hairTail]))if(group)group.visible=visible;}
   function setCustomHeadVisible(guy,visible){if(guy&&guy.customHeadGroup)guy.customHeadGroup.visible=visible;}
+  function setBeardVisible(guy,visible){
+    if(!guy||!guy.beardGrp)return;
+    if(visible===false){
+      if(guy.beardGrp.visible){
+        guy._beardHiddenByGear=true;
+        guy.beardGrp.visible=false;
+      }
+    }else{
+      if(guy._beardHiddenByGear){
+        guy.beardGrp.visible=true;
+        guy._beardHiddenByGear=false;
+      }
+    }
+  }
 
+  /* 全脸面具:无缝覆盖整个脸部(额头、眉骨、眼周、鼻梁、脸颊、口唇、下巴及下颚底)
+     彻底告别原来仅遮住眼鼻的半脸/眼罩感,打造全包围战术篮球全脸面罩。
+     main 是高光装饰色(accent,如青色冷光线条),dark 是暗黑碳纤维面罩本体材质。 */
   function buildMask(group,main,dark){
-    box(group,.28,.035,.032,0,1.69,.196,dark);
-    box(group,.036,.105,.036,0,1.635,.207,dark);
-    box(group,.108,.045,.034,-.088,1.60,.201,dark,0,0,-.17);
-    box(group,.108,.045,.034,.088,1.60,.201,dark,0,0,.17);
-    box(group,.20,.028,.032,0,1.565,.194,dark);
-    box(group,.072,.024,.038,-.073,1.684,.216,main);
-    box(group,.072,.024,.038,.073,1.684,.216,main);
-    box(group,.028,.055,.285,-.181,1.64,.015,dark);
-    box(group,.028,.055,.285,.181,1.64,.015,dark);
+    // 1. 全脸连续无缝主装甲底壳(Forehead to Chin Baseplates - 100%覆盖脸部皮肤，零露肉缝隙)
+    // 额头至眉骨基板
+    roundedBox(group,.346,.095,.046,.010,0,1.738,.190,dark);
+    // 额头中央装甲加强脊与冷光标
+    box(group,.048,.082,.052,0,1.740,.200,dark);
+    box(group,.120,.012,.054,0,1.755,.204,main);
+
+    // 2. 眉骨与战术眼眶护甲
+    box(group,.330,.028,.048,0,1.692,.210,dark); // 眉弓突出护檐
+    // 战术眼眶包边与锐角棱边(留出深凹眼窝，内部封闭)
+    box(group,.094,.016,.044,-.080,1.672,.218,main,0,0,.06); // 左上眼眶
+    box(group,.094,.016,.044,.080,1.672,.218,main,0,0,-.06);  // 右上眼眶
+    box(group,.094,.016,.044,-.080,1.622,.218,dark,0,0,-.04); // 左下眼眶
+    box(group,.094,.016,.044,.080,1.622,.218,dark,0,0,.04);  // 右下眼眶
+    // 深邃哑光护目镜视窗(遮挡内部眼球皮肤)
+    const visorMat=material(0x0e1014);
+    roundedBox(group,.088,.036,.018,.004,-.080,1.647,.216,visorMat);
+    roundedBox(group,.088,.036,.018,.004,.080,1.647,.216,visorMat);
+
+    // 3. 立体隆起全包裹鼻梁装甲:彻底包覆鼻梁与鼻头
+    roundedBox(group,.046,.108,.060,.008,0,1.628,.228,dark);   // 鼻梁正中立体脊
+    box(group,.046,.095,.048,-.038,1.628,.216,dark,0,.20,0);  // 左鼻翼侧面
+    box(group,.046,.095,.048,.038,1.628,.216,dark,0,-.20,0);   // 右鼻翼侧面
+
+    // 4. 全包裹脸颊与下颌装甲基板:严密覆盖两侧脸颊并向下收拢
+    roundedBox(group,.340,.092,.050,.010,0,1.605,.198,dark);   // 中面部基底整板
+    roundedBox(group,.096,.088,.044,.010,-.118,1.572,.212,dark,0,.14,-.06); // 左颊棱角护板
+    roundedBox(group,.096,.088,.044,.010,.118,1.572,.212,dark,0,-.14,.06);  // 右颊棱角护板
+    roundedBox(group,.092,.080,.046,.010,-.128,1.498,.208,dark,0,.16,-.10); // 左下颌护板
+    roundedBox(group,.092,.080,.046,.010,.128,1.498,.208,dark,0,-.16,.10);  // 右下颌护板
+
+    // 5. 口部全封闭装甲与战术排气格栅:彻底封闭遮挡嘴唇与人中
+    roundedBox(group,.318,.110,.054,.012,0,1.510,.210,dark);   // 下半脸密封基板
+    roundedBox(group,.184,.068,.052,.010,0,1.545,.232,dark);   // 口部主护盾
+    box(group,.014,.056,.056,0,1.545,.242,main);               // 中央纵向透气装饰线
+    box(group,.116,.008,.054,0,1.560,.240,dark);               // 上横向透气格栅
+    box(group,.102,.008,.054,0,1.530,.240,dark);               // 下横向透气格栅
+
+    // 6. 下巴全包裹护托与下颚底部兜底:遮挡整张脸的最底端与下巴下缘
+    roundedBox(group,.170,.058,.056,.012,0,1.468,.228,dark);   // 下巴主护罩
+    box(group,.076,.016,.058,0,1.472,.238,main);               // 下巴折角高光
+    roundedBox(group,.260,.042,.096,.010,0,1.432,.168,dark,-.20,0,0); // 下颚底部全兜底(从下方完全封死下巴)
+
+    // 7. 头部侧面包裹与双层束紧固定带(防止侧面露肉)
+    box(group,.036,.310,.130,-.172,1.605,.125,dark);           // 左侧脸颊侧板
+    box(group,.036,.310,.130,.172,1.605,.125,dark);            // 右侧脸颊侧板
+    box(group,.028,.036,.260,-.180,1.662,.045,dark);           // 上侧固定带(左)
+    box(group,.028,.036,.260,.180,1.662,.045,dark);            // 上侧固定带(右)
+    box(group,.026,.032,.230,-.178,1.512,.065,dark,.05,0,-.06);// 下颌固定带(左)
+    box(group,.026,.032,.230,.178,1.512,.065,dark,.05,0,.06); // 下颌固定带(右)
   }
   /* 帽冠要贴着头,不能比脑袋宽。头是 0.34 方块(半宽 .17),
      原来帽冠半径 .205~.22 明显宽出一圈,侧面看能看到帽檐底下透空,
@@ -117,21 +178,56 @@
       for(const side of [-1,1])box(group,.015,.014,.023,side*.155,1.815,.096,dark);
     }
   }
-  /* 镜片要用装备自己的颜色。原来这里收到的 main 是 accent(默认青色),
-     于是"太阳镜"(配置色 #111111)渲染成一副发光的青色镜片 ——
-     和黑面具的青色眼缝几乎一模一样,两件装备在试衣镜里分不出来。
-     现在镜片走本色、压低透明度和自发光,只留一点点反光感。 */
+  /* 潮流立体粗框墨镜:
+     彻底告别旧版"两片扁平浅灰贴纸贴在脸上"的廉价感。
+     采用深黑粗框板材(粗顶梁、立体下眼眶、宽外翼、双中梁结构)、
+     纯黑高光偏光镜片(完全遮挡面部眼块，晶莹深黑光泽)、
+     金属铰链与延伸至耳后的完整3D立体镜腿与耳挂。 */
   function buildShades(group,main,dark){
-    const hex=main.color?main.color.getHex():0x111111;
-    const lens=material(hex,{transparent:true,opacity:.82,depthWrite:false,emissive:hex,emissiveIntensity:.03});
-    box(group,.112,.062,.018,-.072,1.65,.206,lens);
-    box(group,.112,.062,.018,.072,1.65,.206,lens);
-    box(group,.034,.018,.025,0,1.654,.216,dark);
-    box(group,.26,.018,.024,0,1.686,.213,dark);
-    box(group,.022,.025,.30,-.174,1.66,.058,dark,0,-.035,0);
-    box(group,.022,.025,.30,.174,1.66,.058,dark,0,.035,0);
-    box(group,.034,.038,.032,-.174,1.665,.194,main);
-    box(group,.034,.038,.032,.174,1.665,.194,main);
+    // 粗黑板材镜框材质(质感石墨深灰黑)
+    const frameMat=material(0x181a20);
+    // 深邃纯黑偏光镜片(纯黑哑光/深曜石质感，绝不反白光爆光)
+    const lensMat=material(0x050608);
+    // 镜框金属铰链铆钉(银白金属质感)
+    const pinMat=new THREE.MeshLambertMaterial({color:0xdfe3e8});
+
+    // 1. 粗实立体顶梁 (Top Brow Bar - 突出面部悬空立体感)
+    roundedBox(group,.326,.026,.044,.006,0,1.676,.230,frameMat);
+    // 顶梁立体倒角护檐
+    box(group,.310,.010,.042,0,1.686,.226,frameMat,-.10,0,0);
+    // 标志性立体双梁结构(Double Bridge)
+    box(group,.050,.010,.040,0,1.684,.232,frameMat);
+    roundedBox(group,.038,.026,.038,.006,0,1.650,.232,frameMat);
+
+    // 2. 鼻托内衬(稳固贴合鼻部)
+    box(group,.014,.026,.026,-.026,1.632,.218,frameMat,0,0,-.18);
+    box(group,.014,.026,.026,.026,1.632,.218,frameMat,0,0,.18);
+
+    // 3. 完整的立体下眼眶粗框 (Bottom Rims - 粗框质感，彻底消除纸片感)
+    roundedBox(group,.116,.018,.038,.005,-.080,1.612,.228,frameMat,0,0,.03);
+    roundedBox(group,.116,.018,.038,.005,.080,1.612,.228,frameMat,0,0,-.03);
+
+    // 4. 外展侧翼边框与外眼角铰链台 (Outer Rims & Hinges)
+    roundedBox(group,.028,.060,.040,.006,-.142,1.644,.228,frameMat,0,-.08,-.03);
+    roundedBox(group,.028,.060,.040,.006,.142,1.644,.228,frameMat,0,.08,.03);
+    box(group,.016,.050,.036,-.024,1.646,.228,frameMat);
+    box(group,.016,.050,.036,.024,1.646,.228,frameMat);
+
+    // 5. 镜框外角金属铆钉 (Silver Rivet Pins)
+    box(group,.010,.008,.016,-.148,1.670,.238,pinMat);
+    box(group,.010,.008,.016,.148,1.670,.238,pinMat);
+
+    // 6. 纯黑高光偏光镜片 (Deep Glossy Polarized Lenses - 嵌在粗框内)
+    roundedBox(group,.100,.048,.020,.005,-.080,1.645,.227,lensMat,0,-.03,0);
+    roundedBox(group,.100,.048,.020,.005,.080,1.645,.227,lensMat,0,.03,0);
+
+    // 7. 延伸到耳后的完整立体镜腿与耳挂 (Temples & Ear Hooks)
+    box(group,.026,.024,.048,-.160,1.666,.208,frameMat,0,-.06,0);
+    box(group,.026,.024,.048,.160,1.666,.208,frameMat,0,.06,0);
+    box(group,.020,.022,.250,-.178,1.664,.072,frameMat);
+    box(group,.020,.022,.250,.178,1.664,.072,frameMat);
+    box(group,.018,.038,.058,-.178,1.636,-.056,frameMat,-.25,0,0);
+    box(group,.018,.038,.058,.178,1.636,-.056,frameMat,-.25,0,0);
   }
   /* 帽子和帽衫身要分开挂:
        帽壳 -> headRoot,跟着头转(原来整组挂在 guy.g,转头时脸转了帽子不动);
@@ -242,7 +338,7 @@
     const key=opts.key||"gearHeadGroup";
     clearKey(guy,key);
     if(key==="gearHeadGroup"){
-      setCustomHeadVisible(guy,true);setHairVisible(guy,true);
+      setCustomHeadVisible(guy,true);setHairVisible(guy,true);setBeardVisible(guy,true);
       if(guy.customTopHeadGroup)guy.customTopHeadGroup.visible=true;
       if(guy.headband)guy.headband.visible=false;
     }
@@ -256,7 +352,7 @@
     if(key==="gearHeadGroup")setCustomHeadVisible(guy,false);
     const group=new THREE.Group();group.name=key;
     const main=material(color),dark=material(shade(color,.20)),seam=material(shade(color,.64)),trim=material(accent,{emissive:accent,emissiveIntensity:.08});
-    if(id==="head-mask"||id==="mask")buildMask(group,trim,dark);
+    if(id==="head-mask"||id==="mask"){setBeardVisible(guy,false);buildMask(group,main,dark);}
     else if(id==="head-cap"||id==="cap"){setHairVisible(guy,false);buildCap(group,main,dark);}
     else if(id==="head-shades"||id==="shades")buildShades(group,main,dark);
     else if(id==="head-hoodie"||id==="hoodie"){
@@ -409,6 +505,21 @@
       const group=new THREE.Group();guy.elbows[0].add(group);groups.push(group);
       box(group,.142,.018,.158,0,-.242,0,accent);
       box(group,.142,.014,.158,0,-.294,0,dark);
+    }else if(id==="sleeve-wrist-terry"){
+      // 加厚毛圈吸汗护腕 (Plush Terrycloth Sweatband)
+      (guy.wrists||[]).forEach((w,idx)=>{
+        if(w){w.visible=true;w.material.color.setHex(color);}
+        const group=new THREE.Group();guy.elbows[idx].add(group);groups.push(group);
+        roundedBox(group,.148,.076,.164,.022,0,-.27,0,main);
+        box(group,.150,.012,.166,0,-.27,0,accent); // 中间运动条纹
+      });
+    }else if(id==="sleeve-wrist-bands"){
+      // 潮流双圈硅胶能量手环 (Dual Silicone Energy Bands)
+      (guy.wrists||[]).forEach((w,idx)=>{
+        const group=new THREE.Group();guy.elbows[idx].add(group);groups.push(group);
+        box(group,.145,.015,.160,0,-.254,0,main);
+        box(group,.145,.015,.160,0,-.286,0,accent);
+      });
     }else{
       if(sleeve){sleeve.visible=true;sleeve.material.color.setHex(color);}
       const upper=new THREE.Group();guy.arms[0].add(upper);groups.push(upper);
@@ -420,7 +531,12 @@
       ellipsoid(fore,.081,.052,.088,0,-.018,0,main);
       roundedBox(fore,.148,.245,.166,.025,0,-.14,0,main);
       roundedBox(fore,.153,.048,.172,.012,0,-.272,0,id==="sleeve-steady"?dark:accent);
-      if(id==="sleeve-ice"){
+      if(id==="sleeve-hex"){
+        // 肘部六边形蜂窝防撞垫 (Hexagonal Elbow Shock Pad)
+        const elbow=new THREE.Group();guy.elbows[0].add(elbow);groups.push(elbow);
+        roundedBox(elbow,.082,.082,.026,.008,0,-.018,.086,dark);
+        box(elbow,.064,.064,.028,0,-.018,.088,accent);
+      }else if(id==="sleeve-ice"){
         const elbow=new THREE.Group();guy.elbows[0].add(elbow);groups.push(elbow);
         ellipsoid(elbow,.076,.045,.085,0,-.012,.025,dark);
       }else if(id==="sleeve-saver"){
@@ -432,5 +548,91 @@
     guy.gearSleeveGroups=groups;return true;
   }
 
-  global.AIBAEquipmentVisuals=Object.freeze({enabled,applyHead,applyShoes,applySleeve,clearKey});
+  /* ---------------- 护膝与加压腿套系统 ---------------- */
+  function applyKnee(guy,item){
+    if(!enabled||!guy)return false;
+    clearKey(guy,"gearKneeGroups");
+    if(!item)return true;
+    const id=item.id,color=colorOf(item.color),groups=[];
+    const dark=material(shade(color,.22)),accent=material(shade(color,1.25),{emissive:color,emissiveIntensity:.06}),main=material(color);
+    const knees=guy.knees||[];
+    const targetIndices=id.includes("single")?[1]:[0,1];
+    targetIndices.forEach(idx=>{
+      const kn=knees[idx];if(!kn)return;
+      const group=new THREE.Group();kn.add(group);groups.push(group);
+      if(id.includes("hex")){
+        // 经典蜂窝防撞护膝 (Hexagonal Honeycomb Knee Pad)
+        // 髌骨弹性基底套
+        roundedBox(group,.156,.138,.168,.022,0,-.016,0,main);
+        // 立体凸起的六边形防撞蜂窝护甲块 (Hex Honeycomb Cushion)
+        roundedBox(group,.088,.096,.026,.008,0,-.016,.092,dark);
+        box(group,.072,.076,.028,0,-.016,.094,accent);
+        // 上下双圈防滑加压螺纹
+        box(group,.158,.016,.170,0,.050,0,accent);
+        box(group,.156,.016,.168,0,-.082,0,dark);
+      }else if(id.includes("sleeve")){
+        // 全腿加压长款护膝/腿套 (Full Leg Compression Sleeve)
+        roundedBox(group,.155,.290,.168,.022,0,-.098,0,main);
+        box(group,.158,.018,.171,0,.045,0,dark); // 顶端防滑硅胶带
+        box(group,.153,.018,.166,0,-.240,0,accent); // 下端收口弹力带
+        box(group,.014,.180,.170,idx===0?-.078:.078,-.098,0,accent); // 侧边速度线条
+      }else{
+        // 战术加压髌骨带 (Dual Patellar Tendon Straps)
+        roundedBox(group,.158,.026,.172,.006,0,-.072,.004,main);
+        box(group,.028,.018,.016,0,-.072,.095,accent); // 加压金属卡扣
+      }
+    });
+    disposeUnusedMaterials(groups,[dark,accent,main]);
+    guy.gearKneeGroups=groups;return true;
+  }
+
+  /* ---------------- 压缩衣与紧身内搭系统 (Compression Undershirts) ---------------- */
+  function applyCompression(guy,item){
+    if(!enabled||!guy)return false;
+    clearKey(guy,"gearCompressionGroups");
+    if(!item)return true;
+    const id=item.id,color=colorOf(item.color),groups=[];
+    const dark=material(shade(color,.25)),seam=material(shade(color,1.20),{emissive:color,emissiveIntensity:.05}),main=material(color);
+
+    // 1. 躯干与领口紧身层 (Neckline & Torso Baselayer)
+    const torso=new THREE.Group();guy.g.add(torso);groups.push(torso);
+    // 领口高弹压缩圈 (在球衣深V/圆领内侧自然露出高领)
+    roundedBox(torso,.232,.082,.216,.016,0,1.345,0,main);
+    box(torso,.234,.012,.218,0,1.385,0,seam); // 领口加固包边
+    // 侧翼与两肋人体工学压胶拼缝 (Flank compression panels)
+    box(torso,.012,.24,.222,-.215,1.15,0,seam);
+    box(torso,.012,.24,.222,.215,1.15,0,seam);
+
+    if(id.includes("hex")){
+      // 蜂窝防撞胸骨与两肋缓冲甲 (Hex Armor rib & sternum padding)
+      box(torso,.075,.14,.022,0,1.24,.124,dark);
+      for(const side of [-1,1]){
+        box(torso,.022,.12,.095,side*.19,1.16,.02,dark);
+        box(torso,.024,.09,.075,side*.192,1.16,.02,seam);
+      }
+    }
+
+    // 2. 袖部紧身层 (Sleeves)
+    if(!id.includes("tank")){
+      // 短袖 / 长袖压缩套 (从肩头紧紧包覆至大臂)
+      (guy.arms||[]).forEach(arm=>{
+        const slv=new THREE.Group();arm.add(slv);groups.push(slv);
+        roundedBox(slv,.146,.180,.166,.020,0,-.115,0,main);
+        box(slv,.148,.016,.168,0,-.205,0,seam); // 袖口弹力收口带
+      });
+      if(id.includes("long")){
+        // 长袖压缩衣：延伸覆盖整个前臂
+        (guy.elbows||[]).forEach(elb=>{
+          const slv=new THREE.Group();elb.add(slv);groups.push(slv);
+          roundedBox(slv,.134,.225,.154,.020,0,-.135,0,main);
+          box(slv,.136,.016,.156,0,-.246,0,seam);
+        });
+      }
+    }
+
+    disposeUnusedMaterials(groups,[dark,seam,main]);
+    guy.gearCompressionGroups=groups;return true;
+  }
+
+  global.AIBAEquipmentVisuals=Object.freeze({enabled,applyHead,applyShoes,applySleeve,applyKnee,applyCompression,clearKey});
 })(window);

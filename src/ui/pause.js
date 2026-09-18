@@ -6,7 +6,7 @@
   const {$,G,PAUSE,BATTLE_TARGET,scene,balls,handBall,pBall,passerBall,rep,endHero,leaveArenaAudio,applyCamMode}=ctx;
 
   function pauseableState(){
-    return G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="replay";
+    return G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="replay"||G.state==="lastshot";
   }
   function updatePauseButton(){
     const button=$("pauseBtn");if(!button)return;

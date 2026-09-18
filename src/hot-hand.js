@@ -8,7 +8,7 @@
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   const levelFor=s=>s>=8?3:(s>=5?2:(s>=3?1:0));
   const heatFor=l=>l===3?1:(l===2?.68:(l===1?.34:0));
-  const playing=()=>typeof G!=="undefined"&&(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush");
+  const playing=()=>typeof G!=="undefined"&&(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot");
 
   let hud=null,proj=null,lastT=0;
   function ensureHud(){

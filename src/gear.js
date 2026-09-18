@@ -9,7 +9,9 @@
      stamina 抬精力上限，cost 降蓄力+出手的精力消耗，recovery 加快恢复 */
   const SLOTS=[
     {id:"shoes",name:"球鞋",en:"SHOES"},
-    {id:"sleeve",name:"护腕护肘",en:"SLEEVE"},
+    {id:"sleeve",name:"护臂护腕",en:"SLEEVE"},
+    {id:"knee",name:"护膝腿套",en:"KNEE"},
+    {id:"compression",name:"压缩内搭",en:"COMPRESSION"},
     {id:"band",name:"头部装扮",en:"HEAD"}
   ];
   const CATALOG={
@@ -20,10 +22,25 @@
       {id:"shoes-spring",name:"回弹紫",color:"#b07ff2",stat:"recovery",amt:.35,desc:"精力恢复 +35%"}
     ],
     sleeve:[
-      {id:"sleeve-steady",name:"稳定白",color:"#f2f5fa",stat:"aim",amt:.1,desc:"准星甜区 +10%"},
-      {id:"sleeve-ice",name:"冷血黑",color:"#252a36",stat:"clutch",amt:.25,desc:"关键时刻准星 +25%"},
-      {id:"sleeve-snap",name:"快弹红",color:"#e03a3e",stat:"speed",amt:.08,desc:"投射蓄力 +8%"},
-      {id:"sleeve-saver",name:"节能蓝",color:"#4aa3ff",stat:"cost",amt:.2,desc:"精力消耗 -20%"}
+      {id:"sleeve-steady",name:"稳定白护臂",color:"#f2f5fa",stat:"aim",amt:.1,desc:"准星甜区 +10%"},
+      {id:"sleeve-ice",name:"冷血黑护臂",color:"#252a36",stat:"clutch",amt:.25,desc:"关键时刻准星 +25%"},
+      {id:"sleeve-snap",name:"快弹红护臂",color:"#e03a3e",stat:"speed",amt:.08,desc:"投射蓄力 +8%"},
+      {id:"sleeve-hex",name:"蜂窝防撞肘",color:"#1e222a",stat:"stamina",amt:.18,desc:"精力上限 +18% / 肘部防护"},
+      {id:"sleeve-wrist-terry",name:"毛圈吸汗腕",color:"#f2f5fa",stat:"recovery",amt:.25,desc:"精力恢复 +25% / 加厚手感"},
+      {id:"sleeve-wrist-bands",name:"硅胶双手环",color:"#7ee7ff",stat:"speed",amt:.1,desc:"投射蓄力 +10% / 潮流手环"},
+      {id:"sleeve-saver",name:"节能蓝护臂",color:"#4aa3ff",stat:"cost",amt:.2,desc:"精力消耗 -20%"}
+    ],
+    knee:[
+      {id:"knee-hex-black",name:"黑蜂窝双膝",color:"#1f242d",stat:"stamina",amt:.2,desc:"精力上限 +20% / 对抗减震"},
+      {id:"knee-sleeve-white",name:"加压长腿套",color:"#f2f5fa",stat:"aim",amt:.12,desc:"准星甜区 +12% / 腿部支撑"},
+      {id:"knee-strap-pro",name:"战术髌骨带",color:"#2a313d",stat:"recovery",amt:.25,desc:"精力恢复 +25% / 减轻负荷"},
+      {id:"knee-single-black",name:"单侧神射膝",color:"#1f242d",stat:"clutch",amt:.22,desc:"关键时刻准星 +22%"}
+    ],
+    compression:[
+      {id:"comp-hex-black",name:"黑蜂窝短袖",color:"#181a22",stat:"cost",amt:.25,desc:"精力消耗 -25% / 核心防护"},
+      {id:"comp-pro-white",name:"白风暴短袖",color:"#f3f6fa",stat:"speed",amt:.1,desc:"投射蓄力 +10% / 高弹排汗"},
+      {id:"comp-tank-dark",name:"无袖黑武士",color:"#181a22",stat:"clutch",amt:.2,desc:"关键时刻准星 +20% / 极致贴合"},
+      {id:"comp-long-volt",name:"电光黑长袖",color:"#181a22",stat:"aim",amt:.1,desc:"准星甜区 +10% / 全臂锁温"}
     ],
     band:[
       {id:"band-gold",name:"冷静金",color:"#ffd23f",stat:"clutch",amt:.2,desc:"关键时刻准星 +20%"},
@@ -44,7 +61,7 @@
      快节奏约 10-12 连投见底，力竭后回到 28% 解锁 */
   const STA_BASE=100,CHARGE_DRAIN=5.5,SHOT_COST=6.5,REGEN=14,REGEN_DELAY=.9,WAKE_RATIO=.28,TIRED_RATIO=.25;
 
-  let load={shoes:"",sleeve:"",band:"",active:""};
+  let load={shoes:"",sleeve:"",knee:"",compression:"",band:"",active:""};
   try{
     const raw=JSON.parse(localStorage.getItem(LS_KEY)||"{}");
     for(const s of SLOTS)if(typeof raw[s.id]==="string"&&CATALOG[s.id].some(i=>i.id===raw[s.id]))load[s.id]=raw[s.id];
@@ -253,7 +270,7 @@
   function sectionMarkup(star){
     if(star!==undefined)lastStar=star||null;
     return `<div id="lockerGear" class="lockerGear">
-      <div class="gearHead"><small>GEAR LAB</small><b>装备工坊</b><em>可穿 3 件 · 同时只有 1 件的加成生效，点「设为生效」切换</em></div>
+      <div class="gearHead"><small>GEAR LAB</small><b>装备工坊</b><em>自由穿搭组合 · 同时有 1 件的核心加成生效，点「设为生效」切换</em></div>
       ${SLOTS.map(slotMarkup).join("")}
       ${statsMarkup(lastStar)}
     </div>`;
@@ -325,13 +342,18 @@
     guy.headband.visible=false;
     const group=new THREE.Group(),main=new THREE.MeshLambertMaterial({color}),dark=new THREE.MeshLambertMaterial({color:0x050508});
     if(id==="head-mask"){
-      gearBox(group,.31,.17,.035,0,1.62,.195,dark);
+      gearBox(group,.32,.08,.04,0,1.73,.19,dark);
+      gearBox(group,.31,.24,.04,0,1.55,.20,dark);
+      gearBox(group,.17,.06,.05,0,1.47,.21,dark);
       gearBox(group,.075,.045,.045,-.07,1.645,.22,main);gearBox(group,.075,.045,.045,.07,1.645,.22,main);
     }else if(id==="head-cap"){
       if(guy.hairGrp)guy.hairGrp.visible=false;
       gearBox(group,.39,.09,.35,0,1.82,0,main);gearBox(group,.34,.045,.24,0,1.755,.2,main);gearBox(group,.24,.035,.24,0,1.74,.32,main);
     }else if(id==="head-shades"){
-      gearBox(group,.11,.06,.04,-.078,1.65,.21,dark);gearBox(group,.11,.06,.04,.078,1.65,.21,dark);gearBox(group,.065,.022,.04,0,1.65,.215,dark);
+      gearBox(group,.31,.022,.036,0,1.674,.22,dark);
+      gearBox(group,.11,.055,.035,-.078,1.64,.22,dark);gearBox(group,.11,.055,.035,.078,1.64,.22,dark);
+      gearBox(group,.05,.015,.035,0,1.65,.22,dark);
+      gearBox(group,.018,.018,.22,-.17,1.66,.08,dark);gearBox(group,.018,.018,.22,.17,1.66,.08,dark);
     }else if(id==="head-hoodie"){
       if(guy.hairGrp)guy.hairGrp.visible=false;
       gearBox(group,.46,.14,.43,0,1.84,-.02,main);gearBox(group,.1,.34,.4,-.22,1.63,-.03,main);gearBox(group,.1,.34,.4,.22,1.63,-.03,main);gearBox(group,.45,.35,.1,0,1.64,-.23,main);
@@ -343,10 +365,12 @@
   }
   function applyVisual(guy){
     if(!guy||!global.THREE||global.AIBA_SUPPRESS_GEAR_VISUAL)return;
-    const shoes=itemOf("shoes"),sleeve=itemOf("sleeve"),head=itemOf("band");
+    const shoes=itemOf("shoes"),sleeve=itemOf("sleeve"),knee=itemOf("knee"),compression=itemOf("compression"),head=itemOf("band");
     if(global.AIBAEquipmentVisuals&&global.AIBAEquipmentVisuals.enabled){
       global.AIBAEquipmentVisuals.applyShoes(guy,shoes);
       global.AIBAEquipmentVisuals.applySleeve(guy,sleeve);
+      if(global.AIBAEquipmentVisuals.applyKnee)global.AIBAEquipmentVisuals.applyKnee(guy,knee);
+      if(global.AIBAEquipmentVisuals.applyCompression)global.AIBAEquipmentVisuals.applyCompression(guy,compression);
       global.AIBAEquipmentVisuals.applyHead(guy,head,{key:"gearHeadGroup"});
       return;
     }
@@ -358,7 +382,7 @@
     }
     applyGearHead(guy,head);
   }
-  function appearanceKey(){return [load.shoes||"-",load.sleeve||"-",load.band||"-"].join("|");}
+  function appearanceKey(){return [load.shoes||"-",load.sleeve||"-",load.knee||"-",load.compression||"-",load.band||"-"].join("|");}
   function refreshGearPreview(part){
     const root=document.getElementById("lockerStage")||document.querySelector(".playerLocker");
     if(root&&global.AIBALockerPreview){
@@ -417,7 +441,7 @@
   global.AIBAGearEquip=equip;
   global.AIBAGearActivate=setActive;
   global.AIBAGear={
-    SLOTS,CATALOG,STAT_NAMES,
+    SLOTS,CATALOG,STAT_NAMES,equip,setActive,
     get:()=>({...load}),
     mods,activeItem,activeSummary,clutchActive,
     baseStats,sectionMarkup,onStarPreview,applyVisual,appearanceKey,refreshPreview:refreshGearPreview,

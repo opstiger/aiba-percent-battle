@@ -27,6 +27,7 @@
     liveDur:LIVE_DUR,passAt:PASS_AT,
     shotSpot:RACKS[3],                   // 右侧 45°,三分线外
     shotSpotName:"右侧 45°",
+    playerCut:{from:V3(3.6,0,-4.5),arriveT:3.2},
     star:{name:"队内核心",jersey:0xc8102e,shorts:0x8f0a1f},
     introText:[
       "总决赛第六场 · 你们客场落后 1 分",
@@ -86,6 +87,7 @@
     liveDur:4.2,passAt:4.2,
     shotSpot:RACKS[2],
     shotSpotName:"弧顶",
+    playerCut:{from:V3(-2.6,0,-2.6),arriveT:3.0},
     star:{name:"队内核心",jersey:0x1d428a,shorts:0x122f61},
     introText:[
       "系列赛 3-3 · 抢七第四节最后 6 秒",
@@ -131,6 +133,7 @@
     liveDur:3.6,passAt:3.6,
     shotSpot:RACKS[0],
     shotSpotName:"左底角",
+    playerCut:{from:V3(-4.8,0,-4.8),arriveT:2.6},
     star:{name:"队内核心",jersey:0x007a33,shorts:0x00521f},
     introText:[
       "客场 · 第四节最后 5 秒 · 分差为零",

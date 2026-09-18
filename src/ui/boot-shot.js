@@ -486,7 +486,18 @@ function skip(event){
   finish("skip");
 }
 
-global.AIBABootShot=Object.freeze({shouldRun,start,skip,resetFirstRun,
+function abort(){
+  if(!S.on)return;
+  if(S.raf){cancelAnimationFrame(S.raf);S.raf=0;}
+  if(S.fovRaf){cancelAnimationFrame(S.fovRaf);S.fovRaf=0;}
+  if(S.cineRaf){cancelAnimationFrame(S.cineRaf);S.cineRaf=0;}
+  removeEventListener("pointerdown",onPress,{capture:true});
+  removeEventListener("keydown",onPress,{capture:true});
+  cleanup();
+  markSeen();
+}
+
+global.AIBABootShot=Object.freeze({shouldRun,start,skip,abort,resetFirstRun,
   /* t = 运镜真实经过秒数。取景检查台(scripts/boot-shot.frames.mjs)靠它对齐时间轴 ——
      外面用 Date.now() 自己计时会把"页面加载完"当成起点,实测偏了 2.4 秒。 */
   state:()=>({on:S.on,phase:S.phase,t:S.cineT})});

@@ -47,6 +47,7 @@
     el.id="obWelcome";
     el.innerHTML=
       '<div class="obCard">'+
+      '<button class="obClose" id="obCloseBtn" aria-label="关闭">×</button>'+
       '<small>WELCOME TO</small><h1>aiBA · 百分大战</h1>'+
       '<div class="obSteps">'+
       '<span><b>1</b><i data-aiba-icon="hand-pointer" data-aiba-label=""></i>按住屏幕蓄力</span>'+
@@ -58,8 +59,11 @@
       '<button class="obLink" id="obGoHelp">查看完整玩法说明 ›</button>'+
       "</div>";
     document.body.appendChild(el);
+    const closeIt=()=>{mark("welcome");el.remove();};
+    document.getElementById("obCloseBtn").onclick=closeIt;
+    el.onclick=(e)=>{if(e.target===el)closeIt();};
     document.getElementById("obGoPractice").onclick=()=>{
-      mark("welcome");el.remove();
+      closeIt();
       try{
         global.ensureAudio&&ensureAudio(true,true);
         if(global.AIBAInteractiveTutorial)global.AIBAInteractiveTutorial.start();
@@ -68,8 +72,8 @@
         }
       }catch(e){}
     };
-    document.getElementById("obGoFree").onclick=()=>{mark("welcome");el.remove();};
-    document.getElementById("obGoHelp").onclick=()=>{mark("welcome");el.remove();showHelp();};
+    document.getElementById("obGoFree").onclick=closeIt;
+    document.getElementById("obGoHelp").onclick=()=>{closeIt();showHelp();};
   }
 
   /* ---------- 帮助页 ---------- */

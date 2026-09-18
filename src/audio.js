@@ -427,6 +427,7 @@ try{
 function extInit(){
   if(Object.keys(extA).length)return;
   for(const k in EXT_AUDIO){
+    if(k==="voiceBase")continue;
     const u=EXT_AUDIO[k];if(!u)continue;
     try{
       /* 先配好 preload/loop 再赋 src:构造函数传 URL 会立刻开始下载。
@@ -1227,7 +1228,7 @@ function speechTextEn(txt){
   if(/[一-龥]/.test(s))return "The crowd is getting loud.";
   return s;
 }
-function speechLiveGame(){return G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush";}
+function speechLiveGame(){return G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot";}
 function speechInputCritical(){return speechLiveGame()&&(G.canShoot||G.charging||G.moving||VISION.machine.phase==="hold"||VISION.machine.phase==="charging");}
 function scheduleSpeechFlush(delay){
   clearTimeout(SPK.timer);SPK.timer=setTimeout(flushSpeechQueue,delay==null?120:delay);
@@ -1286,23 +1287,21 @@ function toggleMute(){
   const arenaLike=sceneAudioArenaLike();
   try{
     const s=audioState();
-    const needsStart=MUTED||!AC||AC.state==="suspended"||(menuLike&&!s.menuMusic)||
-      (arenaLike&&(!arenaTimer||(extA.crowd&&extA.crowd.paused)||(extA.crowdCheer&&extA.crowdCheer.paused)));
-    if(needsStart){
-      MUTED=false;if(window.AIBASetIcon)AIBASetIcon("muteBtn","volume-2","静音");
-      ensureAudio(menuLike,true);
-      if(arenaLike&&!arenaTimer)enterArenaAudio(0.85);
-      if(extA.crowd&&arenaLike)extPlay("crowd");
-      if(extA.crowdCheer&&arenaLike)extPlay("crowdCheer");
-      syncSceneAmbience();
+    if(!MUTED && s.ready){
+      MUTED=true;if(window.AIBASetIcon)AIBASetIcon("muteBtn","volume-x","开启声音");
+      if(AC)AC.suspend();
+      if(window.speechSynthesis)speechSynthesis.cancel();
+      clearTimeout(SPK.timer);SPK.queue.length=0;SPK.speaking=false;
+      extStop("bgm");extStop("crowd");extStop("crowdCheer");extStop("rain");extStop("ocean");extStop("gull");
       syncAudioDebug();
       return;
     }
-    MUTED=true;if(window.AIBASetIcon)AIBASetIcon("muteBtn","volume-x","开启声音");
-    if(AC)AC.suspend();
-    if(window.speechSynthesis&&MUTED)speechSynthesis.cancel();
-    if(MUTED){clearTimeout(SPK.timer);SPK.queue.length=0;SPK.speaking=false;}
-    if(MUTED){extStop("bgm");extStop("crowd");extStop("crowdCheer");extStop("rain");extStop("ocean");extStop("gull");}
+    MUTED=false;if(window.AIBASetIcon)AIBASetIcon("muteBtn","volume-2","静音");
+    ensureAudio(menuLike,true);
+    if(arenaLike&&!arenaTimer)enterArenaAudio(0.85);
+    if(extA.crowd&&arenaLike)extPlay("crowd");
+    if(extA.crowdCheer&&arenaLike)extPlay("crowdCheer");
+    syncSceneAmbience();
     syncAudioDebug();
   }catch(e){}
 }

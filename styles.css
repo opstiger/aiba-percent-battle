@@ -122,8 +122,9 @@ html[data-scan-overlay="menu"] #scan{opacity:.018}
 #hudTarget{position:absolute;top:max(86px,calc(env(safe-area-inset-top) + 76px));left:14px;font-size:11px;
   font-weight:bold;text-shadow:1px 1px 0 #000;color:#ffd23f}
 #vsBanner{position:absolute;top:24vh;left:50%;transform:translateX(-50%);text-align:center;
-  font-size:20px;font-weight:bold;color:#fff;text-shadow:3px 3px 0 #000;background:rgba(0,0,0,.55);
-  border:3px solid #ffd23f;padding:12px 18px;display:none;white-space:nowrap;z-index:46}
+  max-width:calc(100vw - 24px);box-sizing:border-box;
+  font-size:clamp(15px, 4.5vw, 20px);font-weight:bold;color:#fff;text-shadow:3px 3px 0 #000;background:rgba(0,0,0,.55);
+  border:3px solid #ffd23f;padding:10px 14px;display:none;white-space:normal;z-index:46}
 #showUI{position:fixed;top:max(10px,env(safe-area-inset-top));left:50%;transform:translateX(-50%);
   background:rgba(0,0,0,.6);border:2px solid #333;padding:8px 12px;display:none;z-index:45;
   font-size:13px;color:#dde;white-space:nowrap;display:none}
@@ -540,6 +541,18 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 .gearThumb.sleeve:after{left:15px;top:7px;width:5px;height:18px;background:rgba(255,255,255,.16);border:0;transform:rotate(9deg)}
 .gearThumb.band i{left:7px;top:13px;width:22px;height:7px;clip-path:polygon(4% 0,96% 0,100% 74%,84% 100%,16% 100%,0 74%)}
 .gearThumb.band:before{left:10px;top:10px;width:16px;height:2px;background:rgba(255,255,255,.25);border:0}
+.gearThumb.knee i{left:11px;top:5px;width:14px;height:24px;clip-path:polygon(10% 0,90% 0,100% 85%,80% 100%,20% 100%,0 85%);border-radius:2px;background:var(--gc)}
+.gearThumb.knee:before{left:14px;top:12px;width:8px;height:10px;background:#11151c;clip-path:polygon(50% 0,100% 25%,100% 75%,50% 100%,0 75%,0 25%);border:1px solid rgba(255,255,255,.2)}
+.gearThumb.knee:after{left:13px;top:7px;width:10px;height:2px;background:rgba(255,255,255,.2);border:0}
+.gearThumb[data-gear-id="knee-strap-pro"] i{left:8px;top:13px;width:20px;height:8px;clip-path:none;border-radius:2px}
+.gearThumb[data-gear-id="sleeve-wrist-terry"] i{left:11px;top:11px;width:14px;height:12px;clip-path:none;border-radius:2px;transform:none}
+.gearThumb[data-gear-id="sleeve-wrist-terry"]:after{left:13px;top:13px;width:10px;height:8px;background:rgba(255,255,255,.2);border:0;transform:none}
+.gearThumb[data-gear-id="sleeve-wrist-bands"] i{left:12px;top:10px;width:12px;height:4px;border-radius:2px;clip-path:none;transform:none}
+.gearThumb[data-gear-id="sleeve-wrist-bands"]:before{left:12px;top:17px;width:12px;height:4px;border-radius:2px;background:var(--gc);border:1px solid #030508;transform:none}
+.gearThumb.compression i{left:6px;top:6px;width:24px;height:22px;clip-path:polygon(28% 0,72% 0,80% 20%,100% 32%,88% 54%,78% 44%,78% 100%,22% 100%,22% 44%,12% 54%,0 32%,20% 20%);background:var(--gc)}
+.gearThumb.compression:before{left:14px;top:7px;width:8px;height:5px;background:rgba(255,255,255,.25);clip-path:polygon(0 0,100% 0,50% 100%);border:0}
+.gearThumb[data-gear-id="comp-tank-dark"] i{left:9px;top:6px;width:18px;height:22px;clip-path:polygon(25% 0,75% 0,82% 35%,80% 100%,20% 100%,18% 35%)}
+.gearThumb[data-gear-id="comp-long-volt"] i{left:4px;top:6px;width:28px;height:22px;clip-path:polygon(28% 0,72% 0,80% 20%,100% 70%,86% 78%,78% 38%,78% 100%,22% 100%,22% 38%,14% 78%,0 70%,20% 20%)}
 .gearThumb[data-gear-id="head-mask"] i{left:8px;top:7px;width:20px;height:21px;background:#171c25;clip-path:polygon(7% 0,93% 0,100% 58%,72% 100%,28% 100%,0 58%)}
 .gearThumb[data-gear-id="head-mask"] i:after{content:"";position:absolute;left:3px;right:3px;top:7px;height:3px;background:linear-gradient(90deg,var(--gc) 0 38%,transparent 38% 62%,var(--gc) 62%)}
 .gearThumb[data-gear-id="head-cap"] i{left:8px;top:8px;width:20px;height:11px;border-radius:9px 9px 2px 2px}.gearThumb[data-gear-id="head-cap"]:after{left:17px;top:18px;width:14px;height:4px;transform:skewX(-24deg)}
@@ -654,7 +667,9 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 #obTip .obFinger{display:inline-block;animation:obTap 1s infinite}
 @keyframes obTap{50%{transform:translateY(6px) scale(.92)}}
 #obWelcome,#vtIntro{position:fixed;inset:0;z-index:200;display:grid;place-items:center;background:rgba(3,6,11,.82);backdrop-filter:blur(4px)}
-.obCard{width:min(86vw,420px);background:#0d141f;border:1px solid #2b3548;border-radius:14px;padding:26px 24px;text-align:center;color:#dfe8f2}
+.obCard{position:relative;width:min(86vw,420px);background:#0d141f;border:1px solid #2b3548;border-radius:14px;padding:26px 24px;text-align:center;color:#dfe8f2}
+.obClose{position:absolute;top:12px;right:14px;width:28px;height:28px;border:none;background:rgba(255,255,255,.08);color:#8ea3b8;border-radius:50%;font-size:18px;line-height:28px;cursor:pointer;display:grid;place-items:center;transition:background .2s,color .2s;padding:0}
+.obClose:hover{background:rgba(255,255,255,.18);color:#fff}
 .obCard small{color:#70e8ff;letter-spacing:3px;font-family:"Orbitron",monospace}
 .obCard h1{margin:6px 0 16px;font-size:24px}
 .obSteps{display:flex;gap:8px;margin:14px 0 20px}

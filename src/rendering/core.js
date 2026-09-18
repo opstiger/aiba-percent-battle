@@ -101,7 +101,7 @@ function updateRenderQuality(dt){
   if(q.locked||G.state==="menu"||G.state==="diff")return;
   const fps=1/Math.max(dt,0.001);
   q.fps=q.fps*0.92+fps*0.08;
-  const active=G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="pregame";
+  const active=G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="pregame"||G.state==="lastshot";
   if(!active)return;
   const target=renderQualityTarget();
   if(q.fps<43){q.low+=dt;q.high=0;}else if(q.fps>56){q.high+=dt;q.low=0;}else{q.low=Math.max(0,q.low-dt*.5);q.high=Math.max(0,q.high-dt*.5);}

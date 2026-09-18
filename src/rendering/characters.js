@@ -16,7 +16,12 @@ const CHARACTER_TEXTURE_CACHE=new Map();
 /* One closed tank-top shell. Front/back panels share an outline, with sewn side gussets.
    UVs preserve the existing 72-unit jersey artwork and left-handed number mirroring. */
 function jerseyPanelGeometry(){
-  const outline=[[-.218,-.26],[.218,-.26],[.232,-.1],[.23,.09],[.235,.12],[.24,.30],[.11,.30],[.082,.18],[-.082,.18],[-.11,.30],[-.24,.30],[-.235,.12],[-.23,.09],[-.232,-.1]];
+  // 运动人体工学剪裁: 弧形挖肩、收腰微展、下摆自然放量
+  const outline=[
+    [-.222,-.26],[.222,-.26],[.232,-.14],[.226,-.04],[.228,.08],[.234,.16],[.238,.30],
+    [.108,.30],[.085,.20],[0,.155],[-.085,.20],[-.108,.30],
+    [-.238,.30],[-.234,.16],[-.228,.08],[-.226,-.04],[-.232,-.14]
+  ];
   const shape=new THREE.Shape(outline.map(([x,y])=>new THREE.Vector2(x,y))),flat=new THREE.ShapeGeometry(shape).toNonIndexed();
   const pos=[],uv=[],groups=[];
   for(const back of [false,true]){
@@ -146,6 +151,7 @@ function voxelGuy(){
   const mLace=new THREE.MeshLambertMaterial({color:0x1a1a1a});// 鞋带
   const hairMat=new THREE.MeshLambertMaterial({color:0x222222});
   const beardMat=new THREE.MeshLambertMaterial({color:0x222222});
+  const mCompTight=new THREE.MeshLambertMaterial({color:0x151821}); // 紧身安全打底裤/高弹压缩面料
   const roundedBoxGeometry=(w,h,d,r,segments)=>{
     const geometry=new THREE.BoxGeometry(w,h,d,segments||3,segments||3,segments||3);
     const position=geometry.attributes.position,innerX=w*.5-r,innerY=h*.5-r,innerZ=d*.5-r;
@@ -184,10 +190,20 @@ function voxelGuy(){
   // ---- 腿 ----
   [-VOXEL_HIP_X,VOXEL_HIP_X].forEach(x=>{
     const lg=new THREE.Group();lg.position.set(x,0.78,0);     // 髋 pivot
-    const hipBlend=addSoft(lg,0.205,0.23,0.225,mP,0,-0.075,0,.038,3);
+    const hipBlend=addSoft(lg,0.208,0.23,0.228,mP,0,-0.075,0,.038,3);
     hipBlend.name="hipBlend";                                 // 髋关节藏在短裤内并与骨盆重叠
-    add(lg,0.012,0.15,0.205,mJ,Math.sign(x||1)*0.101,-0.12,0.004); // 球裤侧边队色条
-    addSoft(lg,0.193,0.014,0.215,mJ,0,-0.19,0,.004,2);                   // 球裤裤脚滚边
+    if(detailOn)detail.profile(hipBlend,1.10,0.94,1.08,0.95);  // A字微阔弧度剪裁：裤筒自然向下微展，打破生硬直筒方块
+    const sideSign=Math.sign(x||1);
+    // 球裤侧边弧形队色条与圆弧V形开叉 (Curved V-notch slit piping)
+    const slitTrim=add(lg,0.012,0.155,0.215,mJ,sideSign*0.103,-0.118,0.004);
+    slitTrim.name="shortsSideStripe";
+    if(detailOn)detail.profile(slitTrim,1.12,0.94,1.08,0.95);
+    // 球裤裤脚微展立体滚边 (3D Contoured Hem Roll)
+    const hemRoll=addSoft(lg,0.216,0.016,0.236,mJ,0,-0.19,0,.005,2);
+    hemRoll.name="shortsHemRoll";
+    // 现代篮球标配内外层次：球裤下沿自然微露出一段高弹紧身安全打底裤 (Compression Slider Tights)
+    const sliderTight=addSoft(lg,0.168,0.045,0.185,mCompTight,0,-0.208,0,.010,2);
+    sliderTight.name="shortsSliderTight";
     addSoft(lg,0.158,0.21,0.175,mS,0,-0.255,0,.018,3);          // 大腿伸入膝关节包
     const kn=new THREE.Group();kn.position.y=-0.34;           // 膝 pivot
     const kneeBlend=addSoft(kn,0.148,0.12,0.158,mS,0,-0.018,0,.025,3);
@@ -273,6 +289,12 @@ function voxelGuy(){
   });
   // ---- 盆骨/短裤腰(填补躯干与腿之间) ----
   addSoft(g,0.445,0.16,0.25,mP,0,0.825,0,.025,3);
+  // 立体松紧腰头与抽绳 (Elastic Drawstring Waistband)
+  const waistband=addSoft(g,0.462,0.038,0.264,mP,0,0.885,0,.010,2);
+  waistband.name="shortsWaistband";
+  add(g,0.032,0.014,0.018,mLace,0,0.888,0.136); // 抽绳结
+  const cordL=add(g,0.007,0.046,0.007,mLace,-0.012,0.862,0.138);cordL.rotation.z=0.08;
+  const cordR=add(g,0.007,0.046,0.007,mLace,0.012,0.862,0.138);cordR.rotation.z=-0.08;
   if(!detailOn){
     add(g,0.52,0.05,0.29,mJ,0,0.98,0);
     add(g,0.42,0.035,0.28,mP,0,0.765,0);
@@ -286,6 +308,12 @@ function voxelGuy(){
   if(detailOn){
     // The chest is visible inside the cut neckline; no floating collar or extra side strips.
     const chest=addSoft(g,.40,.15,.21,mS,0,1.315,0,.018,2);chest.name="jerseyNeckInset";
+    // 3D立体领口螺纹包边与挖肩包边 (Physical Ribbed Collar & Armhole Piping)
+    const collarTrim=addSoft(g,0.21,0.018,0.232,mP,0,1.375,0,.006,2);collarTrim.name="jerseyCollarTrim";
+    for(const side of [-1,1]){
+      const armPiping=addSoft(g,0.018,0.044,0.224,mP,side*0.234,1.365,0,.006,2);
+      armPiping.name="jerseyArmPiping";
+    }
   }else{
     add(g,0.045,0.43,0.21,mP,-0.255,1.13,0);
     add(g,0.045,0.43,0.21,mP, 0.255,1.13,0);

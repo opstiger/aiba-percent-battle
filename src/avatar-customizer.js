@@ -259,11 +259,17 @@
     }
     const group=new THREE.Group(),mat=new THREE.MeshLambertMaterial({color}),dark=new THREE.MeshLambertMaterial({color:0x050508});
     if(head==="mask"){
-      addBox(group,.3,.16,.025,0,1.62,.19,dark);addBox(group,.07,.04,.03,-.065,1.645,.21,mat);addBox(group,.07,.04,.03,.065,1.645,.21,mat);
+      addBox(group,.32,.08,.04,0,1.73,.19,dark);
+      addBox(group,.31,.24,.04,0,1.55,.20,dark);
+      addBox(group,.17,.06,.05,0,1.47,.21,dark);
+      addBox(group,.07,.04,.03,-.065,1.645,.21,mat);addBox(group,.07,.04,.03,.065,1.645,.21,mat);
     }else if(head==="cap"){
       addBox(group,.38,.08,.34,0,1.81,0,mat);addBox(group,.3,.035,.22,0,1.755,.19,mat);addBox(group,.22,.03,.22,0,1.74,.3,mat);
     }else if(head==="shades"){
-      addBox(group,.105,.055,.035,-.075,1.65,.205,dark);addBox(group,.105,.055,.035,.075,1.65,.205,dark);addBox(group,.06,.02,.035,0,1.65,.21,dark);
+      addBox(group,.31,.022,.036,0,1.674,.22,dark);
+      addBox(group,.105,.055,.035,-.075,1.64,.21,dark);addBox(group,.105,.055,.035,.075,1.64,.21,dark);
+      addBox(group,.05,.015,.035,0,1.65,.21,dark);
+      addBox(group,.018,.018,.22,-.17,1.66,.08,dark);addBox(group,.018,.018,.22,.17,1.66,.08,dark);
     }else if(head==="mascot"){
       addBox(group,.46,.46,.46,0,1.63,0,mat);addBox(group,.08,.08,.08,-.12,1.69,.24,dark);addBox(group,.08,.08,.08,.12,1.69,.24,dark);addBox(group,.24,.045,.04,0,1.55,.25,dark);addBox(group,.14,.18,.12,-.28,1.75,0,mat);addBox(group,.14,.18,.12,.28,1.75,0,mat);
     }

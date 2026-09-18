@@ -79,6 +79,7 @@
     G.seq=buildSeq(G.moneyRack);G.shotIdx=0;
     G.score=0;G.streak=0;G.timer=70;G.buzzed=false;G.running=false;
     G.shots=[];G.canShoot=false;G.blindToasted=false;G.cutQ=[];G.cutAway=null;G.missRun=0;G.organed=false;
+    if(!G.posted)G.posted=[];
     G.posted.forEach(post=>post.cut=false);
     balls.slice().forEach(ball=>{scene.remove(ball.mesh);scene.remove(ball.blob);});balls.length=0;
     resetRackBalls();

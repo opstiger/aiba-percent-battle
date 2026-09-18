@@ -14,7 +14,9 @@
   const FOCUS_PRESETS=Object.freeze({
     full:{y:.94,zoom:1,pitch:0},
     shoes:{y:.28,zoom:1.52,pitch:.02},
+    knee:{y:.60,zoom:1.48,pitch:.01},
     sleeve:{y:1.12,zoom:1.42,pitch:-.02},
+    compression:{y:1.16,zoom:1.38,pitch:-.02},
     band:{y:1.60,zoom:1.48,pitch:-.04},
     head:{y:1.60,zoom:1.48,pitch:-.04}
   });

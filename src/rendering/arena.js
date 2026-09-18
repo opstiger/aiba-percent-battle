@@ -362,18 +362,32 @@ function retiredJerseyTex(num){
     g.fillStyle="#8d7331";g.fillRect(6,8,52,6);            // 领口
   },{smooth:true});
 }
-function scoreboardTex(){
-  return pixTex(256,128,(g)=>{
-    g.fillStyle="#05070d";g.fillRect(0,0,256,128);
-    g.fillStyle="#0b1220";g.fillRect(5,5,246,118);
-    g.fillStyle="#7ee7ff";g.font="bold 30px Orbitron, monospace";g.textAlign="center";
-    g.fillText("aiBA",128,34);
-    g.fillStyle="#ffd23f";g.font="bold 34px Orbitron, monospace";
-    g.fillText("108 : 96",128,74);
-    g.fillStyle="#7CFC6B";g.font="bold 20px Orbitron, monospace";
-    g.fillText("Q4  03:47",128,104);
-  },{smooth:true});
+let centerScoreboardTex=null;
+function drawScoreboard(g,w,h,data){
+  const d=data||{};
+  g.fillStyle="#05070d";g.fillRect(0,0,w,h);
+  g.fillStyle="#0b1220";g.fillRect(8,8,w-16,h-16);
+  g.strokeStyle="#24344d";g.lineWidth=6;g.strokeRect(10,10,w-20,h-20);
+  g.fillStyle="#7ee7ff";g.font="bold 36px Orbitron, monospace";g.textAlign="center";
+  g.fillText(d.title||"aiBA CLUTCH",w/2,64);
+  g.fillStyle="#ffd23f";g.font="bold 64px Orbitron, monospace";
+  g.fillText(d.score||"108 : 96",w/2,152);
+  g.fillStyle=d.subColor||"#7CFC6B";g.font="bold 32px Orbitron, monospace";
+  g.fillText(d.clock||"Q4  03:47",w/2,216);
 }
+function scoreboardTex(){
+  if(!centerScoreboardTex){
+    centerScoreboardTex=pixTex(512,256,(g,w,h)=>drawScoreboard(g,w,h),{smooth:true});
+  }
+  return centerScoreboardTex;
+}
+function updateCenterScoreboard(data){
+  if(!centerScoreboardTex||!centerScoreboardTex.image)return;
+  const cv=centerScoreboardTex.image,g=cv.getContext("2d");
+  drawScoreboard(g,cv.width,cv.height,data);
+  centerScoreboardTex.needsUpdate=true;
+}
+window.updateCenterScoreboard=updateCenterScoreboard;
 function buildRetiredJerseys(){
   /* 退役球衣。真实馆把它们挂在端线上方的桁架上,是"这支球队有历史"的信号,
      也是顶棚区域里少数几个有内容的元素 —— 没有它,那片空间就是空的暗。 */
@@ -397,7 +411,7 @@ function buildCenterHung(){
   const N=8,R=3.1;
   for(let i=0;i<N;i++){
     const a=i/N*Math.PI*2;
-    const m=new THREE.Mesh(new THREE.PlaneGeometry(3.7,2.05),
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(2.52,2.05),
       new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide}));
     m.position.set(Math.sin(a)*R,y,cz+Math.cos(a)*R);
     m.rotation.y=a;
@@ -846,5 +860,5 @@ function updCrowd(t){
 
 window.AIBA.runtime.register("rendering:arena",Object.freeze({
   bannerTex,buildStands,showBox,makeAdBoard,buildBackcourtShow,updBackcourtShow,buildCrowd,updCrowd,
-  buildLightShafts,buildFloorLightPools,recede
+  buildLightShafts,buildFloorLightPools,recede,updateCenterScoreboard
 }));
