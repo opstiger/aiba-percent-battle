@@ -165,7 +165,6 @@ node scripts/rng-determinism.test.mjs   # 验证同种子逐球一致(无头浏�
 - `src/` — the game itself, fully modular:
   - `core/` runtime, state and the migration bridge · `modes/` Percent Battle, Rack Rush, contest, practice · `rendering/` Three.js scene core · `ui/` menus, panels, pre-game flow · `gameplay/`, `presentation/`, `services/`, `data/` supporting layers
   - feature modules at the top level: `vision.js` (camera + MediaPipe), `audio.js`, `gear.js`, `recorder.js`, `share.js`, `leaderboard-api.js` / `leaderboard-ui.js`, `hero-moments.js`, `hot-hand.js`, `perf.js` / `perf-settings.js`, `nba-dna/`, and more.
-- `legacy.html` — frozen pre-cutover engine (v1.96). Reachable via `?engine=legacy` for one release as a rollback path.
 - `cloudflare/leaderboard/` — schema and source for the leaderboard API (Cloudflare Worker + D1).
 - `assets/` — images, video, audio, fonts and vision models. `vendor/` — bundled third-party runtimes (Three.js, MediaPipe Tasks Vision).
 - `docs/` — see [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md) for the architecture notes and refactor plan.

@@ -72,7 +72,6 @@ node scripts/check.js
 - `src/`：游戏本体，已完全模块化：
   - `core/` 运行时、状态与迁移桥接 · `modes/` 百分大战、RACK RUSH、三分赛、练习 · `rendering/` Three.js 场景核心 · `ui/` 菜单、面板、赛前流程 · `gameplay/`、`presentation/`、`services/`、`data/` 支撑层
   - 顶层功能模块：`vision.js`（摄像头 + MediaPipe）、`audio.js`、`gear.js`、`recorder.js`、`share.js`、`leaderboard-api.js` / `leaderboard-ui.js`、`hero-moments.js`、`hot-hand.js`、`perf.js` / `perf-settings.js`、`nba-dna/` 等。
-- `legacy.html`：切换前的旧引擎冻结版（v1.96），可用 `?engine=legacy` 访问，保留一个版本作为回滚通道。
 - `cloudflare/leaderboard/`：排行榜 API 的 schema 与源码（Cloudflare Worker + D1）。
 - `assets/`：图片、视频、音频、字体与视觉模型。`vendor/`：随项目携带的第三方运行文件（Three.js、MediaPipe Tasks Vision）。
 - `docs/`：架构说明与重构计划见 [`docs/ARCHITECTURE.md`](docs/ARCHITECTURE.md)。

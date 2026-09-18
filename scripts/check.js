@@ -8,11 +8,9 @@ const childProcess=require("child_process");
 
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
-const legacyEntry="legacy.html";
 const snapshot="block-3pt-kingv2.28.0-modular.html";
 const requiredFiles=[
   entry,
-  legacyEntry,
   snapshot,
   "styles.css",
   "src/assets-manifest.js",
@@ -99,15 +97,11 @@ for(const file of requiredFiles){
 }
 
 const entryHtml=read(entry);
-const legacyHtml=read(legacyEntry);
 const snapshotHtml=read(snapshot);
 if(entryHtml!==snapshotHtml)fail(entry+" and "+snapshot+" differ");
 if(entryHtml.includes('<base href='))fail("entry must not use base href");
 if(entryHtml.includes("__AIBA_NEXT__")||entryHtml.includes("__AIBA_DISABLE_PRODUCTION_WRITES__"))fail("entry must not carry experimental flags");
-if(!entryHtml.includes('location.replace("legacy.html"'))fail("entry legacy escape (?engine=legacy) missing");
 if(!entryHtml.includes('<meta name="aiba-entry" content="main">'))fail("entry marker meta missing");
-if(!legacyHtml.includes("v1.96-full-en"))fail("legacy entry version token missing");
-if(legacyHtml.includes('location.replace("legacy.html"'))fail("legacy entry must not self-redirect");
 if(!entryHtml.includes("data-aiba-early-errors"))fail("next early error diagnostics missing");
 if(!entryHtml.includes('<script src="src/i18n.js?v=2.19.9-beat"></script>'))fail("i18n cache version missing");
 if(!entryHtml.includes('<script src="src/core/runtime.js?v=refactor7"></script>'))fail("next runtime bridge missing");
@@ -586,7 +580,7 @@ try{
 }catch(e){}
 
 const inlineScriptCounts={};
-for(const [label,html] of [["main",entryHtml],["legacy",legacyHtml]]){
+for(const [label,html] of [["main",entryHtml]]){
   const inlineScripts=[...html.matchAll(/<script(?:\s[^>]*)?>([\s\S]*?)<\/script>/gi)]
     .map(m=>m[1]).filter(s=>s.trim());
   inlineScriptCounts[label]=inlineScripts.length;
@@ -1806,7 +1800,7 @@ for(const key of [
 for(const token of ["function extPlayVariant(","function sRimMake(","startWhistle",'"sequence"'])
   if(!(audioScript+gameplayShots).includes(token))fail("gameplay SFX routing missing "+token);
 
-console.log("check ok:",inlineScriptCounts.main+" main / "+inlineScriptCounts.legacy+" legacy inline scripts,",inlineLines+" main inline lines,",assets.coverStars.length+" cover stars");
+console.log("check ok:",inlineScriptCounts.main+" main inline scripts,",inlineLines+" main inline lines,",assets.coverStars.length+" cover stars");
 
 /* ---------------- 你自己的庆祝 & 反应阶段防穿模 ---------------- */
 {
