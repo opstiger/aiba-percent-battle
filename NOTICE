@@ -9,7 +9,7 @@ repository the MIT license does NOT cover.
 --------------------------------------------------------------------------
 1. Source code — MIT
 --------------------------------------------------------------------------
-Everything under src/, scripts/, tools/, cloudflare/, trailer/ and the
+Everything under src/, scripts/, tools/, cloudflare/ and the
 HTML/CSS entry points is licensed under the MIT License. See LICENSE.
 
 The MIT License requires that the copyright notice and the permission notice
