@@ -64,6 +64,10 @@ http://127.0.0.1:4174/
 node scripts/check.js
 ```
 
+## 参与开发
+
+静音测试、外观看板、体感调试、`?seed=N` 复现一局、逐模式体检等开发者说明，见 [`docs/DEVELOPMENT.zh-CN.md`](docs/DEVELOPMENT.zh-CN.md)。
+
 ## 项目结构
 
 - `index.html`：正式入口——约 200 行的模块化外壳，游戏全部从 `src/` 加载（v2.0 完成切换）。
