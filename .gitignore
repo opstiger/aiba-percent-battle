@@ -71,3 +71,19 @@ captures/
 !docs/SHOE_SYSTEM_PLAN-20260915.md
 
 !docs/RETROHIGH-20260916.md
+
+# ---- 发布卫生:以下内容不进公开仓库 ----
+# 本地历史版本归档。git 历史与 tag 才是版本回溯的正途。
+backup/
+# 评审/回归产物,每轮都会重生成
+artifacts/
+# AI 工具的本地配置
+.claude/
+# 配音生成脚本(要连外部 API,可能带密钥)
+scripts/generate_*.py
+# 宣传稿与选角笔记
+aiba_promo_posts.md
+VOICE_SELECTION.md
+# 旧版本快照:只保留 index.html 与当前版本那一个
+block-3pt-kingv2.1*-modular.html
+block-3pt-kingv2.2[0-7]*-modular.html
