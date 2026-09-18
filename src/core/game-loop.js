@@ -56,6 +56,7 @@ function animate(){
   }
   updateEnvironment(realDt);
   updateSceneAudio(realDt);
+  if(typeof syncArenaAmbience==="function")syncArenaAmbience(realDt);
   updTweens(realDt);
   const frozen=!!G.cutAway||!!G.battleCut;
   if(!frozen){updBalls(dt);updPose(dt);updPass(dt);updWalk(dt);}

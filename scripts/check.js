@@ -110,7 +110,7 @@ if(!entryHtml.includes('<script src="src/recorder.js?v=2.19.9-fold"></script>'))
 if(!entryHtml.includes('<script src="src/vision.js?v=2.19.9-fold"></script>'))fail("next vision cache version missing");
 if(!entryHtml.includes('<script src="src/rendering/core.js?v=2.25.0-norim"></script>'))fail("next rendering core missing");
 for(const file of ["core/error-boundary","core/foundation","data/dialogue","core/state","services/audio-cues","ui/result-copy"]){
-  const version=file==="core/state"?"2.24.0-pickup":"refactor39";
+  const version={"core/state":"2.24.0-pickup","services/audio-cues":"2.28.1-ambience"}[file]||"refactor39";
   if(!entryHtml.includes(`<script src="src/${file}.js?v=${version}"></script>`))fail(`next shell module missing ${file}`);
 }
 if(!entryHtml.includes('<script src="src/data/game-config.js?v=2.28.0"></script>'))fail("next game config cache version missing");
@@ -121,7 +121,7 @@ if(entryHtml.indexOf('<script src="src/rendering/core.js?v=2.25.0-norim"></scrip
 if(!entryHtml.includes('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>'))fail("next legacy adapter missing");
 if(!entryHtml.includes('<script src="src/modes/rack-rush.js?v=2.28.0-shoes"></script>'))fail("next Rack Rush module missing");
 if(!entryHtml.includes('<script src="src/modes/contest.js?v=2.19.9-hy4b-state"></script>'))fail("next contest module missing");
-if(!entryHtml.includes('<script src="src/modes/practice.js?v=2.28.0-shoes"></script>'))fail("next practice module missing");
+if(!entryHtml.includes('<script src="src/modes/practice.js?v=2.28.1-ambience"></script>'))fail("next practice module missing");
 if(!entryHtml.includes('<script src="src/ui/panels.js?v=refactor7"></script>'))fail("next panels module missing");
 if(!entryHtml.includes('<script src="src/ui/loading.js?v=2.19.9-nogate"></script>'))fail("next loading module missing");
 if(!entryHtml.includes('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>'))fail("next menu module missing");
@@ -457,12 +457,12 @@ for(const token of ["const GAME_VERSION=","const G={","function triggerMakeRunVo
 if(entryHtml.includes("/* Renderer, camera, adaptive quality and base lights are owned"))fail("next entry still contains generated ownership placeholders");
 if(entryHtml.indexOf('src/core/foundation.js?v=refactor39')>entryHtml.indexOf('src/data/game-config.js?v=2.28.0'))fail("foundation must load before game config");
 if(entryHtml.indexOf('src/data/game-config.js?v=2.28.0')>entryHtml.indexOf('src/core/state.js?v=2.24.0-pickup'))fail("game config must load before runtime state");
-if(entryHtml.indexOf('src/core/state.js?v=2.24.0-pickup')>entryHtml.indexOf('src/services/audio-cues.js?v=refactor39'))fail("runtime state must load before audio cues");
-if(entryHtml.indexOf('src/services/audio-cues.js?v=refactor39')>entryHtml.indexOf('src/audio.js?v=2.19.9-clutchvoice'))fail("audio cues must load before audio engine");
+if(entryHtml.indexOf('src/core/state.js?v=2.24.0-pickup')>entryHtml.indexOf('src/services/audio-cues.js?v=2.28.1-ambience'))fail("runtime state must load before audio cues");
+if(entryHtml.indexOf('src/services/audio-cues.js?v=2.28.1-ambience')>entryHtml.indexOf('src/audio.js?v=2.19.9-clutchvoice'))fail("audio cues must load before audio engine");
 if(entryHtml.indexOf('<script src="src/core/legacy-adapter.js?v=2.18.5-shared-ai-shot"></script>')>entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=2.28.0-shoes"></script>'))fail("legacy adapter must load before Rack Rush module");
 if(entryHtml.indexOf('<script src="src/modes/rack-rush.js?v=2.28.0-shoes"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.19.9-pregame-dunk-hang1"></script>'))fail("Rack Rush module must load before late hooks");
 if(entryHtml.indexOf('<script src="src/modes/contest.js?v=2.19.9-hy4b-state"></script>')>entryHtml.indexOf('<script src="src/game-flow.js?v=2.19.9-pregame-dunk-hang1"></script>'))fail("contest module must load before late hooks");
-if(entryHtml.indexOf('<script src="src/modes/contest.js?v=2.19.9-hy4b-state"></script>')>entryHtml.indexOf('<script src="src/modes/practice.js?v=2.28.0-shoes"></script>'))fail("contest module must load before practice module");
+if(entryHtml.indexOf('<script src="src/modes/contest.js?v=2.19.9-hy4b-state"></script>')>entryHtml.indexOf('<script src="src/modes/practice.js?v=2.28.1-ambience"></script>'))fail("contest module must load before practice module");
 if(entryHtml.indexOf('<script src="src/ui/panels.js?v=refactor7"></script>')>entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.9-nogate"></script>'))fail("panels must load before loading module");
 if(entryHtml.indexOf('<script src="src/ui/loading.js?v=2.19.9-nogate"></script>')>entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>'))fail("loading must load before menu module");
 if(entryHtml.indexOf('<script src="src/ui/menu.js?v=2.19-lastshot5"></script>')>entryHtml.indexOf('<script src="src/ui/setup.js?v=refactor13"></script>'))fail("menu must load before setup module");
@@ -1763,7 +1763,7 @@ for(const token of ["function updateCameraDirector(","AIBACamera.isEditing","AIB
   if(!cameraSource.includes(token))fail("camera director token missing "+token);
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.24.0-rack','src/presentation/replay.js?v=2.21.0-backspin1','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.21.0-backspin1','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.28.0','src/core/scene-init.js?v=2.19.9-ceiling'])
+for(const token of ['src/gameplay/shots.js?v=2.24.0-rack','src/presentation/replay.js?v=2.21.0-backspin1','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.21.0-backspin1','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.28.1-ambience','src/core/scene-init.js?v=2.19.9-ceiling'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);

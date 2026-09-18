@@ -4,13 +4,16 @@
   const runtime=global.AIBA&&global.AIBA.runtime,ctx=runtime&&runtime.service("legacy");
   if(!runtime||!ctx)throw new Error("Practice requires AIBA runtime legacy adapter");
   const {
-    $,G,RACKS,HOOP,scene,balls,P,rig,V3,ensureAudio,leaveArenaAudio,hidePanel,music,resetProgressiveSceneForRun,
+    $,G,RACKS,HOOP,scene,balls,P,rig,V3,ensureAudio,enterArenaAudio,leaveArenaAudio,hidePanel,music,resetProgressiveSceneForRun,
     resetRackBalls,faceTo,glideTo,shotEye,applyCamMode,readyBall,toast,showPanel
   }=ctx;
 
   function startPractice(){
     if(global.ensurePlayerShoeKit)global.ensurePlayerShoeKit();
-    ensureAudio(false);leaveArenaAudio();hidePanel();music(false);resetProgressiveSceneForRun();
+    /* 热身原来开场就 leaveArenaAudio(),而之后没有任何地方把人群和场馆底噪
+       打开,导致整个热身是完全静场。改成和其它模式一样进场即起;看门狗
+       (syncArenaAmbience)兜底,保证被别处停掉后还能回来。 */
+    ensureAudio(false);hidePanel();music(false);enterArenaAudio(.72);resetProgressiveSceneForRun();
     G.practice=true;G.moneyRack=(Math.random()*5)|0;
     G.seq=[0,1,2].map(ball=>({rack:2,ball,val:1,money:false,deep:null}));
     G.shotIdx=0;G.shots=[];G.score=0;G.streak=0;G.timer=0;G.running=false;G.buzzed=false;

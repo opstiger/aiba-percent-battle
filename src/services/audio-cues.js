@@ -4,6 +4,33 @@ function resetAudioCueMemory(){
   G.audioCueLast=Object.create(null);
   G.audioEventLock={pri:0,until:0};
 }
+/* ---------------- 场馆环境音看门狗 ----------------
+   雨声/海浪由 updateSceneAudio 每帧维护,被停掉也会自己回来;而人群、欢呼和
+   场馆底噪只在模式入口调一次 enterArenaAudio,一旦停了就不会回来。两类环境音
+   用了两套生命周期,后果:
+     · 热身全程静场 —— startPractice 开头就调 leaveArenaAudio,之后没人再打开
+     · 同一个状态下有没有声音,取决于你碰没碰静音键(toggleMute 里才有补救)
+   这里把它们统一成"按状态判断该不该响"。
+
+   只补静默,从不主动停:
+     · 停止一直由各模式显式调用 leaveArenaAudio,语义更清楚
+     · 更重要的是避免race —— 模式在状态翻到 pregame 之前就可能先调
+       enterArenaAudio,看门狗若同时负责停,会把刚起的声音掐掉
+   也不覆盖已经在放的音乐(如冠军过场的 music(true)),否则会把胜利曲切掉。 */
+const ARENA_AMBIENCE_STATES=["cinematic","pregame","round","aishow","tiebreak","battle",
+  "rackrush","lastshot","rushintro","rushbetween","wincine","victorycine","replay"];
+let arenaAmbienceTick=0;
+function arenaAmbienceWanted(){return ARENA_AMBIENCE_STATES.indexOf(G.state)>=0;}
+function syncArenaAmbience(dt){
+  arenaAmbienceTick-=Number(dt)||0;
+  if(arenaAmbienceTick>0)return;
+  arenaAmbienceTick=.5;
+  const st=typeof window.__aibaAudioState==="function"?window.__aibaAudioState():null;
+  if(!st||!st.ready||st.muted)return;
+  if(!arenaAmbienceWanted()||st.arenaMusic||st.menuMusic)return;
+  if(typeof enterArenaAudio==="function")enterArenaAudio(.85);
+}
+
 function pickCue(pool){return pool[(Math.random()*pool.length)|0];}
 const AUDIO_PRI={normal:1,momentum:2,special:3,score:4,final:5};
 function audioEventAllowed(priority,dur,force){
