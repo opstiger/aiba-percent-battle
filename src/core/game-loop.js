@@ -3,8 +3,13 @@ const clock=new THREE.Clock();
 let jumboAcc=0,lowBeep=0,menuFrameAcc=0,visionAmbienceAcc=0,lastI18nState=null;
 let pausePresentationT=0,pauseAmbienceAcc=0,pauseWasOn=false;
 const pauseLook=V3(0,0,0);
+/* 暂停时压低场馆声。这里只在进入/退出那一帧拨开关：暂停分支会直接 return，
+   逐帧的 updateSceneAudio 根本不跑，靠它自愈是等不到的。 */
+function setPauseAudio(on){
+  try{if(window.AIBAAudio&&AIBAAudio.setPauseAudioDuck)AIBAAudio.setPauseAudioDuck(on);}catch(e){}
+}
 function updatePausePresentation(dt){
-  if(!pauseWasOn){pauseWasOn=true;pausePresentationT=0;pauseAmbienceAcc=0;}
+  if(!pauseWasOn){pauseWasOn=true;pausePresentationT=0;pauseAmbienceAcc=0;setPauseAudio(true);}
   const step=Math.min(.05,Math.max(0,Number(dt)||0));
   pausePresentationT+=step;pauseAmbienceAcc+=step;
   /* 暂停只停玩法时钟，不停纯演出层：环境、近场观众和轻微手持感仍然有
@@ -46,7 +51,7 @@ function animate(){
     updatePausePresentation(dt);
     return;
   }
-  pauseWasOn=false;
+  if(pauseWasOn){pauseWasOn=false;setPauseAudio(false);}
   G.tNow+=realDt;
   /* 切模式时把 DOM 重扫一遍。观察器只在节点变化那一刻触发，应用自己拼的字符串
      （如 vsBanner 的 "星名 · 已翻译文案"）会停在半中半英上不再变化。 */

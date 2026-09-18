@@ -467,6 +467,7 @@ function extPlay(k,maxMs){
   if(playDecodedGameplaySfx(k,maxMs))return true;
   if(decodedGameplaySfxLoads[k]&&!decodedGameplaySfx[k])return false;
   const a=extA[k];if(!a)return false;
+  extCancelFade(k);
   extEnsureSrc(k);   // 启动预热没跑到时的兜底:真要播了就直接用普通 URL
   if(Date.now()<(mediaRetryAt[k]||0))return false;
   /* 一次性音效还没缓冲好就交回合成音兜底,否则这一下会完全没声音 */
@@ -499,10 +500,53 @@ function extPlayVariant(group,keys){
   }
   return false;
 }
-function extStop(k){const a=extA[k];if(a)try{a.pause()}catch(e){}}
+/* 循环类环境音(人群/欢呼/雨/海浪/BGM)原来一律 pause() 硬切,满场人声一瞬间
+   掉到 0,听感像拔电源。给它们一段淡出;一次性音效和已暂停的元素照旧直接停。
+   淡出期间 applyExternalMediaMix 不能再写这个元素的 volume,否则会打架。 */
+const extFade=Object.create(null);
+function extCancelFade(k){
+  const f=extFade[k];if(!f)return;
+  clearInterval(f.timer);delete extFade[k];
+  const a=extA[k];if(a)try{a.volume=f.from;}catch(e){}
+}
+function extStop(k,fadeMs){
+  const a=extA[k];if(!a)return;
+  extCancelFade(k);
+  const ms=Number(fadeMs)||0;
+  if(ms<=0||a.paused||!a.loop){try{a.pause()}catch(e){}return;}
+  const from=a.volume,t0=Date.now();
+  const timer=setInterval(()=>{
+    const p=Math.min(1,(Date.now()-t0)/ms);
+    try{a.volume=Math.max(0,from*(1-p));}catch(e){}
+    if(p>=1){clearInterval(timer);delete extFade[k];try{a.pause();a.volume=from;}catch(e){}}
+  },30);
+  extFade[k]={timer,from};
+}
 extInit();
 function sceneAudioArenaLike(){
   return G.state==="cinematic"||G.state==="pregame"||G.state==="round"||G.state==="aishow"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot"||G.state==="rushintro"||G.state==="rushbetween"||G.state==="wincine"||G.state==="victorycine"||G.state==="replay";
+}
+/* 暂停压低。主循环在 PAUSE.on 时直接 return,每帧的 updateSceneAudio 不再跑,
+   所以这个开关由 game-loop 在进入/退出暂停的那一帧显式拨动。
+   刻意压低而不是停掉:暂停的设计意图就是"只停玩法时钟,演出层仍有生命力"
+   (见 game-loop 的 updatePausePresentation),但菜单弹出来时满响也不对。 */
+const PAUSE_DUCK=.45;
+let pauseDuck=false;
+/* 音乐/场馆总线的"本该多响"。解说压低(duckBroadcast)和暂停压低是两件独立的事,
+   谁都不能直接往总线上写死值 —— 早先那版暂停结束时硬拉回 0.72,
+   会把正在说话的解说压低一并抹掉。两者都改成写这里的基准,再乘暂停系数。 */
+let musicBase=0.72,arenaBase=0.9;
+function applyBusDuck(d){
+  const pd=pauseDuck?PAUSE_DUCK:1;
+  rampGain(musicBus,musicBase*pd,d);
+  rampGain(arenaBus,arenaBase*pd,d);
+}
+function setPauseAudioDuck(on){
+  const next=!!on;
+  if(pauseDuck===next)return;
+  pauseDuck=next;
+  applyBusDuck(.14);
+  setCrowdHeat(crowdHeat);   // 顺带按新系数重算人群总线并刷新外部音量
 }
 function externalMediaDuckActive(){
   return Date.now()<mediaDuckUntil;
@@ -510,18 +554,20 @@ function externalMediaDuckActive(){
 function applyExternalMediaMix(){
   const duck=externalMediaDuckActive(),arenaLike=sceneAudioArenaLike();
   const heat=Math.max(0,Math.min(1,crowdHeat||0));
-  if(extA.bgm)extA.bgm.volume=EXT_DEFAULT_VOLUME.bgm*(duck?0.58:1);
-  if(extA.crowd)extA.crowd.volume=(G.finalRun?0.34:EXT_DEFAULT_VOLUME.crowd)*(1+heat*.42)*(duck?0.72:1);
-  if(extA.crowdCheer)extA.crowdCheer.volume=(G.finalRun?0.31:EXT_DEFAULT_VOLUME.crowdCheer)*(1+heat*.62)*(duck?0.7:1);
-  if(extA.rain)extA.rain.volume=(arenaLike?0.2:0.11)*(duck?0.82:1);
-  if(extA.ocean)extA.ocean.volume=(G.finalRun?0.24:(arenaLike?0.18:0.1))*(duck?0.82:1);
+  const pd=pauseDuck?PAUSE_DUCK:1;
+  const set=(k,v)=>{if(extA[k]&&!extFade[k])extA[k].volume=v;};
+  set("bgm",EXT_DEFAULT_VOLUME.bgm*(duck?0.58:1)*pd);
+  set("crowd",(G.finalRun?0.34:EXT_DEFAULT_VOLUME.crowd)*(1+heat*.42)*(duck?0.72:1)*pd);
+  set("crowdCheer",(G.finalRun?0.31:EXT_DEFAULT_VOLUME.crowdCheer)*(1+heat*.62)*(duck?0.7:1)*pd);
+  set("rain",(arenaLike?0.2:0.11)*(duck?0.82:1)*pd);
+  set("ocean",(G.finalRun?0.24:(arenaLike?0.18:0.1))*(duck?0.82:1)*pd);
 }
 function setCrowdHeat(level){
   crowdHeat=Math.max(0,Math.min(1,Number(level)||0));
   if(crowdBus&&AC){
     const t=AC.currentTime,base=extA.crowd?0.035:CROWD_BASE;
     crowdBus.gain.cancelScheduledValues(t);
-    crowdBus.gain.setTargetAtTime(base+crowdHeat*(extA.crowd?0.035:0.075),t,0.55);
+    crowdBus.gain.setTargetAtTime((base+crowdHeat*(extA.crowd?0.035:0.075))*(pauseDuck?PAUSE_DUCK:1),t,pauseDuck?0.12:0.55);
   }
   applyExternalMediaMix();
 }
@@ -621,8 +667,17 @@ function playVoiceUrl(u,role,opt){
   try{
     opt=opt||{};audioInit();
     if(!playClip.cache[u]){const a=new Audio();a.preload="auto";a.src=u;playClip.cache[u]=a;}
-    const base=playClip.cache[u],a=base.paused&&base.currentTime===0?base:base.cloneNode();
-    a.crossOrigin="anonymous";
+    /* 两处改动:
+       ① 原来在"同一条正在放"时会 cloneNode() 再开一条 —— 解说会自己盖自己,
+          而且每个克隆都要 createMediaElementSource,这些节点不会释放,越积越多。
+          现在复用同一个元素并回到 0:一条语音同时只存在一份。
+       ② 语音不再和 playSFX 共用 playClip.cache 里的元素。一个媒体元素只能建一个
+          MediaElementSource,被 SFX 占过之后解说再来就一直抛 InvalidStateError,
+          routeVoiceElement 静静返回 false —— 那条语音于是绕开总线、以元素原始音量
+          直出,既不吃 duck 也不吃静音。各留各的元素就不会互相占位;
+          playClip.cache 的预热仍然把文件拉进了 HTTP 缓存,这里不会二次下载。 */
+    if(!voiceEls[u]){const v=new Audio();v.crossOrigin="anonymous";v.preload="auto";v.src=u;voiceEls[u]=v;}
+    const a=voiceEls[u];
     const routed=routeVoiceElement(a,role);
     a.volume=opt.volume==null?(routed?0.92:0.78):opt.volume;
     a.currentTime=0;
@@ -638,6 +693,7 @@ function playClip(t,role){
   return playVoiceUrl(u,voiceRoleForText(t,u,role));
 }
 playClip.cache=Object.create(null);
+const voiceEls=Object.create(null);   // 语音专用元素,和 playSFX 的元素分开
 let pregameCountdownClipLast=-1;
 function playPregameCountdownCue(){
   if(MUTED)return false;
@@ -755,7 +811,14 @@ function audioState(){
     menuMusic:!!musicTimer||!!(extA.bgm&&!extA.bgm.paused),arenaMusic:!!arenaTimer,crowd:!!crowdBus,
     bgmExternal:!!extA.bgm,bgmPlaying:!!(extA.bgm&&!extA.bgm.paused),crowdExternal:!!(extA.crowd||extA.crowdCheer),
     crowdPlaying:!!(extA.crowd&&!extA.crowd.paused),crowdCheerPlaying:!!(extA.crowdCheer&&!extA.crowdCheer.paused),
-    rainPlaying:!!(extA.rain&&!extA.rain.paused),oceanPlaying:!!(extA.ocean&&!extA.ocean.paused),gullReady:!!extA.gull};
+    rainPlaying:!!(extA.rain&&!extA.rain.paused),oceanPlaying:!!(extA.ocean&&!extA.ocean.paused),gullReady:!!extA.gull,
+    /* 混音实况。总线增益和元素音量只活在闭包里,没有这几项就没法从外面
+       验证"暂停是压低不是停掉"、"淡出真的在淡"。 */
+    pauseDuck,fading:Object.keys(extFade),voiceEls:Object.keys(voiceEls).length,musicBase,arenaBase,
+    arenaGainNow:arenaBus?+arenaBus.gain.value.toFixed(4):null,
+    crowdVol:extA.crowd?+extA.crowd.volume.toFixed(4):null,
+    crowdGainNow:crowdBus?+crowdBus.gain.value.toFixed(5):null,
+    musicGainNow:musicBus?+musicBus.gain.value.toFixed(4):null};
 }
 try{window.__aibaAudioState=audioState;}catch(e){}
 try{window.AIBAAudioCaptureStream=()=>ensureAudioCaptureDestination();}catch(e){}
@@ -796,7 +859,7 @@ function crowdSwell(amt,dur){
   crowdBus.gain.linearRampToValueAtTime(b+amt,t+0.5);
   crowdBus.gain.exponentialRampToValueAtTime(b,t+(dur||2.4));
 }
-try{window.AIBAAudio=Object.assign(window.AIBAAudio||{},{setCrowdHeat,crowdSwell});}catch(e){}
+try{window.AIBAAudio=Object.assign(window.AIBAAudio||{},{setCrowdHeat,crowdSwell,setPauseAudioDuck});}catch(e){}
 /* ---- 掌声:几十个去相关的真实拍手颗粒 ---- */
 function applause(vol,dur,n){
   if(!AC||MUTED)return;
@@ -978,12 +1041,12 @@ function duckBroadcast(dur,depth){
   clearTimeout(duckTimer);
   clearTimeout(mediaDuckTimer);
   mediaDuckUntil=Math.max(mediaDuckUntil,Date.now()+dur+160);
-  rampGain(musicBus,0.38,0.12);
-  rampGain(arenaBus,depth||0.62,0.12);
+  musicBase=0.38;arenaBase=depth||0.62;
+  applyBusDuck(0.12);
   applyExternalMediaMix();
   duckTimer=setTimeout(()=>{
-    rampGain(musicBus,0.72,0.35);
-    rampGain(arenaBus,0.9,0.35);
+    musicBase=0.72;arenaBase=0.9;
+    applyBusDuck(0.35);
   },dur);
   mediaDuckTimer=setTimeout(()=>{
     mediaDuckUntil=0;
@@ -1035,10 +1098,10 @@ function enterArenaAudio(intensity){
 }
 function leaveArenaAudio(){
   arenaMusic(false);
-  extStop("crowd");
-  extStop("crowdCheer");
-  extStop("rain");
-  extStop("ocean");
+  extStop("crowd",260);
+  extStop("crowdCheer",260);
+  extStop("rain",320);
+  extStop("ocean",320);
   syncAudioDebug();
 }
 let shoeSqueakAt=0;
