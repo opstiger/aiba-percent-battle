@@ -388,13 +388,28 @@ function decodeGameplaySfx(k){
   syncGameplaySfxDebug();
   return decodedGameplaySfxLoads[k];
 }
+/* 撞击力度 → 音量（PH-3）。真实物理球按碰撞冲量调用 impactSfx，轻擦筐声音小、重砸声音大；
+   其他调用方不传就是 1，行为不变。只作用于解码后的 WebAudio 采样和合成兜底音。 */
+let sfxImpactGain=1;
+function impactSfx(kind,impulse){
+  const J=Math.max(0,Number(impulse)||0);
+  const gain=kind==="floor"?Math.max(.22,Math.min(1.15,.2+J/12)):Math.max(.3,Math.min(1.3,.28+J/4.5));
+  const prev=sfxImpactGain;sfxImpactGain=gain;
+  try{
+    if(kind==="rim")sClank();
+    else if(kind==="rimMake")sRimMake();
+    else if(kind==="board")sBoard();
+    else if(kind==="floor")sBounce();
+  }finally{sfxImpactGain=prev;}
+  return gain;
+}
 function playDecodedGameplaySfx(k,maxMs){
   const buffer=decodedGameplaySfx[k];
   if(!buffer||!AC||AC.state!=="running"||MUTED)return false;
   try{
     const source=AC.createBufferSource(),gain=AC.createGain();
     source.buffer=buffer;
-    gain.gain.value=(EXT_DEFAULT_VOLUME[k]||.85)*(EXT_MEDIA_GAIN[k]||1);
+    gain.gain.value=(EXT_DEFAULT_VOLUME[k]||.85)*(EXT_MEDIA_GAIN[k]||1)*sfxImpactGain;
     source.connect(gain);gain.connect(mediaBusForKey(k));
     source.start();
     if(maxMs>0)source.stop(AC.currentTime+Math.min(buffer.duration,maxMs/1000));
@@ -1137,13 +1152,13 @@ function sBounce(kind){
   o.frequency.setValueAtTime(rnd2(82,95),t);
   o.frequency.exponentialRampToValueAtTime(46,t+0.11);
   const g=AC.createGain();
-  g.gain.setValueAtTime(0.34,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.13);
+  g.gain.setValueAtTime(0.34*sfxImpactGain,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.13);
   o.connect(g);g.connect(master);o.start(t);o.stop(t+0.15);
   const n=AC.createBufferSource(),len=AC.sampleRate*0.03,b=AC.createBuffer(1,len,AC.sampleRate),d=b.getChannelData(0);
   for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*(1-i/len);
   n.buffer=b;
   const bp=AC.createBiquadFilter();bp.type="bandpass";bp.frequency.value=620;bp.Q.value=1.2;
-  const g2=AC.createGain();g2.gain.value=0.16;
+  const g2=AC.createGain();g2.gain.value=0.16*sfxImpactGain;
   n.connect(bp);bp.connect(g2);g2.connect(master);n.start(t);
 }
 function sSwish(){
@@ -1169,7 +1184,7 @@ function sClank(){ // 铁框:非谐金属泛音
   [317,476,833,1276].forEach((f,i)=>{
     const o=AC.createOscillator();o.type="sine";o.frequency.value=f*rnd2(0.99,1.01);
     const g=AC.createGain();
-    g.gain.setValueAtTime(0.16/(i*0.9+1),t);
+    g.gain.setValueAtTime(0.16/(i*0.9+1)*sfxImpactGain,t);
     g.gain.exponentialRampToValueAtTime(0.001,t+0.3-i*0.05);
     o.connect(g);g.connect(master);o.start(t);o.stop(t+0.35);
   });
@@ -1183,13 +1198,13 @@ function sBoard(){ // 篮板:木质闷响
   if(!AC||MUTED)return;
   const t=AC.currentTime;
   const o=AC.createOscillator();o.type="sine";o.frequency.value=185;
-  const g=AC.createGain();g.gain.setValueAtTime(0.24,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.12);
+  const g=AC.createGain();g.gain.setValueAtTime(0.24*sfxImpactGain,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.12);
   o.connect(g);g.connect(master);o.start(t);o.stop(t+0.14);
   const n=AC.createBufferSource(),len=AC.sampleRate*0.05,b=AC.createBuffer(1,len,AC.sampleRate),d=b.getChannelData(0);
   for(let i=0;i<len;i++)d[i]=(Math.random()*2-1)*(1-i/len);
   n.buffer=b;
   const lpf=AC.createBiquadFilter();lpf.type="lowpass";lpf.frequency.value=480;
-  const g2=AC.createGain();g2.gain.value=0.3;
+  const g2=AC.createGain();g2.gain.value=0.3*sfxImpactGain;
   n.connect(lpf);lpf.connect(g2);g2.connect(master);n.start(t);
 }
 function sBuzz(){

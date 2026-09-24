@@ -475,6 +475,8 @@ function voxelGuy(){
   setHair(o,"short");
   attachGroundShadow(o);
   markShadowCasters(o);
+  // 轮廓光 / 天光遮蔽 / 接地压暗（character-shading.js，?shade=classic 关闭）
+  if(window.AIBACharacterShading)AIBACharacterShading.register(g);
   return o;
 }
 function setFaceExpression(o,mode){

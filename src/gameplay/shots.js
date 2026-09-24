@@ -430,6 +430,8 @@ function readyBall(walkInfo){
 function playRimImpactSound(b,made){
   if(!b||b.rimSoundPlayed)return false;
   b.rimSoundPlayed=true;
+  // 旧系统的球没有碰撞冲量，给一个中等值，让篮筐也颤一下
+  if(globalThis.AIBAHoopDynamics&&b.mesh)AIBAHoopDynamics.impact("rim",{x:b.mesh.position.x,y:b.mesh.position.y,z:b.mesh.position.z,impulse:2.6});
   if(made)sRimMake();else sClank();
   document.documentElement.dataset.lastRimSound=made?"make":"miss";
   return true;
@@ -561,15 +563,25 @@ function missBall(){
    触发声音、震动、得分/失手——不再是"到点统一结算"。 */
 const PHYS_SAMPLE={x:0,y:0,z:0,wx:0,wy:0,wz:0};
 function physicsBallEvent(b,e){
+  const fx=globalThis.AIBAHoopDynamics,haptic=typeof impactHaptic==="function"?impactHaptic:playerRimHaptic;
+  const sfx=(kind,fallback)=>{if(typeof impactSfx==="function")impactSfx(kind,e.impulse);else fallback();};
   switch(e.type){
     case "rim":
-      playerRimHaptic(b);
-      // 第一次碰筐：进球的涮筐播"筐响进"，其余播打铁；之后的碰筐只在撞得重时再响
-      if(!playRimImpactSound(b,b.willMake&&b.outcome==="rattle")&&e.impulse>.9)sClank();
+      if(fx)fx.impact("rim",e);
+      haptic(b,e.impulse);
+      // 第一次碰筐：进球的涮筐播"筐响进"，其余播打铁；之后每一下按冲量大小响
+      if(!b.rimSoundPlayed){
+        b.rimSoundPlayed=true;
+        const make=b.willMake&&b.outcome==="rattle";
+        sfx(make?"rimMake":"rim",make?sRimMake:sClank);
+        document.documentElement.dataset.lastRimSound=make?"make":"miss";
+      }else if(e.impulse>.5)sfx("rim",sClank);
       break;
-    case "board":case "connector":sBoard();playerRimHaptic(b);break;
-    case "support":case "scenery":sBounce();break;
-    case "floor":b.bounces++;sBounce();break;
+    case "board":case "connector":
+      if(fx)fx.impact(e.type,e);
+      sfx("board",sBoard);haptic(b,e.impulse);break;
+    case "support":case "scenery":sfx("floor",sBounce);break;
+    case "floor":b.bounces++;sfx("floor",sBounce);break;
     case "made":madeBall(b);break;
     case "decided":
       if(!b.willMake){missBall();if(b.outcome==="rattleout")toast("😱 涮筐而出!","#ff8d7a");}

@@ -28,6 +28,18 @@ function playerRimHaptic(ball){
   return phoneHaptic(HAPTIC_PATTERNS.rim);
 }
 
+/* 真实物理球的碰撞震动（PH-3）：时长按冲量，轻擦 6ms、重砸 28ms；同一颗球可以震多次
+   （转筐每磕一下都震），但全局 90ms 内只震一次，免得连成一串。 */
+let lastImpactHapticAt=0;
+function impactHaptic(ball,impulse){
+  if(!ball||ball.opp||ball.silent)return false;
+  const now=(typeof performance!=="undefined"&&performance.now)?performance.now():Date.now();
+  if(now-lastImpactHapticAt<90)return false;
+  lastImpactHapticAt=now;
+  const ms=Math.round(Math.max(6,Math.min(28,6+(Number(impulse)||0)*3.2)));
+  return phoneHaptic(ms);
+}
+
 /* ---- 关键时刻接线:等主脚本和 hero-moments 等模块都加载完再包装全局函数 ---- */
 function hapticClutchNow(){
   if(typeof G==="undefined")return false;

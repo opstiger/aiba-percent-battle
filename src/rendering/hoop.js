@@ -37,14 +37,27 @@ function deformNet(mesh,level,age,dir){
   attr.needsUpdate=true;
   mesh.geometry.computeBoundingSphere();
 }
+function hoopDynamicsOn(){
+  return !!(window.AIBAHoopDynamics&&window.AIBAModelDetail&&AIBAModelDetail.enabled);
+}
 function pulseNet(value,dir){
   const amount=Math.max(0,Math.min(1.4,Number(value)||0));
+  /* 绳网：由球真实推动；这里只给过场/回放/旧系统一个兜底的"甩一下" */
+  if(hoopDynamicsOn()&&netMesh&&netMesh.name==="clothNet"){
+    if(amount>0)AIBAHoopDynamics.kick(amount,dir);else AIBAHoopDynamics.reset();
+    return;
+  }
   if(amount<=0){netPulse=0;netPulseAge=99;netPulseDir=0;return;}
   netPulse=Math.max(netPulse,amount);netPulseAge=0;
   if(Number.isFinite(Number(dir)))netPulseDir=Math.max(-1,Math.min(1,Number(dir)));
 }
 function updateNetPulse(dt){
   const safeDt=Math.max(0,Math.min(.08,Number(dt)||0));
+  if(netMesh&&netMesh.name==="clothNet"){
+    // 近端：篮筐/篮板弹簧 + 绳网；远端装饰网保持静止（它从来不进球，旧版却跟着近端一起抖）
+    AIBAHoopDynamics.update(safeDt);
+    return;
+  }
   if(netPulse>0){
     if(netPulse>lastNetPulse+.05)netPulseAge=0; /* 兼容仍直接写 netPulse=1 的旧过场调用 */
     netPulseAge+=safeDt;netPulse=Math.max(0,netPulse-safeDt*2.35);
@@ -130,28 +143,36 @@ function buildHoop(){
   board.position.set(0,3.5,-8.62);grp.add(board);
   /* 板边框:真实篮板有一圈明显的边框,透明化之后更需要它来界定板面 */
   const bFrameM=new THREE.MeshLambertMaterial({color:0xcf4a1e});
+  const boardParts=[board];
   [[1.94,0.07],[1.94,-0.07]].forEach(o=>{
     const h=new THREE.Mesh(new THREE.BoxGeometry(1.96,0.09,0.16),bFrameM);
     h.position.set(0,3.5+(o[1]>=0?0.55:-0.55),-8.62);grp.add(h);
     const v=new THREE.Mesh(new THREE.BoxGeometry(0.09,1.14,0.16),bFrameM);
     v.position.set(o[1]>=0?0.95:-0.95,3.5,-8.62);grp.add(v);
+    boardParts.push(h,v);
   });
-  // blocky rim (octagon of boxes)
-  const rimM=new THREE.MeshLambertMaterial({color:0xd6451c});
-  for(let i=0;i<8;i++){
-    const a=i/8*Math.PI*2;
-    const seg=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.07,0.09),rimM);
-    seg.position.set(HOOP.x+Math.cos(a)*0.3,HOOP.y,HOOP.z+Math.sin(a)*0.3);
-    seg.userData.keepOutdoor=true;seg.rotation.y=-a+Math.PI/2;grp.add(seg);
+  /* 篮筐：有 hoop-dynamics.js 时是圆环篮筐 + 挂网钩 + Verlet 绳网，挂在可晃动的篮板上；
+     ?model=classic 或模块缺失时退回原来的八段方块篮筐和形变网。 */
+  const rimM=hoopDynamicsOn()?new THREE.MeshStandardMaterial({color:0xd6451c,roughness:.42,metalness:.18}):new THREE.MeshLambertMaterial({color:0xd6451c});
+  if(hoopDynamicsOn()){
+    netMesh=AIBAHoopDynamics.buildNear(grp,{hoop:HOOP,rimMat:rimM,boardParts}).mesh;
+  }else{
+    // blocky rim (octagon of boxes)
+    for(let i=0;i<8;i++){
+      const a=i/8*Math.PI*2;
+      const seg=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.07,0.09),rimM);
+      seg.position.set(HOOP.x+Math.cos(a)*0.3,HOOP.y,HOOP.z+Math.sin(a)*0.3);
+      seg.userData.keepOutdoor=true;seg.rotation.y=-a+Math.PI/2;grp.add(seg);
+    }
+    const conn=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.07,0.32),rimM);
+    conn.userData.keepOutdoor=true;conn.position.set(0,3.05,-8.42);grp.add(conn);
+    // net
+    netMesh=window.AIBAModelDetail?.enabled?AIBAModelDetail.net():new THREE.Mesh(
+      new THREE.CylinderGeometry(0.28,0.16,0.45,8,3,true),
+      new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:0.75}));
+    netMesh.position.set(HOOP.x,HOOP.y-0.26,HOOP.z);grp.add(netMesh);
+    netMesh.userData.keepOutdoor=true;prepareNet(netMesh);
   }
-  const conn=new THREE.Mesh(new THREE.BoxGeometry(0.12,0.07,0.32),rimM);
-  conn.userData.keepOutdoor=true;conn.position.set(0,3.05,-8.42);grp.add(conn);
-  // net
-  netMesh=window.AIBAModelDetail?.enabled?AIBAModelDetail.net():new THREE.Mesh(
-    new THREE.CylinderGeometry(0.28,0.16,0.45,8,3,true),
-    new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:0.75}));
-  netMesh.position.set(HOOP.x,HOOP.y-0.26,HOOP.z);grp.add(netMesh);
-  netMesh.userData.keepOutdoor=true;prepareNet(netMesh);
   if(window.AIBAModelDetail?.enabled)AIBAModelDetail.hoopHardware(grp,BOARD_Z,BASE_Z,1,bFrameM);
   scene.add(grp);
 
@@ -183,14 +204,18 @@ function buildHoop(){
     }
     AIBAModelDetail.hoopHardware(farGrp,FAR_BOARD_Z,FAR_BASE_Z,-1,bFrameM);
   }
-  for(let i=0;i<8;i++){
-    const a=i/8*Math.PI*2;
-    const seg=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.07,0.09),rimM);
-    seg.position.set(Math.cos(a)*.3,HOOP.y,COURT.farHoopZ+Math.sin(a)*.3);
-    seg.userData.keepOutdoor=true;seg.rotation.y=-a+Math.PI/2;farGrp.add(seg);
+  if(hoopDynamicsOn()){
+    AIBAHoopDynamics.buildStaticRim(farGrp,V3(0,HOOP.y,COURT.farHoopZ),FAR_BOARD_Z-.06,1,rimM);
+  }else{
+    for(let i=0;i<8;i++){
+      const a=i/8*Math.PI*2;
+      const seg=new THREE.Mesh(new THREE.BoxGeometry(0.26,0.07,0.09),rimM);
+      seg.position.set(Math.cos(a)*.3,HOOP.y,COURT.farHoopZ+Math.sin(a)*.3);
+      seg.userData.keepOutdoor=true;seg.rotation.y=-a+Math.PI/2;farGrp.add(seg);
+    }
+    const farConn=new THREE.Mesh(new THREE.BoxGeometry(.12,.07,.32),rimM);
+    farConn.userData.keepOutdoor=true;farConn.position.set(0,HOOP.y,COURT.farHoopZ+.42);farGrp.add(farConn);
   }
-  const farConn=new THREE.Mesh(new THREE.BoxGeometry(.12,.07,.32),rimM);
-  farConn.userData.keepOutdoor=true;farConn.position.set(0,HOOP.y,COURT.farHoopZ+.42);farGrp.add(farConn);
   farNet=window.AIBAModelDetail?.enabled?AIBAModelDetail.net():new THREE.Mesh(
     new THREE.CylinderGeometry(.28,.16,.45,8,3,true),
     new THREE.MeshBasicMaterial({color:0xffffff,wireframe:true,transparent:true,opacity:.6}));
