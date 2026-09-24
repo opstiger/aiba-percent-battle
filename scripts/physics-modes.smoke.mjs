@@ -161,8 +161,8 @@ async function ph4Checks(){
     res.block={willMake:b.willMake,kind:b.physicsKind};playOut(b);
     // 空中撞球：两颗对飞的物理球
     const p0=new THREE.Vector3(0,2.6,-1),q0=new THREE.Vector3(.3,2.6,-1.2);
-    const a1=physicsBallForOutcome(p0,1.2,true,Math.random,matBall,{val:1,silent:true});
-    const a2=physicsBallForOutcome(q0,1.2,true,Math.random,matBall,{val:1,silent:true,opp:true});
+    const a1=physicsBallForOutcome(p0,null,1.2,true,Math.random,matBall,{val:1,silent:true});
+    const a2=physicsBallForOutcome(q0,null,1.2,true,Math.random,matBall,{val:1,silent:true,opp:true});
     shots.balls.push(a1,a2);
     for(let i=0;i<30;i++)window.__step(1);
     physicsBallCollide(a1,a2);

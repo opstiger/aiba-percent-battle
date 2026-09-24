@@ -38,8 +38,16 @@ await page.evaluate(()=>{
   const core=window.AIBA.runtime.service("rendering:core");
   const r=core.renderer,orig=r.render.bind(r);
   window.__cam=null;
+  /* 镜头在游戏的镜头导演之后设定（改 rig），而不是在 renderer.render 里改相机：
+     地板倒影（floor-reflect.js）在主渲染之前按主相机画，渲染时才改相机会让两者对不上。 */
+  const origDirector=window.updateCameraDirector;
+  window.updateCameraDirector=function(){
+    const out=origDirector.apply(this,arguments);
+    if(window.__cam){rig.pos.set(...window.__cam.p);rig.look.set(...window.__cam.look);}
+    return out;
+  };
   r.render=(sc,cam)=>{
-    if(window.__cam&&cam&&cam.isPerspectiveCamera){cam.position.set(...window.__cam.p);cam.lookAt(...window.__cam.look);cam.updateMatrixWorld(true);}
+    if(window.__noRender)return;                 // 等待阶段不渲染（软件光栅化太慢）
     return orig(sc,cam);
   };
   const bl=document.getElementById("bootLoad");if(bl)bl.style.display="none";
@@ -60,9 +68,12 @@ async function snap(name,cam){
 }
 // 1) 百分大战：游戏机位（不覆盖相机），蓄力中
 await page.evaluate(async()=>{
+  window.__noRender=true;
+  if(!G.battleOpp)G.battleOpp=LEGENDS[0];
   startBattle();
   for(let i=0;i<200&&!(G.state==="battle"&&G.canShoot);i++){window.__step(30);await window.__wait(5);}
   if(!startCharge())G.charging=true;G.power=0;let c=0;while(G.power<40&&c++<200)window.__step(1);
+  window.__noRender=false;
 });
 await snap("battle-gamecam",null);
 // 2) 玩家近景：正面 3/4、侧面

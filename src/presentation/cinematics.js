@@ -238,9 +238,10 @@ function fireSilentBall(base,s,releasePos){
   /* 真实物理：表演脚本定好的进 / 不进不变（比分与解说都按它排），轨迹找一条真的。
      纯演出，不占可复现随机源。 */
   if(typeof physicsShotsOn==="function"&&physicsShotsOn()){
-    const dist=Math.hypot(HOOP.x-p0.x,HOOP.z-p0.z);
+    const sim=canonicalRelease(base,show.o);
+    const dist=Math.hypot(HOOP.x-sim.x,HOOP.z-sim.z);
     const tf=shotFlightTime(0.78+dist*0.062,G.myStar||show.o,s);
-    balls.push(physicsBallForOutcome(p0,tf,!!s.make,Math.random,s.deep!=null?matDeep:(s.money?matGold:matBall),
+    balls.push(physicsBallForOutcome(p0,sim,tf,!!s.make,Math.random,s.deep!=null?matDeep:(s.money?matGold:matBall),
       {val:s.val,money:s.money,deep:s.deep!=null,life:1.4,silent:true}));
     return;
   }

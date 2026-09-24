@@ -219,17 +219,18 @@ function afterPlayerLands(delay,callback){
   setTimeout(wait,minimum);
 }
 /* ---------------- 真实物理出手（PH-2，?physics=real） ----------------
-   开关：URL ?physics=real / ?physics=classic 会记进 localStorage，之后不带参数也沿用。
+   开关：默认真实物理（PH-5）；URL ?physics=classic / ?physics=real 会记进 localStorage，之后不带参数也沿用。
    全部模式都接（PH-4）：绝杀的封盖 / 干扰 / 犯规改判走 forcePhysicsOutcome / resimPhysicsBall。 */
 const PHYSICS_PREF_KEY="aiba-physics-mode";
 let physicsModePref=null;
+/* PH-5：默认真实物理。?physics=classic 切回旧"掷骰子"判定并记在本机（回滚通道保留一个版本周期）。 */
 function physicsModeRequested(){
   if(physicsModePref!==null)return physicsModePref;
-  let mode="classic";
+  let mode="real";
   try{
     const q=new URLSearchParams(location.search).get("physics");
     if(q==="real"||q==="classic"){mode=q;localStorage.setItem(PHYSICS_PREF_KEY,q);}
-    else if(localStorage.getItem(PHYSICS_PREF_KEY)==="real")mode="real";
+    else if(localStorage.getItem(PHYSICS_PREF_KEY)==="classic")mode="classic";
   }catch(e){}
   physicsModePref=mode==="real";
   return physicsModePref;
@@ -271,6 +272,17 @@ function applyPhysicsResult(b,res,t0){
   b.decidedAt=start+res.decidedT;
   return b;
 }
+/* 模拟用的确定性出手点：站位（取整到厘米）+ 朝篮筐前移 .32m + 按身高换算的出手高度。
+   不能用手的实际位置：手随动画时序差几厘米，压在命中边界上的球就会同种子不同结果
+   （rng-determinism 实测第 2、5 球翻转）；对手按结果找轨迹时尝试次数也会变，
+   随机数消耗量跟着变，后面所有随机结果都被带偏。画面仍从手里出球，见 visualOffset。 */
+function canonicalRelease(pos,star){
+  const cfg=window.AIBA_CONFIG,body=cfg&&cfg.bodyProfileFor?cfg.bodyProfileFor(star):null;
+  const h=body&&Number(body.h)||1;
+  const x=Math.round(pos.x*100)/100,z=Math.round(pos.z*100)/100;
+  const dx=HOOP.x-x,dz=HOOP.z-z,d=Math.hypot(dx,dz)||1;
+  return new THREE.Vector3(x+dx/d*.32,Math.round(2.6*h*100)/100,z+dz/d*.32);
+}
 function newPhysicsBall(p0,L,res,material,fields){
   const mesh=new THREE.Mesh(ballGeo,material);
   mesh.castShadow=true;mesh.position.copy(p0);scene.add(mesh);
@@ -279,6 +291,9 @@ function newPhysicsBall(p0,L,res,material,fields){
   const b=Object.assign({mesh,blob,p0:p0.clone(),v0:new THREE.Vector3(L.v[0],L.v[1],L.v[2]),t:0,
     vel:new THREE.Vector3(),made:false,life:3,bounces:0,rec:[],timeLeft:0,hot:false,dramaticMiss:false,
     postNetRetention:.2,backspin:1,sideSpin:0,netDir:0,startPos:p0.clone(),launchTf:L.tf,launchU:L.u,launchDepth:L.depth},fields||{});
+  /* 模拟从确定性出手点出发，画面从手出发：前 .18s 把两者的差平滑收掉 */
+  b.simP0=new THREE.Vector3(L.p[0],L.p[1],L.p[2]);
+  b.visualOffset=p0.clone().sub(b.simP0);
   return applyPhysicsResult(b,res,0);
 }
 function physicsLaunchOpts(extra){
@@ -286,16 +301,17 @@ function physicsLaunchOpts(extra){
   return Object.assign({map:PHYS.DIFF_MAPS[G.diff]||PHYS.DEFAULT_MAP,tuning:physicsTuning(),colliders:physicsColliders()},extra||{});
 }
 /* 按既有判定（进 / 不进）找一条真实轨迹：对手、AI 表演、绝杀防守改判用。 */
-function physicsBallForOutcome(p0,tf,want,rng,material,fields,extra){
-  const PHYS=globalThis.AIBABallPhysics;
-  const out=PHYS.launchForOutcome([p0.x,p0.y,p0.z],physicsLaunchOpts(Object.assign({tf,want,rng},extra||{})));
+function physicsBallForOutcome(p0,simP0,tf,want,rng,material,fields,extra){
+  const PHYS=globalThis.AIBABallPhysics,sp=simP0||p0;
+  const out=PHYS.launchForOutcome([sp.x,sp.y,sp.z],physicsLaunchOpts(Object.assign({tf,want,rng},extra||{})));
   out.launch.tf=tf;out.launch.u=out.u;
   return newPhysicsBall(p0,out.launch,out.res,material,fields);
 }
 /* 已经在飞的物理球改判（绝杀防守）：从出手点重新找一条结果为 want 的轨迹 */
 function forcePhysicsOutcome(b,want,uCenter){
   const PHYS=globalThis.AIBABallPhysics;if(!b||!b.physics)return false;
-  const out=PHYS.launchForOutcome([b.p0.x,b.p0.y,b.p0.z],physicsLaunchOpts({tf:b.launchTf,want,rng:aibaRoll,uCenter}));
+  const sp=b.simP0||b.p0;
+  const out=PHYS.launchForOutcome([sp.x,sp.y,sp.z],physicsLaunchOpts({tf:b.launchTf,want,rng:aibaRoll,uCenter}));
   b.v0.set(out.launch.v[0],out.launch.v[1],out.launch.v[2]);b.launchU=out.u;
   applyPhysicsResult(b,out.res,0);
   return true;
@@ -312,10 +328,11 @@ function spawnPhysicsBall(shot,err,latErr,zone,isDeep){
   const PHYS=globalThis.AIBABallPhysics;
   const p0=new THREE.Vector3();ballWorldPos(p0);
   handBall.visible=false;pBall.visible=false;
-  const dist=Math.hypot(HOOP.x-p0.x,HOOP.z-p0.z);
+  const sim=canonicalRelease(P.pos,G.myStar);
+  const dist=Math.hypot(HOOP.x-sim.x,HOOP.z-sim.z);
   const tf0=shotFlightTime(0.78+dist*0.062,G.myStar,shot);
   const u=err/Math.max(.5,zone);
-  const L=PHYS.launch([p0.x,p0.y,p0.z],physicsLaunchOpts({tf:tf0,u,lat:latErr,noise:aibaGauss(),luck:aibaRoll()}));
+  const L=PHYS.launch([sim.x,sim.y,sim.z],physicsLaunchOpts({tf:tf0,u,lat:latErr,noise:aibaGauss(),luck:aibaRoll()}));
   const res=PHYS.simulate(L,{colliders:physicsColliders(),tuning:physicsTuning()});
   L.tf=tf0;L.u=u;
   return newPhysicsBall(p0,L,res,shotMat(shot),{
@@ -647,6 +664,7 @@ function updPhysicsBall(b,dt,index){
   const lt=b.t-(b.pathT0||0);                     // 重新模拟过的球，轨迹从 pathT0 开始
   const s=PHYS.sampleAt(b.path,lt,PHYS_SAMPLE);
   b.mesh.position.set(s.x,s.y,s.z);
+  if(b.visualOffset&&lt<.18){const k=1-lt/.18;b.mesh.position.addScaledVector(b.visualOffset,k*k);}
   const omega=b._pathOmega||(b._pathOmega=new THREE.Vector3());
   omega.set(s.wx,s.wy,s.wz);rotateBallWorld(b,omega,dt,1);
   while(b.evi<b.events.length&&b.events[b.evi].t<=lt)physicsBallEvent(b,b.events[b.evi++]);

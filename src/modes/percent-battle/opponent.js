@@ -210,11 +210,13 @@
     /* 真实物理（?physics=real）：进不进仍按上面的 AI 命中率掷（难度不变），
        轨迹按这个结果去找一条真的——没进的球自然地投短、投长、磕出。 */
     if(typeof physicsShotsOn==="function"&&physicsShotsOn()){
-      const dist=Math.hypot(HOOP.x-start.x,HOOP.z-start.z);
+      // 模拟从确定性出手点出发（站位 + 身高），画面仍从对手手里出球——同种子同结果
+      const sim=canonicalRelease(OPP.pos||base,opponent);
+      const dist=Math.hypot(HOOP.x-sim.x,HOOP.z-sim.z);
       const tf=shotFlightTime(0.78+dist*0.062,G.myStar||opponent,spot);
       OPP.shotPose=captureShotPose?captureShotPose(OPP.guy):null;
       const material=spot.super?superBallMat():(spot.deep!=null?matDeep:matBall);
-      balls.push(physicsBallForOutcome(start,tf,made,aibaRoll,material,{
+      balls.push(physicsBallForOutcome(start,sim,tf,made,aibaRoll,material,{
         val:spot.val,money:false,deep:spot.deep!=null,super:!!spot.super,life:1.6,
         silent:true,opp:true,sp:spot,collided:false,superChanceId:OPP.possessionSuperChanceId||0}));
       OPP.guy.ball.visible=false;

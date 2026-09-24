@@ -38,8 +38,15 @@ await page.evaluate(()=>{
   const core=window.AIBA.runtime.service("rendering:core");
   const r=core.renderer,orig=r.render.bind(r);
   window.__cam=null;
+  /* 镜头在游戏的镜头导演之后设定（改 rig），而不是在 renderer.render 里改相机：
+     地板倒影（floor-reflect.js）在主渲染之前按主相机画，渲染时才改相机会让两者对不上。 */
+  const origDirector=window.updateCameraDirector;
+  window.updateCameraDirector=function(){
+    const out=origDirector.apply(this,arguments);
+    if(window.__cam){rig.pos.set(...window.__cam.p);rig.look.set(...window.__cam.look);}
+    return out;
+  };
   r.render=(sc,cam)=>{
-    if(window.__cam&&cam&&cam.isPerspectiveCamera){cam.position.set(...window.__cam.p);cam.lookAt(...window.__cam.look);cam.updateMatrixWorld(true);}
     return orig(sc,cam);
   };
   const bl=document.getElementById("bootLoad");if(bl)bl.style.display="none";

@@ -1307,7 +1307,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.28.0-detour','src/rendering/characters.js?v=2.31.0-spine','src/rendering/camera.js?v=2.31.0-spine','src/rendering/motion.js?v=2.27.1-foothang','src/shot-motion.js?v=2.29.0-physics','src/gameplay/shots.js?v=2.30.1-phys4','src/modes/last-shot/squad.js?v=2.28.0-shoes','src/modes/last-shot/sequence.js?v=2.30.1-phys4'])
+for(const token of ['src/rendering/props.js?v=2.28.0-detour','src/rendering/characters.js?v=2.32.0-reflect','src/rendering/camera.js?v=2.31.0-spine','src/rendering/motion.js?v=2.27.1-foothang','src/shot-motion.js?v=2.29.0-physics','src/gameplay/shots.js?v=2.33.0-default','src/modes/last-shot/squad.js?v=2.28.0-shoes','src/modes/last-shot/sequence.js?v=2.30.1-phys4'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1764,7 +1764,7 @@ for(const token of ["function updateCameraDirector(","AIBACamera.isEditing","AIB
   if(!cameraSource.includes(token))fail("camera director token missing "+token);
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.30.1-phys4','src/presentation/replay.js?v=2.29.0-physics','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=2.30.1-phys4','src/presentation/win-cinematic.js?v=2.21.0-backspin1','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.31.0-spine','src/core/scene-init.js?v=2.19.9-ceiling'])
+for(const token of ['src/gameplay/shots.js?v=2.33.0-default','src/presentation/replay.js?v=2.29.0-physics','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=2.30.1-phys4','src/presentation/win-cinematic.js?v=2.21.0-backspin1','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.32.0-reflect','src/core/scene-init.js?v=2.19.9-ceiling'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);

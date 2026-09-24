@@ -305,7 +305,8 @@
       const side=(Math.random()<.5?-1:1)*1.5;
       for(let k=0;k<3;k++){
         const f=.44-k*.08;
-        resimPhysicsBall(b,[b.p0.x,b.p0.y,b.p0.z],[b.v0.x*f+side,b.v0.y*f*.52,b.v0.z*f],[0,0,0],0);
+        const sp=b.simP0||b.p0;
+        resimPhysicsBall(b,[sp.x,sp.y,sp.z],[b.v0.x*f+side,b.v0.y*f*.52,b.v0.z*f],[0,0,0],0);
         if(!b.willMake)break;
       }
       if(b.willMake)forcePhysicsOutcome(b,false,-3);

@@ -483,6 +483,8 @@ function voxelGuy(){
   if(window.AIBACharacterShading)AIBACharacterShading.register(g);
   // 胸腔叠加层：屈髋 / 跑动反向扭转 / 落地缓冲 / 出手随挥（spine-layer.js，?spine=off 关闭）
   if(window.AIBASpine)AIBASpine.register(o);
+  // 地板倒影（floor-reflect.js，?reflect=0 关闭）
+  if(window.AIBAFloorReflect)AIBAFloorReflect.register(o);
   return o;
 }
 function setFaceExpression(o,mode){

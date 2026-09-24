@@ -131,6 +131,8 @@ function animate(){
   if(window.AIBABasketballShoes)AIBABasketballShoes.updateAll(realDt);
   /* 胸腔叠加层只在渲染这一刻生效，渲染完复原——下一帧的动作代码看到的仍是原始姿势 */
   if(window.AIBASpine)AIBASpine.apply(realDt);
+  // 地板倒影要在主渲染之前画好（主渲染时地板采样它），并且要带上胸腔叠加层的姿势
+  if(window.AIBAFloorReflect)AIBAFloorReflect.render(realDt);
   renderer.render(scene,camera);
   if(window.AIBASpine)AIBASpine.restore();
   if(window.AIBARecorder)AIBARecorder.tick({canvas:renderer.domElement});
