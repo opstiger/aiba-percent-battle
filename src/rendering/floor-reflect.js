@@ -19,10 +19,12 @@
   const coarse=typeof matchMedia==="function"&&matchMedia("(pointer:coarse)").matches;
   const enabled=forced!==null?forced:(!coarse&&(navigator.deviceMemory||4)>2);
 
+  /* 倒影强度。.62 → .31：用户验收"人影太过了，减少 50%"（2026-09-24）。 */
+  const STRENGTH=.31;
   const uniforms={
     aibaRefl:{value:null},
     aibaReflRes:{value:new THREE.Vector2(1,1)},
-    aibaReflStrength:{value:enabled?.62:0},
+    aibaReflStrength:{value:enabled?STRENGTH:0},
     aibaReflTexel:{value:new THREE.Vector2(1,1)}
   };
   /* 采样坐标用本片元在主相机下的投影位置，不用 gl_FragCoord/分辨率：主渲染画进 grade.js
@@ -121,7 +123,7 @@
     if(!courtFloor.visible||(typeof currentScenePreset!=="undefined"&&currentScenePreset!=="indoor")){
       uniforms.aibaReflStrength.value=0;return;
     }
-    uniforms.aibaReflStrength.value=.62;
+    uniforms.aibaReflStrength.value=STRENGTH;
     tagAcc+=Number(dt)||0;if(tagAcc>.5){tagAcc=0;tagAll();}
     // 球每帧补标（新出手的球）
     try{if(typeof balls!=="undefined")for(const b of balls)if(b.mesh)b.mesh.layers.enable(LAYER);}catch(e){}
