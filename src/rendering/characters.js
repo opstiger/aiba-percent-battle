@@ -441,17 +441,21 @@ function voxelGuy(){
       /* 三节指骨：MCP(根节点) -> PIP(近端指间) -> DIP(远端指间)。长度沿用旧
          单段手指的总长度，只把弯曲分摊到三节，避免握拳时像一根硬棍折弯。 */
       const proximalLength=length*.44,middleLength=length*.33,distalLength=length-proximalLength-middleLength;
-      const proximal=addSoft(fingerRoot,0.022,proximalLength,0.030,mS,0,-proximalLength*.5,0,.008,2);
+      /* M2：手指并拢成"方块手套"。原来 .022 宽、间距 .028，指间 6mm 缝，根部离掌心下沿还有
+         5.5mm 缝，正面看是四根悬空的细棍。根部坐标（Pose Lab 换算，check.js 锁定）和关节
+         层级都不动，只把每节加宽到 .027（指间 1mm），第一节往掌心里多伸 1cm 盖住缝。 */
+      const FW=.027,ROOT_TUCK=.01;
+      const proximal=addSoft(fingerRoot,FW,proximalLength+ROOT_TUCK,0.030,mS,0,-proximalLength*.5+ROOT_TUCK*.5,0,.008,2);
       proximal.name="finger";
       const pipRoot=new THREE.Group();
       pipRoot.name="fingerPip";pipRoot.position.y=-proximalLength;fingerRoot.add(pipRoot);
-      addSoft(pipRoot,0.023,0.018,0.031,mS,0,-.004,0,.007,2).name="fingerPipJoint";
-      const middle=addSoft(pipRoot,0.021,middleLength,0.029,mS,0,-middleLength*.5,0,.007,2);
+      addSoft(pipRoot,FW+.001,0.018,0.031,mS,0,-.004,0,.007,2).name="fingerPipJoint";
+      const middle=addSoft(pipRoot,FW-.001,middleLength,0.029,mS,0,-middleLength*.5,0,.007,2);
       middle.name="fingerMiddle";
       const dipRoot=new THREE.Group();
       dipRoot.name="fingerDip";dipRoot.position.y=-middleLength;pipRoot.add(dipRoot);
-      addSoft(dipRoot,0.022,0.016,0.030,mS,0,-.003,0,.006,2).name="fingerDipJoint";
-      const distal=addSoft(dipRoot,0.020,distalLength,0.028,mS,0,-distalLength*.5,0,.007,2);
+      addSoft(dipRoot,FW,0.016,0.030,mS,0,-.003,0,.006,2).name="fingerDipJoint";
+      const distal=addSoft(dipRoot,FW-.002,distalLength,0.028,mS,0,-distalLength*.5,0,.007,2);
       distal.name="fingerTip";
       fingerRoot.userData.aibaFingerChain={pip:pipRoot,dip:dipRoot};
       handRoot.add(fingerRoot);fingerRoots.push(fingerRoot);pipRoots.push(pipRoot);dipRoots.push(dipRoot);
@@ -477,6 +481,8 @@ function voxelGuy(){
   markShadowCasters(o);
   // 轮廓光 / 天光遮蔽 / 接地压暗（character-shading.js，?shade=classic 关闭）
   if(window.AIBACharacterShading)AIBACharacterShading.register(g);
+  // 胸腔叠加层：屈髋 / 跑动反向扭转 / 落地缓冲 / 出手随挥（spine-layer.js，?spine=off 关闭）
+  if(window.AIBASpine)AIBASpine.register(o);
   return o;
 }
 function setFaceExpression(o,mode){

@@ -129,7 +129,11 @@ function animate(){
   updatePlayerPowerUI();
   updatePauseButton();
   if(window.AIBABasketballShoes)AIBABasketballShoes.updateAll(realDt);
-  renderer.render(scene,camera);if(window.AIBARecorder)AIBARecorder.tick({canvas:renderer.domElement});
+  /* 胸腔叠加层只在渲染这一刻生效，渲染完复原——下一帧的动作代码看到的仍是原始姿势 */
+  if(window.AIBASpine)AIBASpine.apply(realDt);
+  renderer.render(scene,camera);
+  if(window.AIBASpine)AIBASpine.restore();
+  if(window.AIBARecorder)AIBARecorder.tick({canvas:renderer.domElement});
   updSpotDots();
 }
 

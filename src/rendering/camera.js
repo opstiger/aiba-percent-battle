@@ -427,6 +427,8 @@ function updateCameraDirector(dt){
 function ballWorldPos(out){
   // Camera mode is presentation only. Shot physics always starts at the real
   // player skeleton's ball grip so first/third person produce the same shot.
+  // 胸腔叠加层（spine-layer.js）只在渲染时生效；出手点要和画面上的手一致，读的时候带上它
+  if(window.AIBASpine&&typeof player!=="undefined"&&player)return AIBASpine.withPose(player,()=>pBall.getWorldPosition(out));
   pBall.getWorldPosition(out);
   return out;
 }

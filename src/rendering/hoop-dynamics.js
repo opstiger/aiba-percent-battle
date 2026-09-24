@@ -127,9 +127,16 @@
   }
 
   const SUB=1/120,BALL_R=.16;
+  /* 休眠：没有球靠近、篮筐篮板也静止时，网已经停在挂好的形状上，整段模拟直接跳过。
+     这也让"原状"有精确定义（残余晃动 < .2mm 就吸附到静止形状，复位测试要求 1e-6）。 */
+  function springsQuiet(){
+    return state.rimPitch.a===0&&state.rimPitch.v===0&&state.rimRoll.a===0&&state.rimRoll.v===0&&state.boardPitch.a===0&&state.boardPitch.v===0;
+  }
   function simulateNet(net,dt){
     if(!net.ready)resetNet(net);
     const list=gatherBalls(dt);
+    if(net.asleep&&!list.length&&springsQuiet())return;
+    net.asleep=false;
     net.acc=Math.min(net.acc+dt,SUB*4);
     const pos=net.pos,prev=net.prev,rest=net.rest,cols=NET.cols;
     while(net.acc>=SUB){
@@ -196,6 +203,16 @@
         const k=p*3,cap=rw[k+1]+.06;
         if(pos[k+1]>cap){pos[k+1]=cap;if(prev[k+1]<pos[k+1])prev[k+1]=pos[k+1];}
       }
+    }
+    // 入睡：离静止形状和速度都足够小，就精确吸附回去
+    if(!list.length&&springsQuiet()){
+      const rw=net.restWorld;let dev=0;
+      for(let p=cols;p<net.n;p++){
+        const k=p*3;
+        dev=Math.max(dev,Math.abs(pos[k]-rw[k]),Math.abs(pos[k+1]-rw[k+1]),Math.abs(pos[k+2]-rw[k+2]),
+          Math.abs(pos[k]-prev[k]),Math.abs(pos[k+1]-prev[k+1]),Math.abs(pos[k+2]-prev[k+2]));
+      }
+      if(dev<2e-4){resetNet(net);net.asleep=true;}
     }
     writeNetGeometry(net);
   }
@@ -273,6 +290,7 @@
   /* 篮筐一颤，网也跟着抖一下（顶排已经跟着动，这里给下面几排一点随动速度） */
   function nudgeNet(amount){
     const net=state.net;if(!net||!net.ready)return;
+    net.asleep=false;
     for(let p=NET.cols;p<net.n;p++){const k=p*3;net.prev[k+1]+=amount*(1+(p/NET.cols|0)*.25);}
   }
   /* 兼容旧 pulseNet：过场、回放、旧系统进球仍会调用。刚被真实球碰过就不再额外抖，免得双响。 */
@@ -280,6 +298,7 @@
     const net=state.net;if(!net||!net.ready)return false;
     if(state.clock-state.lastContactT<.35)return false;
     const a=clamp(Number(amount)||0,0,1.4),d=clamp(Number(dir)||0,-1,1);
+    net.asleep=false;
     for(let p=NET.cols;p<net.n;p++){
       const k=p*3,row=(p/NET.cols|0)/NET.rows;
       const dx=net.pos[k]-state.hoop.x,dz=net.pos[k+2]-state.hoop.z,r=Math.hypot(dx,dz)||1;
@@ -297,7 +316,7 @@
     for(const s of [state.rimPitch,state.rimRoll,state.boardPitch]){s.a=0;s.v=0;}
     state.rimPivot.rotation.set(0,0,0);state.boardPivot.rotation.x=0;
     state.boardPivot.updateMatrixWorld(true);
-    if(state.net){state.net.acc=0;resetNet(state.net);writeNetGeometry(state.net);}
+    if(state.net){state.net.acc=0;resetNet(state.net);state.net.asleep=true;writeNetGeometry(state.net);}
   }
   function update(dt){
     if(!state.built)return;
