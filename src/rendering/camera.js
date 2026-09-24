@@ -353,7 +353,7 @@ function updPlayCam(dt){
     let fpTarget=HOOP.y+0.15;
     if(typeof balls!=="undefined"&&balls.length){
       const fb=balls[balls.length-1];
-      if(fb&&fb.phase==="fly"&&fb.mesh)fpTarget=Math.max(fpTarget,HOOP.y+0.15+(fb.mesh.position.y-HOOP.y)*0.5);
+      if(fb&&(fb.phase==="fly"||(fb.phase==="path"&&fb.t<fb.tf))&&fb.mesh)fpTarget=Math.max(fpTarget,HOOP.y+0.15+(fb.mesh.position.y-HOOP.y)*0.5);
     }
     fpLookY=fpLookY==null?fpTarget:fpLookY+(fpTarget-fpLookY)*Math.min(1,dt*7);
     rig.look.set(HOOP.x,fpLookY,HOOP.z);

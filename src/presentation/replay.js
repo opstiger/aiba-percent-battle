@@ -32,7 +32,10 @@ function startClip(){
     rep.ghost.material=matBall;
   }
   rep.spin={mesh:rep.ghost,v0:h.v0||HOOP.clone().sub(h.p0||h.startPos),backspin:h.backspin,sideSpin:h.sideSpin};
-  rep.end=Math.min(h.rec[h.rec.length-1][0],h.tf+0.4);
+  /* 真实物理球带 scoreT（进球时刻）：转筐一秒多才进的球，按"第一次碰筐"的 tf 截会把
+     最精彩的那段剪掉。旧球没有 scoreT，行为不变。 */
+  rep.scoreT=h.scoreT!=null?h.scoreT:h.tf;
+  rep.end=Math.min(h.rec[h.rec.length-1][0],rep.scoreT+0.4);
   // random broadcast cameras — all positioned in front of the backboard (z > -8) so nothing blocks the view
   const s=h.shooterPos||V3(h.startPos.x,0,h.startPos.z);
   const release=h.p0||h.startPos;
@@ -112,7 +115,7 @@ function updReplay(dt){
     window.AIBASetIcon("repCam","video","机位 2 · "+rep.camB.n);
   }
   if(!photo)rig.look.copy(rep.ghost.position);
-  if(!rep.scoredFx&&t>=h.tf*0.98){
+  if(!rep.scoredFx&&t>=(h.scoreT!=null?h.scoreT:h.tf*0.98)){
     rep.scoredFx=true;pulseNet(1,rep.ball&&rep.ball.netDir);sSwish();cheerSound(true);G.cheer=1;
   }
   if(rep.t>REPLAY_PHOTO_DUR+rep.end+0.35){

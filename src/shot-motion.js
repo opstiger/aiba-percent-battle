@@ -424,7 +424,8 @@
     const r=chainedReleaseShot.call(p.ctx,p.power,p.shot);
     // 蓄力接近拉满的超远过力:抬高弧线从篮板上方绕过去(落到板后,正常算投失)
     const b=(typeof balls!=="undefined")&&balls[balls.length-1];
-    if(b&&!b.opp&&!b.silent&&b.outcome==="miss"&&(G.lastErr||0)>=OVER_ERR){
+    // 真实物理球（b.physics）的轨迹已由碰撞模拟决定，不再改写初速度
+    if(b&&!b.physics&&!b.opp&&!b.silent&&b.outcome==="miss"&&(G.lastErr||0)>=OVER_ERR){
       const xT=clampN(b.p0.x+b.v0.x*b.tf,-OVER_TOP.maxX,OVER_TOP.maxX);
       b.v0.set((xT-b.p0.x)/b.tf,(OVER_TOP.y-b.p0.y)/b.tf+4.9*b.tf,(OVER_TOP.z-b.p0.z)/b.tf);
     }

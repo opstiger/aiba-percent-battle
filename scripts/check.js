@@ -420,7 +420,8 @@ for(const f of ["src/rendering/camera.js","src/ui/battle-controls.js"])
   const shotsSrc=read("src/gameplay/shots.js");
   if(!/const perfect=a<=zone\*0\.5;/.test(shotsSrc))
     fail("shots.js must derive b.perfect from the swish band (a<=zone*0.5)");
-  if(!/if\(b\.perfect&&b\.phase==="fly"\)emitFire/.test(shotsSrc))
+  // 真实物理球（phase "path"）在到筐之前同样只按 b.perfect 点火
+  if(!/if\(b\.perfect&&\(b\.phase==="fly"\|\|\(b\.phase==="path"&&b\.t<b\.tf\)\)\)emitFire/.test(shotsSrc))
     fail("fire trail must be gated on b.perfect (a perfect release), not on a made streak");
   if(/if\(b\.hot&&b\.phase==="fly"\)emitFire/.test(shotsSrc))
     fail("fire trail regressed to the streak gate (b.hot) - it would burn on every shot once hot");
@@ -536,7 +537,7 @@ if(!entryHtml.includes('<script src="src/result-stats.js?v=1.78"></script>'))fai
 if(!entryHtml.includes('<script src="src/rendering/equipment-visuals.js?v=2.28.0"></script>'))fail("equipment visual script missing");
 if(!entryHtml.includes('<script src="src/gear.js?v=2.19.8-rivalgear"></script>'))fail("gear script missing");
 if(!entryHtml.includes('<script src="src/avatar-customizer.js?v=2.15.5-hand-follow"></script>'))fail("avatar customizer script missing");
-if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.28.0-reach"></script>'))fail("shot motion script missing");
+if(!entryHtml.includes('<script src="src/shot-motion.js?v=2.29.0-physics"></script>'))fail("shot motion script missing");
 if(!entryHtml.includes('<script src="src/roster-style.js?v=2.28.0"></script>'))fail("roster style script missing");
 if(!entryHtml.includes('<script src="src/rendering/character-visuals.js?v=2.24.0"></script>'))fail("voxel pro character visuals missing");
 if(entryHtml.indexOf('src/roster-style.js?v=2.28.0')>entryHtml.indexOf('src/rendering/character-visuals.js?v=2.24.0'))fail("voxel pro visuals must wrap roster styling");
@@ -1306,7 +1307,7 @@ try{
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.28.0-detour','src/rendering/characters.js?v=2.28.0-shoes','src/rendering/camera.js?v=2.24.0','src/rendering/motion.js?v=2.27.1-foothang','src/shot-motion.js?v=2.28.0-reach','src/gameplay/shots.js?v=2.24.0-rack','src/modes/last-shot/squad.js?v=2.28.0-shoes','src/modes/last-shot/sequence.js?v=2.28.0-shoes'])
+for(const token of ['src/rendering/props.js?v=2.28.0-detour','src/rendering/characters.js?v=2.28.0-shoes','src/rendering/camera.js?v=2.29.0-physics','src/rendering/motion.js?v=2.27.1-foothang','src/shot-motion.js?v=2.29.0-physics','src/gameplay/shots.js?v=2.29.0-physics','src/modes/last-shot/squad.js?v=2.28.0-shoes','src/modes/last-shot/sequence.js?v=2.28.0-shoes'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1763,7 +1764,7 @@ for(const token of ["function updateCameraDirector(","AIBACamera.isEditing","AIB
   if(!cameraSource.includes(token))fail("camera director token missing "+token);
 for(const token of ['runtime.register("core:scene-init"',"buildCourt();","buildCharacters();","applyScenePreset(currentScenePreset"])
   if(!sceneInit.includes(token))fail("scene init token missing "+token);
-for(const token of ['src/gameplay/shots.js?v=2.24.0-rack','src/presentation/replay.js?v=2.21.0-backspin1','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.21.0-backspin1','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.28.2-audiofade','src/core/scene-init.js?v=2.19.9-ceiling'])
+for(const token of ['src/gameplay/shots.js?v=2.29.0-physics','src/presentation/replay.js?v=2.29.0-physics','src/ui/battle-controls.js?v=2.19.9-intro','src/gameplay/collisions.js?v=refactor34','src/presentation/win-cinematic.js?v=2.21.0-backspin1','src/core/input.js?v=2.19.9-hy4a','src/core/game-loop.js?v=2.28.2-audiofade','src/core/scene-init.js?v=2.19.9-ceiling'])
   if(!entryHtml.includes(token))fail("next entry missing runtime-core module "+token);
 for(const token of ["function startCharge(","function updBalls(","function startReplay(","function buildSpotDots(","function ballCollide(","function startWinCine(","function onDown(","function animate(","buildCourt();"])
   if(entryHtml.includes(token))fail("next entry still contains inline runtime core "+token);

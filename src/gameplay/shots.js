@@ -218,6 +218,74 @@ function afterPlayerLands(delay,callback){
   };
   setTimeout(wait,minimum);
 }
+/* ---------------- 真实物理出手（PH-2，?physics=real） ----------------
+   开关：URL ?physics=real / ?physics=classic 会记进 localStorage，之后不带参数也沿用。
+   绝杀模式不接：它的防守干扰在飞行中改写 outcome（last-shot/sequence.js），要到 PH-4 改成出手扰动。 */
+const PHYSICS_PREF_KEY="aiba-physics-mode";
+let physicsModePref=null;
+function physicsModeRequested(){
+  if(physicsModePref!==null)return physicsModePref;
+  let mode="classic";
+  try{
+    const q=new URLSearchParams(location.search).get("physics");
+    if(q==="real"||q==="classic"){mode=q;localStorage.setItem(PHYSICS_PREF_KEY,q);}
+    else if(localStorage.getItem(PHYSICS_PREF_KEY)==="real")mode="real";
+  }catch(e){}
+  physicsModePref=mode==="real";
+  return physicsModePref;
+}
+function physicsShotsOn(){
+  return !!(globalThis.AIBABallPhysics&&physicsModeRequested()&&G.mode!=="lastshot");
+}
+/* 篮筐手感档：?rim=firm（真实比赛弹性）/ ?rim=soft（默认，街机常用的"友好筐"）。
+   两档都由 ball-physics.js 的 equalize 自动配平，期望命中率不变，变的是"磕筐后的样子"。 */
+let rimTuningPref=null;
+function physicsTuning(){
+  if(rimTuningPref===null){
+    let rim="soft";
+    try{const q=new URLSearchParams(location.search).get("rim");if(q==="firm"||q==="soft")rim=q;}catch(e){}
+    rimTuningPref=globalThis.AIBABallPhysics.TUNING_PRESETS[rim]||null;
+  }
+  return rimTuningPref;
+}
+function physicsColliders(){
+  const PHYS=globalThis.AIBABallPhysics;
+  return currentScenePreset==="indoor"?PHYS.INDOOR_COLLIDERS:null;
+}
+/* 可复现随机源（?seed=N）里取一个标准正态数：出手差异 */
+function aibaGauss(){
+  const a=Math.max(1e-9,aibaRoll()),b=aibaRoll();
+  return Math.sqrt(-2*Math.log(a))*Math.cos(2*Math.PI*b);
+}
+function spawnPhysicsBall(shot,err,latErr,zone,isDeep){
+  const PHYS=globalThis.AIBABallPhysics;
+  const p0=new THREE.Vector3();ballWorldPos(p0);
+  handBall.visible=false;pBall.visible=false;
+  const dist=Math.hypot(HOOP.x-p0.x,HOOP.z-p0.z);
+  const tf0=shotFlightTime(0.78+dist*0.062,G.myStar,shot);
+  const map=PHYS.DIFF_MAPS[G.diff]||PHYS.DEFAULT_MAP;
+  const u=err/Math.max(.5,zone);
+  const tuning=physicsTuning();
+  const L=PHYS.launch([p0.x,p0.y,p0.z],{tf:tf0,u,lat:latErr,noise:aibaGauss(),luck:aibaRoll(),map,tuning});
+  const res=PHYS.simulate(L,{colliders:physicsColliders(),tuning});
+  /* tf 沿用旧语义"球到篮筐的时刻"：回放取景、英雄时刻都按它卡点 */
+  const arrive=res.events.find(e=>e.type==="rim"||e.type==="board"||e.type==="connector"||e.type==="net"||e.type==="made"||e.type==="decided");
+  const mesh=new THREE.Mesh(ballGeo,shotMat(shot));
+  mesh.castShadow=true;mesh.position.copy(p0);scene.add(mesh);
+  const blob=new THREE.Mesh(blobGeo,blobMat.clone());
+  blob.rotation.x=-Math.PI/2;blob.position.set(p0.x,0.02,p0.z);scene.add(blob);
+  const perfect=Math.abs(u)<=.5;
+  const outcome=PHYS.legacyOutcome(res);
+  return {mesh,blob,p0:p0.clone(),v0:new THREE.Vector3(L.v[0],L.v[1],L.v[2]),tf:arrive?arrive.t:res.decidedT,t:0,
+    phase:"path",physics:true,path:res.path,events:res.events,evi:0,endT:res.endT,willMake:res.made,physicsKind:res.kind,
+    scoreT:res.made?res.madeT:(arrive?arrive.t:res.decidedT),
+    outcome,vel:new THREE.Vector3(),
+    val:shot.val,baseVal:shot.baseVal||shot.val,bonus:shot.bonus||0,money:shot.money,deep:isDeep,super:!!shot.super,rush:G.mode==="rackrush",made:false,life:3,bounces:0,
+    rec:[],timeLeft:G.timer,hot:G.streak>=3,perfect,dramaticMiss:false,lateralError:latErr,postNetRetention:.2,backspin:1,sideSpin:0,
+    netDir:clamp(latErr*.9/.3,-1,1),
+    startPos:p0.clone(),shooterPos:P.pos.clone(),shooterFace:P.face,poseNoiseKey:G.shotPoseNoiseKey,
+    superChanceId:shot.superChanceId||0,launchU:u,launchDepth:L.depth};
+}
 function releaseShot(power,shot){
   const isBattle=G.mode==="battle";
   const isRush=G.mode==="rackrush";
@@ -267,6 +335,9 @@ function releaseShot(power,shot){
      这里再摘一次就是重复处理 —— 会把已经滚到新槽位的另一颗球误当成本次这颗藏掉。
      深远球没有架子、仍然是"出手即消失"。 */
   if(!isBattle&&!isRush&&shot.deep!=null)deepBalls[shot.deep].visible=false;
+  /* 真实物理（?physics=real）：上面的 outcome 只是旧判定的参考值，不再生效——
+     误差映射成出手速度，结果交给 ball-physics.js 的碰撞模拟。 */
+  if(physicsShotsOn())return afterBallSpawn(spawnPhysicsBall(shot,err,latErr,zone,isDeep),shot,err,isBattle,isRush,isDeep);
   // spawn from the hands (any camera mode)
   const p0=new THREE.Vector3();ballWorldPos(p0);
   handBall.visible=false;pBall.visible=false;
@@ -303,6 +374,10 @@ function releaseShot(power,shot){
     rec:[],timeLeft:G.timer,hot,perfect,dramaticMiss,lateralError:latErr,postNetRetention,backspin,sideSpin,netDir:clamp(lat/.42,-1,1),
     startPos:p0.clone(),shooterPos:P.pos.clone(),shooterFace:P.face,poseNoiseKey:G.shotPoseNoiseKey,
     superChanceId:shot.superChanceId||0};
+  return afterBallSpawn(B,shot,err,isBattle,isRush,isDeep);
+}
+/* 球已生成之后的回合推进：统计、下一球、英雄时刻。旧判定与真实物理共用。 */
+function afterBallSpawn(B,shot,err,isBattle,isRush,isDeep){
   B.resultClutch=noteResultAttempt(shot);balls.push(B);
   G.lastErr=err;
   // stats
@@ -482,10 +557,45 @@ function missBall(){
     rivalSay(o,tt);
   }else if(Math.random()<0.5)toast(MISSES[(Math.random()*MISSES.length)|0],"#ff8d7a");
 }
+/* 真实物理球：出手时已经预演完整条轨迹，这里按时间播放，并在碰撞发生的那一刻
+   触发声音、震动、得分/失手——不再是"到点统一结算"。 */
+const PHYS_SAMPLE={x:0,y:0,z:0,wx:0,wy:0,wz:0};
+function physicsBallEvent(b,e){
+  switch(e.type){
+    case "rim":
+      playerRimHaptic(b);
+      // 第一次碰筐：进球的涮筐播"筐响进"，其余播打铁；之后的碰筐只在撞得重时再响
+      if(!playRimImpactSound(b,b.willMake&&b.outcome==="rattle")&&e.impulse>.9)sClank();
+      break;
+    case "board":case "connector":sBoard();playerRimHaptic(b);break;
+    case "support":case "scenery":sBounce();break;
+    case "floor":b.bounces++;sBounce();break;
+    case "made":madeBall(b);break;
+    case "decided":
+      if(!b.willMake){missBall();if(b.outcome==="rattleout")toast("😱 涮筐而出!","#ff8d7a");}
+      break;
+  }
+}
+function updPhysicsBall(b,dt,index){
+  const PHYS=globalThis.AIBABallPhysics;
+  const s=PHYS.sampleAt(b.path,b.t,PHYS_SAMPLE);
+  b.mesh.position.set(s.x,s.y,s.z);
+  const omega=b._pathOmega||(b._pathOmega=new THREE.Vector3());
+  omega.set(s.wx,s.wy,s.wz);rotateBallWorld(b,omega,dt,1);
+  while(b.evi<b.events.length&&b.events[b.evi].t<=b.t)physicsBallEvent(b,b.events[b.evi++]);
+  if(b.t>=b.endT){
+    scene.remove(b.mesh);scene.remove(b.blob);
+    if(!b.silent)G.shots.push(b);
+    balls.splice(index,1);return true;
+  }
+  return false;
+}
 function updBalls(dt){
   for(let i=balls.length-1;i>=0;i--){
     const b=balls[i];b.t+=dt;
-    if(b.phase==="fly"){
+    if(b.phase==="path"){
+      if(updPhysicsBall(b,dt,i))continue;
+    }else if(b.phase==="fly"){
       const t=Math.min(b.t,b.tf);
       b.mesh.position.set(b.p0.x+b.v0.x*t,b.p0.y+b.v0.y*t-4.9*t*t,b.p0.z+b.v0.z*t);
       spinBall(b,dt,1);
@@ -585,7 +695,7 @@ function updBalls(dt){
         balls.splice(i,1);continue;
       }
     }
-    if(b.perfect&&b.phase==="fly")emitFire(b.mesh.position);
+    if(b.perfect&&(b.phase==="fly"||(b.phase==="path"&&b.t<b.tf)))emitFire(b.mesh.position);
     b.blob.position.set(b.mesh.position.x,0.02,b.mesh.position.z);
     const s=clamp(1.4-b.mesh.position.y*0.12,0.3,1.4);
     b.blob.scale.set(s,s,1);
