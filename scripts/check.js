@@ -525,7 +525,7 @@ for(const token of ["const NBA_DNA_ENABLED=false","if(!NBA_DNA_ENABLED)","return
 if(/<script src="src\/nba-dna\//.test(entryHtml))
   fail("NBA DNA 未上线期间不应加载它的脚本（42KB 首屏开销）");
 if(!entryHtml.includes('<script src="src/assets-manifest.js?v=2.28.0"></script>'))fail("assets manifest script missing");
-if(!entryHtml.includes('<script src="src/config.js?v=2.28.0"></script>'))fail("config script missing");
+if(!entryHtml.includes('<script src="src/config.js?v=2.34.0-signature"></script>'))fail("config script missing");
 if(!entryHtml.includes('<script src="src/player-select.js?v=2.15.5-hand-follow"></script>'))fail("player select script missing");
 if(!entryHtml.includes('<script src="src/player-locker-preview.js?v=2.28.0-shoes"></script>'))fail("player locker preview script missing");
 if(!entryHtml.includes('<script src="src/player-id.js?v=2.19.7-timeout"></script>'))fail("player id script missing");

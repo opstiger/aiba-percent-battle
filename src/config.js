@@ -98,34 +98,40 @@
        drift    出手后前后位移(米),正=向篮筐
      幅度刻意压小:后仰/侧身都在 6° 以内,出手点 ±5cm,前后 ±8cm。
      目的是"看得出是不同的人",不是"换一套动作"。 */
-  const DEFAULT_SHOT_STYLE=Object.freeze({kick:1,lean:0,turn:0,release:0,setPoint:0,drift:0});
+  /* jump / fade / hold 三项由 spine-layer.js 的"投篮签名层"在渲染时叠加（不碰被 check.js
+     锁到毫米的姿势计算）：
+       jump  起跳高度倍率（空中身体按比例抬高 / 压低）：乔丹、卡特、麦迪 >1，伯德、科沃尔 <1
+       fade  后仰（离地后上身向后倒，弧度）：科比、乔丹、哈登的后仰跳投
+       hold  随挥定格秒数（出手后投篮手臂定住）：雷·阿伦、汤普森长，艾弗森短
+     turn 在 2026-09-24 整体放大 2.5 倍：原来最大 .11 弧度（6°），隔着半场看不出侧身。 */
+  const DEFAULT_SHOT_STYLE=Object.freeze({kick:1,lean:0,turn:0,release:0,setPoint:0,drift:0,jump:1,fade:0,hold:0});
   const SHOT_STYLES=Object.freeze({
     /* 踢腿是这套差异里**唯一隔着半个球场都看得出来**的量,所以跨度给到 0.10~1.95(19.5 倍)。
        第一版我把这一项压在 0.20~1.60,而且把麦迪配成了倒数第二小 —— 完全配反了。
        真实特征:麦迪的招牌就是出手后那记大幅甩腿;库里/汤普森是极紧凑的教科书型,
        几乎不踢;科比是大踢腿 + 前跳 + 后仰同时出现。 */
     /* 踢腿最大。麦迪出手后甩腿幅度是全联盟最夸张的之一 */
-    t01:{kick:1.95,lean:.05,turn:.05,release:.02,setPoint:-.03,drift:-.02},
-    miller:{kick:1.70,lean:.03,turn:.09,release:.01,setPoint:.02,drift:.03},
+    t01:{kick:1.95,lean:.05,turn:0.125,release:.02,setPoint:-.03,drift:-.02,jump:1.3,fade:0.08,hold:0.15},
+    miller:{kick:1.70,lean:.03,turn:0.225,release:.01,setPoint:.02,drift:.03,jump:1.0,fade:0.12,hold:0.3},
     /* 大踢腿 + 前跳 + 后仰。前跳和后仰同时出现是他最好认的组合 */
-    k24:{kick:1.55,lean:.10,turn:.11,release:.035,setPoint:.05,drift:.09},
-    v15:{kick:1.25,lean:0,turn:0,release:.05,setPoint:0,drift:0},
+    k24:{kick:1.55,lean:.10,turn:0.275,release:.035,setPoint:.05,drift:.09,jump:1.25,fade:0.26,hold:0.25},
+    v15:{kick:1.25,lean:0,turn:0.0,release:.05,setPoint:0,drift:0,jump:1.38,fade:0.05,hold:0.2},
     /* 后撤步:明显向后 + 轻微后仰,踢腿中等 */
-    h13:{kick:.80,lean:.06,turn:.05,release:.01,setPoint:-.02,drift:-.09},
-    j23:{kick:1.10,lean:.08,turn:.07,release:.045,setPoint:.04,drift:-.05},
-    lillard:{kick:.95,lean:.04,turn:0,release:0,setPoint:-.04,drift:-.05},
-    a03:{kick:.70,lean:0,turn:.03,release:-.045,setPoint:-.05,drift:.07},
-    nova24:{kick:.60,lean:0,turn:0,release:0,setPoint:-.02,drift:0},
-    taurasi:{kick:.55,lean:.05,turn:.04,release:0,setPoint:.03,drift:-.02},
-    stojakovic:{kick:.50,lean:0,turn:.02,release:.045,setPoint:.02,drift:0},
-    ionescu:{kick:.40,lean:0,turn:0,release:.01,setPoint:-.04,drift:0},
-    bird:{kick:.35,lean:0,turn:.03,release:.02,setPoint:.06,drift:0},
-    korver:{kick:.20,lean:0,turn:0,release:.02,setPoint:-.03,drift:0},
-    allen:{kick:.18,lean:0,turn:0,release:.01,setPoint:-.02,drift:0},
-    "sue-bird":{kick:.18,lean:0,turn:0,release:-.01,setPoint:-.02,drift:0},
+    h13:{kick:.80,lean:.06,turn:0.125,release:.01,setPoint:-.02,drift:-.09,jump:1.0,fade:0.2,hold:0.3},
+    j23:{kick:1.10,lean:.08,turn:0.175,release:.045,setPoint:.04,drift:-.05,jump:1.35,fade:0.22,hold:0.3},
+    lillard:{kick:.95,lean:.04,turn:0.0,release:0,setPoint:-.04,drift:-.05,jump:1.05,fade:0.06,hold:0.4},
+    a03:{kick:.70,lean:0,turn:0.075,release:-.045,setPoint:-.05,drift:.07,jump:1.2,fade:0.1,hold:0.1},
+    nova24:{kick:.60,lean:0,turn:0.0,release:0,setPoint:-.02,drift:0,jump:1.0,fade:0,hold:0.4},
+    taurasi:{kick:.55,lean:.05,turn:0.1,release:0,setPoint:.03,drift:-.02,jump:1.0,fade:0.12,hold:0.35},
+    stojakovic:{kick:.50,lean:0,turn:0.05,release:.045,setPoint:.02,drift:0,jump:1.05,fade:0,hold:0.55},
+    ionescu:{kick:.40,lean:0,turn:0.0,release:.01,setPoint:-.04,drift:0,jump:0.95,fade:0.03,hold:0.45},
+    bird:{kick:.35,lean:0,turn:0.075,release:.02,setPoint:.06,drift:0,jump:0.78,fade:0.05,hold:0.55},
+    korver:{kick:.20,lean:0,turn:0.0,release:.02,setPoint:-.03,drift:0,jump:0.72,fade:0,hold:0.65},
+    allen:{kick:.18,lean:0,turn:0.0,release:.01,setPoint:-.02,drift:0,jump:1.0,fade:0,hold:0.8},
+    "sue-bird":{kick:.18,lean:0,turn:0.0,release:-.01,setPoint:-.02,drift:0,jump:0.88,fade:0,hold:0.5},
     /* 库里 / 汤普森:几乎不踢腿。两个人是全表最小值,和麦迪拉开一个数量级 */
-    curry:{kick:.15,lean:0,turn:.02,release:-.01,setPoint:-.06,drift:.05},
-    thompson:{kick:.10,lean:0,turn:0,release:.015,setPoint:0,drift:0}
+    curry:{kick:.15,lean:0,turn:0.05,release:-.01,setPoint:-.06,drift:.05,jump:0.85,fade:0,hold:0.35},
+    thompson:{kick:.10,lean:0,turn:0.0,release:.015,setPoint:0,drift:0,jump:0.9,fade:0,hold:0.75}
   });
   /* 惯用手。没写 hand 的一律右手 —— 老球星因此逐位不变。 */
   function shootingHandFor(star){
