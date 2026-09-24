@@ -1,6 +1,9 @@
 /* ---------------- voxel characters: player avatar & passer ---------------- */
 /* 高精度体素球员:在保留原动画 pivot 偏移(髋0.78/大腿0.34/小腿0.32/肩1.36...)的前提下细分方块 */
-const VOXEL_HEAD_SCALE=new URLSearchParams(location.search).get("head")==="classic"?1:.86;
+/* M5：.86 → .80。头大腿短是 Q 版比例（约 5 头身）；骨长被落地解算和 check.js 的球心断言锁着
+   改不了，缩头是不动动作系统就能把比例往运动员方向拉的那一项。以脖子顶端为支点缩放，
+   头饰、发型、表情都挂在 headRoot 上一起缩。?head=classic 仍退回 1。 */
+const VOXEL_HEAD_SCALE=new URLSearchParams(location.search).get("head")==="classic"?1:.80;
 const VOXEL_HEAD_PIVOT_Y=1.45;
 const VOXEL_SHOULDER_X=.285;
 const VOXEL_HIP_X=.125;
@@ -16,18 +19,22 @@ const CHARACTER_TEXTURE_CACHE=new Map();
 /* One closed tank-top shell. Front/back panels share an outline, with sewn side gussets.
    UVs preserve the existing 72-unit jersey artwork and left-handed number mirroring. */
 function jerseyPanelGeometry(){
-  // 运动人体工学剪裁: 弧形挖肩、收腰微展、下摆自然放量
+  /* 运动人体工学剪裁: 弧形挖肩、收腰、下摆扎进短裤。
+     M5：原轮廓胸口 .238 / 腰 .226 几乎一样宽，正背面都是长方体。改成运动员的倒三角——
+     胸口 .25、腰 .205，胸腔前后加厚、腰部变薄（见下面 z）。下沿比短裤腰头窄，读成扎进短裤。 */
   const outline=[
-    [-.222,-.26],[.222,-.26],[.232,-.14],[.226,-.04],[.228,.08],[.234,.16],[.238,.30],
-    [.108,.30],[.085,.20],[0,.155],[-.085,.20],[-.108,.30],
-    [-.238,.30],[-.234,.16],[-.228,.08],[-.226,-.04],[-.232,-.14]
+    [-.205,-.26],[.205,-.26],[.212,-.14],[.218,-.04],[.23,.08],[.242,.16],[.25,.30],
+    [.112,.30],[.088,.20],[0,.155],[-.088,.20],[-.112,.30],
+    [-.25,.30],[-.242,.16],[-.23,.08],[-.218,-.04],[-.212,-.14]
   ];
+  // 胸腔比腰厚：底部 .116，往上到胸口 .132，再叠原来的微弧
+  const depth=y=>.116+.016*Math.max(0,Math.min(1,(y+.26)/.46))+.008*Math.cos(y*5);
   const shape=new THREE.Shape(outline.map(([x,y])=>new THREE.Vector2(x,y))),flat=new THREE.ShapeGeometry(shape).toNonIndexed();
   const pos=[],uv=[],groups=[];
   for(const back of [false,true]){
     const start=pos.length/3,a=flat.attributes.position;
     for(let i=0;i<a.count;i+=3)for(const j of back?[0,2,1]:[0,1,2]){
-      const x=a.getX(i+j),y=a.getY(i+j),z=(back?-1:1)*(.124+.008*Math.cos(y*5));
+      const x=a.getX(i+j),y=a.getY(i+j),z=(back?-1:1)*depth(y);
       pos.push(x,y,z);uv.push(back?.5-x/.5:.5+x/.5,.5+y/.52);
     }
     groups.push({start,count:pos.length/3-start,materialIndex:back?5:4});
@@ -35,9 +42,9 @@ function jerseyPanelGeometry(){
   for(let i=0;i<outline.length;i++){
     const a=outline[i],b=outline[(i+1)%outline.length],start=pos.length/3;
     for(const [p,back] of [[a,false],[a,true],[b,true],[a,false],[b,true],[b,false]]){
-      const z=(back?-1:1)*(.124+.008*Math.cos(p[1]*5));pos.push(p[0],p[1],z);uv.push(back?0:1,(p[1]+.26)/.52);
+      const z=(back?-1:1)*depth(p[1]);pos.push(p[0],p[1],z);uv.push(back?0:1,(p[1]+.26)/.52);
     }
-    groups.push({start,count:6,materialIndex:Math.abs(a[0])>.21&&Math.abs(b[0])>.21?1:0});
+    groups.push({start,count:6,materialIndex:Math.abs(a[0])>.2&&Math.abs(b[0])>.2?1:0});
   }
   flat.dispose();const geo=new THREE.BufferGeometry();geo.setAttribute('position',new THREE.Float32BufferAttribute(pos,3));geo.setAttribute('uv',new THREE.Float32BufferAttribute(uv,2));
   groups.forEach(g=>geo.addGroup(g.start,g.count,g.materialIndex));geo.computeVertexNormals();geo.computeBoundingSphere();geo.name='tailoredJerseyPanels';return geo;
@@ -190,19 +197,23 @@ function voxelGuy(){
   // ---- 腿 ----
   [-VOXEL_HIP_X,VOXEL_HIP_X].forEach(x=>{
     const lg=new THREE.Group();lg.position.set(x,0.78,0);     // 髋 pivot
-    const hipBlend=addSoft(lg,0.208,0.23,0.228,mP,0,-0.075,0,.038,3);
+    /* M5（2026-09-24）NBA 长短裤：原来到大腿中段、直筒，读起来像田径短裤。加长到膝盖上沿、
+       下摆外扩——宽松过膝短裤是篮球运动员最标志性的轮廓，顺带盖住大腿 / 膝盖粗细不一的台阶。
+       裤腿顶端高度不变（.04），只往下延长到膝盖上方 3cm（露出膝盖，小腿不显短）；
+       宽 .232 < 2×hipX（.25），两条裤腿中间不重叠。 */
+    const hipBlend=addSoft(lg,0.232,0.33,0.246,mP,0,-0.125,0,.04,3);
     hipBlend.name="hipBlend";                                 // 髋关节藏在短裤内并与骨盆重叠
-    if(detailOn)detail.profile(hipBlend,1.10,0.94,1.08,0.95);  // A字微阔弧度剪裁：裤筒自然向下微展，打破生硬直筒方块
+    if(detailOn)detail.profile(hipBlend,1.14,0.94,1.10,0.96);  // 下摆外扩：宽松过膝的篮球短裤
     const sideSign=Math.sign(x||1);
     // 球裤侧边弧形队色条与圆弧V形开叉 (Curved V-notch slit piping)
-    const slitTrim=add(lg,0.012,0.155,0.215,mJ,sideSign*0.103,-0.118,0.004);
+    const slitTrim=add(lg,0.012,0.27,0.235,mJ,sideSign*0.116,-0.145,0.004);
     slitTrim.name="shortsSideStripe";
     if(detailOn)detail.profile(slitTrim,1.12,0.94,1.08,0.95);
     // 球裤裤脚微展立体滚边 (3D Contoured Hem Roll)
-    const hemRoll=addSoft(lg,0.216,0.016,0.236,mJ,0,-0.19,0,.005,2);
+    const hemRoll=addSoft(lg,0.266,0.018,0.272,mJ,0,-0.284,0,.006,2);
     hemRoll.name="shortsHemRoll";
     // 现代篮球标配内外层次：球裤下沿自然微露出一段高弹紧身安全打底裤 (Compression Slider Tights)
-    const sliderTight=addSoft(lg,0.168,0.045,0.185,mCompTight,0,-0.208,0,.010,2);
+    const sliderTight=addSoft(lg,0.168,0.03,0.185,mCompTight,0,-0.296,0,.010,2);
     sliderTight.name="shortsSliderTight";
     addSoft(lg,0.158,0.21,0.175,mS,0,-0.255,0,.018,3);          // 大腿伸入膝关节包
     const kn=new THREE.Group();kn.position.y=-0.34;           // 膝 pivot
@@ -211,6 +222,9 @@ function voxelGuy(){
     // Patella is part of the knee silhouette, never a second protruding pad.
     const calf=addSoft(kn,0.15,0.255,0.165,mS,0,-0.165,0,.018,3);
     calf.name="calf";if(detailOn)detail.profile(calf,.82,1,.88,1);
+    /* 小腿后侧腓肠肌：上三分之一往后鼓，腿不再是一根直筒。名字不叫 calf，
+       球鞋模块只替换 calf / 袜子，不会把它藏掉。 */
+    if(detailOn){const calfMuscle=addSoft(kn,0.118,0.13,0.05,mS,0,-0.105,-0.071,.02,2);calfMuscle.name="calfMuscle";detail.profile(calfMuscle,.72,1,.6,1);}
     addSoft(kn,0.165,0.095,0.18,mSock, 0,-0.295,0.006,.024,2).name="legacySock";// 袜子
     add(kn,0.165,0.009,0.181,mJ, 0,-0.257,0.006).name="legacySock";              // 袜口队色细条
     addSoft(kn,0.166,0.012,0.18,mSock,0,-0.247,0.006,.004,2).name="legacySock"; // 袜口外翻(在小腿上留暗边)
@@ -331,8 +345,9 @@ function voxelGuy(){
   /* 下摆单独留一层很薄的布片，跑动时做低幅度二级弹簧；不参与身体/脚底解算，
      站定时回到零，避免把整件球衣当硬板。前后各一片是为了转身时仍能读到摆动。 */
   const jerseyHem=new THREE.Group();jerseyHem.name="jerseyHem";jerseyHem.position.y=.895;
-  const jerseyHemFront=addSoft(jerseyHem,.453,.024,.009,mJ,0,0,.134,.004,2);
-  const jerseyHemBack=addSoft(jerseyHem,.453,.024,.009,mJ,0,0,-.134,.004,2);
+  // 下摆跟着收窄的腰线（原 .453 宽会从收腰后的球衣两侧伸出去）
+  const jerseyHemFront=addSoft(jerseyHem,.408,.024,.009,mJ,0,0,.122,.004,2);
+  const jerseyHemBack=addSoft(jerseyHem,.408,.024,.009,mJ,0,0,-.122,.004,2);
   jerseyHemFront.name="jerseyHemFront";jerseyHemBack.name="jerseyHemBack";g.add(jerseyHem);
   // ---- 脖子 + 头 ----
   const neckBlend=addSoft(g,0.155,0.12,0.155,mS,0,1.445,0,.036,3);
@@ -347,9 +362,13 @@ function voxelGuy(){
   const mFace=new THREE.MeshLambertMaterial({color:0xffffff});
   const head=new THREE.Mesh(roundedBoxGeometry(.34,.34,.34,.052,3),[mS,mS,mS,mS,mFace,mS]);
   head.position.y=1.62;headRoot.add(head);
+  // 下颌收窄 8%：头从立方体变成上宽下窄，更像头骨而不是盒子
+  if(detailOn)detail.profile(head,.92,1,.94,1);
   round(headRoot,.032,.054,.043,mS,-.177,1.605,.01);          // 左耳
   round(headRoot,.032,.054,.043,mS,.177,1.605,.01);           // 右耳
-  round(headRoot,.035,.040,.027,mS,0,1.598,.174);             // 鼻
+  /* 鼻子：圆球 → 方块语法的楔形鼻梁（上窄下宽、贴脸），和整体方块风格一致，不再是卡通球鼻 */
+  const nose=addSoft(headRoot,.05,.072,.034,mS,0,1.597,.176,.011,2);nose.name="nose";
+  if(detailOn)detail.profile(nose,1.08,.62,1.15,.55);
   add(headRoot,0.09,0.026,0.035,hairMat, -0.085,1.67,0.19);   // 立体左眉
   add(headRoot,0.09,0.026,0.035,hairMat,  0.085,1.67,0.19);   // 立体右眉
   add(headRoot,0.055,0.045,0.055,mS, -0.197,1.56,0.032);      // 耳垂
@@ -396,13 +415,15 @@ function voxelGuy(){
     const up=new THREE.Mesh(roundedBoxGeometry(.14,.29,.16,.018,3),mS);
     up.name="upperArm";up.position.y=-.165;sh2.add(up);
     if(detailOn)detail.profile(up,.94,1);
+    /* 肱二头肌：大臂前侧中段往前鼓一点，手臂不再是等粗的长方体 */
+    if(detailOn){const bicep=addSoft(sh2,0.098,0.13,0.042,mS,0,-.175,.068,.018,2);bicep.name="bicep";detail.profile(bicep,.8,.92,.7,1);}
     const sl=new THREE.Mesh(roundedBoxGeometry(.148,.285,.168,.02,2),new THREE.MeshLambertMaterial({color:0x111111}));
     sl.position.y=-.19;sl.visible=false;sh2.add(sl);          // 贴身护臂(默认隐藏)
     const el=new THREE.Group();el.position.y=-0.32;          // 肘 pivot
     const elbowBlend=addSoft(el,0.129,0.105,0.147,mS,0,-0.015,0,.023,3);
     elbowBlend.name="elbowBlend";                            // 圆角肘包同时压住大臂和前臂
     const fo=soft(0.125,0.29,0.145,mS,.018,3);fo.position.y=-0.135;el.add(fo); // 前臂伸入肘包
-    fo.name="forearm";if(detailOn)detail.profile(fo,.90,1);
+    fo.name="forearm";if(detailOn)detail.profile(fo,.86,1,.88,1);   // 前臂向手腕收窄（.80 会让护臂松出 12mm，model-regress 限 7.7mm）
     const wr=soft(0.14,0.06,0.155,new THREE.MeshLambertMaterial({color:0xffffff}),.018,2);
     wr.position.y=-0.27;wr.visible=false;el.add(wr);          // 护腕(默认隐藏)
     const handRoot=new THREE.Group();

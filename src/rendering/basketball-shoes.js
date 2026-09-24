@@ -44,7 +44,10 @@
     /* 袜子跟着配色走,但只染袜筒和袜条 —— calf 用的是皮肤材质,染了会把小腿变色。 */
     if(sock!=null&&(old.name==='crewSock'||old.name==='legacySock'))proxy.material.color.setHex(sock).convertSRGBToLinear();
     if(sockStripe!=null&&old.name==='sockStripe')proxy.material.color.setHex(sockStripe).convertSRGBToLinear();
-    const a=proxy.geometry.attributes.position;for(let i=0;i<a.count;i++){const kneeY=a.getY(i)*old.scale.y+old.position.y;const t=THREE.MathUtils.clamp((kneeY+.19)/.10,0,1);const taper=.60+.40*t;a.setXYZ(i,a.getX(i)*taper,a.getY(i),a.getZ(i)*taper);}proxy.geometry.computeVertexNormals();old.parent.add(proxy);created.push(proxy);
+    /* 小腿（calf）的收窄放缓：原来袜口以上 .10m 内从 100% 收到 60%，两条小腿之间出现上宽下窄的
+     V 形缝，看台底座的深色从缝里透出来像两根尖刺（M5 截图实测）。袜子仍按原来的收法。 */
+    const isCalf=old.name==='calf';
+    const a=proxy.geometry.attributes.position;for(let i=0;i<a.count;i++){const kneeY=a.getY(i)*old.scale.y+old.position.y;const t=isCalf?THREE.MathUtils.clamp((kneeY+.25)/.16,0,1):THREE.MathUtils.clamp((kneeY+.19)/.10,0,1);const taper=isCalf?.80+.20*t:.60+.40*t;a.setXYZ(i,a.getX(i)*taper,a.getY(i),a.getZ(i)*taper);}proxy.geometry.computeVertexNormals();old.parent.add(proxy);created.push(proxy);
    }
   }
   guy.ankles.forEach((ankle,i)=>{const proxy=new THREE.Mesh(new THREE.CylinderGeometry(.050,.047,.16,8),new THREE.MeshLambertMaterial({color:sock??0xe8e7e2}));proxy.name='shoeEquippedAnkleProxy';proxy.userData.shoeFitVisual=true;proxy.position.set(0,.018,.006);ankle.add(proxy);created.push(proxy);
