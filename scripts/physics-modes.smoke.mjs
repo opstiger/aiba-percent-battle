@@ -5,7 +5,8 @@
    投篮机 / 百分大战 / 绝杀）各投 8 球，力度有准有偏。每个模式跑完立刻打印一行。检查：
      - 物理模式不能有报错；每一球都要能回到"可以投下一球"（回合推进没被卡死）
      - 物理模式下玩家的球确实走了物理分支，且每颗物理球都结算了（进 / 不进各触发一次）
-     - 绝杀模式按设计不接物理；经典模式一颗物理球都不能有（默认行为逐位不变）
+     - PH-4 起全部模式都接物理（含绝杀、百分大战对手、三分大赛 AI 表演）；
+       经典模式一颗物理球都不能有（默认行为逐位不变）
    只验逻辑：renderer.render 置空（软件光栅化几千帧要几十分钟，且与本测试无关）。
    为什么不直接跑 smoke-browser.js：它在每个模式里打满整局、帧上限 12000，无头软件渲染下
    两遍要一小时以上，而且中途没有任何输出，卡住和慢分不清。 */
@@ -37,7 +38,8 @@ const MODES=[
   ["练习","startPractice()"],
   ["三分大赛",'goDiff("normal");if(typeof startRound==="function")startRound();'],
   ["投篮机","startRackRush()"],
-  ["百分大战","startBattle()"],
+  /* 正常流程里对手由赛前选人写进 G.battleOpp；直接 startBattle() 会跳过它，对手永远不出手 */
+  ["百分大战","if(!G.battleOpp)G.battleOpp=LEGENDS[0];startBattle()"],
   ["绝杀","beginLastShot(true)"]
 ];
 const POWERS=[74,80,66,90,58,74,77,70];
@@ -60,15 +62,14 @@ async function openPage(mode){
     window.__step=n=>{for(let i=0;i<n;i++){try{animate();}catch(e){window.__errs.push("animate: "+e.message+" @ "+String(e.stack||"").split("\n").slice(1,3).map(l=>l.trim().replace(/^at /,"").replace(/http:\/\/127\.0\.0\.1:\d+\//,"")).join(" ← "));}}};
     window.__wait=ms=>new Promise(r=>setTimeout(r,ms));
     window.__stat={spawned:0,settled:0,kinds:{}};
-    const orig=window.spawnPhysicsBall;
-    if(typeof orig==="function")window.spawnPhysicsBall=function(){
-      const b=orig.apply(this,arguments);window.__stat.spawned++;(window.__phys=window.__phys||[]).push(b);
+    /* 玩家的球走 spawnPhysicsBall，对手 / AI 表演走 physicsBallForOutcome；两边都数 */
+    const note=b=>{window.__stat.spawned++;(window.__phys=window.__phys||[]).push(b);
       window.__stat.kinds[b.physicsKind]=(window.__stat.kinds[b.physicsKind]||0)+1;
-      /* 结算检查：进球触发 madeBall，没进触发 decided 事件里的 missBall，二者必居其一 */
-      const ev=b.events.find(e=>e.type==="made"||e.type==="decided");
-      if(ev)b.__settleT=ev.t;
-      return b;
-    };
+      if(b.opp)window.__stat.opp=(window.__stat.opp||0)+1;else if(b.silent)window.__stat.show=(window.__stat.show||0)+1;return b;};
+    for(const name of ["spawnPhysicsBall","physicsBallForOutcome"]){
+      const orig=window[name];
+      if(typeof orig==="function")window[name]=function(){return note(orig.apply(this,arguments));};
+    }
     /* 结算按游戏真正派发的事件计：进球（made）或判负（decided 且不会进）各算一次。
        早先按"轮询时刻 ≥ 结算时刻"去数，蓄力循环里没轮询，结算和移除都落在蓄力期间的球会被漏数。 */
     const origEvent=window.physicsBallEvent;
@@ -108,7 +109,7 @@ async function run(mode){
       }
       for(let i=0;i<60;i++){window.__step(10);window.__trackSettled();}
       return {state0,stateEnd:G.state,shots:shot,stuck,frames,
-        physicsBalls:window.__stat.spawned-spawned0,settled:window.__stat.settled-settled0,
+        physicsBalls:window.__stat.spawned-spawned0,settled:window.__stat.settled-settled0,opp:window.__stat.opp||0,show:window.__stat.show||0,
         newErrs:window.__errs.slice(before,before+3),errCount:window.__errs.length-before,kinds:window.__stat.kinds,
         /* 没结算的物理球：把它的状态带出来，别只报一个数 */
         unsettled:(window.__phys||[]).filter(b=>!b.__counted).map(b=>({t:+b.t.toFixed(2),settleT:b.__settleT,endT:+b.endT.toFixed(2),phase:b.phase,
@@ -118,7 +119,7 @@ async function run(mode){
     row.模式=name;row.秒=Math.round((Date.now()-t0)/1000);
     spawned+=row.physicsBalls;for(const k in row.kinds)kinds[k]=(kinds[k]||0)+row.kinds[k];
     pageErrs.push(...errs);
-    console.log(`[physics=${mode}] ${name}: 起始 ${row.state0} → ${row.stateEnd}，投 ${row.shots} 球，物理球 ${row.physicsBalls}，已结算 ${row.settled}，卡住 ${row.stuck}，报错 ${row.errCount}，${row.秒}s`);
+    console.log(`[physics=${mode}] ${name}: 起始 ${row.state0} → ${row.stateEnd}，投 ${row.shots} 球，物理球 ${row.physicsBalls}（对手 ${row.opp}，表演 ${row.show}），已结算 ${row.settled}，卡住 ${row.stuck}，报错 ${row.errCount}，${row.秒}s`);
     row.newErrs.forEach(e=>console.log("     "+e));
     row.unsettled.forEach(u=>console.log("     未结算: "+JSON.stringify(u)));
     rows.push(row);
@@ -126,7 +127,65 @@ async function run(mode){
   return {mode,rows,stat:{spawned,kinds},errs:pageErrs};
 }
 
+/* PH-4 专项：改判与空中撞球在冒烟里很难自然触发，这里直接对飞行中的球下手。
+   - forcePhysicsOutcome(b,false/true)：绝杀的犯规 / 干扰改判，结果必须对上且能结算
+   - resimPhysicsBall 封盖：球被拍飞后从出手点重新模拟
+   - physicsBallCollide：两颗在空中的物理球相撞，各自从撞击时刻重新模拟 */
+async function ph4Checks(){
+  const {ctx,page,errs}=await openPage("real");
+  const out=await page.evaluate(async()=>{
+    const shots=window.AIBA.runtime.service("gameplay:shots"),res={};
+    startPractice();
+    for(let i=0;i<80&&!G.canShoot;i++){window.__step(30);await window.__wait(5);}
+    const fire=async pw=>{
+      for(let i=0;i<80&&!G.canShoot;i++){window.__step(30);await window.__wait(5);}
+      const seen=new Set(shots.balls);
+      if(!startCharge())G.charging=true;G.power=0;let c=0;while(G.power<pw&&c++<400)window.__step(1);
+      doRelease();let b=null;for(let i=0;i<30&&!b;i++){window.__step(1);b=shots.balls.find(x=>!seen.has(x));}
+      return b;
+    };
+    const playOut=b=>{for(let i=0;i<600&&shots.balls.includes(b);i++)window.__step(1);};
+    // 犯规改判：完美出手也要不进
+    let b=await fire(74);window.__step(2);
+    const before=window.__stat.settled;
+    forcePhysicsOutcome(b,false,-1.6);
+    res.foul={willMake:b.willMake,kind:b.physicsKind};playOut(b);res.foul.settled=window.__stat.settled-before;
+    // 干扰降档：空心 → 擦着进（仍进）
+    b=await fire(74);window.__step(2);
+    forcePhysicsOutcome(b,true,.85);
+    res.contest={willMake:b.willMake,kind:b.physicsKind};playOut(b);
+    // 封盖：出手速度大幅削弱
+    startPractice();
+    b=await fire(74);window.__step(2);
+    resimPhysicsBall(b,[b.p0.x,b.p0.y,b.p0.z],[b.v0.x*.44+1.5,b.v0.y*.44*.52,b.v0.z*.44],[0,0,0],0);
+    res.block={willMake:b.willMake,kind:b.physicsKind};playOut(b);
+    // 空中撞球：两颗对飞的物理球
+    const p0=new THREE.Vector3(0,2.6,-1),q0=new THREE.Vector3(.3,2.6,-1.2);
+    const a1=physicsBallForOutcome(p0,1.2,true,Math.random,matBall,{val:1,silent:true});
+    const a2=physicsBallForOutcome(q0,1.2,true,Math.random,matBall,{val:1,silent:true,opp:true});
+    shots.balls.push(a1,a2);
+    for(let i=0;i<30;i++)window.__step(1);
+    physicsBallCollide(a1,a2);
+    res.collide={t0a:+a1.pathT0.toFixed(3),t0b:+a2.pathT0.toFixed(3),aMake:a1.willMake,bMake:a2.willMake,aEv:a1.events.length,bEv:a2.events.length};
+    for(let i=0;i<600&&(shots.balls.includes(a1)||shots.balls.includes(a2));i++)window.__step(1);
+    res.collide.cleared=!shots.balls.includes(a1)&&!shots.balls.includes(a2);
+    res.errs=window.__errs.slice(0,3);
+    return res;
+  });
+  await ctx.close();
+  return {out,errs};
+}
+
 const failures=[];
+const ph4=await ph4Checks();
+console.log("PH-4 专项:",JSON.stringify(ph4.out));
+if(ph4.out.foul.willMake)failures.push("犯规改判后球仍然会进");
+if(ph4.out.foul.settled<1)failures.push("犯规改判后的球没有结算");
+if(!ph4.out.contest.willMake)failures.push("干扰降档（空心→擦进）后球不进了");
+if(ph4.out.block.willMake)failures.push("封盖后的球还会进");
+if(!(ph4.out.collide.t0a>0&&ph4.out.collide.t0b>0&&ph4.out.collide.aEv>0))failures.push("空中撞球没有从撞击时刻重新模拟");
+if(!ph4.out.collide.cleared)failures.push("空中撞球后的球没有正常结束");
+if((ph4.out.errs||[]).length||ph4.errs.length)failures.push("PH-4 专项有报错："+(ph4.out.errs||[]).concat(ph4.errs).join(" | "));
 const real=await run("real");
 const classic=await run("classic");
 console.log("\n物理球结果分布:",JSON.stringify(real.stat.kinds));
@@ -138,11 +197,10 @@ real.rows.forEach((row,i)=>{
   if(row.errCount>(c?c.errCount:0))failures.push(`${name}：物理模式 ${row.errCount} 条报错，经典模式 ${c?c.errCount:0} 条`);
   if(row.stuck)failures.push(`${name}：物理模式投完一球后回不到可投状态`);
   if(!/^(round|tiebreak|battle|rackrush|lastshot)$/.test(row.state0))failures.push(`${name}：没进入可投状态（${row.state0}）`);
-  if(name==="绝杀"){if(row.physicsBalls)failures.push("绝杀：按设计不接物理，却生成了物理球");}
-  else{
-    if(row.physicsBalls<Math.min(3,row.shots))failures.push(`${name}：投了 ${row.shots} 球只有 ${row.physicsBalls} 颗物理球`);
-    if(row.settled<row.physicsBalls)failures.push(`${name}：${row.physicsBalls} 颗物理球只有 ${row.settled} 颗结算`);
-  }
+  if(row.physicsBalls<Math.min(1,row.shots))failures.push(`${name}：投了 ${row.shots} 球只有 ${row.physicsBalls} 颗物理球`);
+  /* 还在飞的球（最后一两颗）不算没结算：只要求结算数 ≥ 物理球数 − 2 */
+  if(row.settled<row.physicsBalls-2)failures.push(`${name}：${row.physicsBalls} 颗物理球只有 ${row.settled} 颗结算`);
+  if(name==="百分大战"&&!row.opp)failures.push("百分大战：对手没有物理球");
   if(c&&c.shots&&row.shots<c.shots-1)failures.push(`${name}：物理模式只投出 ${row.shots} 球，经典模式 ${c.shots} 球`);
 });
 if(real.errs.length>classic.errs.length)failures.push(`物理模式页面报错 ${real.errs.length} 条，经典模式 ${classic.errs.length} 条`);

@@ -260,7 +260,9 @@
     if(!squadApi.contestLevel)return false;
     const level=squadApi.contestLevel(P.pos);
     const b=balls.length?balls[balls.length-1]:null;
-    if(!b||b.phase!=="fly")return false;
+    /* 真实物理球（phase "path"）：判罚逻辑不变，改判时重新找一条真实轨迹（见下面各分支） */
+    const phys=!!(b&&b.physics&&b.phase==="path"&&typeof forcePhysicsOutcome==="function");
+    if(!b||(b.phase!=="fly"&&!phys))return false;
     /* 分两档，对应"降低手感"和"直接封盖"：
          · level ≥ .72 —— 他跳起来了而且贴在正面：直接封盖
          · level ≥ .38 —— 手举在你脸前：按概率把好结果降级，甜区手感被吃掉
@@ -286,11 +288,29 @@
       crowdSwell&&crowdSwell(.28,1.2);
       if(willMake){
         toast("🙌 打手犯规 · 3+1！","#7CFC6B");
+      }else if(phys){
+        // 被打手：出手被打短——从明显欠力的一侧找一条不进的真实轨迹
+        forcePhysicsOutcome(b,false,-1.6);b.made=false;
+        toast("🙌 投篮犯规 · 三次罚球","#ffd23f");
       }else{
         b.outcome="miss";b.made=false;
         b.v0.multiplyScalar(.62);b.tf=Math.max(.4,b.tf*.7);
         toast("🙌 投篮犯规 · 三次罚球","#ffd23f");
       }
+      return true;
+    }
+    if(level>=.72&&phys){
+      /* 封盖：球被手真实地拍飞——出手速度大幅削弱、侧向打偏，从出手点重新模拟。
+         万一被拍飞的球还是进了（极少），再加一档力度削弱。 */
+      const side=(Math.random()<.5?-1:1)*1.5;
+      for(let k=0;k<3;k++){
+        const f=.44-k*.08;
+        resimPhysicsBall(b,[b.p0.x,b.p0.y,b.p0.z],[b.v0.x*f+side,b.v0.y*f*.52,b.v0.z*f],[0,0,0],0);
+        if(!b.willMake)break;
+      }
+      if(b.willMake)forcePhysicsOutcome(b,false,-3);
+      b.made=false;LS.blocked=true;
+      toast("🚫 被封盖","#ff8d7a");
       return true;
     }
     if(level>=.72){
@@ -305,6 +325,17 @@
     if(level>=.38&&Math.random()<level){
       const drop={swish:"rattle",rattle:"rattleout",bank:"rattleout",rimout:"miss"};
       const next=drop[b.outcome];
+      if(next&&phys){
+        /* 降一档：空心→擦着进（仍进），其余→不进。在原误差同侧往外推一点重新找轨迹，
+           球看起来是"手感被吃掉"而不是突然拐弯。 */
+        const u=Number(b.launchU)||0,side=u<0?-1:1;
+        const stillIn=next==="rattle";
+        forcePhysicsOutcome(b,stillIn,stillIn?side*.85:side*Math.max(1.1,Math.abs(u)+.8));
+        if(!stillIn)b.made=false;
+        LS.contested=true;
+        toast("✋ 被干扰 · 手感受影响","#ffd23f");
+        return true;
+      }
       if(next){
         b.outcome=next;
         if(next==="miss"||next==="rattleout")b.made=false;
@@ -484,12 +515,16 @@
     if(!ball||!ball.mesh)return false;
     // 弹筐入网(rattle且rin)或打板入网(bankdrop)仍在进球进程中，绝不能算已落定！
     if(ball.phase==="fly"||ball.phase==="bankdrop")return false;
+    // 真实物理球：进 / 不进在 decidedAt 那一刻就定了（进球在穿过网口下沿时）
+    if(ball.phase==="path")return ball.t>=(ball.decidedAt||ball.endT||0);
     if(ball.phase==="rattle"&&ball.rin)return false;
     return !!(ball.made||ball.bounces>0||ball.phase==="roll"||(ball.phase==="fall"&&!ball.made)||ball.phase==="free");
   }
   function gazeTarget(ball){
     if(!ball||!ball.mesh)return null;
-    if(ball.made||ball.rimSoundPlayed||ball.bounces>0||ball.phase!=="fly"||ballSettled(ball))return null;
+    // 真实物理球（phase "path"）到筐之前同样算在空中
+    const physFlying=ball.phase==="path"&&ball.t<ball.tf;
+    if(ball.made||ball.rimSoundPlayed||ball.bounces>0||(ball.phase!=="fly"&&!physFlying)||ballSettled(ball))return null;
     return ball.mesh.position;
   }
 

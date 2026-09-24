@@ -125,6 +125,20 @@ const check = (ok, msg) => { if (!ok) failures.push(msg); };
   check(late === 0, `${late}/${n} 颗球超过 5 秒才结算`);
 }
 
+/* ---------- 2c. 按结果找轨迹 ----------
+   对手 / AI 表演 / 绝杀防守保留原有的进不进判定，只让轨迹是真的。要求：结果必须对得上，
+   且绝大多数不用退回兜底（兜底的球样子单调：要进必空心、不进必三不沾）。 */
+{
+  const r = rng(99); let n = 0, wrong = 0, fallback = 0;
+  for (const [, p0] of SPOTS) for (const want of [true, false]) for (let i = 0; i < 30; i++) {
+    const out = P.launchForOutcome(p0, { tf: tfFor(p0), want, rng: r, colliders: P.INDOOR_COLLIDERS }); n++;
+    if (out.res.made !== want) wrong++;
+    if (out.fallback) fallback++;
+  }
+  check(wrong === 0, `按结果找轨迹：${wrong}/${n} 次结果对不上`);
+  check(fallback / n < 0.03, `按结果找轨迹：${fallback}/${n} 次退回兜底（应 < 3%）`);
+}
+
 /* ---------- 3. 每个点的零误差都是空心 ---------- */
 for (const [name, p0] of SPOTS) {
   const res = P.simulate(P.launch(p0, { tf: tfFor(p0), u: 0 }));

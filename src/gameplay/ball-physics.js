@@ -434,6 +434,37 @@
     return m.equalize?equalize(p0,tf,m,tuning):1;
   }
 
+  /* 按结果找轨迹（PH-4）。对手命中率、AI 表演脚本、绝杀防守判罚这些地方，"进不进"
+     是既有的设计判定（关系到 AI 难度与平衡），不该被物理改掉；但球怎么飞、怎么磕筐应该
+     是真的。这里给定 want（要进 / 不进），从 uCenter 附近往外找一条模拟结果恰好符合的
+     出手，找到就返回整条轨迹。
+       rng       [0,1) 随机源（要复现就传 aibaRoll，纯演出传 Math.random）
+       uCenter   从哪个误差附近开始找（默认：要进从 0 附近、不进从 ±1.2 附近）
+     不进的球会自然地投短、投长、磕出；进的球有空心、涮进、打板。找不到（极少）就退回
+     一个必然的结果：要进用 u=0（零误差必空心，门槛测试保证），不进用 u=−3.5（三不沾）。 */
+  function launchForOutcome(p0,opts){
+    opts=opts||{};
+    const want=!!opts.want,rng=opts.rng||Math.random,tries=opts.maxTries||14;
+    const base={tf:opts.tf,map:opts.map,tuning:opts.tuning};
+    const simOpts={tuning:opts.tuning,colliders:opts.colliders};
+    for(let i=0;i<tries;i++){
+      const spread=.35+i*.12,sign=rng()<.5?-1:1;
+      let u;
+      // 要进时一上来就在 ±0.95 里找：只在甜区中心找的话 94% 是空心，真实比赛很多进球是磕着进的
+      if(want)u=(opts.uCenter!=null?opts.uCenter:0)+(rng()*2-1)*Math.min(1.1,.95+i*.05);
+      else{
+        const c=opts.uCenter!=null?Math.abs(opts.uCenter):1.2;
+        u=(opts.uCenter!=null&&opts.uCenter!==0?Math.sign(opts.uCenter):sign)*Math.max(.75,c+(rng()*2-1)*spread);
+      }
+      const noise=(rng()*2-1)*1.2,lat=(rng()*2-1)*(want?.05:.16);
+      const L=launch(p0,Object.assign({},base,{u,lat,noise}));
+      const res=simulate(L,simOpts);
+      if(res.made===want)return {launch:L,res,u,tries:i+1};
+    }
+    const L=launch(p0,Object.assign({},base,{u:want?0:-3.5,lat:0,noise:0}));
+    return {launch:L,res:simulate(L,simOpts),u:want?0:-3.5,tries:tries,fallback:true};
+  }
+
   /* 物理结果 → 旧 outcome 名（统计、英雄时刻、绝杀判罚、音效分支仍读这个名字）。 */
   function legacyOutcome(res){
     switch(res.kind){
@@ -446,7 +477,7 @@
   }
 
   const api=Object.freeze({GEOM,INDOOR_COLLIDERS,TUNING_PRESETS,DEFAULT_TUNING,DEFAULT_MAP,DIFF_MAPS,DT,SAMPLE_DT,STRIDE,
-    simulate,sampleAt,aimVelocity,backspinFor,crossOffset,scaleForDepth,calibrate,designMake,equalize,prewarm,launch,legacyOutcome});
+    simulate,sampleAt,aimVelocity,backspinFor,crossOffset,scaleForDepth,calibrate,designMake,equalize,prewarm,launch,launchForOutcome,legacyOutcome});
   if(typeof module!=="undefined"&&module.exports)module.exports=api;
   if(global)global.AIBABallPhysics=api;
 })(typeof window!=="undefined"?window:globalThis);

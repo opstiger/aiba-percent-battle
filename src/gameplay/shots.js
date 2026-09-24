@@ -220,7 +220,7 @@ function afterPlayerLands(delay,callback){
 }
 /* ---------------- 真实物理出手（PH-2，?physics=real） ----------------
    开关：URL ?physics=real / ?physics=classic 会记进 localStorage，之后不带参数也沿用。
-   绝杀模式不接：它的防守干扰在飞行中改写 outcome（last-shot/sequence.js），要到 PH-4 改成出手扰动。 */
+   全部模式都接（PH-4）：绝杀的封盖 / 干扰 / 犯规改判走 forcePhysicsOutcome / resimPhysicsBall。 */
 const PHYSICS_PREF_KEY="aiba-physics-mode";
 let physicsModePref=null;
 function physicsModeRequested(){
@@ -235,7 +235,7 @@ function physicsModeRequested(){
   return physicsModePref;
 }
 function physicsShotsOn(){
-  return !!(globalThis.AIBABallPhysics&&physicsModeRequested()&&G.mode!=="lastshot");
+  return !!(globalThis.AIBABallPhysics&&physicsModeRequested());
 }
 /* 篮筐手感档：?rim=firm（真实比赛弹性）/ ?rim=soft（默认，街机常用的"友好筐"）。
    两档都由 ball-physics.js 的 equalize 自动配平，期望命中率不变，变的是"磕筐后的样子"。 */
@@ -257,34 +257,71 @@ function aibaGauss(){
   const a=Math.max(1e-9,aibaRoll()),b=aibaRoll();
   return Math.sqrt(-2*Math.log(a))*Math.cos(2*Math.PI*b);
 }
+/* 把一次模拟结果装到球上。t0 = 这条轨迹在球自己的时间轴上从哪一刻开始
+   （出手时为 0；空中撞球、绝杀改判后重新模拟时是当时的 b.t）。 */
+function applyPhysicsResult(b,res,t0){
+  const PHYS=globalThis.AIBABallPhysics,start=Number(t0)||0;
+  /* tf 沿用旧语义"球到篮筐的时刻"：回放取景、英雄时刻都按它卡点 */
+  const arrive=res.events.find(e=>e.type==="rim"||e.type==="board"||e.type==="connector"||e.type==="net"||e.type==="made"||e.type==="decided");
+  b.phase="path";b.physics=true;
+  b.path=res.path;b.events=res.events;b.evi=0;b.pathT0=start;b.endT=start+res.endT;
+  b.willMake=res.made;b.physicsKind=res.kind;b.outcome=PHYS.legacyOutcome(res);
+  b.tf=start+(arrive?arrive.t:res.decidedT);
+  b.scoreT=start+(res.made?res.madeT:(arrive?arrive.t:res.decidedT));
+  b.decidedAt=start+res.decidedT;
+  return b;
+}
+function newPhysicsBall(p0,L,res,material,fields){
+  const mesh=new THREE.Mesh(ballGeo,material);
+  mesh.castShadow=true;mesh.position.copy(p0);scene.add(mesh);
+  const blob=new THREE.Mesh(blobGeo,blobMat.clone());
+  blob.rotation.x=-Math.PI/2;blob.position.set(p0.x,0.02,p0.z);scene.add(blob);
+  const b=Object.assign({mesh,blob,p0:p0.clone(),v0:new THREE.Vector3(L.v[0],L.v[1],L.v[2]),t:0,
+    vel:new THREE.Vector3(),made:false,life:3,bounces:0,rec:[],timeLeft:0,hot:false,dramaticMiss:false,
+    postNetRetention:.2,backspin:1,sideSpin:0,netDir:0,startPos:p0.clone(),launchTf:L.tf,launchU:L.u,launchDepth:L.depth},fields||{});
+  return applyPhysicsResult(b,res,0);
+}
+function physicsLaunchOpts(extra){
+  const PHYS=globalThis.AIBABallPhysics;
+  return Object.assign({map:PHYS.DIFF_MAPS[G.diff]||PHYS.DEFAULT_MAP,tuning:physicsTuning(),colliders:physicsColliders()},extra||{});
+}
+/* 按既有判定（进 / 不进）找一条真实轨迹：对手、AI 表演、绝杀防守改判用。 */
+function physicsBallForOutcome(p0,tf,want,rng,material,fields,extra){
+  const PHYS=globalThis.AIBABallPhysics;
+  const out=PHYS.launchForOutcome([p0.x,p0.y,p0.z],physicsLaunchOpts(Object.assign({tf,want,rng},extra||{})));
+  out.launch.tf=tf;out.launch.u=out.u;
+  return newPhysicsBall(p0,out.launch,out.res,material,fields);
+}
+/* 已经在飞的物理球改判（绝杀防守）：从出手点重新找一条结果为 want 的轨迹 */
+function forcePhysicsOutcome(b,want,uCenter){
+  const PHYS=globalThis.AIBABallPhysics;if(!b||!b.physics)return false;
+  const out=PHYS.launchForOutcome([b.p0.x,b.p0.y,b.p0.z],physicsLaunchOpts({tf:b.launchTf,want,rng:aibaRoll,uCenter}));
+  b.v0.set(out.launch.v[0],out.launch.v[1],out.launch.v[2]);b.launchU=out.u;
+  applyPhysicsResult(b,out.res,0);
+  return true;
+}
+/* 从指定状态重新模拟（封盖、空中撞球）：球真实地被打飞，结果由物理决定 */
+function resimPhysicsBall(b,p,v,w,t0){
+  const PHYS=globalThis.AIBABallPhysics;if(!b||!b.physics)return false;
+  const tuning=physicsTuning();
+  const res=PHYS.simulate({p,v,w:w||[0,0,0]},{tuning,colliders:physicsColliders()});
+  applyPhysicsResult(b,res,t0);
+  return res;
+}
 function spawnPhysicsBall(shot,err,latErr,zone,isDeep){
   const PHYS=globalThis.AIBABallPhysics;
   const p0=new THREE.Vector3();ballWorldPos(p0);
   handBall.visible=false;pBall.visible=false;
   const dist=Math.hypot(HOOP.x-p0.x,HOOP.z-p0.z);
   const tf0=shotFlightTime(0.78+dist*0.062,G.myStar,shot);
-  const map=PHYS.DIFF_MAPS[G.diff]||PHYS.DEFAULT_MAP;
   const u=err/Math.max(.5,zone);
-  const tuning=physicsTuning();
-  const L=PHYS.launch([p0.x,p0.y,p0.z],{tf:tf0,u,lat:latErr,noise:aibaGauss(),luck:aibaRoll(),map,tuning});
-  const res=PHYS.simulate(L,{colliders:physicsColliders(),tuning});
-  /* tf 沿用旧语义"球到篮筐的时刻"：回放取景、英雄时刻都按它卡点 */
-  const arrive=res.events.find(e=>e.type==="rim"||e.type==="board"||e.type==="connector"||e.type==="net"||e.type==="made"||e.type==="decided");
-  const mesh=new THREE.Mesh(ballGeo,shotMat(shot));
-  mesh.castShadow=true;mesh.position.copy(p0);scene.add(mesh);
-  const blob=new THREE.Mesh(blobGeo,blobMat.clone());
-  blob.rotation.x=-Math.PI/2;blob.position.set(p0.x,0.02,p0.z);scene.add(blob);
-  const perfect=Math.abs(u)<=.5;
-  const outcome=PHYS.legacyOutcome(res);
-  return {mesh,blob,p0:p0.clone(),v0:new THREE.Vector3(L.v[0],L.v[1],L.v[2]),tf:arrive?arrive.t:res.decidedT,t:0,
-    phase:"path",physics:true,path:res.path,events:res.events,evi:0,endT:res.endT,willMake:res.made,physicsKind:res.kind,
-    scoreT:res.made?res.madeT:(arrive?arrive.t:res.decidedT),
-    outcome,vel:new THREE.Vector3(),
-    val:shot.val,baseVal:shot.baseVal||shot.val,bonus:shot.bonus||0,money:shot.money,deep:isDeep,super:!!shot.super,rush:G.mode==="rackrush",made:false,life:3,bounces:0,
-    rec:[],timeLeft:G.timer,hot:G.streak>=3,perfect,dramaticMiss:false,lateralError:latErr,postNetRetention:.2,backspin:1,sideSpin:0,
-    netDir:clamp(latErr*.9/.3,-1,1),
-    startPos:p0.clone(),shooterPos:P.pos.clone(),shooterFace:P.face,poseNoiseKey:G.shotPoseNoiseKey,
-    superChanceId:shot.superChanceId||0,launchU:u,launchDepth:L.depth};
+  const L=PHYS.launch([p0.x,p0.y,p0.z],physicsLaunchOpts({tf:tf0,u,lat:latErr,noise:aibaGauss(),luck:aibaRoll()}));
+  const res=PHYS.simulate(L,{colliders:physicsColliders(),tuning:physicsTuning()});
+  L.tf=tf0;L.u=u;
+  return newPhysicsBall(p0,L,res,shotMat(shot),{
+    val:shot.val,baseVal:shot.baseVal||shot.val,bonus:shot.bonus||0,money:shot.money,deep:isDeep,super:!!shot.super,rush:G.mode==="rackrush",
+    timeLeft:G.timer,hot:G.streak>=3,perfect:Math.abs(u)<=.5,lateralError:latErr,netDir:clamp(latErr*.9/.3,-1,1),
+    shooterPos:P.pos.clone(),shooterFace:P.face,poseNoiseKey:G.shotPoseNoiseKey,superChanceId:shot.superChanceId||0});
 }
 function releaseShot(power,shot){
   const isBattle=G.mode==="battle";
@@ -562,6 +599,15 @@ function missBall(){
 /* 真实物理球：出手时已经预演完整条轨迹，这里按时间播放，并在碰撞发生的那一刻
    触发声音、震动、得分/失手——不再是"到点统一结算"。 */
 const PHYS_SAMPLE={x:0,y:0,z:0,wx:0,wy:0,wz:0};
+/* 三分大赛 AI 表演的球进了（旧系统与物理共用） */
+function silentBallMade(b){
+  triggerStreetCrowdReaction("make",b.val);
+  pulseNet(1,b.netDir);sSwish();applause(0.3,1.2);if(Math.random()<0.22)boo(1.2);G.cheer=Math.min(1,G.cheer+0.4);
+  show.score+=b.val;$("showScore").textContent=show.score;
+  popScore("+"+b.val,b.deep?"#54e05a":(b.money?"#ffd23f":"#7CFC6B"));
+  if(typeof announceAIShowResult==="function")announceAIShowResult(b,true);
+  b.made=true;
+}
 function physicsBallEvent(b,e){
   const fx=globalThis.AIBAHoopDynamics,haptic=typeof impactHaptic==="function"?impactHaptic:playerRimHaptic;
   const sfx=(kind,fallback)=>{if(typeof impactSfx==="function")impactSfx(kind,e.impulse);else fallback();};
@@ -582,19 +628,28 @@ function physicsBallEvent(b,e){
       sfx("board",sBoard);haptic(b,e.impulse);break;
     case "support":case "scenery":sfx("floor",sBounce);break;
     case "floor":b.bounces++;sfx("floor",sBounce);break;
-    case "made":madeBall(b);break;
+    case "made":
+      if(b.made)break;
+      if(b.opp){oppScore(b);b.made=true;}
+      else if(b.silent)silentBallMade(b);
+      else madeBall(b);
+      break;
     case "decided":
-      if(!b.willMake){missBall();if(b.outcome==="rattleout")toast("😱 涮筐而出!","#ff8d7a");}
+      if(b.willMake)break;
+      if(b.opp)triggerStreetCrowdReaction("oppMiss",0);
+      else if(b.silent){if(typeof announceAIShowResult==="function")announceAIShowResult(b,false);}
+      else{missBall();if(b.outcome==="rattleout")toast("😱 涮筐而出!","#ff8d7a");}
       break;
   }
 }
 function updPhysicsBall(b,dt,index){
   const PHYS=globalThis.AIBABallPhysics;
-  const s=PHYS.sampleAt(b.path,b.t,PHYS_SAMPLE);
+  const lt=b.t-(b.pathT0||0);                     // 重新模拟过的球，轨迹从 pathT0 开始
+  const s=PHYS.sampleAt(b.path,lt,PHYS_SAMPLE);
   b.mesh.position.set(s.x,s.y,s.z);
   const omega=b._pathOmega||(b._pathOmega=new THREE.Vector3());
   omega.set(s.wx,s.wy,s.wz);rotateBallWorld(b,omega,dt,1);
-  while(b.evi<b.events.length&&b.events[b.evi].t<=b.t)physicsBallEvent(b,b.events[b.evi++]);
+  while(b.evi<b.events.length&&b.events[b.evi].t<=lt)physicsBallEvent(b,b.events[b.evi++]);
   if(b.t>=b.endT){
     scene.remove(b.mesh);scene.remove(b.blob);
     if(!b.silent)G.shots.push(b);
@@ -616,14 +671,8 @@ function updBalls(dt){
         if(b.outcome==="swish"){
           if(b.opp){
             oppScore(b);b.made=true;
-          }else if(b.silent){
-            triggerStreetCrowdReaction("make",b.val);
-            pulseNet(1,b.netDir);sSwish();applause(0.3,1.2);if(Math.random()<0.22)boo(1.2);G.cheer=Math.min(1,G.cheer+0.4);
-            show.score+=b.val;$("showScore").textContent=show.score;
-            popScore("+"+b.val,b.deep?"#54e05a":(b.money?"#ffd23f":"#7CFC6B"));
-            if(typeof announceAIShowResult==="function")announceAIShowResult(b,true);
-            b.made=true;
-          }else madeBall(b);
+          }else if(b.silent)silentBallMade(b);
+          else madeBall(b);
           b.phase="fall";
           b.vel.copy(postNetVelocity(b,vy));
           b.mesh.position.set(HOOP.x+rnd(-.04,.04),HOOP.y-0.05,HOOP.z+rnd(-.04,.04));
