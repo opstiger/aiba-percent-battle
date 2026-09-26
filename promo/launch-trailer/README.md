@@ -1,39 +1,40 @@
-# aiBA 百分大战 · Launch Trailer
+# aiBA 百分大战 · Launch Trailer（体素像素版）
 
-28.8 秒手绘水彩动态漫画宣传片：p5.js 2 + p5.brush 逐帧绘制，声音全部在浏览器里实时合成。
+28.8 秒宣传片，画面**直接由游戏本体渲染**：真实球馆、观众、世界球场、体素球员和投篮动作，
+3D 以 640×360 渲染后 ×3 最近邻放大，HUD 沿用游戏 UI 语言。声音全部实时合成。
 
 - 分镜：[`STORYBOARD.md`](STORYBOARD.md)
 - 动画指南：[`ANIMATION_GUIDE.md`](ANIMATION_GUIDE.md)
-- 成片：`aiba-launch-trailer.mp4`（1920×1080 · 30fps · H.264 + AAC）
+- 成片：`aiba-launch-trailer.mp4`（1920×1080 · 30fps · H.264 + AAC · -14 LUFS）
 
-这个目录是独立的渲染工程，和游戏本体无关，游戏仍然是"无构建、克隆即玩"的纯静态站。
-依赖不进仓库，渲染时自动装进 `.deps/`。
+这个目录是独立的渲染工程，不影响游戏"无构建、克隆即玩"。唯一的外部依赖是中文字体，渲染时装进被忽略的 `.deps/`。
 
 ## 渲染
 
-需要 Node 18+、全局 `playwright`（或本地可 import）和带 libx264 的 `ffmpeg`。
+需要 Node 18+、Playwright（全局或本地）和带 libx264 的 `ffmpeg`。
 
 ```bash
-node render.mjs deps          # 安装 p5 / p5.brush / 字体到 .deps/
-node render.mjs bake          # 烘焙 15 张水彩贴图（约 8 分钟，只需一次）
-node render.mjs audio         # 合成音轨
-node render.mjs video -j 3    # 3 个页面并行逐帧渲染 → out/aiba-launch-trailer.mp4
-node render.mjs stills 96,600 # 只渲染指定帧到 .cache/stills/，调画面用
-node render.mjs serve         # 本地预览：←→ 逐帧，空格播放
+node render.mjs audio            # 合成音轨 → .cache/audio.wav
+node render.mjs video -j 3       # 3 个游戏实例按镜头并行渲染 → out/aiba-launch-trailer.mp4
+node render.mjs stills 96,600    # 只渲染指定帧 → .cache/stills/
 ```
 
-`FFMPEG=/path/to/ffmpeg` 可指定 ffmpeg。帧已渲染过会跳过（断点续渲），`--force` 全部重渲。
+`FFMPEG=/path/to/ffmpeg` 指定 ffmpeg；`--crf 26` 调码率；已渲染的帧会跳过，`--force` 全部重渲。
 
-## 代码章节
+## 工作方式
+
+1. 无头 Chromium 打开 `index.html?trailer=1`，启动前把 `Math.random` 换成固定种子。
+2. 启动后冻结游戏的 `requestAnimationFrame`，注入 `src/` 里的导演脚本，逐帧摆姿势、推进观众/火焰/彩带/球网、渲染。
+3. 按镜头分配给渲染进程，每个镜头从首帧顺序模拟，结果可复现。
 
 | 文件 | 内容 |
 |---|---|
-| `src/00-core.js` | 画布、节拍（150 BPM = 12 帧/拍）、缓动、确定性随机、关键帧 |
-| `src/01-ink.js` | p5.brush 包装：墨线、平涂、墨点飞溅、速度线、冲击环、镜头 |
-| `src/02-bake.js` | 水彩贴图（背景、爆炸、火焰）的烘焙配方 |
-| `src/03-rig.js` | 2D 骨骼角色：小方 BLOX、AI 传奇零号、真人线稿 + 姿态骨架 |
-| `src/04-props.js` | 篮筐、投篮机、观众、aiBA 笔画字 Logo、记分牌、墨刷转场 |
-| `src/05-shots.js` | S1–S14 逐镜头动画 + 卡点表 `CUES`（画面和声音共用） |
-| `src/06-post.js` | 2D 合成：震动、冲击推镜、反相冲击帧、文字、纸纹、暗角 |
-| `src/07-audio.js` | OfflineAudioContext 合成 BGM + 音效，导出 WAV |
-| `render.mjs` | 本地服务 + 无头 Chromium 并行渲染 + ffmpeg 合成 |
+| `src/00-core.js` | 节拍（150 BPM = 12 帧/拍）、缓动、确定性随机、关键帧 |
+| `src/01-stage.js` | 接管游戏场景：主角 / N-24 / 体感真人、球、灯、镜头、姿势 |
+| `src/02-shots.js` | S1–S13 逐镜头动画 + 卡点表 `CUES`（画面和声音共用） |
+| `src/03-post.js` | 像素放大、马赛克转场、扫描线、HUD、金色像素粒子、Logo 高光 |
+| `src/04-audio.js` | OfflineAudioContext 合成 BGM（含 8-bit 方波琶音）+ 音效 |
+| `src/05-main.js` | 导演主循环 |
+| `render.mjs` | 本地服务 + 并行渲染 + ffmpeg 合成 |
+
+游戏里的恶搞广告牌（N1KE AIR 等）和带真实品牌影子的高细节球鞋在宣传片里不出镜。

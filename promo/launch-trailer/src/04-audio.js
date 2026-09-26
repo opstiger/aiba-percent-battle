@@ -1,8 +1,11 @@
-/* 07-audio — 全部声音在 OfflineAudioContext 里现场合成：150 BPM 热血电子鼓 + 贝斯 + 铜管 stab + 主旋律，
-   音效按 05-shots 的 CUES 同帧触发。输出 48kHz 16bit 立体声 WAV（dataURL）。 */
+/* 04-audio — 全部声音在 OfflineAudioContext 里现场合成：150 BPM 电子鼓 + 贝斯 + 铜管 stab + 8-bit 方波琶音，
+   音效按 02-shots 的 CUES 同帧触发。输出 48kHz 16bit 立体声 WAV（dataURL）。 */
+(function (TR) {
 "use strict";
+const { TOTAL_FRAMES, FPS, BPM, rng } = TR;
 
-window.renderAudio = async function () {
+TR.renderAudio = async function () {
+  const CUES = TR.CUES;
   const SR = 48000, DUR = TOTAL_FRAMES / FPS;
   const ac = new OfflineAudioContext(2, Math.ceil(SR * DUR), SR);
   const T = (b) => b * 60 / BPM;
@@ -111,6 +114,19 @@ window.renderAudio = async function () {
     const o = osc("sawtooth", 110, t, dur, filt("lowpass", 2500, 1, out)); o.frequency.exponentialRampToValueAtTime(880, t + dur);
   }
 
+  /* 8-bit：方波琶音（像素风的声音签名） */
+  function chip(t, m, dur, v = 1, type = "square") {
+    const out = ac.createGain(); out.connect(duck); send(out, .2);
+    out.gain.setValueAtTime(0, t); out.gain.linearRampToValueAtTime(.05 * v, t + .004); out.gain.setTargetAtTime(0, t + dur * .6, .02);
+    osc(type, mtof(m), t, dur + .1, out);
+  }
+  function arp(b0, b1, v = 1) {
+    for (let b = b0; b < b1; b += .125) {
+      const ch = CH[chordAt(b)], i = Math.round(b * 8) % 4, m = ch[[0, 1, 2, 3][i]] + 24;
+      chip(T(b), m, T(.11), v);
+    }
+  }
+
   /* ---------- 编曲 ---------- */
   const RIFF_A = [76, 0, 76, 79, 0, 81, 83, 0, 83, 81, 79, 0, 76, 0, 74, 76];
   const RIFF_B = [74, 0, 74, 78, 0, 81, 83, 0, 83, 0, 81, 78, 0, 75, 0, 78];
@@ -142,6 +158,8 @@ window.renderAudio = async function () {
   // 主歌 8–36
   groove(8, 16, { stabs: true });
   groove(16, 32, { stabs: true, lead: true, rolls: true });
+  arp(16, 36, .9);
+  arp(50, 56, 1);
   groove(32, 36, { stabs: true, lead: true, leadV: 1.2, four: true });
   // 装备 36–40：四拍底鼓 + 军鼓滚奏
   for (let b = 36; b < 39.75; b += .25) { if (b % 1 === 0) kick(T(b)); hat(T(b), .5); if (b % .5 === 0) bassNote(T(b), 40, T(.4), .9); }
@@ -204,6 +222,12 @@ window.renderAudio = async function () {
     hush() {},
     buzzer(t) { const g = gainAt(filt("lowpass", 2600, 1, sfx), t, .28, .005, .9, "lin"); osc("square", 233, t, .95, g); osc("square", 236, t, .95, g); osc("sawtooth", 466, t, .95, g); send(g, .3); },
     roar(t) { crowd(t, 5.5, 1); },
+    clunk(t) { const g = gainAt(filt("lowpass", 700, 1, sfx), t, .8, .001, .5); noise(t, .5, g, .5); const g2 = gainAt(sfx, t, .6, .001, .25); const o = osc("square", 70, t, .3, g2); o.frequency.exponentialRampToValueAtTime(40, t + .2); send(g, .6);
+      const hum = gainAt(filt("lowpass", 400, 1, sfx), t + .02, .08, .05, 1.1, "lin"); osc("sawtooth", 100, t, 1.3, hum); },
+    clunkOff(t) { for (let i = 0; i < 4; i++) FX.clunk(t + i * T(.25)); },
+    blip(t) { const g = gainAt(sfx, t, .18, .002, .12); const o = osc("square", 988, t, .15, g); o.frequency.setValueAtTime(1319, t + .06); send(g, .2); },
+    equip(t) { FX.whoosh(t - .12, .14, 1200, 5000, .35); FX.blip(t); const g = gainAt(shaper(2, sfx), t, .7, .001, .25); const o = osc("sine", 110, t, .3, g); o.frequency.exponentialRampToValueAtTime(50, t + .2); },
+    pixel(t) { for (let i = 0; i < 8; i++) { const tt = t + i * .025, g = gainAt(sfx, tt, .07, .001, .03); osc("square", 1800 - i * 180, tt, .04, g); } FX.whoosh(t, .3, 3000, 400, .3); },
     yell(t) { const out = gainAt(sfx, t, .18, .06, .9, "lin"); send(out, .5); for (const [f, q, v] of [[750, 8, 1], [1200, 10, .6], [2600, 12, .3]]) { const bp = filt("bandpass", f, q, out); const o = osc("sawtooth", 210, t, 1, bp); o.frequency.linearRampToValueAtTime(260, t + .25); o.frequency.linearRampToValueAtTime(190, t + .95); } },
   };
   function crowd(t, dur, v) {
@@ -222,6 +246,7 @@ window.renderAudio = async function () {
   const buf = await ac.startRendering();
   return wavURL(buf);
 };
+TR.wavURL = wavURL;
 
 function wavURL(buf) {
   const ch = buf.numberOfChannels, n = buf.length, sr = buf.sampleRate;
@@ -238,3 +263,4 @@ function wavURL(buf) {
   for (let i = 0; i < bytes.length; i += 32768) bin += String.fromCharCode.apply(null, bytes.subarray(i, i + 32768));
   return "data:audio/wav;base64," + btoa(bin);
 }
+})(window.TR = window.TR || {});
