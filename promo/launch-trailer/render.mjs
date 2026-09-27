@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "../..");
 const CACHE = path.join(HERE, ".cache"), OUTDIR = path.join(HERE, "out");
-const SCRIPTS = ["00-core.js", "01-stage.js", "06-neural.js", "02-shots.js", "03-post.js", "04-audio.js", "05-main.js"];
+const SCRIPTS = ["00-core.js", "01-stage.js", "06-neural.js", "02-shots.js", "03-post.js", "04-audio.js", "07-live.js", "08-acts.js", "05-main.js"];
 const FFMPEG = process.env.FFMPEG || "ffmpeg";
 const args = process.argv.slice(2), cmd = args[0] || "all";
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
@@ -77,6 +77,7 @@ async function main() {
   const browser = await chromium.launch({ args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--autoplay-policy=no-user-gesture-required", "--mute-audio"] });
   try {
     if (cmd === "stills") await stills(browser, port, args[1]);
+    if (cmd === "lab") await lab(browser, port, args[1]);
     if (cmd === "audio" || cmd === "all") await audio(browser, port);
     if (cmd === "video" || cmd === "all") await video(browser, port, +opt("-j", 3));
   } finally { await browser.close(); srv.close(); }
@@ -90,6 +91,16 @@ async function stills(browser, port, list) {
     fs.writeFileSync(path.join(dir, `f${String(f).padStart(3, "0")}.jpg`), b64(await page.evaluate(f => TR.renderFrame(f, .9), f)));
     console.log(`frame ${f} ${((Date.now() - t) / 1000).toFixed(1)}s`);
   }
+  await page.close();
+}
+/* 实验：在页面里跑一段脚本（文件导出 async (TR)=>result），可返回 {frames:[dataURL]} */
+async function lab(browser, port, file) {
+  const { page } = await openPage(browser, port);
+  const code = fs.readFileSync(file, "utf8");
+  const r = await page.evaluate(`(${code})(window.TR)`);
+  const dir = path.join(CACHE, "lab"); fs.mkdirSync(dir, { recursive: true });
+  (r.frames || []).forEach((d, i) => fs.writeFileSync(path.join(dir, `l${String(i).padStart(3, "0")}.jpg`), b64(d)));
+  delete r.frames; console.log(JSON.stringify(r, null, 1));
   await page.close();
 }
 async function audio(browser, port) {

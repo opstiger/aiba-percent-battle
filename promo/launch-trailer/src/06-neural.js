@@ -128,7 +128,7 @@
 
   /* 所有球星隐藏并恢复实体（每个镜头开头） */
   TR.resetStars = function () {
-    for (const s of S.stars) { TR.solid(s.guy); s.guy.g.visible = false; s.guy.g.rotation.set(0, 0, 0); s.guy.headRoot.rotation.set(0, 0, 0); }
+    for (const s of S.stars) { TR.solid(s.guy); s.guy.g.visible = false; s.guy.g.rotation.set(0, 0, 0); TR.head(s.guy, 0, 0); if (s.guy.tb) s.guy.tb.visible = false; }
     for (const g of [S.actors.hero, S.actors.human]) TR.solid(g);
     TR.ringsReset();
   };

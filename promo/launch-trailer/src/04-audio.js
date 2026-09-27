@@ -149,37 +149,33 @@ TR.renderAudio = async function () {
       if (o.stabs && inBar === 0) stab(t, CH[chordAt(b)], .3, .9);
     }
   }
-  /* ===== NEURAL COURT 编曲（128 拍，见 STORYBOARD 声音表） ===== */
-  // A 0–16：氛围 pad，拍8 起四拍底鼓，拍12 起踩镲，拍12–16 上升
+  /* ===== NEURAL COURT v4 编曲（128 拍，见 STORYBOARD 声音表） ===== */
   pad(T(0), [28, 40, 47, 52], T(8), 1.2, 420);
   pad(T(8), [40, 47, 52, 55], T(8), 1.1, 700);
   for (let b = 8; b < 16; b++) kick(T(b), .85);
   for (let b = 12; b < 16; b += .5) hat(T(b), b % 1 ? 1 : .6);
   riser(T(12), T(4) - .05, .7);
-  // B 16–30：律动 + 琶音
-  groove(16, 30, { stabs: true, rolls: true });
-  arp(16, 30, .8);
-  for (let b = 30; b < 32; b += .125) snare(T(b), .25 + (b - 30) * .35);
-  // C 32–40 DROP#1
-  groove(32, 40, { stabs: true, lead: true, leadV: 1.1, four: true });
-  // D 40–56：律动 + 琶音（不带主旋律，给 DNA 数字音让位）
-  groove(40, 56, { stabs: false, rolls: true, bassV: .9 });
+  groove(16, 29, { stabs: true, rolls: true });                 // B 名单
+  arp(16, 29, .8);
+  for (let b = 29; b < 32; b += .125) snare(T(b), .2 + (b - 29) * .25);
+  riser(T(30), T(2) - .05, .9);
+  groove(32, 40, { stabs: true, lead: true, leadV: 1.1, four: true });   // C 片名 + 扣篮
+  groove(40, 56, { stabs: false, rolls: true, bassV: .9 });     // D 体感 / DNA / 特写
   arp(40, 56, .75);
-  // E 56–72：全编制 + 主旋律
-  groove(56, 72, { stabs: true, lead: true, leadV: 1.2, rolls: true });
-  arp(64, 72, .7);
-  // F 72–86：抽空、心跳、闷住的观众；拍84 通鼓推进
-  pad(T(72), [28, 40, 47], T(12), .9, 300);
-  { const cr = ac.createGain(); cr.connect(master); cr.gain.setValueAtTime(0, T(72)); cr.gain.linearRampToValueAtTime(.07, T(73)); cr.gain.setValueAtTime(.07, T(83.5)); cr.gain.linearRampToValueAtTime(0, T(84));
-    const lp = filt("lowpass", 420, .7, cr); noise(T(72), T(12), lp, .6); }
-  stab(T(84), CH.Cmaj, T(2) - .05, 1.3);
-  for (let b = 84; b < 86; b += .25) tom(T(b), 90 + (b - 84) * 40, .4 + (b - 84) * .3);
-  for (let b = 85; b < 86; b += .125) snare(T(b), .3 + (b - 85) * .6);
-  // G 86–104 DROP#2
-  groove(86, 104, { stabs: true, lead: true, leadV: 1.3, bassV: 1.2, rolls: true });
-  arp(88, 104, .9);
-  // H 104–128：尾奏，拍112 最后重音后余音
-  groove(104, 112, { stabs: false, bassV: .9 });
+  groove(56, 66, { stabs: true, lead: true, leadV: 1.2, rolls: true });  // E1 你来我往
+  pad(T(66), [40, 47, 52, 59], T(3), 1.2, 900);                  // E2 库里中场：蓄势
+  for (let b = 66; b < 69; b += .25) tom(T(b), 80 + (b - 66) * 30, .3 + (b - 66) * .2);
+  for (let b = 68; b < 69; b += .125) snare(T(b), .3 + (b - 68) * .6);
+  groove(69, 74, { stabs: true, lead: true, leadV: 1.2, four: true });
+  arp(70, 74, .7);
+  // F 74–90 绝杀：抽空，只剩心跳与闷住的观众；86 起上升音
+  pad(T(74), [28, 40, 47], T(16), .9, 300);
+  { const cr = ac.createGain(); cr.connect(master); cr.gain.setValueAtTime(0, T(74)); cr.gain.linearRampToValueAtTime(.07, T(75)); cr.gain.setValueAtTime(.07, T(89.5)); cr.gain.linearRampToValueAtTime(0, T(90));
+    const lp = filt("lowpass", 420, .7, cr); noise(T(74), T(16), lp, .6); }
+  riser(T(86), T(4) - .05, 1.1);
+  groove(90, 104, { stabs: true, lead: true, leadV: 1.3, bassV: 1.2, rolls: true });   // G DROP#2
+  arp(92, 104, .9);
+  groove(104, 112, { stabs: false, bassV: .9 });                // H
   stab(T(104), CH.Em, .5, 1.1);
   stab(T(112), CH.Em.concat([67]), T(8), 1.2);
   pad(T(112), [40, 47, 52, 55, 59], T(16), 1.4, 1200);
@@ -189,7 +185,7 @@ TR.renderAudio = async function () {
   duck.gain.setValueAtTime(1, 0);
   for (const t of kickTimes.sort((a, b) => a - b)) { duck.gain.setValueAtTime(1, t); duck.gain.linearRampToValueAtTime(.35, t + .01); duck.gain.linearRampToValueAtTime(1, t + .22); }
   // 静场段音乐总线整体压低
-  music.gain.setValueAtTime(1, T(71.7)); music.gain.linearRampToValueAtTime(.15, T(72)); music.gain.setValueAtTime(.15, T(83.8)); music.gain.linearRampToValueAtTime(1, T(84));
+  music.gain.setValueAtTime(1, T(73.7)); music.gain.linearRampToValueAtTime(.15, T(74)); music.gain.setValueAtTime(.15, T(89.8)); music.gain.linearRampToValueAtTime(1, T(90));
 
   /* ---------- 音效 ---------- */
   const FX = {

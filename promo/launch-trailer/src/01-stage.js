@@ -18,13 +18,7 @@
     if (typeof rivals !== "undefined" && rivals) rivals.forEach(r => r && r.g && (r.g.visible = false));
     if (typeof OPP !== "undefined" && OPP && OPP.guy && OPP.guy.g) OPP.guy.g.visible = false;
 
-    // 游戏里的恶搞广告牌（N1KE AIR / ADI-DASH / MINE-DEW）在宣传片里不出镜
-    if (typeof indoorRoot !== "undefined") indoorRoot.traverse(o => {
-      const g = o.geometry && o.geometry.parameters;
-      if (!o.isMesh || !g || Math.abs(g.height - .72) > .01 || Math.abs(o.position.y - .66) > .01) return;
-      const p = o.position, hit = (x, z) => Math.abs(p.x - x) < .05 && Math.abs(p.z - z) < .05;
-      if (hit(-8.05, COURT.midZ + 4.2) || hit(-8.05, COURT.midZ + 7.5) || hit(-4.6, COURT.farBaseline - .2)) o.visible = false;
-    });
+    TR.hideParody();
     // 主角"你"：青色 1 号、红头带、金护腕
     const hero = voxelGuy();
     hero.lefty = false;
@@ -83,10 +77,33 @@
     for (let i = 0; i < 4; i++) { const b = new THREE.Mesh(ballGeo, matBall); b.position.set(-.42 + i * .3, .12 - i * .036, 0); rack.add(b); }
     rack.visible = false; scene.add(rack); S.rack = rack;
   };
+  /* 游戏里的恶搞广告牌（N1KE AIR / ADI-DASH / MINE-DEW）在宣传片里不出镜；换场景后要重新藏 */
+  TR.hideParody = function () {
+    if (typeof indoorRoot === "undefined") return;
+    // 场边 LED 广告带（24 段，按 RIBBON_ADS 轮换）与一面看台横幅里也有恶搞品牌字样：换成游戏自己的中性广告
+    if (!TR._retextured) {
+      TR._retextured = true;
+      let i = 0;
+      const swap = { 1: "PIXEL SPORT", 5: "3PT KING", 6: "aiBA" };
+      indoorRoot.children.forEach(o => {
+        const g = o.geometry && o.geometry.parameters;
+        if (!o.isMesh || !g) return;
+        if (Math.abs(g.width - 3.4) < .01 && Math.abs(g.height - .5) < .01) { const t = swap[i % 8]; if (t) { o.material.map = bannerTex(t, "#070c14", "#7ee7ff"); o.material.needsUpdate = true; } i++; }
+        if (Math.abs(g.width - 48) < .01 && Math.abs(o.position.x + 27.5) < .1) { o.material.map = bannerTex("RACE TO 100 · 先到 100", "#13213f", "#ffd23f"); o.material.needsUpdate = true; }
+      });
+    }
+    indoorRoot.traverse(o => {
+      const g = o.geometry && o.geometry.parameters;
+      if (!o.isMesh || !g || Math.abs(g.height - .72) > .01 || Math.abs(o.position.y - .66) > .01) return;
+      const p = o.position, hit = (x, z) => Math.abs(p.x - x) < .05 && Math.abs(p.z - z) < .05;
+      if (hit(-8.05, COURT.midZ + 4.2) || hit(-8.05, COURT.midZ + 7.5) || hit(-4.6, COURT.farBaseline - .2)) o.visible = false;
+    });
+  };
   TR.rack = function (p) { S.rack.visible = true; S.rack.position.copy(p); S.rack.rotation.y = .6; };
 
   /* ---------- 场景切换 + 状态重置（每个镜头开头调用） ---------- */
   TR.resetShot = function (preset, seed) {
+    if (TR.LIVE && TR.LIVE.on) TR.liveEnd();
     window.__reseed && window.__reseed(seed);
     if (TR.setVoid) TR.setVoid(false);
     if (typeof G !== "undefined") { G.tNow = 0; G.cheer = 0; G.score = 0; }
@@ -103,8 +120,9 @@
     if (typeof netMesh !== "undefined" && netMesh) deformNet(netMesh, 0, 99, 0);
     if (typeof crowd !== "undefined" && crowd && crowd.groups) crowd.groups.forEach(g => g.seats.forEach(s => { s.responseStart = -100; s.responseDuration = 0; }));
     for (const b of S.balls) { b.m.visible = false; b.sh.visible = false; }
-    for (const k in S.actors) { const a = S.actors[k]; a.g.visible = false; a.g.rotation.set(0, 0, 0); if (a.headRoot) a.headRoot.rotation.set(0, 0, 0); }
+    for (const k in S.actors) { const a = S.actors[k]; a.g.visible = false; a.g.rotation.set(0, 0, 0); TR.head(a, 0, 0); }
     if (TR.resetStars) TR.resetStars();
+    TR.hideParody();
     TR.lights(1);
   };
   function isChildOf(o, p) { while (o) { if (o === p) return true; o = o.parent; } return false; }
@@ -155,13 +173,25 @@
       low = Math.min(low, POSE_STAND_FOOT_Y - poseFootBottomY(hip + P.lean, k, ank));
     });
     guy.g.rotation.x = P.lean;
-    if (guy.headRoot) guy.headRoot.rotation.set(P.hx, P.hy, 0);
+    TR.head(guy, P.hx, P.hy);
     return low + P.lift;
+  };
+  /* 头部转动必须绕脖子（y=1.45）转：headRoot 的原点在脚底，
+     直接写 rotation.x 会让整颗头绕着脚踝甩出去（"头身分离"）。 */
+  const NECK = 1.45, _v = new THREE.Vector3(), _e = new THREE.Euler();
+  TR.head = function (guy, pitch = 0, yaw = 0) {
+    const h = guy.headRoot; if (!h) return;
+    if (!h.userData.p0) h.userData.p0 = h.position.clone();
+    const p0 = h.userData.p0, s = h.scale.y;
+    h.rotation.set(pitch, yaw, 0);
+    _v.set(0, NECK * s, 0).applyEuler(_e.set(pitch, yaw, 0));
+    h.position.set(p0.x, p0.y + NECK * s - _v.y, p0.z - _v.z);
+    h.position.x -= _v.x;
   };
   /* 投篮：游戏原曲线。ph 0→1.2（0.76 起跳，≈0.9 出手） */
   TR.shoot = function (guy, ph) {
     const c = shotCurves(ph, guy.shotStyle);
-    if (guy.headRoot) guy.headRoot.rotation.set(0, 0, 0);
+    TR.head(guy, 0, 0);
     return poseGuy(guy, c, 0) + Math.max(0, c.jmp * .55 - c.over * .55);
   };
   /* 放置：pos=[x,z]，face=朝向角（或朝向点） */

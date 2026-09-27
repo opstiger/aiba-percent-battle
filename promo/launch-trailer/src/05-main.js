@@ -10,6 +10,7 @@
   TR.boot = async function () {
     TR.initStage();
     TR.initNeural();
+    for (const s of TR.S.stars) TR.hideGuyBall(s.guy);
     await TR.initPost();
     await document.fonts.load("40px 'ZCOOL QingKe HuangYou'", "先到就是王免费开玩打开浏览器投体感");
     await document.fonts.load("900 40px Orbitron", "RACE 100");
@@ -22,6 +23,7 @@
       TR.resetShot(shot.preset, shot.seed);
       if (shot.void) TR.setVoid(true);
       for (const k of ["rel", "boom"]) shot[k] = null;
+      if (shot.setup) shot.setup();
       cur = shot; simF = shot.f0 - 1;
     }
     let bt = 0;
@@ -31,10 +33,10 @@
       TR.S.rack.visible = false;
       TR.ringsReset();
       shot.frame(bt, g);
-      TR.tick(g / TR.FPS, 1 / TR.FPS);
+      if (!shot.live) TR.tick(g / TR.FPS, 1 / TR.FPS);
     }
     simF = f;
-    if (shot.passes) shot.passes(bt, f); else TR.render();
+    if (shot.passes) shot.passes(bt, f); else if (!shot.live) TR.render();
     TR.composite(f, shot, bt);
     return q ? TR.OUT.toDataURL("image/jpeg", q) : null;
   };

@@ -215,11 +215,11 @@
     if (star) txt(ctx, star.name + "  #" + star.num, 30, 20, { size: 40, font: CN, weight: 400, align: "left" });
     ctx.restore();
   };
-  TR.battleHud = function (ctx, a, b, bt, opp) {
+  TR.battleHud = function (ctx, a, b, bt, opp, myName) {
     const x = W / 2, y = 90;
     panel(ctx, x - 520, y - 52, 1040, 150);
-    txt(ctx, "你", x - 450, y - 8, { size: 44, font: CN, weight: 400, color: PAL.cyan });
-    txt(ctx, opp ? "AI" : "N-24", x + 440, y - 8, { size: 40, color: PAL.salmon });
+    txt(ctx, myName ? "你·" + myName : "你", x - 430, y - 8, { size: 34, font: CN, weight: 400, color: PAL.cyan });
+    txt(ctx, opp ? "AI·" + opp.name.split("·").pop() : "N-24", x + 420, y - 8, { size: 32, font: CN, weight: 400, color: PAL.salmon });
     txt(ctx, String(a), x - 260, y - 6, { size: 76, color: PAL.gold });
     txt(ctx, String(b), x + 260, y - 6, { size: 76, color: PAL.salmon });
     txt(ctx, "VS", x, y - 6, { size: 44, color: PAL.white });
@@ -489,6 +489,33 @@
     txt(ctx, s.name, 30, 60, { size: 50, font: CN, weight: 400, align: "left" });
     txt(ctx, "#" + s.num, 590, 60, { size: 52, color: PAL.gold, align: "right" });
     ctx.restore();
+  };
+  TR.slowTag = function (ctx, k) {
+    const x = TR.W - 330, y = TR.H - 150;
+    panel(ctx, x, y, 270, 58, { fill: "rgba(4,10,20,.75)", edge: "#1f5a73" });
+    ctx.fillStyle = PAL.red; ctx.beginPath(); ctx.arc(x + 30, y + 29, 8, 0, Math.PI * 2); ctx.fill();
+    txt(ctx, "SLOW-MO " + k.toFixed(2) + "×", x + 50, y + 30, { size: 22, color: PAL.white, align: "left", shadow: 0, spacing: 2 });
+  };
+  TR.pointerTag = function (ctx, x, y, label, num) {
+    ctx.save(); ctx.strokeStyle = PAL.gold; ctx.lineWidth = 3;
+    ctx.beginPath(); ctx.moveTo(x, y); ctx.lineTo(x + 60, y - 70); ctx.lineTo(x + 90, y - 70); ctx.stroke(); ctx.restore();
+    panel(ctx, x + 90, y - 110, 440, 80, { accent: PAL.gold, fill: "rgba(4,10,20,.85)" });
+    txt(ctx, label, x + 116, y - 70, { size: 28, font: CN, weight: 400, align: "left" });
+    if (num) txt(ctx, num, x + 510, y - 70, { size: 30, color: PAL.gold, align: "right", shadow: 0 });
+  };
+  /* 绝杀时刻 HUD：照游戏 lsScoreBox 的样式 */
+  TR.lastShotHud = function (ctx, home, away, clock, bt, won) {
+    const x = TR.W / 2, y = 70;
+    panel(ctx, x - 380, y - 44, 760, 120, { fill: "rgba(10,14,24,.88)", edge: won ? PAL.gold : "#283750", lw: won ? 5 : 3 });
+    txt(ctx, "你的球队", x - 330, y - 6, { size: 28, font: CN, weight: 400, color: "#7ee7ff", align: "left", shadow: 0 });
+    txt(ctx, String(home), x - 90, y - 4, { size: 54, color: PAL.gold, shadow: 0 });
+    txt(ctx, ":", x, y - 4, { size: 36, color: "#55667e", shadow: 0 });
+    txt(ctx, String(away), x + 90, y - 4, { size: 54, color: PAL.salmon, shadow: 0 });
+    txt(ctx, "卫冕冠军", x + 330, y - 6, { size: 28, font: CN, weight: 400, color: "#cdd6e3", align: "right", shadow: 0 });
+    const diff = away - home, st = diff > 0 ? "★ 落后 " + diff + " 分 ★" : diff === 0 ? "★ 平分 · 绝杀一投 ★" : "★ 反超领先！★";
+    txt(ctx, st, x, y + 50, { size: 22, font: CN, weight: 400, color: diff > 0 ? PAL.salmon : diff === 0 ? PAL.gold : PAL.green, shadow: 0 });
+    const low = clock <= 3, blink = low && clock > 0 && Math.floor(bt * 5) % 2;
+    txt(ctx, clock.toFixed(1), x, y + 124, { size: 58, color: low ? (blink ? "#7a1a1a" : "#ff4040") : PAL.gold });
   };
   TR.chips = function (ctx, x, y, list, t) {
     const w = 250, gap = 16, total = list.length * w + (list.length - 1) * gap;

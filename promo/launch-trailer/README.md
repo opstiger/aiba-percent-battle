@@ -33,10 +33,12 @@ node render.mjs stills 96,600    # 只渲染指定帧 → .cache/stills/
 | `src/00-core.js` | 节拍（150 BPM = 12 帧/拍）、缓动、确定性随机、关键帧 |
 | `src/01-stage.js` | 接管游戏场景：主角 / 体感真人、球、灯、镜头、姿势 |
 | `src/06-neural.js` | 18 位球星名单、全息扫描重建、数字虚空世界 |
-| `src/02-shots.js` | A–H 八段 17 个镜头 + 卡点表 `CUES`（画面和声音共用） |
+| `src/07-live.js` | 直接跑游戏本体的「绝杀时刻」模式（固定步长 + 自动蓄力出手） |
+| `src/08-acts.js` | 动作库：每位球星的招牌/庆祝动作、慢动作、严格同步的投篮出手、游戏原生热身扣篮 |
+| `src/02-shots.js` | A–H 八段 16 个镜头 + 卡点表 `CUES`（画面和声音共用） |
 | `src/03-post.js` | 放大、bloom、色差、马赛克、扫描线；科技 HUD（名片、追踪框、DNA、弹道预测、概率表） |
 | `src/04-audio.js` | OfflineAudioContext 合成 BGM（含 8-bit 方波琶音）+ 音效 |
 | `src/05-main.js` | 导演主循环 |
 | `render.mjs` | 本地服务 + 并行渲染 + ffmpeg 合成 |
 
-游戏里的恶搞广告牌（N1KE AIR 等）和带真实品牌影子的高细节球鞋在宣传片里不出镜。
+游戏里的恶搞品牌字样（场边广告牌、LED 广告带、看台横幅里的 N1KE AIR / ADI-DASH / MINE-DEW）在宣传片里换成游戏自己的中性广告；带真实品牌影子的高细节球鞋不出镜。

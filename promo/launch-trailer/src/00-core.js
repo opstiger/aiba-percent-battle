@@ -21,6 +21,7 @@
     lin: t => t,
     inQuad: t => t * t,
     outQuad: t => 1 - (1 - t) * (1 - t),
+    inOutQuad: t => t < .5 ? 2 * t * t : 1 - Math.pow(-2 * t + 2, 2) / 2,
     inCubic: t => t * t * t,
     outCubic: t => 1 - Math.pow(1 - t, 3),
     inOutCubic: t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
