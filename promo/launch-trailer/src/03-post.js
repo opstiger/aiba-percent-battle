@@ -35,16 +35,17 @@
 
   /* ---------- 卡点 ---------- */
   function cueFx(f) {
-    let sx = 0, sy = 0, z = 0, inv_ = false, flash = null;
+    let sx = 0, sy = 0, z = 0, inv_ = false, flash = null, chroma = 0;
     for (const c of TR.CUES) {
       const d = f - TR.frameOf(c.b);
       if (c.shake) { const s = TR.shakeAt(d, c.shake, c.sdur || 8, c.b * 3); sx += s[0]; sy += s[1]; }
       if (c.punch && d >= 0 && d < 10) z += c.punch * Math.pow(1 - d / 10, 3);
       if (c.invert && d >= 0 && d < c.invert) inv_ = true;
       if (c.flash && d >= 0 && d < 5) flash = { a: c.flash * Math.pow(1 - d / 5, 2), col: c.flashCol || "255,244,210" };
+      if (c.chroma && d >= 0 && d < 6) chroma = Math.max(chroma, c.chroma * (1 - d / 6));
     }
     // 像素对齐：震动按 3px 步进，保持方块边缘干净
-    return { sx: Math.round(sx / PX) * PX, sy: Math.round(sy / PX) * PX, z, inv: inv_, flash };
+    return { sx: Math.round(sx / PX) * PX, sy: Math.round(sy / PX) * PX, z, inv: inv_, flash, chroma };
   }
 
   TR.composite = function (f, shot, bt) {
@@ -57,6 +58,8 @@
     ctx.setTransform(z, 0, 0, z, W / 2 * (1 - z) + fx.sx, H / 2 * (1 - z) + fx.sy);
     if (shot.compose) shot.compose(ctx, bt, f); else TR.drawPass(ctx, null);
     ctx.setTransform(1, 0, 0, 1, 0, 0);
+    bloom(ctx);
+    if (fx.chroma > .5) chromaSplit(ctx, fx.chroma);
     ctx.drawImage(SCAN, 0, 0);
     ctx.drawImage(VIG, 0, 0);
     ctx.save();
@@ -69,6 +72,24 @@
     if (TR.fadeBlack > 0) { ctx.fillStyle = `rgba(4,5,10,${TR.fadeBlack})`; ctx.fillRect(0, 0, W, H); }
     return OUT;
   };
+  /* 柔光：1/4 尺寸模糊后 screen 叠回 */
+  const BL = document.createElement("canvas"), BLX = BL.getContext("2d");
+  function bloom(ctx) {
+    BL.width = W / 4; BL.height = H / 4;
+    BLX.filter = "blur(6px) brightness(1.1)"; BLX.drawImage(OUT, 0, 0, W / 4, H / 4); BLX.filter = "none";
+    ctx.save(); ctx.globalCompositeOperation = "screen"; ctx.globalAlpha = .38; ctx.imageSmoothingEnabled = true;
+    ctx.drawImage(BL, 0, 0, W, H); ctx.restore();
+  }
+  /* 色差分离：红/青两路错位 */
+  const CH = document.createElement("canvas"), CHX = CH.getContext("2d");
+  function chromaSplit(ctx, d) {
+    CH.width = W; CH.height = H;
+    for (const [col, dx] of [["#ff0000", d], ["#00ffff", -d]]) {
+      CHX.globalCompositeOperation = "source-over"; CHX.drawImage(OUT, 0, 0);
+      CHX.globalCompositeOperation = "multiply"; CHX.fillStyle = col; CHX.fillRect(0, 0, W, H);
+      ctx.save(); ctx.globalCompositeOperation = "lighten"; ctx.globalAlpha = .55; ctx.drawImage(CH, dx, 0); ctx.restore();
+    }
+  }
   function mosaic(ctx, k) {
     const w = Math.max(1, Math.round(W / (PX * k))), h = Math.max(1, Math.round(H / (PX * k)));
     TMP.width = w; TMP.height = h;
@@ -187,18 +208,18 @@
     txt(ctx, cn, 0, 32, { size: 34, font: CN, weight: 400, color: PAL.white });
     ctx.restore();
   };
-  TR.placeTag = function (ctx, name, sc) {
-    ctx.save(); ctx.translate(90, 960); ctx.scale(sc, sc);
-    panel(ctx, 0, -46, 470, 92, { accent: PAL.cyan });
-    txt(ctx, "WORLD COURT", 30, -18, { size: 20, color: PAL.cyan, align: "left", spacing: 4 });
-    txt(ctx, name, 30, 20, { size: 40, font: CN, weight: 400, align: "left" });
+  TR.placeTag = function (ctx, name, sc, star) {
+    ctx.save(); ctx.translate(90, 950); ctx.scale(sc, sc);
+    panel(ctx, 0, -56, 560, 112, { accent: PAL.cyan });
+    txt(ctx, "WORLD COURT · " + name, 30, -24, { size: 24, color: PAL.cyan, align: "left", spacing: 2, font: CN, weight: 400 });
+    if (star) txt(ctx, star.name + "  #" + star.num, 30, 20, { size: 40, font: CN, weight: 400, align: "left" });
     ctx.restore();
   };
-  TR.battleHud = function (ctx, a, b, bt) {
+  TR.battleHud = function (ctx, a, b, bt, opp) {
     const x = W / 2, y = 90;
     panel(ctx, x - 520, y - 52, 1040, 150);
     txt(ctx, "你", x - 450, y - 8, { size: 44, font: CN, weight: 400, color: PAL.cyan });
-    txt(ctx, "N-24", x + 440, y - 8, { size: 40, color: PAL.salmon });
+    txt(ctx, opp ? "AI" : "N-24", x + 440, y - 8, { size: 40, color: PAL.salmon });
     txt(ctx, String(a), x - 260, y - 6, { size: 76, color: PAL.gold });
     txt(ctx, String(b), x + 260, y - 6, { size: 76, color: PAL.salmon });
     txt(ctx, "VS", x, y - 6, { size: 44, color: PAL.white });
@@ -299,5 +320,187 @@
     ctx.fillStyle = "#fff";
     for (const k in s) ctx.fillRect(snap(s[k][0] - 6), snap(s[k][1] - 6), 12, 12);
     ctx.restore();
+  };
+
+  /* ================= NEURAL COURT：科技 HUD ================= */
+  const MONO = "Orbitron, monospace";
+  /* 角色在屏幕上的包围框 */
+  TR.boxOf = function (guy) {
+    if (!guy.g.visible) return null;
+    guy.g.updateMatrixWorld(true);
+    const pts = [guy.headRoot.localToWorld(new THREE.Vector3(0, 1.95, 0)), guy.g.localToWorld(new THREE.Vector3(0, 0, 0)),
+      guy.arms[0].localToWorld(new THREE.Vector3(0, 0, 0)), guy.arms[1].localToWorld(new THREE.Vector3(0, 0, 0))].map(p => TR.project(p));
+    if (pts.some(p => p[2] > 1 || p[2] < -1)) return { on: false };
+    const xs = pts.map(p => p[0]), ys = pts.map(p => p[1]);
+    const w = Math.max(...xs) - Math.min(...xs), h = Math.max(...ys) - Math.min(...ys), cx = (Math.max(...xs) + Math.min(...xs)) / 2;
+    const hw = Math.max(w * .6, h * .22);
+    const b = { x0: cx - hw, x1: cx + hw, y0: Math.min(...ys) - h * .04, y1: Math.max(...ys) + h * .02 };
+    b.on = b.x1 > 0 && b.x0 < W && b.y1 > 0 && b.y0 < H && h > 30;
+    return b;
+  };
+  TR.brackets = function (ctx, b, col, label) {
+    if (!b || !b.on) return;
+    const L = Math.min(40, (b.x1 - b.x0) * .25);
+    ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 3;
+    for (const [x, y, dx, dy] of [[b.x0, b.y0, 1, 1], [b.x1, b.y0, -1, 1], [b.x0, b.y1, 1, -1], [b.x1, b.y1, -1, -1]]) {
+      ctx.beginPath(); ctx.moveTo(x, y + dy * L); ctx.lineTo(x, y); ctx.lineTo(x + dx * L, y); ctx.stroke();
+    }
+    ctx.restore();
+    if (label) txt(ctx, label, b.x0, b.y0 - 18, { size: 18, color: col, align: "left", shadow: 2, spacing: 3 });
+  };
+  /* 两侧数据雨 */
+  TR.dataRain = function (ctx, bt, a = .3) {
+    ctx.save(); ctx.font = `600 14px ${MONO}`; ctx.fillStyle = PAL.cyan;
+    const r = rng(77);
+    for (let c = 0; c < 10; c++) {
+      const x = c < 5 ? 24 + c * 34 : W - 24 - (c - 5) * 34, sp = 40 + r() * 80, off = r() * 1000;
+      for (let i = 0; i < 26; i++) {
+        const y = ((i * 42 + bt * sp * 4 + off) % (H + 60)) - 30;
+        ctx.globalAlpha = a * (.25 + .75 * ((i * 7 + c) % 5) / 5);
+        ctx.fillText(((Math.floor(bt * 6) * 13 + i * 7 + c * 31) % 256).toString(16).toUpperCase().padStart(2, "0"), x, y);
+      }
+    }
+    ctx.restore();
+  };
+  TR.terminal = function (ctx, bt, lines) {
+    let y = 130;
+    for (const [s, t0] of lines) {
+      const n = Math.floor(Math.max(0, bt - t0) * 26);
+      if (n <= 0) break;
+      const show = s.slice(0, n), done = n >= s.length;
+      txt(ctx, show + (!done && Math.floor(bt * 6) % 2 ? "█" : ""), 110, y, { size: 30, color: s.includes("RECON") ? PAL.gold : PAL.cyan, align: "left", weight: 600, shadow: 0 });
+      y += 52;
+    }
+  };
+  TR.progress = function (ctx, p, a = 1) {
+    ctx.save(); ctx.globalAlpha = a;
+    const x = W / 2 - 400, y = H - 170;
+    ctx.strokeStyle = PAL.cyan; ctx.lineWidth = 2; ctx.strokeRect(x, y, 800, 26);
+    const n = Math.floor(p * 40);
+    ctx.fillStyle = PAL.cyan; for (let i = 0; i < n; i++) ctx.fillRect(x + 4 + i * 19.8, y + 4, 15, 18);
+    txt(ctx, "RECONSTRUCTING LEGENDS  " + Math.round(p * 100) + "%", W / 2, y - 30, { size: 24, color: PAL.cyan, spacing: 4, shadow: 0 });
+    ctx.restore();
+  };
+  /* 球星名片：真实姓名 / 号码 / OVR / 游戏里的弧线与出手风格 */
+  TR.starCard = function (ctx, s, x, y, sc, tag, align = "left", k = 1) {
+    if (sc <= 0) return;
+    ctx.save(); ctx.translate(x, y); ctx.scale(sc * k, sc * k);
+    const w = 440, x0 = align === "left" ? 0 : -w;
+    panel(ctx, x0, -95, w, 190, { accent: PAL.cyan, fill: "rgba(4,10,20,.78)", edge: "#1f5a73" });
+    txt(ctx, "#" + s.num, x0 + w - 24, -58, { size: 46, color: PAL.gold, align: "right", shadow: 0 });
+    txt(ctx, tag || "LEGEND · OVR " + s.ovr, x0 + 26, -62, { size: 16, color: PAL.cyan, align: "left", spacing: 3, shadow: 0 });
+    txt(ctx, s.name, x0 + 26, -18, { size: 38, font: CN, weight: 400, align: "left" });
+    txt(ctx, "ARC", x0 + 26, 32, { size: 14, color: PAL.dim, align: "left", shadow: 0 });
+    txt(ctx, s.arc, x0 + 80, 32, { size: 24, font: CN, weight: 400, color: PAL.cyan, align: "left", shadow: 0 });
+    txt(ctx, "STYLE", x0 + 26, 70, { size: 14, color: PAL.dim, align: "left", shadow: 0 });
+    txt(ctx, s.style, x0 + 100, 70, { size: 24, font: CN, weight: 400, color: PAL.green, align: "left", shadow: 0 });
+    // OVR 条
+    ctx.fillStyle = "#12324a"; ctx.fillRect(x0 + 250, 60, 160, 10);
+    ctx.fillStyle = PAL.gold; ctx.fillRect(x0 + 250, 60, 160 * (s.ovr - 60) / 40, 10);
+    txt(ctx, "OVR " + s.ovr, x0 + 250, 38, { size: 18, color: PAL.gold, align: "left", shadow: 0 });
+    ctx.restore();
+  };
+  TR.counter = function (ctx, n, bt) {
+    panel(ctx, W / 2 - 200, 40, 400, 70, { fill: "rgba(4,10,20,.7)", edge: "#1f5a73" });
+    txt(ctx, "LEGENDS  " + String(n).padStart(2, "0") + " / 18", W / 2, 76, { size: 30, color: PAL.cyan, spacing: 3, shadow: 0 });
+  };
+  TR.lowerThird = function (ctx, en, cn, sc, col = PAL.cyan) {
+    if (sc <= 0) return;
+    ctx.save(); ctx.translate(W / 2, H - 150); ctx.scale(sc, sc);
+    panel(ctx, -520, -64, 1040, 128, { accent: col, fill: "rgba(4,10,20,.8)" });
+    txt(ctx, en, 0, -22, { size: 30, color: col, spacing: 5 });
+    txt(ctx, cn, 0, 28, { size: 44, font: CN, weight: 400 });
+    ctx.restore();
+  };
+  TR.lowerThirdSmall = function (ctx, s, sc) {
+    if (sc <= 0) return;
+    ctx.save(); ctx.translate(120, H - 120); ctx.scale(sc, sc);
+    panel(ctx, 0, -34, 560, 68, { accent: PAL.cyan, fill: "rgba(4,10,20,.8)" });
+    txt(ctx, s, 28, 0, { size: 28, font: CN, weight: 400, align: "left", color: PAL.white });
+    ctx.restore();
+  };
+  TR.featureTag = function (ctx, x, y, en, cn, sc) {
+    if (sc <= 0) return;
+    ctx.save(); ctx.translate(x, y); ctx.scale(sc, sc);
+    panel(ctx, -330, -64, 660, 128, { accent: PAL.gold, fill: "rgba(4,10,20,.82)" });
+    txt(ctx, en, 0, -22, { size: 40, color: PAL.gold, spacing: 5 });
+    txt(ctx, cn, 0, 30, { size: 34, font: CN, weight: 400 });
+    ctx.restore();
+  };
+  TR.metric = function (ctx, x, y, k, v, col) {
+    panel(ctx, x, y - 44, 270, 88, { fill: "rgba(4,10,20,.8)", edge: "#1f5a73" });
+    txt(ctx, k, x + 20, y - 18, { size: 16, color: PAL.dim, align: "left", shadow: 0, spacing: 3 });
+    txt(ctx, v, x + 20, y + 18, { size: 34, color: col, align: "left", shadow: 0 });
+  };
+  TR.dnaResult = function (ctx, s, sc) {
+    if (sc <= 0) return;
+    ctx.save(); ctx.translate(W - 520, H - 250); ctx.scale(sc, sc);
+    panel(ctx, 0, 0, 470, 200, { accent: PAL.gold, edge: PAL.gold, fill: "rgba(20,14,0,.85)" });
+    txt(ctx, "DNA MATCH", 28, 36, { size: 20, color: PAL.gold, align: "left", spacing: 4, shadow: 0 });
+    txt(ctx, "91%", 440, 60, { size: 64, color: PAL.gold, align: "right" });
+    txt(ctx, s.name, 28, 92, { size: 38, font: CN, weight: 400, align: "left" });
+    txt(ctx, "ELBOW 162°   RELEASE 1.38   FOLLOW 0.86", 28, 150, { size: 16, color: PAL.cyan, align: "left", shadow: 0, spacing: 1 });
+    ctx.restore();
+  };
+  /* 左下角：你的姿态骨架（MediaPipe 风格） */
+  TR.dnaInset = function (ctx, bt) {
+    const x = 70, y = 230, w = 330, h = 360;
+    panel(ctx, x, y, w, h, { fill: "rgba(4,10,20,.82)", edge: "#1f5a73" });
+    txt(ctx, "YOUR POSE", x + 20, y + 30, { size: 18, color: PAL.cyan, align: "left", shadow: 0, spacing: 4 });
+    const k = Math.sin(bt * 2.2) * 6, cx = x + 170, cy = y + 60;
+    const J = { head: [0, 20], nk: [0, 50], sR: [28, 58], sL: [-28, 58], eR: [44, 20 - k], wR: [30, -20 - k], eL: [-40, 30 - k], wL: [-10, -6 - k], hR: [18, 160], hL: [-18, 160], kR: [26, 222], kL: [-22, 222], aR: [22, 285], aL: [-20, 285] };
+    const L = [["nk", "head"], ["sR", "sL"], ["sR", "eR"], ["eR", "wR"], ["sL", "eL"], ["eL", "wL"], ["sR", "hR"], ["sL", "hL"], ["hR", "hL"], ["hR", "kR"], ["kR", "aR"], ["hL", "kL"], ["kL", "aL"]];
+    ctx.save(); ctx.strokeStyle = PAL.cyan; ctx.lineWidth = 4;
+    for (const [a, b] of L) { ctx.beginPath(); ctx.moveTo(cx + J[a][0], cy + J[a][1]); ctx.lineTo(cx + J[b][0], cy + J[b][1]); ctx.stroke(); }
+    ctx.fillStyle = "#fff"; for (const k2 in J) ctx.fillRect(cx + J[k2][0] - 5, cy + J[k2][1] - 5, 10, 10);
+    ctx.restore();
+    txt(ctx, "33 LANDMARKS · LOCAL", x + 20, y + h - 24, { size: 14, color: PAL.dim, align: "left", shadow: 0, spacing: 2 });
+  };
+  /* 弹道预测虚线 */
+  TR.predArc = function (ctx, pts, col, t, label) {
+    ctx.save(); ctx.strokeStyle = col; ctx.lineWidth = 4; ctx.setLineDash([12, 12]); ctx.lineDashOffset = -t * 60;
+    ctx.globalAlpha = .85 * (1 - clamp((t - .9) / .3));
+    ctx.beginPath(); pts.forEach((p, i) => i ? ctx.lineTo(p[0], p[1]) : ctx.moveTo(p[0], p[1])); ctx.stroke();
+    ctx.restore();
+    const m = pts[Math.floor(pts.length * .45)];
+    if (m && label) txt(ctx, label, m[0], m[1] - 30, { size: 22, color: col, font: CN, weight: 400, shadow: 2 });
+  };
+  TR.oppCard = function (ctx, s, sc) {
+    if (!s || sc <= 0) return;
+    ctx.save(); ctx.translate(90, H - 200); ctx.scale(sc, sc);
+    panel(ctx, 0, 0, 520, 130, { accent: PAL.salmon, fill: "rgba(4,10,20,.85)" });
+    txt(ctx, "AI OPPONENT · OVR " + s.ovr, 28, 30, { size: 16, color: PAL.salmon, align: "left", shadow: 0, spacing: 3 });
+    txt(ctx, s.name, 28, 80, { size: 40, font: CN, weight: 400, align: "left" });
+    txt(ctx, "#" + s.num, 492, 76, { size: 44, color: PAL.gold, align: "right", shadow: 0 });
+    ctx.restore();
+  };
+  TR.probability = function (ctx, p, bt) {
+    const x = W - 520, y = H - 300;
+    panel(ctx, x, y, 440, 170, { fill: "rgba(4,10,20,.82)", edge: p > 90 ? PAL.green : "#1f5a73" });
+    txt(ctx, "MAKE PROBABILITY", x + 24, y + 32, { size: 18, color: PAL.dim, align: "left", shadow: 0, spacing: 3 });
+    txt(ctx, p.toFixed(1) + "%", x + 24, y + 96, { size: 70, color: p > 90 ? PAL.green : PAL.cyan, align: "left" });
+    ctx.fillStyle = "#12324a"; ctx.fillRect(x + 24, y + 140, 392, 10);
+    ctx.fillStyle = p > 90 ? PAL.green : PAL.cyan; ctx.fillRect(x + 24, y + 140, 392 * p / 100, 10);
+  };
+  TR.faceTag = function (ctx, s, sc) {
+    if (!s || sc <= 0) return;
+    ctx.save(); ctx.translate(120, H - 190); ctx.scale(sc, sc);
+    panel(ctx, 0, 0, 620, 120, { accent: PAL.gold, fill: "rgba(4,10,20,.8)" });
+    txt(ctx, s.name, 30, 60, { size: 50, font: CN, weight: 400, align: "left" });
+    txt(ctx, "#" + s.num, 590, 60, { size: 52, color: PAL.gold, align: "right" });
+    ctx.restore();
+  };
+  TR.chips = function (ctx, x, y, list, t) {
+    const w = 250, gap = 16, total = list.length * w + (list.length - 1) * gap;
+    list.forEach((s, i) => {
+      const k = clamp((t - i * .5) / .3);
+      if (k <= 0) return;
+      const cx = x - total / 2 + i * (w + gap) + w / 2;
+      const row = i < 3 ? 0 : 1, rx = x - (3 * w + 2 * gap) / 2 + (i % 3) * (w + gap) + w / 2;
+      ctx.save(); ctx.translate(rx, y + row * 76); ctx.scale(E.outBack(k), E.outBack(k));
+      panel(ctx, -w / 2, -30, w, 60, { fill: "rgba(4,10,20,.85)", edge: PAL.cyan, r: 30 });
+      txt(ctx, s, 0, 2, { size: 26, font: CN, weight: 400, color: PAL.white, shadow: 0 });
+      ctx.restore();
+    });
   };
 })(window.TR = window.TR || {});

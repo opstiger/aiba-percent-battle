@@ -88,13 +88,14 @@
   /* ---------- 场景切换 + 状态重置（每个镜头开头调用） ---------- */
   TR.resetShot = function (preset, seed) {
     window.__reseed && window.__reseed(seed);
+    if (TR.setVoid) TR.setVoid(false);
     if (typeof G !== "undefined") { G.tNow = 0; G.cheer = 0; G.score = 0; }
     if (preset) applyScenePreset(preset, { silent: true, persist: false });
     S.preset = preset;
     for (let i = 0; i < 4; i++) if (typeof updateEnvironment === "function") updateEnvironment(1 / 30);
     // 记录当前灯光基准亮度
     S.lights = [];
-    scene.traverse(o => { if (o.isLight && o !== S.spot && !(S.room && isChildOf(o, S.room))) S.lights.push({ o, base: o.intensity }); });
+    scene.traverse(o => { if (o.isLight && o !== S.spot && o !== S.key && !(S.room && isChildOf(o, S.room)) && !(S.voidGroup && isChildOf(o, S.voidGroup))) S.lights.push({ o, base: o.intensity }); });
     S.spot.intensity = 0; S.key.intensity = 0;
     // 特效清零
     if (typeof fireLife !== "undefined") { fireLife.fill(0); for (let i = 0; i < fireLife.length; i++) firePos[i * 3 + 1] = -99; if (typeof fireGeoB !== "undefined") fireGeoB.attributes.position.needsUpdate = true; }
@@ -103,6 +104,7 @@
     if (typeof crowd !== "undefined" && crowd && crowd.groups) crowd.groups.forEach(g => g.seats.forEach(s => { s.responseStart = -100; s.responseDuration = 0; }));
     for (const b of S.balls) { b.m.visible = false; b.sh.visible = false; }
     for (const k in S.actors) { const a = S.actors[k]; a.g.visible = false; a.g.rotation.set(0, 0, 0); if (a.headRoot) a.headRoot.rotation.set(0, 0, 0); }
+    if (TR.resetStars) TR.resetStars();
     TR.lights(1);
   };
   function isChildOf(o, p) { while (o) { if (o === p) return true; o = o.parent; } return false; }

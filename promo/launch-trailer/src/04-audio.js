@@ -149,44 +149,47 @@ TR.renderAudio = async function () {
       if (o.stabs && inBar === 0) stab(t, CH[chordAt(b)], .3, .9);
     }
   }
-  // 前奏 0–8
-  pad(T(0), [40, 47, 52], T(1.05), 1.3, 500);
-  for (let b = 4; b < 8; b += .5) { hat(T(b), b % 1 ? 1 : .6); if (b % 1 === 0) kick(T(b), .9); }
-  clap(T(5)); clap(T(7));
-  for (let b = 7; b < 8; b += .125) snare(T(b), .25 + (b - 7) * .8);
-  riser(T(6), T(2), .8);
-  // 主歌 8–36
-  groove(8, 16, { stabs: true });
-  groove(16, 32, { stabs: true, lead: true, rolls: true });
-  arp(16, 36, .9);
-  arp(50, 56, 1);
-  groove(32, 36, { stabs: true, lead: true, leadV: 1.2, four: true });
-  // 装备 36–40：四拍底鼓 + 军鼓滚奏
-  for (let b = 36; b < 39.75; b += .25) { if (b % 1 === 0) kick(T(b)); hat(T(b), .5); if (b % .5 === 0) bassNote(T(b), 40, T(.4), .9); }
-  for (let b = 37; b < 39.75; b += (b < 38.5 ? .25 : .125)) snare(T(b), .3 + (b - 37) * .3);
-  // 静场 40–48
-  pad(T(40), [28, 40, 47], T(8), .9, 300);
-  { const cr = ac.createGain(); cr.connect(master); cr.gain.setValueAtTime(0, T(40)); cr.gain.linearRampToValueAtTime(.07, T(41)); cr.gain.setValueAtTime(.07, T(47.5)); cr.gain.linearRampToValueAtTime(0, T(48));
-    const lp = filt("lowpass", 420, .7, cr); noise(T(40), T(8), lp, .6); }
-  // 48–50 大和弦 + 军鼓通鼓推进
-  stab(T(48), CH.Cmaj, T(2) - .05, 1.3);
-  for (let b = 48; b < 50; b += .25) tom(T(b), 90 + (b - 48) * 40, .4 + (b - 48) * .3);
-  for (let b = 49; b < 50; b += .125) snare(T(b), .3 + (b - 49) * .6);
-  // 爆发 50–56
-  groove(50, 56, { stabs: true, lead: true, leadV: 1.3, bassV: 1.2, rolls: true });
-  // 尾奏 56–64
-  groove(56, 64, { stabs: false, bassV: .9 });
-  stab(T(56), CH.Em, .5, 1.1);
-  // 64 最后一下
-  stab(T(64), CH.Em.concat([67]), T(6), 1.2);
-  pad(T(64), [40, 47, 52, 55, 59], T(8), 1.4, 1200);
-  kick(T(64), 1.2);
+  /* ===== NEURAL COURT 编曲（128 拍，见 STORYBOARD 声音表） ===== */
+  // A 0–16：氛围 pad，拍8 起四拍底鼓，拍12 起踩镲，拍12–16 上升
+  pad(T(0), [28, 40, 47, 52], T(8), 1.2, 420);
+  pad(T(8), [40, 47, 52, 55], T(8), 1.1, 700);
+  for (let b = 8; b < 16; b++) kick(T(b), .85);
+  for (let b = 12; b < 16; b += .5) hat(T(b), b % 1 ? 1 : .6);
+  riser(T(12), T(4) - .05, .7);
+  // B 16–30：律动 + 琶音
+  groove(16, 30, { stabs: true, rolls: true });
+  arp(16, 30, .8);
+  for (let b = 30; b < 32; b += .125) snare(T(b), .25 + (b - 30) * .35);
+  // C 32–40 DROP#1
+  groove(32, 40, { stabs: true, lead: true, leadV: 1.1, four: true });
+  // D 40–56：律动 + 琶音（不带主旋律，给 DNA 数字音让位）
+  groove(40, 56, { stabs: false, rolls: true, bassV: .9 });
+  arp(40, 56, .75);
+  // E 56–72：全编制 + 主旋律
+  groove(56, 72, { stabs: true, lead: true, leadV: 1.2, rolls: true });
+  arp(64, 72, .7);
+  // F 72–86：抽空、心跳、闷住的观众；拍84 通鼓推进
+  pad(T(72), [28, 40, 47], T(12), .9, 300);
+  { const cr = ac.createGain(); cr.connect(master); cr.gain.setValueAtTime(0, T(72)); cr.gain.linearRampToValueAtTime(.07, T(73)); cr.gain.setValueAtTime(.07, T(83.5)); cr.gain.linearRampToValueAtTime(0, T(84));
+    const lp = filt("lowpass", 420, .7, cr); noise(T(72), T(12), lp, .6); }
+  stab(T(84), CH.Cmaj, T(2) - .05, 1.3);
+  for (let b = 84; b < 86; b += .25) tom(T(b), 90 + (b - 84) * 40, .4 + (b - 84) * .3);
+  for (let b = 85; b < 86; b += .125) snare(T(b), .3 + (b - 85) * .6);
+  // G 86–104 DROP#2
+  groove(86, 104, { stabs: true, lead: true, leadV: 1.3, bassV: 1.2, rolls: true });
+  arp(88, 104, .9);
+  // H 104–128：尾奏，拍112 最后重音后余音
+  groove(104, 112, { stabs: false, bassV: .9 });
+  stab(T(104), CH.Em, .5, 1.1);
+  stab(T(112), CH.Em.concat([67]), T(8), 1.2);
+  pad(T(112), [40, 47, 52, 55, 59], T(16), 1.4, 1200);
+  kick(T(112), 1.2);
 
   // 侧链：每个底鼓把音乐总线压一下
   duck.gain.setValueAtTime(1, 0);
   for (const t of kickTimes.sort((a, b) => a - b)) { duck.gain.setValueAtTime(1, t); duck.gain.linearRampToValueAtTime(.35, t + .01); duck.gain.linearRampToValueAtTime(1, t + .22); }
   // 静场段音乐总线整体压低
-  music.gain.setValueAtTime(1, T(39.7)); music.gain.linearRampToValueAtTime(.15, T(40)); music.gain.setValueAtTime(.15, T(47.8)); music.gain.linearRampToValueAtTime(1, T(48));
+  music.gain.setValueAtTime(1, T(71.7)); music.gain.linearRampToValueAtTime(.15, T(72)); music.gain.setValueAtTime(.15, T(83.8)); music.gain.linearRampToValueAtTime(1, T(84));
 
   /* ---------- 音效 ---------- */
   const FX = {
@@ -227,6 +230,14 @@ TR.renderAudio = async function () {
     clunkOff(t) { for (let i = 0; i < 4; i++) FX.clunk(t + i * T(.25)); },
     blip(t) { const g = gainAt(sfx, t, .18, .002, .12); const o = osc("square", 988, t, .15, g); o.frequency.setValueAtTime(1319, t + .06); send(g, .2); },
     equip(t) { FX.whoosh(t - .12, .14, 1200, 5000, .35); FX.blip(t); const g = gainAt(shaper(2, sfx), t, .7, .001, .25); const o = osc("sine", 110, t, .3, g); o.frequency.exponentialRampToValueAtTime(50, t + .2); },
+    type(t) { const g = gainAt(filt("highpass", 2500, .7, sfx), t, .12, .001, .018); noise(t, .03, g, 1.3); const g2 = gainAt(sfx, t, .04, .001, .03); osc("square", 2200 + R() * 800, t, .04, g2); },
+    sweep(t) { FX.whoosh(t, T(2), 120, 6000, .35); const g = gainAt(sfx, t, .12, T(1), T(1), "lin"); const o = osc("sine", 80, t, T(2), g); o.frequency.exponentialRampToValueAtTime(40, t + T(2)); },
+    zap(t) { const g = gainAt(filt("bandpass", 2400, 2, sfx), t, .22, .003, .25); const o = osc("sawtooth", 1800, t, .3, g); o.frequency.exponentialRampToValueAtTime(220, t + .22); send(g, .35); const n = gainAt(filt("highpass", 5000, .7, sfx), t, .12, .001, .12); noise(t, .14, n); },
+    zapBig(t) { FX.zap(t); FX.sweep(t - T(1)); const g = gainAt(shaper(2, sfx), t, .7, .002, .5); const o = osc("sine", 140, t, .6, g); o.frequency.exponentialRampToValueAtTime(40, t + .4); },
+    riserShort(t) { riser(t, T(1) - .02, .9); },
+    roarShort(t) { crowd(t, 3.5, .8); },
+    tick(t) { const g = gainAt(sfx, t, .06, .001, .02); osc("square", 3000 + R() * 1500, t, .03, g); },
+    lock(t) { for (const [d, f] of [[0, 1319], [.06, 1760], [.12, 2637]]) { const g = gainAt(sfx, t + d, .15, .002, .18); osc("square", f, t + d, .2, g); } FX.catch(t); },
     pixel(t) { for (let i = 0; i < 8; i++) { const tt = t + i * .025, g = gainAt(sfx, tt, .07, .001, .03); osc("square", 1800 - i * 180, tt, .04, g); } FX.whoosh(t, .3, 3000, 400, .3); },
     yell(t) { const out = gainAt(sfx, t, .18, .06, .9, "lin"); send(out, .5); for (const [f, q, v] of [[750, 8, 1], [1200, 10, .6], [2600, 12, .3]]) { const bp = filt("bandpass", f, q, out); const o = osc("sawtooth", 210, t, 1, bp); o.frequency.linearRampToValueAtTime(260, t + .25); o.frequency.linearRampToValueAtTime(190, t + .95); } },
   };

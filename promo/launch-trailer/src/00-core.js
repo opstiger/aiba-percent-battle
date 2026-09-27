@@ -3,9 +3,9 @@
    所以全部挂在 window.TR 命名空间下，不声明任何顶层全局。 */
 (function (TR) {
   "use strict";
-  const W = 1920, H = 1080, RW = 640, RH = 360;           // 输出分辨率 / 3D 像素分辨率（×3）
+  const W = 1920, H = 1080, RW = 960, RH = 540;           // 输出分辨率 / 3D 像素分辨率（×2）
   const FPS = 30, BPM = 150, FPB = FPS * 60 / BPM;          // 12 帧/拍
-  const TOTAL_BEATS = 72, TOTAL_FRAMES = TOTAL_BEATS * FPB; // 864 帧 = 28.8s
+  const TOTAL_BEATS = 128, TOTAL_FRAMES = TOTAL_BEATS * FPB; // 1536 帧 = 51.2s
 
   const PAL = {
     gold: "#ffd23f", cyan: "#77e7ff", green: "#7CFC6B", red: "#ff4040", salmon: "#ff8d7a",

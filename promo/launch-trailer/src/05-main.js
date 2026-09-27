@@ -9,6 +9,7 @@
 
   TR.boot = async function () {
     TR.initStage();
+    TR.initNeural();
     await TR.initPost();
     await document.fonts.load("40px 'ZCOOL QingKe HuangYou'", "先到就是王免费开玩打开浏览器投体感");
     await document.fonts.load("900 40px Orbitron", "RACE 100");
@@ -19,6 +20,7 @@
     const shot = TR.shotAt(f);
     if (shot !== cur || f <= simF) {
       TR.resetShot(shot.preset, shot.seed);
+      if (shot.void) TR.setVoid(true);
       for (const k of ["rel", "boom"]) shot[k] = null;
       cur = shot; simF = shot.f0 - 1;
     }
@@ -27,6 +29,7 @@
       bt = TR.beatOf(g) - shot.b0;
       TR.mosaicK = 1;
       TR.S.rack.visible = false;
+      TR.ringsReset();
       shot.frame(bt, g);
       TR.tick(g / TR.FPS, 1 / TR.FPS);
     }

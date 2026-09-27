@@ -1,11 +1,12 @@
-# aiBA 百分大战 · Launch Trailer（体素像素版）
+# aiBA 百分大战 · Launch Trailer ——「NEURAL COURT」
 
-28.8 秒宣传片，画面**直接由游戏本体渲染**：真实球馆、观众、世界球场、体素球员和投篮动作，
-3D 以 640×360 渲染后 ×3 最近邻放大，HUD 沿用游戏 UI 语言。声音全部实时合成。
+51.2 秒宣传片：AI 在数字虚空里把 18 位传奇球星逐块体素重建出来，然后和你同场决战 100 分。
+画面**直接由游戏本体渲染**：真实球馆、观众、世界球场、18 位体素球星和各自的投篮动作；
+3D 以 960×540 渲染后 ×2 放大，叠加科技 HUD。声音全部实时合成。
 
 - 分镜：[`STORYBOARD.md`](STORYBOARD.md)
 - 动画指南：[`ANIMATION_GUIDE.md`](ANIMATION_GUIDE.md)
-- 成片：`aiba-launch-trailer.mp4`（1920×1080 · 30fps · H.264 + AAC · -14 LUFS）
+- 成片：`aiba-launch-trailer.mp4`（1920×1080 · 30fps · 51.2s · H.264 + AAC · -14 LUFS）
 
 这个目录是独立的渲染工程，不影响游戏"无构建、克隆即玩"。唯一的外部依赖是中文字体，渲染时装进被忽略的 `.deps/`。
 
@@ -30,9 +31,10 @@ node render.mjs stills 96,600    # 只渲染指定帧 → .cache/stills/
 | 文件 | 内容 |
 |---|---|
 | `src/00-core.js` | 节拍（150 BPM = 12 帧/拍）、缓动、确定性随机、关键帧 |
-| `src/01-stage.js` | 接管游戏场景：主角 / N-24 / 体感真人、球、灯、镜头、姿势 |
-| `src/02-shots.js` | S1–S13 逐镜头动画 + 卡点表 `CUES`（画面和声音共用） |
-| `src/03-post.js` | 像素放大、马赛克转场、扫描线、HUD、金色像素粒子、Logo 高光 |
+| `src/01-stage.js` | 接管游戏场景：主角 / 体感真人、球、灯、镜头、姿势 |
+| `src/06-neural.js` | 18 位球星名单、全息扫描重建、数字虚空世界 |
+| `src/02-shots.js` | A–H 八段 17 个镜头 + 卡点表 `CUES`（画面和声音共用） |
+| `src/03-post.js` | 放大、bloom、色差、马赛克、扫描线；科技 HUD（名片、追踪框、DNA、弹道预测、概率表） |
 | `src/04-audio.js` | OfflineAudioContext 合成 BGM（含 8-bit 方波琶音）+ 音效 |
 | `src/05-main.js` | 导演主循环 |
 | `render.mjs` | 本地服务 + 并行渲染 + ffmpeg 合成 |

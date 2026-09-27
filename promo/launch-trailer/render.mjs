@@ -16,7 +16,7 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "../..");
 const CACHE = path.join(HERE, ".cache"), OUTDIR = path.join(HERE, "out");
-const SCRIPTS = ["00-core.js", "01-stage.js", "02-shots.js", "03-post.js", "04-audio.js", "05-main.js"];
+const SCRIPTS = ["00-core.js", "01-stage.js", "06-neural.js", "02-shots.js", "03-post.js", "04-audio.js", "05-main.js"];
 const FFMPEG = process.env.FFMPEG || "ffmpeg";
 const args = process.argv.slice(2), cmd = args[0] || "all";
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
