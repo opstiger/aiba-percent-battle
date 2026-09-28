@@ -392,10 +392,16 @@
       if (TR.S.preset !== w[0]) { applyScenePreset(w[0], { silent: true, persist: false }); TR.S.preset = w[0]; for (let i = 0; i < 3; i++) updateEnvironment(1 / 30); TR.hideParody(); }
       TR.S.stars.forEach(o => { o.guy.g.visible = false; TR.hideGuyBall(o.guy); });
       const s = ST(w[2]);
-      const spot = k === 0 ? [4.55, -1.1] : [0, -.5];
+      const spot = k === 0 ? [RACKS[3].p.x, RACKS[3].p.z] : [0, -.5];      // Rack Rush：游戏里右侧 45° 的真实投篮点
       TR.act(s.guy, "shoot", shotT(u, .45), { x: spot[0], z: spot[1], face: TR.faceHoop(...spot), target: HOOPV() });
-      if (k === 0) { TR.rack(V(5.5, .9, -1.8)); const m = E.inOutSine(u); TR.cam([lerp(9.4, 7.2, m), lerp(1.4, 2.4, m), lerp(4.0, 1.8, m)], [lerp(3.6, 2.2, m), 2, -4.2], lerp(54, 46, m), lerp(.04, -.02, m)); }
-      else TR.orbit(spot, Math.PI - 1.1 + bt * .5, 3.4, .8, 1.9, 46, .03);
+      if (k === 0) {
+        // 游戏自己的投篮架（实心台架 + 5 颗球，最后一颗是金球）；第一颗正在他手里
+        rackStands.forEach((st, i) => { st.visible = i === 3; }); rackBalls.forEach((bs, i) => bs.forEach(b => { b.visible = i === 3; }));
+        seatRackBalls(3, 1, false);
+        const m = E.inOutSine(u);
+        TR.cam([lerp(6.9, 6.3, m), lerp(1.1, 2.1, m), lerp(2.2, .6, m)], [lerp(5.0, 3.6, m), lerp(1.3, 2.0, m), lerp(-3.0, -4.4, m)], lerp(52, 46, m), lerp(.04, -.02, m));
+      } else { rackStands.forEach(st => { st.visible = false; }); rackBalls.forEach(bs => bs.forEach(b => { b.visible = false; })); }
+      if (k !== 0) TR.orbit(spot, Math.PI - 1.1 + bt * .5, 3.4, .8, 1.9, 46, .03);
       this.star = s;
     },
     ov(ctx, bt) {

@@ -122,6 +122,11 @@
     for (const b of S.balls) { b.m.visible = false; b.sh.visible = false; }
     for (const k in S.actors) { const a = S.actors[k]; a.g.visible = false; a.g.rotation.set(0, 0, 0); TR.head(a, 0, 0); }
     if (TR.resetStars) TR.resetStars();
+    // 游戏的投篮架：每个镜头开头恢复成三分大赛开局的样子（5 颗球满架），镜头之间不串状态
+    if (typeof rackStands !== "undefined") {
+      rackStands.forEach(st => { if (st) st.visible = true; });
+      rackBalls.forEach((bs, i) => { bs.forEach(b => { b.visible = true; }); seatRackBalls(i, 0, false); });
+    }
     TR.hideParody();
     TR.lights(1);
   };
