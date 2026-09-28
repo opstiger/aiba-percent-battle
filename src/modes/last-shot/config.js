@@ -195,8 +195,118 @@
      选择器不能成为绕开每日轮转的后门。 */
   function activeChallenge(practice,now){return practice?pickedChallenge(now):dailyChallenge(now);}
 
+  /* ---------------- 跑位变奏 ----------------
+     每关只有一套手写路点，打几次就能背下来。这里在不改"剧情骨架"的前提下
+     给无球人加变奏：拉开的队友与内线的中间路点平移 ±0.25–0.45m、时间 ±0.18s，
+     持球核心只动中间路点(幅度更小)，终点不动。
+     不动的部分(保证公平与剧情成立)：
+       · 你的出手点、传球时刻、核心传球时站的位置(ally0 终点)
+       · 包夹人 foe2 与盯你的 foe0 —— 它们决定"为什么球给你"和"你有多少出手空间"
+     盯人防守(foe1/foe3/foe4)不单独抖动，而是整条路线跟着自己盯的人一起平移——
+     比赛中他们本来就按延迟追踪去盯人，这里只是让开场站位与路点和进攻人保持同一个间距。
+     正式挑战用"日期+关卡"做种子：全球同一天仍是同一套跑位，排行榜可比；
+     练习模式每次进入都换一套。 */
+  const JITTER={
+    ally0:{pos:.28,time:.12,keepLast:true},
+    ally1:{pos:.45,time:.18},ally2:{pos:.45,time:.18},ally3:{pos:.35,time:.15}
+  };
+  const COURT_X=7.1,COURT_Z_MIN=-9.25,COURT_Z_MAX=4.0,MIN_SEG=.3;
+  function hashSeed(str){
+    let h=2166136261>>>0;
+    for(let i=0;i<str.length;i++){h^=str.charCodeAt(i);h=Math.imul(h,16777619)>>>0;}
+    return h||1;
+  }
+  function rng(seed){
+    let a=seed>>>0;
+    return function(){
+      a=(a+0x6D2B79F5)>>>0;let t=a;
+      t=Math.imul(t^(t>>>15),t|1);t^=t+Math.imul(t^(t>>>7),t|61);
+      return ((t^(t>>>14))>>>0)/4294967296;
+    };
+  }
+  function jitterPath(path,j,rand){
+    const out=path.map(w=>({t:w.t,p:w.p.clone()}));
+    const last=out.length-1;
+    for(let i=0;i<out.length;i++){
+      const w=out[i];
+      const fixed=(j.keepLast&&i===last)||(j.keepLast&&i===0);
+      if(!fixed){
+        const r=j.pos*Math.sqrt(rand()),a=rand()*Math.PI*2;
+        w.p.x=Math.max(-COURT_X,Math.min(COURT_X,w.p.x+Math.cos(a)*r));
+        w.p.z=Math.max(COURT_Z_MIN,Math.min(COURT_Z_MAX,w.p.z+Math.sin(a)*r));
+      }
+      // 首尾时间不动：起点对齐开场，终点对齐传球
+      if(i>0&&i<last&&j.time){
+        const lo=out[i-1].t+MIN_SEG,hi=path[i+1].t-MIN_SEG;
+        w.t=Math.max(lo,Math.min(hi,w.t+(rand()*2-1)*j.time));
+      }
+    }
+    return out;
+  }
+  function pathAt(path,t){
+    if(t<=path[0].t)return path[0].p;
+    for(let i=1;i<path.length;i++){
+      if(t<=path[i].t){
+        const a=path[i-1],b=path[i],k=(t-a.t)/Math.max(1e-6,b.t-a.t);
+        return {x:a.p.x+(b.p.x-a.p.x)*k,z:a.p.z+(b.p.z-a.p.z)*k};
+      }
+    }
+    return path[path.length-1].p;
+  }
+  /* 防守人新路线 = 原路线 + (进攻人新位置 - 进攻人原位置)。偏移量是分段线性的，
+     拐点在三条路线的所有路点时刻上，所以在这些时刻的并集上采样，间距才处处和原版一致。 */
+  function followMark(path,basePath,newPath){
+    const ts=[...new Set(path.concat(basePath,newPath).map(w=>+w.t.toFixed(4)))]
+      .filter(t=>t>=path[0].t&&t<=path[path.length-1].t).sort((a,b)=>a-b);
+    return ts.map(t=>{
+      const f=pathAt(path,t),a=pathAt(basePath,t),b=pathAt(newPath,t),p=path[0].p.clone();
+      p.x=Math.max(-COURT_X,Math.min(COURT_X,f.x+b.x-a.x));
+      p.z=Math.max(COURT_Z_MIN,Math.min(COURT_Z_MAX,f.z+b.z-a.z));
+      return {t,p};
+    });
+  }
+  /* 变奏后的自检：任意两人(含站在出手点的你)全程间距 >= VARY_MIN_GAP。
+     和 squad.js separate() 的 MIN_GAP 同值——低于它，比赛里就会一直互相推挤。 */
+  const VARY_MIN_GAP=.98,VARY_TRIES=8;
+  function choreoClear(chore,cfg){
+    const ids=Object.keys(chore),you=cfg.shotSpot&&cfg.shotSpot.p,end=cfg.liveDur||LIVE_DUR;
+    for(let t=0;t<=end+1e-3;t+=.1){
+      const pos=ids.map(id=>pathAt(chore[id].path,t));
+      if(you)pos.push(you);
+      for(let i=0;i<pos.length;i++)for(let j=i+1;j<pos.length;j++)
+        if(Math.hypot(pos[i].x-pos[j].x,pos[i].z-pos[j].z)<VARY_MIN_GAP)return false;
+    }
+    return true;
+  }
+  /* 返回带变奏的关卡副本；原配置对象不被修改。seed 省略时用日期+关卡。
+     某个种子抽出来的跑位不过自检，就确定性地试下一个；都不过就用原始手写路点。 */
+  function withVariation(cfg,opts){
+    if(!cfg||!cfg.choreography)return cfg;
+    const o=opts||{};
+    const seed=o.seed!=null?(o.seed>>>0):hashSeed(challengeDateKey(o.now)+"|"+cfg.challengeId);
+    for(let k=0;k<VARY_TRIES;k++){
+      const chore=varyChoreography(cfg,(seed+k*0x9E3779B1)>>>0);
+      if(choreoClear(chore,cfg))return Object.assign({},cfg,{choreography:chore,variationSeed:seed,variationTry:k,baseChallenge:cfg});
+    }
+    return cfg;
+  }
+  function varyChoreography(cfg,seed){
+    const rand=rng(seed),chore={};
+    const src=cfg.choreography;
+    Object.keys(src).forEach(id=>{
+      const plan=src[id],j=JITTER[id];
+      chore[id]=j?Object.assign({},plan,{path:jitterPath(plan.path,j,rand)}):plan;
+    });
+    Object.keys(src).forEach(id=>{
+      const plan=src[id],mark=plan.marks;
+      if(plan.help||!mark||mark==="you"||!JITTER[mark])return;
+      chore[id]=Object.assign({},plan,{path:followMark(plan.path,src[mark].path,chore[mark].path)});
+    });
+    return chore;
+  }
+
   const api=Object.freeze({CHALLENGES,dailyChallenge,challengeDateKey,msUntilReset,
-    challengeById,pickChallenge,pickedChallenge,activeChallenge,
+    challengeById,pickChallenge,pickedChallenge,activeChallenge,withVariation,
     LIVE_DUR,PASS_AT,GAME_CLOCK});
   global.AIBALastShotConfig=api;
   runtime.register("mode:last-shot:config",api);

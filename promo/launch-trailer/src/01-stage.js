@@ -178,15 +178,17 @@
   };
   /* 头部转动必须绕脖子（y=1.45）转：headRoot 的原点在脚底，
      直接写 rotation.x 会让整颗头绕着脚踝甩出去（"头身分离"）。 */
+  /* 头部俯仰/转头：游戏的 headRoot 已经以脖子为支点旋转（characters.js pivotHeadAtNeck），
+     这里只写角度；旧版本游戏没有该修正时，退回手动补偿 position。 */
   const NECK = 1.45, _v = new THREE.Vector3(), _e = new THREE.Euler();
   TR.head = function (guy, pitch = 0, yaw = 0) {
     const h = guy.headRoot; if (!h) return;
+    h.rotation.set(pitch, yaw, 0);
+    if (h.updateMatrix !== THREE.Object3D.prototype.updateMatrix) return;
     if (!h.userData.p0) h.userData.p0 = h.position.clone();
     const p0 = h.userData.p0, s = h.scale.y;
-    h.rotation.set(pitch, yaw, 0);
     _v.set(0, NECK * s, 0).applyEuler(_e.set(pitch, yaw, 0));
-    h.position.set(p0.x, p0.y + NECK * s - _v.y, p0.z - _v.z);
-    h.position.x -= _v.x;
+    h.position.set(p0.x - _v.x, p0.y + NECK * s - _v.y, p0.z - _v.z);
   };
   /* 投篮：游戏原曲线。ph 0→1.2（0.76 起跳，≈0.9 出手） */
   TR.shoot = function (guy, ph) {

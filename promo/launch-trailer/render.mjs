@@ -56,7 +56,7 @@ async function openPage(browser, port) {
     const raf = window.requestAnimationFrame.bind(window);
     window.requestAnimationFrame = (cb) => window.__freeze ? 0 : raf(cb);
   });
-  await page.goto(`http://127.0.0.1:${port}/index.html?trailer=1&lang=zh`, { waitUntil: "domcontentloaded", timeout: 180000 });
+  await page.goto(`http://127.0.0.1:${port}/index.html?trailer=1&lang=zh&lsSeed=off`, { waitUntil: "domcontentloaded", timeout: 180000 });
   await page.waitForFunction(() => window.AIBATrailer && typeof player !== "undefined" && typeof applyScenePreset === "function", null, { timeout: 180000 });
   await page.waitForTimeout(2500);
   await page.evaluate(() => { window.__freeze = true; });

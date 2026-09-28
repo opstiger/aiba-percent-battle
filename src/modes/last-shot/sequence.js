@@ -130,7 +130,13 @@
       else if(typeof global.AIBABootShot.skip==="function")global.AIBABootShot.skip();
     }
     if(global.ensurePlayerShoeKit)global.ensurePlayerShoeKit();
-    const cfg=cfgApi.activeChallenge?cfgApi.activeChallenge(!!practice):cfgApi.dailyChallenge();
+    const base=cfgApi.activeChallenge?cfgApi.activeChallenge(!!practice):cfgApi.dailyChallenge();
+    /* 跑位变奏：正式挑战按日期+关卡固定(全球同一天同一套)，练习每次换一套。
+       ?lsSeed=N 锁定某一套变奏，?lsSeed=off 用原始手写路点，便于复现与录制。 */
+    const qs=new URLSearchParams(location.search).get("lsSeed");
+    const off=qs==="off"||!cfgApi.withVariation;
+    const seed=qs!=null&&qs!==""&&!off?Number(qs):(practice&&!off?(Math.random()*4294967296)>>>0:null);
+    const cfg=off?base:cfgApi.withVariation(base,{seed});
     ensureAudio(false);hidePanel();music(false);resetProgressiveSceneForRun();
     resetState(cfg,practice);
     squadApi.build(cfg);

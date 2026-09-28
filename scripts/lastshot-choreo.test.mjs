@@ -13,7 +13,7 @@ const src = fs.readFileSync(new URL("../src/modes/last-shot/config.js", import.m
 
 /* config.js 是 IIFE 且依赖 runtime，这里喂一个假的 ctx 把它跑起来，
    拿到真正的 CHALLENGES —— 比正则解析可靠。 */
-const V3 = (x, y, z) => ({ x, y, z });
+const V3 = (x, y, z) => ({ x, y, z, clone() { return V3(this.x, this.y, this.z); } });
 const RACKS = [
   { p: V3(-7.2, 0, -6.15), n: "左底角" },
   { p: V3(-5.62, 0, -2.38), n: "左侧 45°" },
@@ -32,8 +32,12 @@ new Function("window", src.replace(/\}\)\(window\);\s*$/, "})(arguments[0]);"))(
 const api = captured || fakeWindow.AIBALastShotConfig;
 if (!api || !api.CHALLENGES) { console.error("拿不到 CHALLENGES"); process.exit(1); }
 
-let fail = 0;
-const check = (ok, msg) => { console.log((ok ? "    PASS  " : "    FAIL  ") + msg); if (!ok) fail++; };
+let fail = 0, quiet = false, quietFails = null;
+const check = (ok, msg) => {
+  if (quiet) { if (!ok) { fail++; const k = msg.replace(/[（(].*$/, ""); quietFails[k] = (quietFails[k] || 0) + 1; } return; }
+  console.log((ok ? "    PASS  " : "    FAIL  ") + msg); if (!ok) fail++;
+};
+const log = (...a) => { if (!quiet) console.log(...a); };
 
 const MIN_GAP = 0.98;            // squad.js 的 separate() 用的就是这个值
 const SIGHT_CLEAR = 0.9;         // 防守人到视线的最短距离，低于此就挡画面
@@ -63,8 +67,7 @@ function pointToSeg(p, a, b) {
   return Math.hypot(p.x - (a.x + dx * t), p.z - (a.z + dz * t));
 }
 
-for (const cfg of api.CHALLENGES) {
-  console.log(`\n── ${cfg.challengeId}  ${cfg.title}`);
+function checkChallenge(cfg) {
   const ch = cfg.choreography, ids = Object.keys(ch);
   const you = cfg.shotSpot.p;
   const T = cfg.liveDur;
@@ -90,7 +93,7 @@ for (const cfg of api.CHALLENGES) {
       if (d < worstGap) { worstGap = d; worstPair = keys[i] + "/" + keys[j]; worstT = t; }
     }
   }
-  console.log(`      最近的一对：${worstPair} 在 t=${worstT}s 相距 ${worstGap.toFixed(2)}m`);
+  log(`      最近的一对：${worstPair} 在 t=${worstT}s 相距 ${worstGap.toFixed(2)}m`);
   check(worstGap >= MIN_GAP, `任意两人间距 >= ${MIN_GAP}（最近 ${worstGap.toFixed(2)}）`);
 
   // ③ 盯你的防守人不能挡视线
@@ -104,7 +107,7 @@ for (const cfg of api.CHALLENGES) {
       minWatch = Math.min(minWatch, pointToSeg(d, you, at(ch[handlerId].path, t)));   // 观看阶段：你看持球人
       minShot = Math.min(minShot, pointToSeg(d, you, HOOP));                          // 出手阶段：你看篮筐
     }
-    console.log(`      防守人离视线：看持球人 ${minWatch.toFixed(2)}m · 看篮筐 ${minShot.toFixed(2)}m`);
+    log(`      防守人离视线：看持球人 ${minWatch.toFixed(2)}m · 看篮筐 ${minShot.toFixed(2)}m`);
     check(minWatch >= SIGHT_CLEAR, `观看阶段不挡视线（${minWatch.toFixed(2)} >= ${SIGHT_CLEAR}）`);
     check(minShot >= SIGHT_CLEAR, `出手视线不被挡（${minShot.toFixed(2)} >= ${SIGHT_CLEAR}）`);
   }
@@ -113,12 +116,12 @@ for (const cfg of api.CHALLENGES) {
   const handlerId = ids.find(id => ch[id].role === "handler");
   const passFrom = at(ch[handlerId].path, cfg.passAt);
   const passLen = dist(passFrom, you);
-  console.log(`      传球距离 ${passLen.toFixed(2)}m`);
+  log(`      传球距离 ${passLen.toFixed(2)}m`);
   check(passLen >= PASS_MIN && passLen <= PASS_MAX, `传球距离在 ${PASS_MIN}~${PASS_MAX}m（实际 ${passLen.toFixed(2)}）`);
 
   // ⑤ 包夹要成立：传球前持球人身边至少两个防守人
   const near = ids.filter(id => id.startsWith("foe") && dist(at(ch[id].path, cfg.passAt - 0.3), at(ch[handlerId].path, cfg.passAt - 0.3)) < 2.6);
-  console.log(`      传球前贴着持球人的防守人：${near.join(",") || "无"}`);
+  log(`      传球前贴着持球人的防守人：${near.join(",") || "无"}`);
   check(near.length >= 2, `传球前形成包夹（${near.length} 人在 2.6m 内）`);
 
   // ⑥ 你的出手点必须在三分线外（近筐半径 6.75 是 FIBA 三分线）
@@ -129,6 +132,21 @@ for (const cfg of api.CHALLENGES) {
   const text = ["title", "subtitle", "timeoutDialogue", "teammateDialogue", "commentary", "shotSpotName", "homeName", "awayName"];
   const missing = text.filter(k => !cfg[k]) .concat((cfg.introText && cfg.introText.length >= 2) ? [] : ["introText"]);
   check(missing.length === 0, `文案齐全（缺：${missing.join(",") || "无"}）`);
+}
+
+/* 跑位变奏(config.withVariation)：每关抽 VARIANTS 个种子，每一套都必须过同样的标准。 */
+const VARIANTS = 300;
+for (const cfg of api.CHALLENGES) {
+  console.log(`\n── ${cfg.challengeId}  ${cfg.title}`);
+  checkChallenge(cfg);
+  if (!api.withVariation) continue;
+  quiet = true; quietFails = {};
+  const before = fail;
+  for (let seed = 1; seed <= VARIANTS; seed++) checkChallenge(api.withVariation(cfg, { seed }));
+  quiet = false;
+  const bad = Object.entries(quietFails).map(([k, n]) => `${k}×${n}`).join("，");
+  check(fail === before, `${VARIANTS} 套跑位变奏全部过同一标准${bad ? "（失败：" + bad + "）" : ""}`);
+  if (fail !== before) fail = before + 1;
 }
 
 console.log(fail ? `\n${fail} 条失败` : `\n${api.CHALLENGES.length} 关全部通过`);
