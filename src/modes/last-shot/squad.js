@@ -253,8 +253,8 @@ function foeKit(allyJersey){
      这里只负责把 actor 的状态喂进去，再补一个转向。 */
   function poseRunner(actor,speed,dt,lookAt){
     /* separate() 推开的位移也要算进腿里：否则两人一挤，被推的人脚不动、整个人在地板上滑。 */
-    const legSpeed=Math.max(speed||0,actor.pushSpeed||0);
-    motion.poseRunCycle(actor.guy,actor,legSpeed,dt,{defensive:actor.defensive,hs:actor.hs||1});
+    speed=Math.max(speed||0,actor.pushSpeed||0);
+    motion.poseRunCycle(actor.guy,actor,speed,dt,{defensive:actor.defensive,hs:actor.hs||1});
     if(!actor.reaction){
       actor.guy.g.rotation.z=0;
       actor.guy.g.rotation.x=0;

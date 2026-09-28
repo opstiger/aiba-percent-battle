@@ -804,7 +804,7 @@ function captureShotPose(o){
   const shoot=o.arms[0],guide=o.arms[1],shootEl=o.elbows[0],guideEl=o.elbows[1];
   return {
     release:{shoot:capturePoseNode(shoot),elbow:capturePoseNode(shootEl),hand:capturePoseNode(o.handRoots&&o.handRoots[0],o.g)},
-    guide:{arm:capturePoseNode(guide),elbow:capturePoseNode(guideEl),hand:capturePoseNode(o.handRoots&&o.handRoots[1])}
+    guide:{arm:capturePoseNode(guide),elbow:capturePoseNode(guideEl),hand:capturePoseNode(o.handRoots&&o.handRoots[1],o.g)}
   };
 }
 function applyShotSetPose(o,c,active){
@@ -899,7 +899,26 @@ function applyShotFollowThroughPose(o,state,pose){
   applyQuat(guide,guideStart.arm,SHOT_FOLLOW_POSE.guide.armQuat,shoulderK);
   applyQuat(guideEl,guideStart.elbow,SHOT_FOLLOW_POSE.guide.elbowQuat,elbowK);
   applyShootingHandWorldFollow(o,state,release.hand);
+  holdGuideHandActorPose(o,state,guideStart.hand);
   applyFollowThroughFingers(o,fingerK);
+}
+/* 辅助手只扶球、不发力：球出手后掌心应停在出手前一刻的朝向。
+   大臂/手肘向球侧打开时，若手掌只保留 parent-local 角度，就会被前臂带着
+   往球员右前方翻。这里与投篮手同法——在球员局部空间锁住出手瞬间的掌心朝向，
+   收手(recover)时再平滑交还给 poseGuy 的基线。 */
+function holdGuideHandActorPose(o,state,startPose){
+  const hand=o&&o.handRoots&&o.handRoots[1],parent=hand&&hand.parent;
+  if(!hand||!parent||!startPose||!startPose.aq||startPose.aq.length!==4||typeof THREE==="undefined")return;
+  ensureShotPoseTemps();
+  o.g.updateMatrixWorld(true);
+  hand.getWorldQuaternion(_shotPoseWorldQuat);
+  o.g.getWorldQuaternion(_shotPoseActorQuat);
+  _shotPoseBaseQuat.copy(_shotPoseActorQuat).invert().multiply(_shotPoseWorldQuat).normalize();
+  _shotPoseDesiredQuat.set(startPose.aq[0],startPose.aq[1],startPose.aq[2],startPose.aq[3]).normalize();
+  if(state.recover>0)_shotPoseDesiredQuat.slerp(_shotPoseBaseQuat,clamp(state.recover,0,1)).normalize();
+  _shotPoseWorldQuat.copy(_shotPoseActorQuat).multiply(_shotPoseDesiredQuat).normalize();
+  parent.getWorldQuaternion(_shotPoseParentQuat);
+  hand.quaternion.copy(_shotPoseParentQuat.invert().multiply(_shotPoseWorldQuat)).normalize();
 }
 /* 两脚在一个步态周期里的最大水平分离 = 真实步幅。
    以前后腿屈膝系数一路涨到 1.4，速度越快反而把后脚收回得越多，真实步幅

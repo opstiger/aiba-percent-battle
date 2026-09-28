@@ -136,7 +136,7 @@ for(const [file,version] of Object.entries(percentBattleVersions)){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js?v=${version}"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
 const lastShotModules=["config","squad","sequence","index"];
-const lastShotVersions={config:"2.19.9-lsvoice",squad:"2.28.0-shoes",sequence:"2.28.0-shoes",index:"2.27.1-hidehud"};
+const lastShotVersions={config:"2.28.1-choreo",squad:"2.28.1-choreo",sequence:"2.28.1-choreo",index:"2.27.1-hidehud"};
 for(const file of lastShotModules){
   if(!entryHtml.includes(`<script src="src/modes/last-shot/${file}.js?v=${lastShotVersions[file]}"></script>`))fail(`next Last Shot ${file} module missing`);
 }
@@ -1305,8 +1305,22 @@ try{
   if(!finalPalm||finalPalm.y>-.995||Math.abs(finalPalm.x)>.01||Math.abs(finalPalm.z)>.01)fail("follow-through palm must finish facing the ground");
   if(!finalFinger||finalFinger.z<.995)fail("follow-through fingers must finish pointing toward the hoop");
   if(!finalSide||finalSide.x<.995)fail("shooting thumb side must finish toward the guide hand");
+  /* 辅助手：跟随全程(未收手前)掌心在球员局部空间保持出手瞬间的朝向，不被打开的手臂带着翻。 */
+  if(!releasePose.guide.hand||!releasePose.guide.hand.aq)fail("release pose must capture the guide hand in actor-local space");
+  else{
+    const gq0=new THREE.Quaternion(...releasePose.guide.hand.aq).normalize();
+    let guideDrift=0;
+    for(const progress of [0,.25,.5,.75,1]){
+      resetSet();
+      motionApi.applyShotFollowThroughPose(actor,{active:true,extend:progress,follow:progress,recover:0},releasePose);
+      actor.g.updateMatrixWorld(true);
+      const aq=actor.g.getWorldQuaternion(new THREE.Quaternion()).invert().multiply(actor.handRoots[1].getWorldQuaternion(new THREE.Quaternion()));
+      guideDrift=Math.max(guideDrift,aq.angleTo(gq0)*180/Math.PI);
+    }
+    if(guideDrift>1)fail(`guide palm turns ${guideDrift.toFixed(1)}° during follow-through; it must keep its release orientation`);
+  }
 }catch(e){fail("T-stage shot pose geometry check failed: "+e.message);}
-for(const token of ['src/rendering/props.js?v=2.28.0-detour','src/rendering/characters.js?v=2.28.0-shoes','src/rendering/camera.js?v=2.24.0','src/rendering/motion.js?v=2.27.1-foothang','src/shot-motion.js?v=2.28.0-reach','src/gameplay/shots.js?v=2.24.0-rack','src/modes/last-shot/squad.js?v=2.28.0-shoes','src/modes/last-shot/sequence.js?v=2.28.0-shoes'])
+for(const token of ['src/rendering/props.js?v=2.28.0-detour','src/rendering/characters.js?v=2.28.1-neckpivot','src/rendering/camera.js?v=2.24.0','src/rendering/motion.js?v=2.28.1-guidehold','src/shot-motion.js?v=2.28.0-reach','src/gameplay/shots.js?v=2.24.0-rack','src/modes/last-shot/squad.js?v=2.28.1-choreo','src/modes/last-shot/sequence.js?v=2.28.1-choreo'])
   if(!entryHtml.includes(token))fail("next entry missing gameplay rendering module "+token);
 for(const token of ["function buildRacks(","function voxelGuy(","function autoFrameCam(","function shotCurves(","function updWalk("])
   if(entryHtml.includes(token))fail("next entry still contains inline gameplay rendering "+token);
@@ -1390,18 +1404,17 @@ for(const token of ["function startPostShot","function updatePostShot","function
   if(!lastShotSquad.includes(token))fail("Last Shot post-shot reaction token missing "+token);
 if(!lastShotSquad.includes("chars.setFaceExpression(guy,faceMode)"))fail("Last Shot reactions must drive a facial expression layer");
 /* headRoot 的原点在球员局部 y≈0.203，头网格却在它局部 y=1.62：直接写 rotation
-   会让头沿 1.39m 半径公转飞出身体(实测抬头 .58rad 漂 0.797m)。旋转后必须用
-   pivotHead 把旋转中心搬回脖子，且常量要跟 characters.js 的 VOXEL_HEAD_PIVOT_Y 一致。 */
-if(!lastShotSquad.includes("function pivotHead"))fail("Last Shot head rotation must re-pivot to the neck");
+   会让头沿 1.39m 半径公转飞出身体(实测抬头 .58rad 漂 0.797m；热身扣篮 9° 低头漂 20cm)。
+   现在由 characters.js 的 pivotHeadAtNeck 在 headRoot.updateMatrix 里统一以脖子为支点，
+   所有模式直接写 rotation 即可；绝杀模式不能再自己补偿一次(会双重修正)。 */
 {
-  const squadPivot=/HEAD_PIVOT_Y=([\d.]+)/.exec(lastShotSquad);
-  const charPivot=/VOXEL_HEAD_PIVOT_Y=([\d.]+)/.exec(read("src/rendering/characters.js"));
-  if(!squadPivot||!charPivot)fail("head pivot constants must be declared on both sides");
-  else if(Math.abs(parseFloat(squadPivot[1])-parseFloat(charPivot[1]))>1e-6)
-    fail(`Last Shot head pivot ${squadPivot[1]} does not match the rig pivot ${charPivot[1]}`);
-  // 两条姿势路径(跑动编排 + 出手后反应)都必须收尾调用，否则只修好一半
-  if((lastShotSquad.match(/pivotHead\(actor\.guy\)/g)||[]).length<2)
-    fail("pivotHead must run on both the choreography and the post-shot pose paths");
+  const chars=read("src/rendering/characters.js");
+  if(!chars.includes("function pivotHeadAtNeck")||!chars.includes("pivotHeadAtNeck(headRoot)"))
+    fail("headRoot rotation must pivot at the neck in the shared character rig");
+  if(!/_headNeck=new THREE\.Vector3\(0,VOXEL_HEAD_PIVOT_Y,0\)/.test(chars))
+    fail("head pivot must use VOXEL_HEAD_PIVOT_Y");
+  if(/function pivotHead\(|pivotHead\(actor\.guy\)/.test(lastShotSquad))
+    fail("Last Shot must not re-pivot the head on top of the shared rig pivot");
 }
 /* 跑动摆幅必须由速度主导：原来站着不动也摆 0.28rad，全场看着像原地踏步。
    跑动速度必须取纯路径差分，用 actor.pos 差分会把 separate() 的推挤算成跑动。 */
@@ -1875,8 +1888,8 @@ console.log("check ok:",inlineScriptCounts.main+" main inline scripts,",inlineLi
     fail("对手球衣必须按色差挑选并保证最小色差");
   /* build() 带缓存（阵容只建一次）。只在创建时染色的话，玩家中途换角色，
      队友还会穿上一次的颜色 —— 实测换 8 个角色队友一直停在第一个色。 */
-  if(!/if\(squad\)\{dressSquad\(cfg\);return squad;\}/.test(sq))
-    fail("复用已建阵容时必须重刷队服，否则换角色后队友仍是旧色");
+  if(!/if\(squad\)\{squad\.cfg=cfg;dressSquad\(cfg\);return squad;\}/.test(sq))
+    fail("复用已建阵容时必须重刷队服并换上本次关卡配置，否则换角色后队友仍是旧色、换剧情后跑位仍是旧关");
   if(!/function dressSquad\(cfg\)/.test(sq))fail("队服染色应收敛到 dressSquad()");
 }
 
