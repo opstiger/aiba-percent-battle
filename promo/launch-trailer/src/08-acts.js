@@ -1,8 +1,8 @@
 /* 08-acts — 动作库：让每个球员都有自己的连续动作（可慢放），球与手严格同步。
    TR.act(guy, name, t, o)：t = 动作内秒数（慢动作 = 传入慢放后的时间）
      o = { x, z, face, target:Vector3|null(球飞向哪里，默认篮筐), ph0: 相位偏移 }
-   投篮严格按游戏节奏：蓄力 ph 0→1，**ph = 1.0 松手**（游戏 power 达到 ideal 的那一刻），
-   松手瞬间从真实手部 ballGrip 位置起飞；之后是跟随动作 + 落地，再回到接球。 */
+   投篮直接回放游戏本体录制的出手（见 09-clip.js）：关节逐帧取自游戏，球离手前挂在 ballGrip 上，
+   离手后走真实重力抛物线。 */
 (function (TR) {
   "use strict";
   const { clamp, lerp, E } = TR;
@@ -31,47 +31,60 @@
   const fwd = (guy) => V(Math.sin(guy.g.rotation.y), 0, Math.cos(guy.g.rotation.y));
 
   /* ---------------- 投篮 ---------------- */
-  const SHOT = { charge: 1.0, follow: .45, recover: .6, catchIn: .45, hold: .5 };
-  SHOT.period = SHOT.charge + SHOT.follow + SHOT.recover + SHOT.catchIn + SHOT.hold;   // 3.0s
+  /* 投篮 = 回放游戏本体录下来的出手（09-clip）。动作时间 tt 的约定：
+     tt = SHOT.release 是"球离开手"的那一刻（每位球星的蓄力长短不同，按各自 clip 对齐到这里）；
+     之前是游戏里的持球 → 下蹲 → 举球 → 起跳 → 松手 → 伸臂送球；之后是压腕、跟随、落地、收手。
+     clip 播完后 0.3s 回到持球帧，再接回传、持球等待，period 3.0s。 */
+  const SHOT = { release: 1.2, after: .86, toReady: .3, catchIn: .4 };
+  SHOT.clipEnd = SHOT.release + SHOT.after;
+  SHOT.period = 3.0;
+  SHOT.hold = SHOT.period - SHOT.clipEnd - SHOT.toReady - SHOT.catchIn;
+  SHOT.charge = SHOT.release - .1;                       // 兼容旧调用：约等于"松手键"时刻
   TR.SHOT = SHOT;
+  const G_ACC = 9.8;
+  /* 真实重力抛物线：从 p0 出发、tf 秒后到达 tg，返回 s 秒时的位置 */
+  TR.arcAt = function (p0, tg, tf, s) {
+    const vx = (tg.x - p0.x) / tf, vz = (tg.z - p0.z) / tf, vy = (tg.y - p0.y) / tf + .5 * G_ACC * tf;
+    return V(p0.x + vx * s, p0.y + vy * s - .5 * G_ACC * s * s, p0.z + vz * s);
+  };
+  const clipT = (clip, tt) => tt - SHOT.release + clip.ballT;
+  /* 球真正离手的位置：该球员 clip 里最后一帧球还挂在 ballGrip 上时，ballGrip 的世界坐标。 */
+  TR.shotRelease = function (guy, x, z, face) {
+    const clip = TR.clipOf(guy);
+    TR.clipPose(guy, clip, clip.ballT - 1 / clip.fps, x, z, face ?? 0);
+    return TR.grip(guy);
+  };
   function shootAct(guy, t, o) {
-    const T = SHOT, tt = ((t % T.period) + T.period) % T.period;
-    let y;
-    // 松手点：摆到 ph=1 取手部位置
-    const relPos = () => { const yy = TR.shoot(guy, 1); place(guy, o, yy); const g = TR.grip(guy); return V(g.x, g.y + .04, g.z); };
+    const T = SHOT, tt = ((t % T.period) + T.period) % T.period, clip = TR.clipOf(guy), face = o.face ?? 0;
     const target = o.target === undefined ? V(HOOP.x, HOOP.y + .02, HOOP.z) : o.target;
-    let ball = null, spin = 0;
     const flightDur = o.flight || 1.05;
-    if (tt < T.charge) {
-      y = TR.shoot(guy, tt / T.charge); place(guy, o, y);
-      const g = TR.grip(guy); ball = V(g.x, g.y + .04, g.z);
-    } else {
-      const from = relPos();
-      const ft = tt - T.charge;
-      if (ft < flightDur) {
-        const u = ft / flightDur;
-        if (target) { const tg = target; ball = from.clone().lerp(tg, u); ball.y += Math.max(1.2, (tg.y - from.y) * .3 + 1.4) * 4 * u * (1 - u) * .75; }
-        else { const d = fwd(guy); ball = from.clone().addScaledVector(d, ft * 6).add(V(0, ft * 5.5 - 4.9 * ft * ft, 0)); }
-        spin = -ft * 14;
-      } else if (target && ft < flightDur + .6) { const d = ft - flightDur; ball = V(target.x, target.y - d * 2.4 - d * d * 3, target.z); }
-      if (tt < T.charge + T.follow) {
-        y = TR.shoot(guy, 1 + (tt - T.charge) / T.follow * .38); place(guy, o, y);
-      } else if (tt < T.charge + T.follow + T.recover) {
-        const w = E.inOutCubic((tt - T.charge - T.follow) / T.recover);
-        const yA = TR.shoot(guy, 1.38), A = snap(guy);
-        const yB = TR.pose(guy, P.chest), B = snap(guy);
-        applyMix(guy, A, B, w); y = lerp(yA, yB, w); place(guy, o, y);
-      } else {
-        y = TR.pose(guy, P.chest); place(guy, o, y);
-        // 接回传：球从前方飞回胸口
-        const a = TR.grip(guy, 0), b = TR.grip(guy, 1), chest = a.lerp(b, .5);
-        const ct = tt - T.charge - T.follow - T.recover;
-        if (ct < T.catchIn) { const src = chest.clone().addScaledVector(fwd(guy), 4.5); src.y = 1.1; const u = E.outCubic(ct / T.catchIn); ball = src.lerp(chest, u); ball.y += Math.sin(u * Math.PI) * .25; spin = ct * 10; }
-        else ball = chest;
+    let ball = null, spin = 0, onGrip = false;
+    // 飞行中的球（离手之后）
+    if (tt >= T.release) {
+      const s = tt - T.release;
+      if (s < flightDur + .6) {
+        const from = TR.shotRelease(guy, o.x, o.z, face);
+        if (target) {
+          if (s < flightDur) ball = TR.arcAt(from, target, flightDur, s);
+          else { const d = s - flightDur; ball = V(target.x, target.y - d * 2.4 - d * d * 3, target.z); }
+        } else { const d = fwd(guy); ball = from.clone().addScaledVector(d, s * 6).add(V(0, s * 5.5 - 4.9 * s * s, 0)); }
+        spin = -s * 14;
       }
     }
+    if (tt < T.clipEnd) {
+      onGrip = TR.clipPose(guy, clip, Math.max(0, clipT(clip, tt)), o.x, o.z, face);
+    } else if (tt < T.clipEnd + T.toReady) {
+      const w = E.inOutCubic((tt - T.clipEnd) / T.toReady);
+      TR.clipApply(guy, TR.clipMix(TR.clipSample(clip, clipT(clip, T.clipEnd)), TR.clipSample(clip, 0), w), o.x, o.z, face);
+    } else {
+      TR.clipPose(guy, clip, 0, o.x, o.z, face);
+      const hand = TR.grip(guy), ct = tt - T.clipEnd - T.toReady;
+      if (ct < T.catchIn) { const src = hand.clone().addScaledVector(fwd(guy), 4.5); src.y = 1.1; const u = E.outCubic(ct / T.catchIn); ball = src.lerp(hand, u); ball.y += Math.sin(u * Math.PI) * .25; spin = ct * 10; }
+      else onGrip = true;
+    }
+    if (onGrip) ball = TR.grip(guy);                      // 游戏里球就挂在 ballGrip 原点上
     if (ball && !o.noBall) showBall(guy, ball, spin); else TR.hideGuyBall(guy);
-    return y;
+    return guy.g.position.y;
   }
 
   /* ---------------- 运球 / 胯下 / 转球 ---------------- */

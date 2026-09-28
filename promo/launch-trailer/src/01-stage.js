@@ -240,6 +240,13 @@
   TR.orbit = function (c, ang, dist, h, lookY, fov, roll) {
     TR.cam([c[0] + Math.sin(ang) * dist, h, c[1] + Math.cos(ang) * dist], [c[0], lookY, c[1]], fov, roll);
   };
+  /* 希区柯克变焦（dolly zoom）：目标平面上的画面宽度 width 恒定，fov 变化的同时
+     沿 dir（目标→机位方向）推拉机位，主体大小不变、背景透视被拉伸/压缩。 */
+  TR.vertigo = function (target, dir, fov, width, roll = 0, lookY) {
+    const d = width / (2 * Math.tan(fov * Math.PI / 360) * (TR.RW / TR.RH));
+    const n = dir.clone().normalize();
+    TR.cam([target.x + n.x * d, target.y + n.y * d, target.z + n.z * d], [target.x, lookY ?? target.y, target.z], fov, roll);
+  };
   /* 让目标点落在画面横向 sx（-1 左 … 1 右）处：把视线往反方向偏 */
   TR.shiftX = function (target, sx) {
     const f = new THREE.Vector3(); camera.getWorldDirection(f);

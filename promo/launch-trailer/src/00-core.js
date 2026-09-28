@@ -25,6 +25,7 @@
     inCubic: t => t * t * t,
     outCubic: t => 1 - Math.pow(1 - t, 3),
     inOutCubic: t => t < .5 ? 4 * t * t * t : 1 - Math.pow(-2 * t + 2, 3) / 2,
+    inOutSine: t => -(Math.cos(Math.PI * t) - 1) / 2,
     outQuint: t => 1 - Math.pow(1 - t, 5),
     inOutQuint: t => t < .5 ? 16 * t ** 5 : 1 - Math.pow(-2 * t + 2, 5) / 2,
     outExpo: t => t >= 1 ? 1 : 1 - Math.pow(2, -10 * t),

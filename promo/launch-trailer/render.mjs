@@ -16,7 +16,8 @@ import { fileURLToPath } from "node:url";
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(HERE, "../..");
 const CACHE = path.join(HERE, ".cache"), OUTDIR = path.join(HERE, "out");
-const SCRIPTS = ["00-core.js", "01-stage.js", "06-neural.js", "02-shots.js", "03-post.js", "04-audio.js", "07-live.js", "08-acts.js", "05-main.js"];
+const SCRIPTS = ["00-core.js", "01-stage.js", "06-neural.js", "02-shots.js", "03-post.js", "04-audio.js", "07-live.js", "09-clip.js", "08-acts.js", "05-main.js"];
+const CLIPS = path.join(CACHE, "shotclips.json");
 const FFMPEG = process.env.FFMPEG || "ffmpeg";
 const args = process.argv.slice(2), cmd = args[0] || "all";
 const opt = (k, d) => { const i = args.indexOf(k); return i >= 0 ? args[i + 1] : d; };
@@ -44,7 +45,7 @@ function serve() {
 }
 
 /* 启动游戏 → 固定随机种子 → 冻结循环 → 注入导演脚本 */
-async function openPage(browser, port) {
+async function openPage(browser, port, opts = {}) {
   const page = await browser.newPage({ viewport: { width: 1280, height: 720 } });
   page.on("pageerror", e => console.error("[page]", e.message));
   await page.addInitScript(() => {
@@ -62,7 +63,9 @@ async function openPage(browser, port) {
   await page.evaluate(() => { window.__freeze = true; });
   await page.waitForTimeout(200);
   await page.addStyleTag({ url: "/promo/launch-trailer/.deps/node_modules/@fontsource/zcool-qingke-huangyou/chinese-simplified-400.css" });
+  if (opts.clips !== false && fs.existsSync(CLIPS)) await page.evaluate((j) => { window.__SHOTCLIPS = JSON.parse(j); }, fs.readFileSync(CLIPS, "utf8"));
   for (const s of SCRIPTS) await page.addScriptTag({ url: `/promo/launch-trailer/src/${s}` });
+  if (opts.clips === false) return { page };
   const info = await page.evaluate(() => TR.boot());
   return { page, info };
 }
@@ -76,6 +79,7 @@ async function main() {
   const srv = await serve(), port = srv.address().port;
   const browser = await chromium.launch({ args: ["--use-gl=angle", "--use-angle=swiftshader", "--enable-unsafe-swiftshader", "--ignore-gpu-blocklist", "--autoplay-policy=no-user-gesture-required", "--mute-audio"] });
   try {
+    if (cmd === "clips" || ((cmd === "video" || cmd === "stills" || cmd === "all") && !fs.existsSync(CLIPS))) await recordClips(browser, port);
     if (cmd === "stills") await stills(browser, port, args[1]);
     if (cmd === "lab") await lab(browser, port, args[1]);
     if (cmd === "audio" || cmd === "all") await audio(browser, port);
@@ -91,6 +95,16 @@ async function stills(browser, port, list) {
     fs.writeFileSync(path.join(dir, `f${String(f).padStart(3, "0")}.jpg`), b64(await page.evaluate(f => TR.renderFrame(f, .9), f)));
     console.log(`frame ${f} ${((Date.now() - t) / 1000).toFixed(1)}s`);
   }
+  await page.close();
+}
+/* 从游戏本体录制每位球星的投篮动作（关节 + 球离手时刻），写入 .cache/shotclips.json */
+async function recordClips(browser, port) {
+  const { page } = await openPage(browser, port, { clips: false });
+  const t = Date.now();
+  const clips = await page.evaluate(async () => { window.__freeze = true; return TR.recordClips(LEGENDS.map(l => l.id)); });
+  fs.writeFileSync(CLIPS, JSON.stringify(clips));
+  for (const [id, c] of Object.entries(clips)) console.log(`clip ${id.padEnd(11)} ${c.error || `release ${c.relT}s · ball leaves ${c.ballT}s · ${c.frames.length} frames`}`);
+  console.log(`→ ${CLIPS} ${(fs.statSync(CLIPS).size / 1e6).toFixed(1)}MB ${((Date.now() - t) / 1000).toFixed(0)}s`);
   await page.close();
 }
 /* 实验：在页面里跑一段脚本（文件导出 async (TR)=>result），可返回 {frames:[dataURL]} */

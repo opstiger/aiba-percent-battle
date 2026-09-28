@@ -29,7 +29,7 @@
   cue(50, ["lock", "stab"], { shake: 14, punch: .06, chroma: 8 });
   for (let i = 0; i < 8; i++) cue(52 + i * .5, ["whip"], { shake: 5, chroma: 4 });
   for (let k = 0; k < 5; k++) { cue(56 + 2 * k + .5, ["shoot"], { shake: 6 }); cue(56 + 2 * k + 1.5, ["shoot", "blip"], { shake: 6, chroma: 4 }); }
-  cue(67.6, ["shoot"], { chroma: 6 }); cue(69, ["swish", "boom", "crash", "stab", "roarShort"], { shake: 30, punch: .1, invert: 2, chroma: 12 });
+  cue(67.2, ["shoot", "sweep"], { chroma: 6 }); cue(68, ["zap"], { shake: 8, chroma: 5 }); cue(69, ["swish", "boom", "crash", "stab", "roarShort"], { shake: 30, punch: .1, invert: 2, chroma: 12 });
   for (let b = 70; b < 74; b++) cue(b, ["whip", "stab"], { shake: 10, punch: .04, chroma: 5 });
   cue(74, ["heart", "hush"]); for (let b = 75; b < 86; b++) cue(b, ["heart"]);
   cue(82.5, ["catch"]); cue(86.5, ["shoot"]); cue(88.5, ["buzzer"], { flash: .45, flashCol: "255,60,60" });
@@ -52,8 +52,8 @@
   function sig(s, bt, x, z, face, slow = 1, target = null, act) {
     return TR.act(s.guy, act || TR.SIGNATURE[s.id], bt * SEC * slow, { x, z, face, target, ph0: phase(s.id) });
   }
-  /* 投篮时机控制：rel = 松手所在拍；返回动作时间（秒），<0 表示还没开始蓄力 */
-  const shotT = (bt, rel, slow = 1) => (bt - rel) * SEC * slow + TR.SHOT.charge;
+  /* 投篮时机控制：rel = 球离手所在拍；返回动作时间（秒），<0 表示还没开始蓄力 */
+  const shotT = (bt, rel, slow = 1) => (bt - rel) * SEC * slow + TR.SHOT.release;
 
   /* ========== A · BOOT 0–16 ========== */
   const A0 = { b0: 0, preset: "indoor", seed: 101, void: true,
@@ -154,9 +154,10 @@
       const j = ST("j23");
       TR.gameDunk(j.guy, u, V(.5, 0, HOOP.z + 4.4));
       [["curry", -3.2, -2.4], ["k24", 3.4, -3], ["a03", -1.8, -4.6]].forEach(([id, x, z]) => sig(ST(id), bt + 5, x, z, TR.faceHoop(x, z), 1, HOOPV(), "shoot"));
+      // 环绕：从左前方低机位绕到右前方，慢放挂框段转得最多，机位随起跳升高
       const k = E.inOutCubic(bt / 4);
-      TR.cam([lerp(-2.6, -1.9, k), lerp(2.2, 2.9, k), lerp(HOOP.z + 4.6, HOOP.z + 3.6, k)], [lerp(.4, .1, k), lerp(2.2, 2.9, k), HOOP.z + 1.2], 52, -.03);
-      TR.clearNear(1.2, j.guy);
+      TR.orbit([.3, HOOP.z + 1.3], lerp(-.95, .75, k), lerp(4.4, 3.2, k), lerp(1.3, 2.7, k), lerp(2.0, 2.85, k), 50, lerp(-.05, .04, k));
+      TR.clearNear(2.2, j.guy);
     },
     ov(ctx, bt) {
       TR.featureTag(ctx, 1480, 120, "WARM-UP DUNK", "热身 · 单手扣篮", E.outBack(inv(.2, .4, bt)));
@@ -175,9 +176,12 @@
       TR.hideGuyBall(human);
     },
     passes(bt) {
-      TR.cam([60.15, 1.25, 63.4], [60, 1.25, 60.2], 44); TR.render(); TR.copyPass("A");
+      TR.cam([60.15 + Math.sin(bt * 2.1) * .03, 1.25 + Math.sin(bt * 3.3) * .02, lerp(63.6, 63.1, bt / 6)], [60, 1.25, 60.2], 44); TR.render(); TR.copyPass("A");
       this.skel = TR.skeleton(TR.S.actors.human);
-      TR.orbit([0, -.6], Math.PI + .75 - bt * .04, 4.4, 1.3, 1.5, 38); TR.shiftX(V(0, 1.5, -.6), .42); TR.render(); TR.copyPass("B");
+      // 组合运镜：弧线横移 0.9rad + 从膝高升到肩高 + 推近；出手（拍 4）后继续上摇跟球
+      const k = E.inOutCubic(bt / 6), up = E.outCubic(inv(4, 6, bt));
+      TR.orbit([0, -.6], Math.PI + 1.15 - k * .9, lerp(5.0, 3.4, k), lerp(.7, 1.8, k), lerp(1.3, 2.2, up), lerp(40, 34, k), lerp(.05, -.03, k));
+      TR.shiftX(V(0, lerp(1.4, 2.0, up), -.6), .42); TR.render(); TR.copyPass("B");
     },
     compose(ctx, bt) {
       TR.drawPass(ctx, "B");
@@ -201,10 +205,16 @@
       TR.voidTick(f / 30, 1);
       DNA_IDS.forEach((id, i) => {
         const s = ST(id), x = (i - 2.5) * 1.9;
-        TR.act(s.guy, "shoot", (bt * SEC * .45 + i * .37) % 2.2, { x, z: -3, face: 0, target: null });
+        TR.act(s.guy, "shoot", (bt * SEC * .45 + i * .37 + .6) % TR.SHOT.clipEnd, { x, z: -3, face: 0, target: null });
         if (bt >= 4 && id === "k24") TR.solid(s.guy); else TR.wire(s.guy, false);
       });
-      TR.cam([Math.sin(bt * .4) * .4, 1.35, lerp(3.4, 2.9, bt / 6)], [0, 1.25, -3], 64, 0);
+      if (bt < 4) {                      // 推轨横移：从左到右扫过 6 位传奇，机位由低到高
+        const k = E.inOutSine(bt / 4);
+        TR.cam([lerp(-3.2, 1.6, k), lerp(1.0, 1.5, k), lerp(3.1, 3.5, k)], [lerp(-1.6, .8, k), 1.25, -3], 62, lerp(.03, -.02, k));
+      } else {                           // 锁定：希区柯克变焦——科比大小不变，背景透视被猛地拉开
+        const k = E.inOutCubic(inv(4, 5.4, bt)), kx = (2 - 2.5) * 1.9;
+        TR.vertigo(V(kx, 1.25, -3), V(lerp(.25, .08, k), .02, 1), lerp(64, 22, k), lerp(6.4, 3.2, k), 0, 1.2);
+      }
       this.boxes = DNA_IDS.map(id => TR.boxOf(ST(id).guy));
     },
     ov(ctx, bt) {
@@ -232,16 +242,21 @@
       const i = Math.min(7, Math.floor(bt * 2)), u = bt * 2 - i, [id, kind] = DETAILS[i], s = ST(id), g = s.guy;
       TR.S.stars.forEach(o => { if (o !== s) { o.guy.g.visible = false; TR.hideGuyBall(o.guy); } });
       const x = 0, z = -.6;
-      if (kind === "release") TR.act(g, "shoot", .82 + u * .35, { x, z, face: Math.PI, target: HOOPV() });          // 出手前后 0.35 秒，慢放到半拍
+      if (kind === "release") TR.act(g, "shoot", TR.SHOT.release - .28 + u * .5, { x, z, face: Math.PI, target: HOOPV() });   // 起跳到顶 → 送球 → 球离手 → 压腕，0.5 秒慢放到半拍
       else if (kind === "shoes") TR.act(g, "dribble", u * .5 + i, { x, z, face: 0 });
       else if (kind === "face") TR.act(g, TR.SIGNATURE[id] === "cross" ? "cross" : "spin", u * .6 + i, { x, z, face: 0 });
       else TR.act(g, "stand", u * .5 + i, { x, z, face: 0 });
       g.g.updateMatrixWorld(true);
       const side = i % 2 ? 1 : -1;
-      if (kind === "jersey") { const c = g.g.localToWorld(V(0, 1.18, 0)); TR.cam([c.x + side * .35, c.y + .05, c.z + lerp(1.05, .85, u)], [c.x, c.y, c.z], 40, side * .04); }
-      else if (kind === "face") { const h = g.headRoot.localToWorld(V(0, 1.62, 0)); TR.cam([h.x + side * .3, h.y + .02, h.z + lerp(.95, .8, u)], [h.x, h.y, h.z], 38, side * .04); }
-      else if (kind === "shoes") { const a = TR.world(g.ankles[0]); TR.cam([a.x + side * .55, .18, a.z + .6], [a.x, .1, a.z], 42, side * .05); }
-      else { const hnd = TR.hand(g, 0); TR.cam([hnd.x + side * .7, hnd.y - .15, hnd.z + .9], [hnd.x, hnd.y + .1, hnd.z - .3], 40, side * .04); }
+      // 特写一律在动：绕主体 60–80° 的弧线 + 推近，相邻两张方向相反
+      const sw = E.outCubic(u), arcA = (a0, a1, r0, r1, c, h, look, fov) => {
+        const a = lerp(a0, a1, sw) * side, r = lerp(r0, r1, sw);
+        TR.cam([c.x + Math.sin(a) * r, h, c.z + Math.cos(a) * r], look, fov, side * lerp(.06, .01, sw));
+      };
+      if (kind === "jersey") { const c = g.g.localToWorld(V(0, 1.18, 0)); arcA(-.75, .45, 1.25, .85, c, c.y + lerp(-.15, .08, sw), [c.x, c.y, c.z], 40); }
+      else if (kind === "face") { const h = g.headRoot.localToWorld(V(0, 1.62, 0)); arcA(-.9, .35, 1.2, .78, h, h.y + lerp(-.12, .03, sw), [h.x, h.y, h.z], 36); }
+      else if (kind === "shoes") { const a = TR.world(g.ankles[0]); arcA(-1.1, .3, 1.0, .62, a, lerp(.1, .24, sw), [a.x, .1, a.z], 42); }
+      else { const hnd = TR.hand(g, 0); arcA(1.25, 2.05, 1.9, 1.45, hnd, hnd.y + lerp(-.45, -.1, sw), [hnd.x, hnd.y + .05, hnd.z], 40); }   // 从侧面绕到侧前方，避开头部
       this.i = i; this.u = u;
     },
     ov(ctx, bt) {
@@ -258,10 +273,9 @@
   const EVENTS = []; DUEL.forEach(([oid, mySpot, opSpot], k) => { EVENTS.push({ who: "curry", spot: mySpot, rel: 2 * k + .5, k }); EVENTS.push({ who: oid, spot: opSpot, rel: 2 * k + 1.5, k }); });
   const E1 = { b0: 56, preset: "indoor", seed: 109,
     setup() { this.cache = {}; },
-    relPos(e) {           // 该球员在这个点位 ph=1 时的手部位置（松手点）
+    relPos(e) {           // 该球员在这个点位真正脱手时的球心位置
       if (this.cache[e.rel]) return this.cache[e.rel];
-      const g = ST(e.who).guy, y = TR.shoot(g, 1); TR.place(g, e.spot[0], e.spot[1], y, TR.faceHoop(...e.spot));
-      const p = TR.grip(g); return (this.cache[e.rel] = V(p.x, p.y + .04, p.z));
+      return (this.cache[e.rel] = TR.shotRelease(ST(e.who).guy, e.spot[0], e.spot[1], TR.faceHoop(...e.spot)));
     },
     frame(bt) {
       TR.lights(1);
@@ -273,8 +287,8 @@
       for (const [s, e, idle] of [[me, evMe, 0], [op, evOp, 1]]) {
         const t = shotT(bt, e.rel), face = TR.faceHoop(...e.spot);
         if (t < 0) TR.act(s.guy, "dribble", bt * SEC + idle, { x: e.spot[0], z: e.spot[1], face });
-        else TR.act(s.guy, "shoot", Math.min(t, 2.1), { x: e.spot[0], z: e.spot[1], face, noBall: t >= TR.SHOT.charge });
-        if (t >= TR.SHOT.charge) TR.hideGuyBall(s.guy);
+        else TR.act(s.guy, "shoot", Math.min(t, 2.1), { x: e.spot[0], z: e.spot[1], face, noBall: t >= TR.SHOT.release });
+        if (t >= TR.SHOT.release) TR.hideGuyBall(s.guy);
       }
       // 空中的球：每一投独立，跨剪辑继续飞
       let slot = 0, netAge = 99;
@@ -284,18 +298,30 @@
         if (d >= FLY) { if (e.who === "curry") this.scoreY++; else this.scoreO++; netAge = Math.min(netAge, (d - FLY) * SEC); }
         if (d < 0 || d > FLY + 1) return;
         const u = Math.min(1, d / FLY), from = this.cache[e.rel];
-        const p = u < 1 ? from.clone().lerp(HOOPV(), u).add(V(0, 1.5 * 4 * u * (1 - u), 0)) : TR.drop((d - FLY) * SEC);
+        const p = u < 1 ? TR.arcAt(from, HOOPV(), FLY * SEC, d * SEC) : TR.drop((d - FLY) * SEC);
         if (slot < 6) TR.ball(slot++, p, d * 4);
       });
       for (; slot < 6; slot++) TR.hideBall(slot);
       TR.net(netAge < 1 ? netAge : -1, 1, 0);
       // 机位：你出手时从你身后越肩；对手出手时切到对手正侧
       // 机位一律放在场内（朝中圈方向偏移），场边观众不会挡镜头
-      const mine = lb < 1.05, e = mine ? evMe : evOp;
+      const mine = lb < 1.05, e = mine ? evMe : evOp, ul = mine ? lb / 1.05 : (lb - 1.05) / .95;
       const toC = V(-e.spot[0], 0, 3.2 - e.spot[1]).normalize(), side = V(toC.z, 0, -toC.x);
-      const cp = V(e.spot[0], 0, e.spot[1]).addScaledVector(toC, mine ? 2.9 : 3.6).addScaledVector(side, mine ? .9 : -1.3);
-      cp.x = clamp(cp.x, -6.6, 6.6); cp.z = clamp(cp.z, -7, 6);
-      TR.cam([cp.x, mine ? 1.9 : 1.15, cp.z], [lerp(e.spot[0], HOOP.x, .3), mine ? 2.3 : 1.7, lerp(e.spot[1], HOOP.z, .3)], mine ? 50 : 46, mine ? .03 : -.03);
+      if (mine) {
+        // 越肩起步 → 松手后机位升起、横移，视线跟着球摇向篮筐
+        const up = E.inOutCubic(inv(.45, 1, ul));
+        const cp = V(e.spot[0], 0, e.spot[1]).addScaledVector(toC, lerp(2.7, 3.3, up)).addScaledVector(side, lerp(.8, 2.0, up));
+        cp.x = clamp(cp.x, -6.6, 6.6); cp.z = clamp(cp.z, -7, 6);
+        const d = bt - e.rel, bp = TR.arcAt(this.cache[e.rel], HOOPV(), FLY * SEC, clamp(d / FLY) * FLY * SEC);
+        const base = V(lerp(e.spot[0], HOOP.x, .3), 2.3, lerp(e.spot[1], HOOP.z, .3)), look = base.lerp(bp, d > 0 ? up * .7 : 0);
+        TR.cam([cp.x, lerp(1.7, 3.1, up), cp.z], [look.x, look.y, look.z], lerp(50, 44, up), lerp(.04, -.02, up));
+      } else {
+        // 对手：低机位（仰拍）绕他 70° 环绕 + 推近
+        const a0 = Math.atan2(toC.x, toC.z), a = a0 + lerp(-.55, .6, E.inOutSine(ul)) * (k % 2 ? 1 : -1);
+        let cx = e.spot[0] + Math.sin(a) * lerp(3.6, 2.7, ul), cz = e.spot[1] + Math.cos(a) * lerp(3.6, 2.7, ul);
+        cx = clamp(cx, -6.6, 6.6); cz = clamp(cz, -7, 6);
+        TR.cam([cx, lerp(.75, 1.0, ul), cz], [lerp(e.spot[0], HOOP.x, .15), 1.85, lerp(e.spot[1], HOOP.z, .15)], 46, lerp(-.05, .03, ul));
+      }
       this.k = k; this.lb = lb; this.op = op;
     },
     ov(ctx, bt) {
@@ -313,29 +339,47 @@
       TR.lights(1);
       const me = ST("curry"), op = ST("bird");
       TR.S.stars.forEach(o => { if (o !== me && o !== op) { o.guy.g.visible = false; TR.hideGuyBall(o.guy); } });
-      // 慢放：1.6 拍蓄力（0.5×），松手在 67.6；球飞 1.4 拍，69 入网
-      const t = bt < 1.6 ? shotT(bt, 1.6, .5) * 1 : TR.SHOT.charge + (bt - 1.6) * SEC * .8;
-      const tt = bt < 1.6 ? (bt / 1.6) * TR.SHOT.charge : t;
-      TR.act(me.guy, "shoot", Math.min(tt, 1.45), { x: LOGO[0], z: LOGO[1], face: Math.PI, target: null, noBall: true });
+      /* 子弹时间：拍 1.2 球离手 → 1.2–2.0 时间几乎冻结（动作只走 0.06 秒），
+         机位绕库里转 276° 到他身后 → 2.0 时间猛地恢复，球加速飞 1 拍，拍 3（69）入网，
+         入网瞬间对篮筐做希区柯克变焦。库里保持压腕跟随直到球进，再挥拳。 */
+      const R = 1.2, B1 = 2.0, SW = 3.0;
+      // 蓄力段 0.5× 慢放；子弹时间里动作只走 0.06s（刚好是压腕那一下）；之后 0.8× 播完落地
+      const tt = bt < R ? TR.SHOT.release - (R - bt) * SEC * .5 : bt < B1 ? TR.SHOT.release + (bt - R) / (B1 - R) * .06 : TR.SHOT.release + .06 + (bt - B1) * SEC * .8;
+      if (!this.rel || bt < .05) this.rel = TR.shotRelease(me.guy, LOGO[0], LOGO[1], Math.PI);
+      if (bt < 3.1) TR.act(me.guy, "shoot", Math.min(tt, TR.SHOT.clipEnd - .01), { x: LOGO[0], z: LOGO[1], face: Math.PI, target: null, noBall: true });
       TR.hideGuyBall(me.guy);
-      if (!this.rel || bt < .05) { const y = TR.shoot(me.guy, 1); TR.place(me.guy, LOGO[0], LOGO[1], y, Math.PI); const g = TR.grip(me.guy); this.rel = V(g.x, g.y + .04, g.z); TR.act(me.guy, "shoot", Math.min(tt, 1.45), { x: LOGO[0], z: LOGO[1], face: Math.PI, noBall: true }); TR.hideGuyBall(me.guy); }
       if (bt >= 3.1) TR.act(me.guy, "fist", (bt - 3.1) * SEC, { x: LOGO[0], z: LOGO[1], face: Math.PI + .6 });
-      TR.act(op.guy, "stand", bt * SEC, { x: 2.6, z: 1.8, face: [0, 4.245].length && Math.atan2(-2.6, 2.4) });
+      TR.act(op.guy, "stand", bt * SEC, { x: 2.6, z: 1.8, face: Math.atan2(-2.6, 2.4) });
       let ball;
-      if (bt < 1.6) { const g = TR.grip(me.guy); ball = V(g.x, g.y + .04, g.z); }
-      else if (bt < 3) { const u = E.inOutQuad((bt - 1.6) / 1.4); ball = this.rel.clone().lerp(HOOPV(), u); ball.y += 3.4 * 4 * u * (1 - u); }
-      else ball = TR.drop((bt - 3) * .6);
-      TR.ball(0, ball, bt * 3, true);
-      TR.net(bt >= 3 ? (bt - 3) * .6 : -1, 1.3, 0);
-      if (bt >= 3 && !this.boom) { this.boom = true; TR.cheer(5); TR.confetti(); }
-      if (bt < 1.6) TR.orbit(LOGO, Math.PI + 2.4 - bt * .5, 3.2, .55, 1.8, 46, .04);
-      else if (bt < 2.7) { const u = inv(1.6, 2.7, bt); TR.cam([ball.x + .8, ball.y + .3, ball.z + 2.2], [lerp(ball.x, HOOP.x, .5), lerp(ball.y, HOOP.y, .3), lerp(ball.z, HOOP.z, .6)], 50, -.04); }
-      else TR.cam([1.5, 2.0, HOOP.z + 4.4], [0, HOOP.y - .3, HOOP.z], 50, 0);
+      if (bt < R) ball = TR.grip(me.guy);
+      else if (bt < SW) {
+        // 真实抛物线（按 1.7s 的真实飞行时间算形状），子弹时间只是把时间轴压慢/拉快
+        const fu = bt < B1 ? .035 * (bt - R) / (B1 - R) : .035 + .965 * Math.pow((bt - B1) / (SW - B1), 1.15);
+        ball = TR.arcAt(this.rel, HOOPV(), 1.7, fu * 1.7);
+      }
+      else ball = TR.drop((bt - SW) * .6);
+      TR.ball(0, ball, bt < B1 ? bt * .4 : bt * 3, true);
+      TR.net(bt >= SW ? (bt - SW) * .6 : -1, 1.3, 0);
+      if (bt >= SW && !this.boom) { this.boom = true; TR.cheer(5); TR.confetti(); }
+      const a0 = Math.PI + 2.4 - R * .6;
+      if (bt < R) { const k = bt / R; TR.orbit(LOGO, Math.PI + 2.4 - bt * .6, lerp(3.2, 2.6, k), lerp(.55, .9, k), 1.8, 46, .04); }
+      else if (bt < B1) {                 // 子弹时间环绕
+        const u = E.inOutSine((bt - R) / (B1 - R)), a = a0 * (1 - u);
+        const lk = ball.clone().lerp(V(LOGO[0], 1.9, LOGO[1]), .5);
+        TR.cam([LOGO[0] + Math.sin(a) * lerp(2.6, 2.2, u), lerp(.9, 1.8, u), LOGO[1] + Math.cos(a) * lerp(2.6, 2.2, u)], [lk.x, lk.y, lk.z], lerp(46, 40, u), lerp(.04, 0, u));
+        TR.clearNear(1.2, me.guy);
+      }
+      else if (bt < 2.7) TR.cam([ball.x + .8, ball.y + .3, ball.z + 2.2], [lerp(ball.x, HOOP.x, .5), lerp(ball.y, HOOP.y, .3), lerp(ball.z, HOOP.z, .6)], 50, -.04);
+      else {                              // 希区柯克变焦：篮筐大小不变，机位冲向篮筐、背景透视炸开
+        const k = E.inOutCubic(inv(2.75, 3.6, bt));
+        TR.vertigo(HOOPV(), V(1.5, -.75, 4.4), lerp(26, 62, k), 7.8, lerp(0, .05, k), HOOP.y - .3);
+      }
       this.rim = TR.project(HOOPV());
     },
     ov(ctx, bt) {
       TR.battleHud(ctx, bt >= 3 ? 100 : 90, 91, bt, ST("bird"), "库里");
-      if (bt < 1.6) { TR.featureTag(ctx, 420, 900, "HALF-COURT LOGO SHOT", "中场 LOGO 超远 · 一球 10 分", E.outBack(inv(0, .2, bt))); TR.slowTag(ctx, .5); }
+      if (bt < 1.2) { TR.featureTag(ctx, 420, 900, "HALF-COURT LOGO SHOT", "中场 LOGO 超远 · 一球 10 分", E.outBack(inv(0, .2, bt))); TR.slowTag(ctx, .5); }
+      else if (bt < 2.0) TR.slowTag(ctx, .02, "BULLET TIME");
       if (bt >= 3) { TR.goldBurst(ctx, this.rim[0], this.rim[1], inv(3, 4, bt), 1.5, 21); TR.bigText(ctx, "100!", 560, 720, 300, PAL.gold, -.08, E.outBack(inv(3.02, 3.25, bt)), "#ff4040"); TR.bigText(ctx, "+10", 1400, 420, 150, PAL.green, .08, E.outBack(inv(3.05, 3.25, bt))); }
     },
   };
@@ -350,7 +394,7 @@
       const s = ST(w[2]);
       const spot = k === 0 ? [4.55, -1.1] : [0, -.5];
       TR.act(s.guy, "shoot", shotT(u, .45), { x: spot[0], z: spot[1], face: TR.faceHoop(...spot), target: HOOPV() });
-      if (k === 0) { TR.rack(V(5.5, .9, -1.8)); TR.cam([8.6, 2.1, 3], [2.6, 2, -4.2], 50); }
+      if (k === 0) { TR.rack(V(5.5, .9, -1.8)); const m = E.inOutSine(u); TR.cam([lerp(9.4, 7.2, m), lerp(1.4, 2.4, m), lerp(4.0, 1.8, m)], [lerp(3.6, 2.2, m), 2, -4.2], lerp(54, 46, m), lerp(.04, -.02, m)); }
       else TR.orbit(spot, Math.PI - 1.1 + bt * .5, 3.4, .8, 1.9, 46, .03);
       this.star = s;
     },
@@ -403,10 +447,12 @@
       const i = Math.min(7, Math.floor(bt * 2)), s = ST(FACES[i]), g = s.guy;
       g.g.updateMatrixWorld(true);
       const head = g.headRoot.localToWorld(V(0, 1.62, 0)), fwd = V(Math.sin(g.g.rotation.y), 0, Math.cos(g.g.rotation.y));
-      const u = bt * 2 - i;
-      const cp = head.clone().addScaledVector(fwd, lerp(1.25, 1.0, u)); cp.y += .02;
-      cp.addScaledVector(V(fwd.z, 0, -fwd.x), (i % 2 ? .3 : -.3));
-      TR.cam([cp.x, cp.y, cp.z], [head.x, head.y, head.z], 38, (i % 2 ? .04 : -.04));
+      const u = bt * 2 - i, sd = i % 2 ? 1 : -1;
+      // 前 25% 快速甩入（whip），之后慢慢绕 + 推近
+      const w = u < .25 ? E.outCubic(u / .25) * .7 : .7 + (u - .25) / .75 * .3;
+      const a = Math.atan2(fwd.x, fwd.z) + sd * lerp(1.1, -.25, w), r = lerp(1.4, .95, w);
+      const cp = V(head.x + Math.sin(a) * r, head.y + lerp(-.1, .03, w), head.z + Math.cos(a) * r);
+      TR.cam([cp.x, cp.y, cp.z], [head.x, head.y, head.z], 38, sd * lerp(.1, .03, w));
       TR.clearNear(1.1, g);
       this.s = s; this.u = u;
     },
@@ -416,7 +462,8 @@
     frame(bt) {
       TR.lights(1.1);
       celebrate(bt + 25);
-      TR.orbit([0, -1], .1 + bt * .12, lerp(2.8, 2.2, bt / 2), lerp(.35, .7, bt / 2), 1.7, 50, .04 - bt * .01);
+      const k = E.inOutCubic(bt / 2);
+      TR.orbit([0, -1], -.5 + k * 1.3, lerp(3.2, 2.2, k), lerp(.3, 1.2, k), lerp(1.9, 1.6, k), 50, lerp(.06, -.02, k));
       TR.clearNear(2.4, ST("curry").guy);
     },
     ov(ctx, bt) {
@@ -435,7 +482,8 @@
       TR.act(c.guy, "spin", bt * SEC, { x: 2.2, z: 1.2, face: -.4 });
       const b = this.endBall(bt);
       if (b) TR.ball(1, b, b.x / .16); else TR.hideBall(1);
-      TR.orbit([.5, -1], -.25 + Math.sin(bt * .08) * .2, 9.5, 1.6, 2.4, 44, 0);
+      const cr = E.outCubic(inv(0, 6, bt));
+      TR.orbit([.5, -1], lerp(-.7, .25, E.inOutSine(inv(0, 24, bt))), lerp(12, 9.5, cr), lerp(4.2, 1.6, cr), 2.4, 44, 0);
       TR.shiftX(V(.5, 2.4, -1), -.25);
     },
     endBall(bt) {

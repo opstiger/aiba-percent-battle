@@ -490,11 +490,11 @@
     txt(ctx, "#" + s.num, 590, 60, { size: 52, color: PAL.gold, align: "right" });
     ctx.restore();
   };
-  TR.slowTag = function (ctx, k) {
+  TR.slowTag = function (ctx, k, label) {
     const x = TR.W - 330, y = TR.H - 150;
     panel(ctx, x, y, 270, 58, { fill: "rgba(4,10,20,.75)", edge: "#1f5a73" });
     ctx.fillStyle = PAL.red; ctx.beginPath(); ctx.arc(x + 30, y + 29, 8, 0, Math.PI * 2); ctx.fill();
-    txt(ctx, "SLOW-MO " + k.toFixed(2) + "×", x + 50, y + 30, { size: 22, color: PAL.white, align: "left", shadow: 0, spacing: 2 });
+    txt(ctx, label || ("SLOW-MO " + k.toFixed(2) + "×"), x + 50, y + 30, { size: 22, color: PAL.white, align: "left", shadow: 0, spacing: 2 });
   };
   TR.pointerTag = function (ctx, x, y, label, num) {
     ctx.save(); ctx.strokeStyle = PAL.gold; ctx.lineWidth = 3;
