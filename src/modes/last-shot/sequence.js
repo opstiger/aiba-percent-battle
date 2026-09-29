@@ -102,7 +102,7 @@
     if(player._celeb)stopCelebrate(player);
     const CALL_STYLES=["both_target","both_clap","single_wave"];
     Object.assign(LS,{on:true,t:0,phase:"intro",cfg,practice:!!practice,
-      passed:false,released:false,resolved:false,pass:null,lookYaw:0,timedOut:false,
+      passed:false,released:false,resolved:false,pass:null,lookYaw:0,timedOut:false,shooting:false,
       shotMade:false,callStyle:CALL_STYLES[(Math.random()*CALL_STYLES.length)|0],
       cutFrom:null,cutDur:0,introT:0,introDur:1.8,
       reactionT:0,reactionStarted:false,reactionDuration:0,finishMade:false,finishReason:"shot",
@@ -130,7 +130,13 @@
       else if(typeof global.AIBABootShot.skip==="function")global.AIBABootShot.skip();
     }
     if(global.ensurePlayerShoeKit)global.ensurePlayerShoeKit();
-    const cfg=cfgApi.activeChallenge?cfgApi.activeChallenge(!!practice):cfgApi.dailyChallenge();
+    const base=cfgApi.activeChallenge?cfgApi.activeChallenge(!!practice):cfgApi.dailyChallenge();
+    /* 跑位变奏：正式挑战按日期+关卡固定(全球同一天同一套)，练习每次换一套。
+       ?lsSeed=N 锁定某一套变奏，?lsSeed=off 用原始手写路点，便于复现与录制。 */
+    const qs=new URLSearchParams(location.search).get("lsSeed");
+    const off=qs==="off"||!cfgApi.withVariation;
+    const seed=qs!=null&&qs!==""&&!off?Number(qs):(practice&&!off?(Math.random()*4294967296)>>>0:null);
+    const cfg=off?base:cfgApi.withVariation(base,{seed});
     ensureAudio(false);hidePanel();music(false);resetProgressiveSceneForRun();
     resetState(cfg,practice);
     squadApi.build(cfg);
@@ -818,24 +824,38 @@
     );
     return true;
   }
+  const _holdQ=new THREE.Quaternion(),_holdE=new THREE.Euler();
+  function holdRot(node,x,y,z,k){
+    _holdQ.setFromEuler(_holdE.set(x,y,z));
+    if(k>=1)node.quaternion.copy(_holdQ);else node.quaternion.slerp(_holdQ,k);
+  }
   function updateBodyState(dt){
     if(!LS.on||!LS.spot)return;
     if(LS.phase==="reaction")return;
     if(LS.released||LS.phase==="flight"){
       // 出手后飞行阶段：保持压腕跟随动作（Follow-through Hold）与向前专注凝视
-      if(!LS.reactionStarted&&player&&player.arms&&player.elbows){
+      /* 出手那一刻手臂还在 shot-motion 的跟随里(伸展→定格→收手)，这里直接写死
+         会让持球点一帧从 2.59 掉到 2.26。改成跟随收手时才渐入定格姿势，之前全交给跟随，
+         和普通模式同一套出手动作。 */
+      const motionApi=global.AIBAShotMotion;
+      const k=motionApi&&motionApi.followRecover?motionApi.followRecover():1;
+      if(!LS.reactionStarted&&k>0&&player&&player.arms&&player.elbows){
         const guy=player;
-        guy.arms[0].rotation.set(-2.38,0,-0.12);
-        guy.elbows[0].rotation.set(-0.25,0,0);
-        if(guy.handRoots)guy.handRoots[0].rotation.set(0.95,0,-0.06);
-        guy.arms[1].rotation.set(-2.15,0,0.28);
-        guy.elbows[1].rotation.set(-0.48,0,0);
-        if(guy.handRoots)guy.handRoots[1].rotation.set(-0.15,Math.PI*0.5,0.12);
+        holdRot(guy.arms[0],-2.38,0,-0.12,k);
+        holdRot(guy.elbows[0],-0.25,0,0,k);
+        if(guy.handRoots)holdRot(guy.handRoots[0],0.95,0,-0.06,k);
+        holdRot(guy.arms[1],-2.15,0,0.28,k);
+        holdRot(guy.elbows[1],-0.48,0,0,k);
+        if(guy.handRoots)holdRot(guy.handRoots[1],-0.15,Math.PI*0.5,0.12,k);
         if(squadApi.guardArms)squadApi.guardArms(guy);
         if(global.AIBAShotMotion&&global.AIBAShotMotion.syncFp)global.AIBAShotMotion.syncFp();
       }
       return;
     }
+    /* 蓄力起跳到球真正离手(松手后约 0.09s)这一段，身体高度和手臂归投篮动作(updPose)管。
+       以前这里每帧把 g.y 按回 0(人在地上、只有手举着)；松手后 canShoot 已关、LS.released
+       还没到，又被当成"等传球"摆出张手要球 —— 持球点 1.83→1.39 再一下跳回 2.26。 */
+    LS.shooting=G.charging||(!!LS.shooting&&!G.canShoot&&!LS.released);
     const handler=squadApi.handler();
     /* 球一到手就必须朝篮筐——传球飞行结束后 LS.pass 会被清空，如果这里还退回
        "看持球人"，身体会转回左路的核心，投篮手直接被甩出画面左侧(实测腕 NDC
@@ -885,7 +905,7 @@
     // 第三人称模型必须朝着你实际在看的方向，否则两个视角是两个人
     P.face=LS.lookYaw;
     if(player&&player.g){
-      player.g.position.set(P.pos.x,0,P.pos.z);
+      player.g.position.set(P.pos.x,LS.shooting?player.g.position.y:0,P.pos.z);
       player.g.rotation.y=P.face;
       player.g.quaternion.setFromEuler(player.g.rotation);
       player.g.updateMatrixWorld(true);
@@ -896,7 +916,7 @@
     const readyStart=cutDur>0.05?Math.max(0,cutDur-0.9):0;
     const readyK=clamp((LS.t-readyStart)/0.7,0,1);
     const passCatchActive=G.passCatch&&G.passCatch.active;
-    if(!inHand&&!LS.pass&&!passCatchActive&&readyK>0.02&&player&&player.arms&&player.elbows){
+    if(!inHand&&!LS.shooting&&!LS.pass&&!passCatchActive&&readyK>0.02&&player&&player.arms&&player.elbows){
       const guy=player;
       if(guy.knees){
         guy.knees[0].rotation.x=0.28*readyK;

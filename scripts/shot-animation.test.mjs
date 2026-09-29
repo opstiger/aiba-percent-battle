@@ -215,6 +215,79 @@ try{
   await page.waitForTimeout(80);
   const switched=await inspect(page);
   assert(switched.mode==="game"&&!switched.releaseFeetEnabled,"运行时可切回 game 模式");
+
+  /* 松手瞬间身体不能先掉再弹。以前理想力度松手后 base.jmp 塌回 rise，根节点
+     0.565→0.457→0.561(120fps)，第一人称视线也跟着沉一下；空中踢腿的落脚补偿
+     又会把根节点往下拽 1–2cm 再弹回。按固定帧长手动推进，小踢腿(库里)和大踢腿
+     (乔丹)各投早/准/晚三档，松手前后 0.1s 内不允许 >1cm 的回跳。 */
+  for(const star of ["curry","j23"])for(const ratio of [.85,1,1.15]){
+    await page.goto("about:blank");
+    await page.addInitScript(id=>{try{localStorage.setItem("aiba_selected_star_v1",id);}catch(e){}},star);
+    await boot(page,port,null);
+    const probe=await page.evaluate(({star,ratio})=>{
+      window.requestAnimationFrame=()=>0;
+      const DT=1/120;AIBA.runtime.service("core:game-loop").clock.getDelta=()=>DT;
+      for(let i=0;i<10;i++)window.animate();
+      if(!startCharge())return {error:"startCharge failed"};
+      const target=weatherAdjustedIdeal(curShot(),true)*ratio;
+      const ys=[];let rel=-1;
+      for(let f=0;f<400&&(rel<0||f<=rel+12);f++){
+        if(rel<0&&G.power>=target-1){G.power=target;doRelease();rel=f;}
+        window.animate();ys.push(player.g.position.y);
+      }
+      if(rel<0)return {error:"never released"};
+      const seg=ys.slice(Math.max(0,rel-12),rel+13);
+      let rebound=0;
+      for(let i=1;i<seg.length;i++)for(let j=i;j<seg.length;j++){
+        const low=Math.min(...seg.slice(i,j+1));
+        rebound=Math.max(rebound,Math.min(seg[i-1],seg[j])-low);
+      }
+      return {rebound,style:player.shotStyle&&player.shotStyle.kick};
+    },{star,ratio});
+    const tag=`${star} 力度×${ratio}`;
+    if(probe.error){assert(false,`${tag} 松手探针失败: ${probe.error}`);continue;}
+    console.log(`  METRIC release-root-rebound ${star} x${ratio}=${(probe.rebound*100).toFixed(2)}cm kick=${probe.style}`);
+    assert(probe.rebound<.01,`${tag} 松手前后 0.1s 根节点无 >1cm 回跳(实际 ${(probe.rebound*100).toFixed(2)}cm)`);
+  }
+
+  /* 绝杀模式出手要和普通模式同一套动作。以前 updateBodyState 每帧把 g.y 按回 0(蓄力时人不离地)，
+     松手到球离手那 0.09s 又被当成"等传球"摆张手要球(g.y=-0.04、持球点 1.83→1.39)，
+     LS.released 一到再硬切写死的定格臂(一帧跳 0.3m)。120fps 下逐帧差分不许出现这种跳变。 */
+  {
+    await page.goto("about:blank");
+    await page.addInitScript(()=>{try{localStorage.setItem("aiba_selected_star_v1","curry");}catch(e){}});
+    await page.goto(`http://127.0.0.1:${port}/index.html?intro=0&seed=20260830&lsSeed=off`,{waitUntil:"load"});
+    await page.evaluate(async()=>{await fetch("scripts/silence-browser.js").then(r=>r.text()).then(code=>eval(code));});
+    await page.waitForFunction("window.AIBA&&AIBA.runtime&&typeof G!=='undefined'&&typeof beginLastShot==='function'",{timeout:20000});
+    const ls=await page.evaluate(()=>{
+      window.requestAnimationFrame=()=>0;
+      let DT=1/60;AIBA.runtime.service("core:game-loop").clock.getDelta=()=>DT;
+      if(typeof hidePanel==="function")hidePanel();
+      beginLastShot(true);
+      for(let n=0;n<4000&&!(G.state==="lastshot"&&G.canShoot);n++)window.animate();
+      if(!G.canShoot)return {error:"last shot never handed the ball over"};
+      DT=1/120;
+      if(!startCharge())return {error:"startCharge failed"};
+      const target=weatherAdjustedIdeal(curShot(),true),grip=new THREE.Vector3(),rows=[];let rel=-1;
+      for(let f=0;f<500&&(rel<0||f<=rel+36);f++){
+        if(rel<0&&G.power>=target-1){G.power=target;doRelease();rel=f;}
+        window.animate();player.g.updateMatrixWorld(true);
+        rows.push([player.g.position.y,player.ballGrips[0].getWorldPosition(grip).y]);
+      }
+      if(rel<0)return {error:"never released"};
+      const seg=rows.slice(Math.max(0,rel-36),rel+37);
+      let dy=0,dg=0;
+      for(let i=1;i<seg.length;i++){dy=Math.max(dy,Math.abs(seg[i][0]-seg[i-1][0]));dg=Math.max(dg,Math.abs(seg[i][1]-seg[i-1][1]));}
+      return {dy,dg,releaseY:rows[rel][0]};
+    });
+    if(ls.error)assert(false,"绝杀出手探针失败: "+ls.error);
+    else{
+      console.log("  METRIC lastshot-release="+JSON.stringify({maxStepY:+ls.dy.toFixed(3),maxStepGrip:+ls.dg.toFixed(3),releaseY:+ls.releaseY.toFixed(3)}));
+      assert(ls.releaseY>.3,`绝杀蓄力起跳时身体真的离地(松手时根节点 ${ls.releaseY.toFixed(3)}m)`);
+      assert(ls.dy<.08&&ls.dg<.08,`绝杀松手前后 0.3s 根节点/持球点逐帧连续(最大单帧 ${ls.dy.toFixed(3)} / ${ls.dg.toFixed(3)}m)`);
+    }
+  }
+
   if(errors.length){failures++;check(false,"投篮动作预览无运行时错误: "+errors[0]);}
   else check(true,"投篮动作预览无运行时错误");
 }finally{

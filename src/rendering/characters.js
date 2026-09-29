@@ -5,6 +5,20 @@
    头饰、发型、表情都挂在 headRoot 上一起缩。?head=classic 仍退回 1。 */
 const VOXEL_HEAD_SCALE=new URLSearchParams(location.search).get("head")==="classic"?1:.80;
 const VOXEL_HEAD_PIVOT_Y=1.45;
+/* headRoot 的原点在脚底，直接写 rotation/quaternion 会让头绕脚底公转：
+   实测热身扣篮 T台姿势自带的 9° 低头就让头离开脖子 20cm，庆祝时 0.024rad
+   的侧晃也有 3cm。这里改写 headRoot 自己的 updateMatrix，让任何旋转都以
+   脖子(0,1.45,0)为支点——调用方照常写 rotation，不需要再各自补偿 position。
+   未旋转时结果与原来的 compose 完全一致(position/scale 语义不变)。 */
+const _headPivot=new THREE.Vector3(),_headNeck=new THREE.Vector3(0,VOXEL_HEAD_PIVOT_Y,0);
+function pivotHeadAtNeck(headRoot){
+  headRoot.updateMatrix=function(){
+    this.matrix.compose(this.position,this.quaternion,this.scale);
+    _headPivot.copy(this.position).sub(_headNeck).applyQuaternion(this.quaternion).add(_headNeck);
+    this.matrix.setPosition(_headPivot);
+    this.matrixWorldNeedsUpdate=true;
+  };
+}
 const VOXEL_SHOULDER_X=.285;
 const VOXEL_HIP_X=.125;
 /* 头发的旋转支点高度(headRoot 局部坐标,与发块同一套绝对坐标)。
@@ -358,6 +372,7 @@ function voxelGuy(){
   headRoot.name="headRoot";
   headRoot.position.y=VOXEL_HEAD_PIVOT_Y*(1-VOXEL_HEAD_SCALE);
   headRoot.scale.setScalar(VOXEL_HEAD_SCALE);
+  pivotHeadAtNeck(headRoot);
   g.add(headRoot);
   const mFace=new THREE.MeshLambertMaterial({color:0xffffff});
   const head=new THREE.Mesh(roundedBoxGeometry(.34,.34,.34,.052,3),[mS,mS,mS,mS,mFace,mS]);

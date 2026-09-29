@@ -1,7 +1,7 @@
 /* ---------------- shot jump timing physics ---------------- */
 (function(global){
   "use strict";
-  const S={t:0,lastCharging:false,apexed:false,late:0,releaseLate:0,airborne:false,justLanded:false,releaseJump:0,lastJump:0,landingImpact:0};
+  const S={t:0,lastCharging:false,apexed:false,late:0,releaseLate:0,airborne:false,justLanded:false,releaseJump:0,releaseRise:0,lastJump:0,lastLaunch:0,landingImpact:0};
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   const ease=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
   function params(ideal,rate){
@@ -13,7 +13,7 @@
     return {peak,land,auto:land-.07};
   }
   function reset(){
-    S.t=0;S.lastCharging=false;S.apexed=false;S.late=0;S.releaseLate=0;S.airborne=false;S.justLanded=false;S.releaseJump=0;S.lastJump=0;S.landingImpact=0;
+    S.t=0;S.lastCharging=false;S.apexed=false;S.late=0;S.releaseLate=0;S.airborne=false;S.justLanded=false;S.releaseJump=0;S.releaseRise=0;S.lastJump=0;S.lastLaunch=0;S.landingImpact=0;
   }
   function update(opts){
     opts=opts||{};
@@ -21,14 +21,16 @@
     const p=params(ideal,rate),takeoff=p.peak-.22;
     S.justLanded=false;
     if(charging){
-      if(!S.lastCharging){S.t=0;S.releaseLate=0;S.releaseJump=0;S.lastJump=0;S.landingImpact=0;}
+      if(!S.lastCharging){S.t=0;S.releaseLate=0;S.releaseJump=0;S.releaseRise=0;S.lastJump=0;S.lastLaunch=0;S.landingImpact=0;}
       if(!paused)S.t+=dt;
     }else{
       if(S.lastCharging){
         S.airborne=S.t>=takeoff;
         S.releaseLate=S.late;
         // 记录真正出手前一帧的跳跃高度,出手后沿同一条轨迹下落,避免重新从1.0跳高造成闪动。
-        S.releaseJump=S.airborne?S.lastJump:0;
+        // 顶点后松手要记下落前的起跳高度(lastLaunch)：lastJump 已乘过 (1-fall)，再乘一次会塌一截。
+        S.releaseJump=S.airborne?(S.t>p.peak?S.lastLaunch:S.lastJump):0;
+        S.releaseRise=S.airborne?ease((S.t-takeoff)/Math.max(.12,p.peak-takeoff)):0;
       }
       if(S.airborne){
         S.t+=dt;
@@ -53,7 +55,17 @@
     const late=charging?liveLate:S.releaseLate;
     S.late=afterPeak?late:0;
     const launchJump=Math.max(0,S.releaseJump||base.jmp||0);
-    const jump=resting?0:(afterPeak?Math.max(0,launchJump*(1-fall)):Math.max(base.jmp||0,rise));
+    /* 顶点前松手：蓄力时 base.jmp 按力度走(理想力度就到 1)，常常比按时间走的 rise 先到顶；
+       松手后 poseK 快速回落、base.jmp 跟着塌，只剩 rise，身体会先掉 10cm 再弹回。
+       空中未过顶点时把 rise 从"出手时的值→1"重映射到"出手高度→1"：从出手高度继续上升、
+       顶点正好到 1，再接 launchJump 的下落，全程连续单调。 */
+    let ascent=Math.max(base.jmp||0,rise);
+    if(S.airborne&&!charging){
+      const r0=S.releaseRise,j0=S.releaseJump;
+      ascent=r0>=.999?j0:j0+(1-j0)*clamp((rise-r0)/(1-r0),0,1);
+    }
+    const jump=resting?0:(afterPeak?Math.max(0,launchJump*(1-fall)):ascent);
+    S.lastLaunch=launchJump;
     const curve={
       dip:resting?0:(base.dip||0),
       lift:resting?0:(base.lift||0),

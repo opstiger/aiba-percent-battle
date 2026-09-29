@@ -17,18 +17,7 @@
   const IDS=ALLY_IDS.concat(FOE_IDS);
   const STAND_FOOT_Y=poseFootBottomY(0,0,0);
   const BALL_R=0.16;
-  /* headRoot 的原点在球员局部 y≈0.203(脚踝高度)，头网格却挂在它局部 y=1.62，
-     所以直接写 headRoot.rotation 会让头沿 1.39m 半径公转——实测抬头 .58rad
-     头就飘出 0.797m，看着就是"头离开身体"。characters.js 的 VOXEL_HEAD_PIVOT_Y
-     本来就是脖子高度，这里旋转后重算 position，把旋转中心搬回脖子。 */
-  const HEAD_PIVOT_Y=1.45;
-  const _headOffset=new THREE.Vector3();
-  function pivotHead(guy){
-    const h=guy&&guy.headRoot;if(!h)return;
-    if(h.userData.pivotBaseY==null)h.userData.pivotBaseY=h.position.y;
-    _headOffset.set(0,h.userData.pivotBaseY-HEAD_PIVOT_Y,0).applyQuaternion(h.quaternion);
-    h.position.set(_headOffset.x,HEAD_PIVOT_Y+_headOffset.y,_headOffset.z);
-  }
+  /* 头部绕脖子旋转已由 characters.js 的 pivotHeadAtNeck 统一处理，这里直接写 rotation 即可。 */
   /* 持球核心要真的运球：球固定抱在胸前、球员却在跑，是最扎眼的穿帮。
      球在体侧上下弹，运球手跟着球起落压腕。 */
   function poseDribble(actor,dt,run){
@@ -141,7 +130,8 @@ function foeKit(allyJersey){
   }
 
   function build(cfg){
-    if(squad){dressSquad(cfg);return squad;}
+    /* 演员只建一次，但关卡配置每次都要换：否则练习里切了剧情，跑位仍是第一次那关的。 */
+    if(squad){squad.cfg=cfg;dressSquad(cfg);return squad;}
     const actors={};
     IDS.forEach(id=>{
       const ally=id.indexOf("ally")===0;
@@ -262,6 +252,8 @@ function foeKit(allyJersey){
   /* 跑动姿势统一走 motion.js 的 poseRunCycle——全项目只有那一套实现。
      这里只负责把 actor 的状态喂进去，再补一个转向。 */
   function poseRunner(actor,speed,dt,lookAt){
+    /* separate() 推开的位移也要算进腿里：否则两人一挤，被推的人脚不动、整个人在地板上滑。 */
+    speed=Math.max(speed||0,actor.pushSpeed||0);
     motion.poseRunCycle(actor.guy,actor,speed,dt,{defensive:actor.defensive,hs:actor.hs||1});
     if(!actor.reaction){
       actor.guy.g.rotation.z=0;
@@ -664,9 +656,8 @@ function foeKit(allyJersey){
       else poseWatcher(actor,dt,ballPos,ballPos?HOOP:null);
       // 姿势写完后统一守卫手势安全，再把头的旋转中心搬回脖子。
       guardArms(actor.guy);
-      pivotHead(actor.guy);
     });
-    if(reaction)separate(playerPos||reaction.playerPos);
+    if(reaction)separate(playerPos||reaction.playerPos,dt);
   }
   /* 反应阶段所有人都在自由移动，没有战术站位约束，很容易两个人走进同一格，
      或者直接走进你身上(第一人称就是整块身体糊在屏幕上)。复用编排阶段那套 separate：
@@ -686,7 +677,7 @@ function foeKit(allyJersey){
       actor.guy.g.rotation.set(0,rotY,0);
       actor.guy.g.position.y=STAND_FOOT_Y;
       actor.reaction=null;actor.reactionT=0;
-      actor.vx=0;actor.vz=0;actor.speed=0;
+      actor.vx=0;actor.vz=0;actor.speed=0;actor.pushSpeed=0;
       actor.chasing=false;actor.putback=null;actor.outlet=null;
       actor.contestJump=null;actor.contestPending=null;actor.pressure=0;actor.handsUp=0;
       actor.closeoutT=0;actor.onBallPhase=null;
@@ -704,8 +695,10 @@ function foeKit(allyJersey){
      小于 MIN_GAP 就沿连线各推开一半;你本人位置固定,只把别人推离你,不推你。
      没有这一步,防守人和自己盯的人在跑动中会明显穿模。 */
   const MIN_GAP=0.98,PLAYER_GAP=1.15;
-  function separate(playerPos){
+  const _sepFrom={};
+  function separate(playerPos,dt){
     const list=IDS.map(id=>squad.actors[id]);
+    list.forEach(actor=>{const f=_sepFrom[actor.id]||(_sepFrom[actor.id]={x:0,z:0});f.x=actor.pos.x;f.z=actor.pos.z;});
     for(let pass=0;pass<2;pass++){
       for(let i=0;i<list.length;i++){
         for(let j=i+1;j<list.length;j++){
@@ -726,7 +719,14 @@ function foeKit(allyJersey){
         actor.pos.x+=dx*push;actor.pos.z+=dz*push;
       });
     }
-    list.forEach(actor=>{actor.guy.g.position.x=actor.pos.x;actor.guy.g.position.z=actor.pos.z;});
+    /* 记下这一帧被推了多快(平滑一下，避免单帧挤压让腿抽一下)，poseRunner 会拿它当最低步频。 */
+    const k=dt>0?Math.min(1,dt*10):1;
+    list.forEach(actor=>{
+      const f=_sepFrom[actor.id];
+      const v=dt>0?Math.hypot(actor.pos.x-f.x,actor.pos.z-f.z)/dt:0;
+      actor.pushSpeed=(actor.pushSpeed||0)+(v-(actor.pushSpeed||0))*k;
+      actor.guy.g.position.x=actor.pos.x;actor.guy.g.position.z=actor.pos.z;
+    });
   }
 
   /* 盯你的那个防守人：接球前是协防倾向(离你远、盯着弱侧)，球一传出就 closeout 扑你，
@@ -959,7 +959,7 @@ function foeKit(allyJersey){
       const tgt=markTarget(seen,plan.gap);
       actor.speed=steerTo(actor,tgt.x,tgt.z,dt,DEF_MARK_SPEED*pace(actor),DEF_ACCEL);
     });
-    separate(playerPos);
+    separate(playerPos,dt);
     IDS.forEach(id=>{
       const actor=actors[id],plan=chore[id];if(!plan)return;
       // 防守人看着自己盯的人,进攻人看篮筐;盯你的那个始终转向你,压迫感来自这里。
@@ -971,7 +971,6 @@ function foeKit(allyJersey){
       if(actor.contestJump!=null)poseContestJump(actor);
       else if((actor.pressure||0)>0||(actor.handsUp||0)>0)poseContestHands(actor,Math.max(actor.pressure||0,actor.handsUp||0));
       guardArms(actor.guy);
-      pivotHead(actor.guy);
     });
   }
 

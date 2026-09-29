@@ -38,6 +38,7 @@
   /* 踢腿峰值与真正球脱手的 BALL_RELEASE_AT 对齐：起跳后开始，球离手时达到最大。 */
   const RELEASE_FEET_KICK_BLEND=BALL_RELEASE_AT,RELEASE_FEET_KICK_WEIGHT=.62,RELEASE_FEET_LAND_BLEND=.18,
     RELEASE_FEET_LAND_HOLD=.18,RELEASE_FEET_RECOVER=.28,RELEASE_FEET_EARLY_RELEASE_LIMIT=.72;
+  const RELEASE_OVER_FADE=.12,RELEASE_FEET_GROUND_BAND=.12;
   const ease01=t=>{t=clampN(t,0,1);return t*t*(3-2*t);};
   const mixN=(a,b,k)=>a+(b-a)*k;
   /* 第一人称相机在眼睛后方 0.85,所以自己的肩和上臂会正对镜头。
@@ -331,7 +332,10 @@
     const tstageShotPhase=updateShotCycle(dt,!!P.walking);
     const releaseFeetPhase=updateReleaseFeet(dt,!!P.walking,phys,c);
     // 接球屈髋：这条才是当前生效的 updPose，不写这里改了也看不见
-    P.jump=phys.airborne?Math.max(0,rawCurve.jmp*0.55):Math.max(-0.06,rawCurve.jmp*0.55-rawCurve.over*0.28);
+    /* 蓄力时物理还不算离地，身体走地面公式、被 over 压低；松手后切到空中公式，
+       over 那一项若直接丢掉身体会往上弹一下。改成从出手那帧的 over 在 0.12s 内淡出。 */
+    const releaseSink=(lastPoseCurve.over||0)*0.28*(1-ease01((follow.age||0)/RELEASE_OVER_FADE));
+    P.jump=phys.airborne?Math.max(0,rawCurve.jmp*0.55-releaseSink):Math.max(-0.06,rawCurve.jmp*0.55-rawCurve.over*0.28);
     P.eyeDip=-0.26*c.dip-0.09*lk;
     const stance=shotStanceBlend(c,G.canShoot||G.charging);
     // 第三人称
@@ -404,8 +408,10 @@
          到手时 shot_cycle 把迎球手型抢回去。腿、躯干、球和所有状态仍由游戏链控制。 */
       if(!(catchState&&catchState.active)&&tstageShotPhase!=null&&typeof applyTstageShotCyclePose==="function")
         applyTstageShotCyclePose(player,tstageShotPhase);
-      if(releaseFeetPhase&&typeof applyReleaseFeetPose==="function")
+      if(releaseFeetPhase&&typeof applyReleaseFeetPose==="function"){
+        releaseFeetPhase.ground=1-clampN(P.jump/RELEASE_FEET_GROUND_BAND,0,1);
         applyReleaseFeetPose(player,releaseFeetPhase,gameFootY);
+      }
     }
     // 球挂在投篮手 handRig 上，伸肘与压腕期间连续随手，真正 release 后才隐藏/脱离。
     if(!ballAttached)poseBallPos(pBall.position,c,style);
@@ -539,6 +545,12 @@
     resetShotCycle,
     // 姿势在 updPose 之后被改写时(例如绝杀庆祝)，用它把第一人称镜像重新对齐
     syncFp(){if(fpRig)syncFpRigFromPlayer();},
+    /* 出手跟随的收手进度：0 = 还在伸展/定格，1 = 已交还(或没有跟随)。
+       模式层想在出手后接自己的定格姿势时，按它渐入，别在跟随中途硬切。 */
+    followRecover(){
+      if(!followActive)return 1;
+      return ease01((followAge-FOLLOW_EXTEND-FOLLOW_HOLD)/FOLLOW_FADE);
+    },
     captureShotPose:o=>typeof captureShotPose==="function"?captureShotPose(o):null
   });
     global.AIBAMotion={
