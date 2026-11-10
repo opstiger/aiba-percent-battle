@@ -6,6 +6,8 @@ function startReplay(){
   // 回放先给一个投篮出手合影,所以无论比赛视角如何都显示角色。
   player.g.visible=true;
   passer.g.visible=true;
+  if(typeof oppPasser!=="undefined")oppPasser.g.visible=G.mode==="battle";
+  benchVis();
   $("lbT").style.height="11vh";$("lbB").style.height="11vh";
   $("repUI").style.display="block";
   if(!rep.ghost){
@@ -83,8 +85,8 @@ function updReplay(dt){
       player.ballGrips[0].getWorldPosition(gripPos);
       gripQuat=new THREE.Quaternion();
       player.ballGrips[0].getWorldQuaternion(gripQuat);
+      if(window.AIBAKobe&&AIBAKobe.ballShift)gripPos.add(AIBAKobe.ballShift);   // 换了外观的球员：球跟着画面上的手
     }
-    passer.g.visible=false; // 回放期间隐藏传球者避免挡镜头
   }
   // interp position
   let j=1;while(j<h.rec.length&&h.rec[j][0]<t)j++;

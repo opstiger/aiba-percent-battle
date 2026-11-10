@@ -664,7 +664,11 @@ function updPhysicsBall(b,dt,index){
   const lt=b.t-(b.pathT0||0);                     // 重新模拟过的球，轨迹从 pathT0 开始
   const s=PHYS.sampleAt(b.path,lt,PHYS_SAMPLE);
   b.mesh.position.set(s.x,s.y,s.z);
-  if(b.visualOffset&&lt<.18){const k=1-lt/.18;b.mesh.position.addScaledVector(b.visualOffset,k*k);}
+  /* 画面上的球从手里出发，模拟从标准出手点出发，两者的差在飞行开头收掉。
+     用 1-smoothstep（起点斜率为 0），时长约为上升段的四成：原来 .18s 的 k² 起点斜率最大，
+     手比标准出手点高时，球一离手先被往下拽、再爬回轨道——完美球的尾迹在这里拐一下。 */
+  if(b.visualOffset){const F=b.visualFade||(b.visualFade=clamp(((b.tf||1)-(b.pathT0||0))*.4,.25,.5));
+    if(lt<F){const u=lt/F,k=1-u*u*(3-2*u);b.mesh.position.addScaledVector(b.visualOffset,k);}}
   const omega=b._pathOmega||(b._pathOmega=new THREE.Vector3());
   omega.set(s.wx,s.wy,s.wz);rotateBallWorld(b,omega,dt,1);
   while(b.evi<b.events.length&&b.events[b.evi].t<=lt)physicsBallEvent(b,b.events[b.evi++]);

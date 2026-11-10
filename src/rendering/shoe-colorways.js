@@ -46,6 +46,7 @@
  const FAMILY_BY_STAR=Object.freeze({
   j23:'RetroHighPanels',k24:'RetroHighPanels',a03:'RetroHighPanels',v15:'RetroHighPanels',t01:'RetroHighPanels',
   curry:'AirRunnerPanels',thompson:'AirRunnerPanels',lillard:'AirRunnerPanels',ionescu:'AirRunnerPanels',
+  irving:'AirRunnerPanels',durant:'AirRunnerPanels',doncic:'StripeMidPanels',nowitzki:'CanvasHighPanels',
   bird:'CanvasHighPanels',allen:'CanvasHighPanels',miller:'CanvasHighPanels',korver:'CanvasHighPanels',
   h13:'StripeMidPanels',stojakovic:'StripeMidPanels',taurasi:'StripeMidPanels',
   'sue-bird':'StripeMidPanels',nova24:'StripeMidPanels'

@@ -159,10 +159,34 @@ function updGroundShadows(){
   }
 }
 
+/* 根节点的前倾 / 后仰按"球员自己的左右轴"转。
+   g.rotation 默认是 XYZ 顺序：x（前倾）绕的是**世界** X 轴，y（朝向）在它里面。整套姿势代码
+   （蓄力屈髋 torsoLean、跑动前倾、后仰签名…）是按"面朝 -Z（弧顶正对篮筐）"写的，那时世界 X
+   正好是身体左右轴、且 x 取负是前倾。换到底角 / 45° 站位，同一个 x 就变成斜着倒——
+   实测左底角蓄力下蹲，头往侧面偏 25cm、往前只有 6cm。
+   这里把根节点的矩阵改成 先转朝向 y、再绕身体左右轴转 -x、最后 z：
+   面朝 -Z 时与原来逐位相同（Ry(π)·Rx(-x) = Rx(x)·Ry(π)），其它朝向也都是正对前方的前倾。
+   rotation 的读写语义不变，所有调用方不用改。 */
+const _leanEuler=new THREE.Euler(0,0,0,"YXZ"),_leanQuat=new THREE.Quaternion();
+function localLeanRoot(g){
+  if(!g||g.userData.localLean)return g;
+  g.userData.localLean=true;
+  g.updateMatrix=function(){
+    let x=this.rotation.x,y=this.rotation.y,z=this.rotation.z;
+    /* 从四元数反算出来的欧拉角可能是等价的翻转写法（x、z 各差 π，y 取补角），先规范回来 */
+    if(Math.abs(x)>Math.PI/2){x-=Math.sign(x)*Math.PI;y=Math.PI-y;z-=Math.sign(z||1)*Math.PI;}
+    _leanEuler.set(-x,y,z,"YXZ");
+    _leanQuat.setFromEuler(_leanEuler);
+    this.matrix.compose(this.position,_leanQuat,this.scale);
+    this.matrixWorldNeedsUpdate=true;
+  };
+  return g;
+}
+window.localLeanRoot=localLeanRoot;
 function voxelGuy(){
   const detail=window.AIBAModelDetail;
   const detailOn=!!(detail&&detail.enabled);
-  const g=new THREE.Group();
+  const g=localLeanRoot(new THREE.Group());
   const mS=new THREE.MeshLambertMaterial({color:0xf4c89c});  // 皮肤
   mS.color.convertSRGBToLinear(); // match the sRGB face map, including hands and joint blends
   const mJ=new THREE.MeshLambertMaterial({color:0x2fae4a});  // 球衣
@@ -923,7 +947,7 @@ function benchSetup(){
   benchVis();
 }
 function benchVis(){
-  const act=(G.state==="round"||G.state==="tiebreak"||G.state==="aishow"||G.state==="battle"||G.state==="pregame"||G.state==="victorycine");
+  const act=(G.state==="round"||G.state==="tiebreak"||G.state==="aishow"||G.state==="battle"||G.state==="pregame"||G.state==="victorycine"||G.state==="wincine"||G.state==="replay");
   rivals.forEach(rv=>{rv.g.visible=act&&rv.active;});
 }
 

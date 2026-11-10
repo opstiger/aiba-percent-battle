@@ -36,7 +36,7 @@
   body.nohud #ui,body.nohud #labels,body.nohud #busy,body.nohud #hide{display:none}
   #court{display:none}
   body.court #court{display:block}
-  body.court .row:not(.cOnly):not(#rScene),body.court #labels{display:none}
+  body.court .row:not(.cOnly):not(#rScene):not(#rProp),body.court #labels{display:none}
   .cOnly{display:none}body.court .cOnly{display:flex}
   #cScore{position:fixed;right:20px;top:60px;padding:8px 14px;border-radius:12px;background:var(--panel);border:1px solid var(--line);font-size:13px}
   #cScore b{font-size:22px;color:var(--accent)}#cScore small{color:var(--dim);margin-left:6px}
@@ -61,10 +61,12 @@
   <div class="row cOnly" id="rStyle"><label>球员风格</label></div>
   <div class="row cOnly" id="rDiff"><label>难度（AIBA）</label></div>
   <div class="row cOnly" id="rCCam"><label>机位</label></div>
+  <div class="row" id="rChar"><label>球员</label></div>
   <div class="row" id="rMode"><label>渲染</label></div>
   <div class="row" id="rPose"><label>姿势</label></div>
   <div class="row" id="rAnim"><label>投篮动画 <span id="animv"></span></label><input id="aScrub" type="range" min="0" max="1" step="0.001" value="0"></div>
   <div class="row" id="rCam"><label>机位</label></div>
+  <div class="row" id="rProp"><label>头身比（只变头和四肢粗细，骨架和动作不变）</label></div>
   <div class="row" id="rSleeve"><label>右臂护套</label></div>
   <div class="row" id="rPix"><label>像素颗粒 <span id="pixv"></span></label><input id="pix" type="range" min="2" max="10" step="1" value="4"></div>
   <div id="note"></div>
@@ -74,997 +76,15 @@
 <div id="court"><div id="cScore"></div><div id="cToast"></div><div id="cHint"></div>
   <div id="cBar"><div id="cZone"></div><div id="cSweet"></div><div id="cFill"></div></div></div>
 <script src="../../vendor/three.min.r128.js"></script>
-<script id="core">
-"use strict";
-const T=THREE;
-const clamp=(v,a,b)=>v<a?a:v>b?b:v;
-const smin=(a,b,k)=>{const h=Math.max(k-Math.abs(a-b),0)/k;return Math.min(a,b)-h*h*k*.25;};
-
-/* =====================================================================
-   1. 骨架（静止姿态 = 世界坐标，角色面朝 +Z，左手 = +X）
-   身高 1.98m，8.6 头身；臂展约 2.1m。
-   ===================================================================== */
-const BN=[],BI={};
-function bone(name,parent,head){BI[name]=BN.length;BN.push({name,parent:parent==null?-1:BI[parent],head});}
-bone('pelvis',null,[0,1.02,0]);
-bone('spine','pelvis',[0,1.12,0]);
-bone('chest','spine',[0,1.32,0]);
-bone('neck','chest',[0,1.64,-.02]);
-bone('head','neck',[0,1.72,-.02]);
-for(const [sd,s] of [['L',1],['R',-1]]){
-  bone('upperArm'+sd,'chest',[s*.195,1.60,-.01]);
-  bone('foreArm'+sd,'upperArm'+sd,[s*.215,1.28,-.02]);
-  bone('hand'+sd,'foreArm'+sd,[s*.228,.99,0]);
-}
-for(const [sd,s] of [['L',1],['R',-1]]){
-  bone('thigh'+sd,'pelvis',[s*.095,1.0,0]);
-  bone('shin'+sd,'thigh'+sd,[s*.1,.55,.01]);
-  bone('foot'+sd,'shin'+sd,[s*.105,.09,-.01]);
-}
-bone('ball',null,[0,0,0]);
-const NB=BN.length,INV=new Float64Array(NB*12),DM=BN.map(()=>new T.Matrix4());
-
-/* =====================================================================
-   2. 原语：椭球 / 圆锥胶囊 / 圆角盒 / 平面裁切
-   op: 'u' 平滑并  's' 平滑差  'i' 硬交（裁切）
-   ===================================================================== */
-function prep(P){
-  if(P.t===0){[P.cx,P.cy,P.cz]=P.c;[P.rx,P.ry,P.rz]=P.r;P.bc=P.c;P.br=Math.max(...P.r);}
-  else if(P.t===1){
-    [P.ax,P.ay,P.az]=P.a;P.bax=P.b[0]-P.a[0];P.bay=P.b[1]-P.a[1];P.baz=P.b[2]-P.a[2];
-    P.l2=P.bax*P.bax+P.bay*P.bay+P.baz*P.baz;P.rr=P.r1-P.r2;P.a2=P.l2-P.rr*P.rr;P.il2=1/P.l2;
-    P.bc=[(P.a[0]+P.b[0])/2,(P.a[1]+P.b[1])/2,(P.a[2]+P.b[2])/2];P.br=Math.sqrt(P.l2)/2+Math.max(P.r1,P.r2);
-  }else if(P.t===2){[P.cx,P.cy,P.cz]=P.c;[P.hx,P.hy,P.hz]=P.h;P.bc=P.c;P.br=Math.hypot(...P.h)+P.rr;}
-  else if(P.t===3){const l=Math.hypot(...P.n);[P.nx,P.ny,P.nz]=P.n.map(v=>v/l);}
-  if(P.clip)[P.qx,P.qy,P.qz,P.qo]=P.clip;   // 逐原语裁切平面（该原语自己的骨骼空间）
-  P.wc=[0,0,0];return P;
-}
-function primD(P,x,y,z){
-  switch(P.t){
-    case 0:{
-      const X=(x-P.cx)/P.rx,Y=(y-P.cy)/P.ry,Z=(z-P.cz)/P.rz,k0=Math.sqrt(X*X+Y*Y+Z*Z);
-      const X2=X/P.rx,Y2=Y/P.ry,Z2=Z/P.rz,k1=Math.sqrt(X2*X2+Y2*Y2+Z2*Z2);
-      return k1<1e-9?-Math.min(P.rx,P.ry,P.rz):k0*(k0-1)/k1;
-    }
-    case 1:{
-      const px=x-P.ax,py=y-P.ay,pz=z-P.az,bx=P.bax,by=P.bay,bz=P.baz,l2=P.l2,rr=P.rr,a2=P.a2,il2=P.il2;
-      const Y=px*bx+py*by+pz*bz,Z=Y-l2,qx=px*l2-bx*Y,qy=py*l2-by*Y,qz=pz*l2-bz*Y;
-      const x2=qx*qx+qy*qy+qz*qz,y2=Y*Y*l2,z2=Z*Z*l2,k=Math.sign(rr)*rr*rr*x2;
-      if(Math.sign(Z)*a2*z2>k)return Math.sqrt(x2+z2)*il2-P.r2;
-      if(Math.sign(Y)*a2*y2<k)return Math.sqrt(x2+y2)*il2-P.r1;
-      return (Math.sqrt(x2*a2*il2)+Y*rr)*il2-P.r1;
-    }
-    case 2:{
-      const qx=Math.abs(x-P.cx)-P.hx+P.rr,qy=Math.abs(y-P.cy)-P.hy+P.rr,qz=Math.abs(z-P.cz)-P.hz+P.rr;
-      const mx=Math.max(qx,0),my=Math.max(qy,0),mz=Math.max(qz,0);
-      return Math.sqrt(mx*mx+my*my+mz*mz)+Math.min(Math.max(qx,qy,qz),0)-P.rr;
-    }
-    case 3:return P.nx*x+P.ny*y+P.nz*z-P.off;
-  }
-}
-
-/* =====================================================================
-   3. 配色 & 小工具
-   ===================================================================== */
-const C={
-  skin:0x6b3e28,skinLo:0x5a3322,palm:0x93634e,lip:0x4b271e,lipUp:0x3e2019,mouth:0x241009,lid:0x24140d,
-  hair:0x5c4336,beard:0x2b1c15,brow:0x150e0a,iris:0x160d08,sclera:0x9c8c7d,
-  gold:0xf7a912,purple:0x552583,white:0xf1efea,black:0x18181b,
-  sole:0x4a2378,ballO:0xc4581d,seam:0x1d1511,tape:0xece7dc,nbaR:0xc8102e,nbaB:0x1d428a
-};
-/* hair：肤色 0x6b3e28 与暖灰 0x4d4844 各半——光头寸，只比皮肤暗一点、偏灰 */
-for(const k in C)if(typeof C[k]!=='number')throw new Error('配色缺失: '+k);
-const MAT={skin:0,cloth:1,satin:2,shoe:3,hair:4,eye:5,ball:6};
-function hash3(i,j,k){let h=(i*374761393+j*668265263+k*2147483647)|0;h=(h^(h>>>13))*1274126177|0;return((h^(h>>>16))>>>0)/4294967296;}
-function vnoise(x,y,z,f){ // 低频值噪声（皮肤肤色起伏）
-  x/=f;y/=f;z/=f;const i=Math.floor(x),j=Math.floor(y),k=Math.floor(z),u=x-i,v=y-j,w=z-k;
-  const s=t=>t*t*(3-2*t),U=s(u),V=s(v),W=s(w);let r=0;
-  for(let a=0;a<2;a++)for(let b=0;b<2;b++)for(let c=0;c<2;c++)r+=hash3(i+a,j+b,k+c)*(a?U:1-U)*(b?V:1-V)*(c?W:1-W);
-  return r;
-}
-function lerpTab(t,tab){if(t<=tab[0][0])return tab[0][1];for(let i=1;i<tab.length;i++)if(t<=tab[i][0]){const [a,va]=tab[i-1],[b,vb]=tab[i];return va+(vb-va)*(t-a)/(b-a);}return tab[tab.length-1][1];}
-const OUT={hex:0,m:0,mul:1};
-const set=(hex,m,mul=1)=>{OUT.hex=hex;OUT.m=m;OUT.mul=mul;return OUT;};
-let FS=.012; // 当前上色分辨率——细节带宽至少一格，避免粗网格下五官忽有忽无
-const band=(v,c,w)=>Math.abs(v-c)<Math.max(w,FS)/2;
-
-/* 贴花：像素数据由主线程用 canvas 画好再装进来（Worker 里没有 DOM） */
-let JF=null,JB=null,SW=null;
-function decalFrom(w,h,d){return (u,v)=>{const x=Math.floor(u*w),y=Math.floor(v*h);if(x<0||y<0||x>=w||y>=h)return -1;const i=(y*w+x)*4;if(d[i+3]<128)return -1;return(d[i]<<16)|(d[i+1]<<8)|d[i+2];};}
-function installDecals(D){JF=decalFrom(D.JF.w,D.JF.h,D.JF.d);JB=decalFrom(D.JB.w,D.JB.h,D.JB.d);SW=decalFrom(D.SW.w,D.SW.h,D.SW.d);}
-
-/* =====================================================================
-   4. 分层建模：皮肤 / 球衣 / 短裤 / 袜 / 鞋 / 护臂 / 胶布 / 球
-   ===================================================================== */
-let OPT={sleeve:'black'};
-/* 头部比例：五官和上色都在原来的"设计空间"里写，建模时整体放大 HS、再下移 HDY。
-   放大支点在下颌附近（HP），所以头往上、往两侧长，不往脖子里长；下移让脖子变短。 */
-const HS=1.15,HP=[0,1.74,0],HDY=-.036;
-const headPt=d=>[d[0]*HS,HP[1]+(d[1]-HP[1])*HS+HDY,HP[2]+(d[2]-HP[2])*HS];              // 设计 → 静止
-const headDesign=(x,y,z)=>[x/HS,HP[1]+(y-HDY-HP[1])/HS,HP[2]+(z-HP[2])/HS];              // 静止 → 设计
-const EYE_Y=headPt([0,1.866,0])[1];   // 眼睛那一行在静止空间的高度（体素头部网格按它对齐）
-function headXform(P){
-  if(P.c)P.c=headPt(P.c);if(P.a)P.a=headPt(P.a);if(P.b&&P.t===1)P.b=headPt(P.b);
-  if(P.r)P.r=P.r.map(v=>v*HS);if(P.h)P.h=P.h.map(v=>v*HS);
-  for(const k of ['r1','r2','rr','k'])if(P[k]!=null)P[k]*=HS;
-  return prep(P);
-}
-let LAYERS=[];
-/* ---------- 手：掌心有弧度 + 四指三节 + 拇指三段 + 自动贴球 ----------
-   参考 AIBA motion.js 的手部做法：
-   · 手指分 MCP/PIP/DIP 三节，弯曲按 .18/.52/.30 分到三节（FINGER_BEND_PROFILE）；
-   · 持球时指缝张开，食指、小指外张最多（SHOOT_FINGER_SPLAY 的思路，幅度按大手放大）；
-   · 球落在指根肉垫 + 指腹上，掌心留空（ballGrip 在掌心前方偏指根）；
-   · 出手后手指各弯各的：食指最直指向篮筐，中指/无名指收（HAND_FINGER_FOLLOW）。
-   掌心弧度来自三块肉垫（大鱼际、小鱼际、指根垫）围出的凹陷，加上指根的横弓（食指、小指的
-   指根比中指更靠掌心一侧）。
-   静止姿态里（hand 骨骼空间）：指尖朝 -Y，掌心法线 N0=(-s,0,0)，拇指在 +Z 一侧。 */
-const FINGER={y:[.893,.888,.891,.898],z:[.029,.0095,-.0095,-.028],arch:[.004,0,.002,.006],
-  L:[[.041,.025,.020],[.045,.028,.021],[.042,.027,.020],[.033,.020,.017]],r:[.0104,.0108,.0102,.0091]};   // 科比手大、指节粗
-const THUMB={L:[.036,.031,.025],r:[.013,.011,.0092]};
-const BEND=[.18,.52,.30],TBEND=[.2,.45,.35];
-const HAND_DEF={c:[.35,.42,.5,.56],sp:[.05,.01,-.02,-.06],to:.15,ta:0,tc:.3,grip:0};
-let HANDS=null;   // {L,R}：每只手解好的指节角度（主线程算好，Worker 直接用）
-function handSpec(h){return Object.assign({},HAND_DEF,h||{});}
-function mixHand(a,b,e){const A=handSpec(a),B=handSpec(b),m=(x,y)=>x+(y-x)*e;
-  return {c:A.c.map((v,i)=>m(v,B.c[i])),sp:A.sp.map((v,i)=>m(v,B.sp[i])),to:m(A.to,B.to),ta:m(A.ta,B.ta),tc:m(A.tc,B.tc),grip:m(A.grip,B.grip)};}
-function chainPts(P0,d0,n0,lens,angs){ // 每节在 (d0,n0) 平面内向 n0 累积弯曲
-  const pts=[P0];let th=0,P=P0;
-  for(let j=0;j<lens.length;j++){th+=angs[j];const c=Math.cos(th),sn=Math.sin(th);
-    P=[P[0]+(d0[0]*c+n0[0]*sn)*lens[j],P[1]+(d0[1]*c+n0[1]*sn)*lens[j],P[2]+(d0[2]*c+n0[2]*sn)*lens[j]];pts.push(P);}
-  return pts;
-}
-/* 逐节弯到"指腹刚好贴住球面"：每节在上一节的基础上找第一个贴球角度；够不着就按自由手型弯 */
-function hugAngles(P0,d0,n0,lens,rads,ball,free){
-  const out=[];let th=0,P=P0;
-  for(let j=0;j<lens.length;j++){
-    const R=BALL_R+rads[j]*.8,l=lens[j];
-    const g=t=>{const c=Math.cos(t),sn=Math.sin(t);
-      const x=P[0]+(d0[0]*c+n0[0]*sn)*l-ball[0],y=P[1]+(d0[1]*c+n0[1]*sn)*l-ball[1],z=P[2]+(d0[2]*c+n0[2]*sn)*l-ball[2];
-      return Math.sqrt(x*x+y*y+z*z)-R;};
-    const bis=(a,b)=>{let ga=g(a);for(let k=0;k<24;k++){const m=(a+b)/2,gm=g(m);if((gm>0)===(ga>0)){a=m;ga=gm;}else b=m;}return (a+b)/2;};
-    let t=null;
-    if(g(th)<=0){const lo=th-.6;t=g(lo)>0?bis(lo,th):lo;}      // 已经顶进球里：往回伸直到刚好贴住
-    else for(let a=th;a<th+1.5;a+=.08)if(g(a+.08)<=0){t=bis(a,a+.08);break;}
-    if(t===null)t=th+free[j];
-    t=Math.min(t,th+1.35);out.push(t-th);th=t;
-    const c=Math.cos(th),sn=Math.sin(th);P=[P[0]+(d0[0]*c+n0[0]*sn)*l,P[1]+(d0[1]*c+n0[1]*sn)*l,P[2]+(d0[2]*c+n0[2]*sn)*l];
-  }
-  return out;
-}
-/* 解一只手：返回四指 + 拇指的起点/方向/各节角度。ball：球心在该手静止空间的坐标（可空） */
-function solveHand(s,h,ball){
-  h=handSpec(h);const N0=[-s,0,0],res={f:[],t:null};
-  const palmC=[s*.226,.93,.004];
-  const near=ball&&h.grip>.001&&Math.hypot(ball[0]-palmC[0],ball[1]-palmC[1],ball[2]-palmC[2])<BALL_R+.075;
-  for(let i=0;i<4;i++){
-    const sp=h.sp[i],d0=[0,-Math.cos(sp),Math.sin(sp)],K=[s*(.232-FINGER.arch[i]),FINGER.y[i],FINGER.z[i]];
-    const free=BEND.map(b=>b*h.c[i]);let a=free;
-    if(near){const hug=hugAngles(K,d0,N0,FINGER.L[i],[FINGER.r[i],FINGER.r[i]*.92,FINGER.r[i]*.84],ball,free);a=free.map((v,j)=>v+(hug[j]-v)*h.grip);}
-    res.f.push({K,d0,a});
-  }
-  // 拇指：从大鱼际根部出发；ta 外展（离开四指），to 对掌（转向掌心），tc 屈曲
-  const B=[s*(.232-.006),.972,.02],a0=.95+h.ta,dT0=[0,-Math.cos(a0),Math.sin(a0)],co=Math.cos(h.to),so=Math.sin(h.to);
-  let dT=[dT0[0]*co+N0[0]*so,dT0[1]*co,dT0[2]*co];{const l=Math.hypot(...dT);dT=dT.map(v=>v/l);}
-  let nT=[N0[0]-dT[0]*(N0[0]*dT[0]),-dT[1]*(N0[0]*dT[0]),-dT[2]*(N0[0]*dT[0])];{const l=Math.hypot(...nT)||1;nT=nT.map(v=>v/l);}
-  const tf=TBEND.map(b=>b*h.tc);let ta=tf;
-  if(near){const hug=hugAngles(B,dT,nT,THUMB.L,THUMB.r,ball,tf);ta=tf.map((v,j)=>v+(hug[j]-v)*h.grip*.9);}
-  res.t={B,d0:dT,n0:nT,a:ta};
-  return res;
-}
-/* 按当前骨骼矩阵 DM 和球的世界位置，解两只手 */
-function computeHands(spec,ballW){
-  const out={};
-  for(const [sd,s] of [['L',1],['R',-1]]){
-    const hs=spec&&spec[sd];let br=null;
-    if(ballW&&hs&&hs.grip>0){const v=new T.Vector3(ballW[0],ballW[1],ballW[2]).applyMatrix4(DM[BI['hand'+sd]].clone().invert());br=[v.x,v.y,v.z];}
-    out[sd]=solveHand(s,hs,br);
-  }
-  return out;
-}
-function buildLayers(){
-  const L=[];
-  const layer=(name,prio,color)=>{const o={name,prio,color,prims:[]};L.push(o);return o;};
-  const mk=(ly)=>({
-    e:(bn,c,r,tag,k=.02,x={})=>ly.prims.push(prep({t:0,bone:BI[bn],c,r,tag,k,op:'u',...x})),
-    c:(bn,a,b,r1,r2,tag,k=.02,x={})=>ly.prims.push(prep({t:1,bone:BI[bn],a,b,r1,r2,tag,k,op:'u',...x})),
-    b:(bn,c,h,rr,tag,k=.02,x={})=>ly.prims.push(prep({t:2,bone:BI[bn],c,h,rr,tag,k,op:'u',...x})),
-    se:(bn,c,r,k=.006)=>{const P=prep({t:0,bone:BI[bn],c,r,k,op:'s'});ly.prims.push(P);return P;},
-    pl:(bn,n,off)=>ly.prims.push(prep({t:3,bone:BI[bn],n,off,op:'i'})),
-  });
-
-  /* ---------- 皮肤 ---------- */
-  const SK=layer('skin',0,skinColor),s0=mk(SK);
-  s0.e('chest',[0,1.43,0],[.166,.165,.118],'skin',.032);
-  s0.e('spine',[0,1.22,.002],[.146,.14,.102],'skin',.035);               // 腹核心：收平，胸比腰宽（倒三角）
-  s0.e('pelvis',[0,1.04,-.005],[.165,.115,.115],'skin',.035);
-  for(const s of [1,-1]){
-    s0.e('pelvis',[s*.066,.975,-.047],[.076,.086,.064],'skin',.03);
-    s0.e('spine',[s*.094,1.20,.002],[.062,.115,.08],'skin',.03);          // 侧腹外斜肌
-    s0.e('chest',[s*.072,1.47,.042],[.072,.056,.024],'skin',.025);         // 胸大肌：刚健平整
-    s0.e('chest',[s*.115,1.42,-.035],[.07,.14,.075],'skin',.03);          // 背阔肌
-    s0.e('chest',[s*.072,1.635,-.022],[.070,.042,.052],'skin',.035);         // 斜方肌
-  }
-  s0.e('chest',[0,1.56,-.035],[.145,.07,.075],'skin',.03);
-  s0.c('chest',[-.16,1.595,-.008],[.16,1.595,-.008],.034,.034,'skin',.028);          // 锁骨带
-  s0.c('neck',[0,1.58,-.02],[0,1.78,-.02],.072,.058,'neck',.032);                    // 粗壮运动员颈部
-  // 头：圆润饱满鸡蛋头型（头顶平滑圆弧穹顶，下颌方圆稳健）
-  s0.e('head',[0,1.868,-.008],[.086,.086,.092],'head',.028);              // 颅骨：饱满圆润鸡蛋穹顶
-  s0.e('head',[0,1.852,-.052],[.074,.068,.066],'head',.03);                // 枕骨：后脑往后突，长头型
-  s0.e('head',[0,1.828,.014],[.069,.071,.078],'head',.026);               // 面部体块：收窄，长脸
-  s0.e('head',[0,1.776,.014],[.061,.042,.066],'head',.022);               // 下颌骨
-  s0.e('head',[0,1.758,.048],[.042,.026,.034],'head',.020);               // 下巴：宽圆硬朗，自然收弧
-  for(const s of [1,-1]){
-    s0.e('head',[s*.05,1.779,-.006],[.019,.026,.032],'head',.014);         // 下颌角：更硬朗
-    s0.e('head',[s*.047,1.838,.05],[.021,.016,.024],'head',.016);         // 颧骨：高而挺
-    // 耳：耳根贴头，耳廓后倾外翘、后缘离开头皮约 1cm；耳轮一圈卷边，耳甲腔外凹，加对耳轮/耳屏/耳垂
-    {const E=p=>[s*p[0],p[1],p[2]];
-      s0.e('head',E([.087,1.853,-.004]),[.0045,.022,.014],'ear',.006);                    // 耳根（前缘贴头）
-      s0.e('head',E([.0915,1.855,-.014]),[.0038,.024,.016],'ear',.003);                   // 耳廓板
-      const rim=[[.086,1.879,.004],[.0925,1.887,-.008],[.0975,1.877,-.025],[.0995,1.857,-.032],[.0965,1.836,-.027],[.0925,1.824,-.016]];
-      for(let i=0;i<rim.length-1;i++)s0.c('head',E(rim[i]),E(rim[i+1]),.0046,.0042,'ear',.002);   // 耳轮
-      s0.e('head',E([.092,1.826,-.012]),[.0048,.0095,.0085],'ear',.003);                  // 耳垂
-      s0.e('head',E([.0895,1.848,.007]),[.0042,.0065,.0042],'ear',.003);                  // 耳屏
-      s0.se('head',E([.0985,1.852,-.009]),[.0068,.0125,.0098],.003);                       // 耳甲腔（外凹）
-      s0.c('head',E([.0945,1.873,-.012]),E([.0955,1.842,-.021]),.0028,.0026,'ear',.002);  // 对耳轮
-    }
-  }
-  s0.e('head',[0,1.880,.074],[.058,.010,.012],'head',.012);               // 眉弓：自然贴合额头，不再夸张前凸
-  s0.c('head',[0,1.870,.078],[0,1.826,.098],.008,.011,'head',.01);        // 鼻梁：挺拔秀气
-  s0.e('head',[0,1.822,.092],[.0165,.0102,.0122],'head',.008);            // 鼻翼（宽鼻底）
-  s0.e('head',[0,1.827,.099],[.0118,.0102,.0112],'head',.007);            // 鼻头：略收，不再显得鼻子大
-  for(const s of [1,-1])s0.e('head',[s*.016,1.822,.091],[.010,.010,.011],'head',.006); // 鼻翼两侧
-  s0.e('head',[0,1.796,.085],[.024,.008,.010],'head',.007);               // 上唇
-  s0.e('head',[0,1.785,.082],[.022,.008,.010],'head',.007);               // 下唇
-  for(const s of [1,-1])s0.se('head',[s*.033,1.866,.092],[.016,.010,.012],.006);   // 眼窝
-  for(const s of [1,-1])s0.e('head',[s*.033,1.866,.076],[.013,.013,.013],'head',.002); // 眼球
-  for(const P of SK.prims)if(P.bone===BI.head)headXform(P);                // 头放大 12%、下移 2.8cm
-  // 手臂
-  for(const [sd,s] of [['L',1],['R',-1]]){
-    const u='upperArm'+sd,f='foreArm'+sd,h='hand'+sd,x={s};
-    s0.e(u,[s*.202,1.558,-.012],[.046,.050,.050],'skin',.032,x);            // 三角肌：高度压低至肩带以下，绝不比肩带高
-    s0.c(u,[s*.2,1.56,-.01],[s*.215,1.29,-.02],.05,.04,'skin',.025,x);
-    s0.e(u,[s*.211,1.44,.014],[.034,.07,.034],'skin',.026,x);            // 肱二头：收小、贴骨，修长线条
-    s0.e(u,[s*.216,1.45,-.028],[.037,.08,.034],'skin',.026,x);           // 肱三头
-    s0.e(f,[s*.215,1.28,-.022],[.037,.037,.037],'skin',.02,x);           // 肘
-    s0.c(f,[s*.215,1.28,-.02],[s*.228,1.0,0],.044,.028,'skin',.02,x);
-    s0.e(f,[s*.221,1.21,.002],[.037,.066,.035],'skin',.024,x);           // 肱桡肌
-    // 手掌：薄掌骨 + 三块肉垫围出掌心凹陷 + 手背指节棱
-    s0.e(h,[s*.229,.984,0],[.017,.02,.029],'hand',.012,x);                      // 腕
-    s0.b(h,[s*.232,.938,.002],[.0098,.046,.040],.0085,'hand',.012,x);           // 掌骨板
-    s0.e(h,[s*(.232-.0085),.95,.023],[.0105,.03,.019],'palm',.01,x);             // 大鱼际（拇指根）
-    s0.e(h,[s*(.232-.0075),.934,-.026],[.0085,.034,.013],'palm',.01,x);          // 小鱼际
-    s0.e(h,[s*(.232-.0068),.899,.001],[.0075,.0095,.037],'palm',.008,x);         // 指根肉垫
-    s0.e(h,[s*(.232+.0062),.898,.001],[.0062,.0085,.039],'hand',.008,x);         // 手背指节棱
-    {const HSD=(HANDS&&HANDS[sd])||solveHand(s,null,null),N0=[-s,0,0];
-      for(let i=0;i<4;i++){const F=HSD.f[i],pt=chainPts(F.K,F.d0,N0,FINGER.L[i],F.a),r0=FINGER.r[i];
-        const tag=i===0?'finger0':'finger',rr=[r0,r0*.93,r0*.87,r0*.8];
-        let th=0;
-        for(let j=0;j<3;j++){th+=F.a[j];
-          // 每节记住"指腹朝向"：指腹一侧上掌心色，指尖背面上指甲色
-          const c=Math.cos(th),sn=Math.sin(th),pn=[-F.d0[0]*sn+N0[0]*c,-F.d0[1]*sn+N0[1]*c,-F.d0[2]*sn+N0[2]*c];
-          s0.c(h,pt[j],pt[j+1],rr[j],rr[j+1],tag,j?.0035:.006,{s,pn,pa:pt[j],pb:pt[j+1],tip:j===2});}
-      }
-      const t=HSD.t,tp=chainPts(t.B,t.d0,t.n0,THUMB.L,t.a);
-      for(let j=0;j<3;j++)s0.c(h,tp[j],tp[j+1],THUMB.r[j],j<2?THUMB.r[j+1]:THUMB.r[2]*.86,'thumb',j?.004:.009,{s,pn:t.n0,pa:tp[j],pb:tp[j+1],tip:j===2});
-    }
-  }
-  // 腿
-  for(const [sd,s] of [['L',1],['R',-1]]){
-    const t='thigh'+sd,n='shin'+sd,f='foot'+sd,x={s};
-    s0.c(t,[s*.095,1.0,0],[s*.1,.56,.01],.085,.055,'skin',.03,x);
-    s0.e(t,[s*.1,.8,.035],[.07,.16,.058],'skin',.03,x);                  // 股四头
-    s0.e(t,[s*.075,.62,.03],[.04,.055,.04],'skin',.02,x);                // 股内侧肌（泪滴）
-    s0.e(t,[s*.095,.8,-.04],[.065,.15,.055],'skin',.03,x);               // 腘绳肌
-    s0.e(n,[s*.1,.55,.015],[.05,.05,.05],'skin',.02,x);                  // 膝
-    s0.e(n,[s*.1,.555,.05],[.028,.032,.018],'skin',.012,x);              // 髌骨
-    s0.c(n,[s*.1,.55,.01],[s*.105,.095,-.01],.048,.03,'skin',.02,x);
-    s0.e(n,[s*.108,.42,-.035],[.05,.1,.05],'skin',.025,x);               // 腓肠肌外侧
-    s0.e(n,[s*.09,.43,-.03],[.045,.09,.045],'skin',.025,x);              // 腓肠肌内侧
-    s0.e(f,[s*.105,.09,-.01],[.033,.033,.033],'skin',.02,x);             // 踝
-    s0.b(f,[s*.105,.04,.05],[.04,.03,.12],.02,'skin',.02,x);
-  }
-
-  /* ---------- 球衣（主场金，紫白滚边） ---------- */
-  const JE=layer('jersey',1,jerseyColor),j=mk(JE);
-  j.e('chest',[0,1.43,0],[.175,.175,.126],'j',.03);
-  for(const s of [1,-1]){
-    j.e('chest',[s*.072,1.47,.048],[.082,.062,.032],'j',.03);             // 球衣胸部
-    j.e('chest',[s*.118,1.42,-.035],[.08,.15,.085],'j',.03);            // 背阔肌外侧
-    j.e('chest',[s*.104,1.625,-.008],[.058,.036,.065],'j',.03);          // 肩带：宽度标准精干（~5.4cm）
-    j.e('chest',[s*.108,1.565,.025],[.056,.045,.036],'j',.03);           // 肩带前侧锁骨过渡
-  }
-  j.e('chest',[0,1.56,-.035],[.155,.08,.085],'j',.03);
-  j.e('spine',[0,1.22,.002],[.158,.15,.113],'j',.035);                   // 腹部：比胸口收，读成倒三角
-  j.e('pelvis',[0,1.07,-.01],[.18,.1,.135],'j',.04);
-  JE.cuts=[j.se('chest',[0,1.71,.028],[.082,.092,.085],.015),j.se('chest',[0,1.71,-.035],[.078,.072,.078],.015),
-           j.se('chest',[.234,1.49,-.014],[.09,.172,.148],.012),j.se('chest',[-.234,1.49,-.014],[.09,.172,.148],.012)]; // 袖口：收回到正常深度（下沿约在胸大肌下缘）
-
-  /* ---------- 短裤（缎面，紫色侧条白边） ---------- */
-  const SH=layer('shorts',2,shortsColor),h=mk(SH);
-  h.e('pelvis',[0,1.0,-.005],[.19,.14,.14],'w',.03);
-  for(const [sd,s] of [['L',1],['R',-1]]){
-    h.e('pelvis',[s*.068,.965,-.052],[.09,.096,.08],'w',.03,{s});
-    h.c('thigh'+sd,[s*.098,.98,0],[s*.105,.54,.01],.12,.1,'leg',.03,{s,clip:[0,-1,0,-.565]});   // 裤管口
-  }
-  h.pl('pelvis',[0,1,0],1.112);         // 腰头
-
-  /* ---------- 中筒袜 ---------- */
-  const SO=layer('socks',1,sockColor),o=mk(SO);
-  for(const [sd,s] of [['L',1],['R',-1]]){
-    o.c('shin'+sd,[s*.1,.34,-.005],[s*.105,.09,-.01],.043,.036,'sock',.02,{s,clip:[0,1,0,.31]});
-    o.e('shin'+sd,[s*.1,.3,-.03],[.046,.05,.046],'sock',.02,{s,clip:[0,1,0,.31]});
-    o.e('foot'+sd,[s*.105,.09,-.01],[.037,.037,.037],'sock',.02,{s});
-  }
-
-  /* ---------- 球鞋（Kobe经典低帮，鞋头微翘+倾斜鞋舌+弧形大底） ---------- */
-  const SE=layer('shoes',3,shoeColor),e=mk(SE);
-  for(const [sd,s] of [['L',1],['R',-1]]){
-    const f='foot'+sd,x={s,clip:[0,1,0,.132]};
-    // 大底：后跟稳厚微圆弧，前掌上扬微翘弧度 (Toe Spring)
-    e.b(f,[s*.105,.016,-.032],[.046,.016,.072],.012,'sole',.01,x);
-    e.c(f,[s*.105,.016,.025],[s*.105,.030,.156],.045,.036,'sole',.014,x);
-    // 鞋身：后跟包裹收紧弧度
-    e.e(f,[s*.105,.066,-.060],[.044,.046,.044],'up',.02,x);
-    // 鞋头：前掌微翘圆润流线鞋头
-    e.e(f,[s*.105,.038,.146],[.041,.026,.040],'up',.018,x);
-    // 鞋舌与鞋背：倾斜 38 度流线坡度（鞋舌到鞋头呈现顺畅下滑弧度）
-    e.c(f,[s*.105,.050,.092],[s*.105,.110,-.005],.038,.042,'up',.022,x);
-    // 鞋身前掌侧壁弧度
-    e.e(f,[s*.105,.044,.075],[.044,.028,.055],'up',.020,x);
-  }
-
-  /* ---------- 右臂护套 ---------- */
-  if(OPT.sleeve!=='none'){
-    const SL=layer('sleeve',2,sleeveColor),l=mk(SL),s=-1;
-    const cl={clip:[0,1,0,1.475]};
-    // 压缩护套：只比皮肤厚 2~3mm；手腕处收口到腕围，不再是一截粗筒
-    l.c('upperArmR',[s*.207,1.47,-.012],[s*.215,1.29,-.02],.052,.0425,'sl',.02,cl);
-    l.e('upperArmR',[s*.211,1.44,.014],[.0365,.072,.0365],'sl',.024,cl);
-    l.e('upperArmR',[s*.216,1.45,-.028],[.0395,.082,.0365],'sl',.024,cl);
-    l.e('foreArm'+'R',[s*.215,1.28,-.022],[.039,.039,.039],'sl',.02);
-    l.c('foreArm'+'R',[s*.215,1.28,-.02],[s*.228,1.0,0],.0465,.0295,'sl',.02,{clip:[0,-1,0,-1.0]});
-    l.e('foreArm'+'R',[s*.221,1.21,.002],[.0395,.068,.0375],'sl',.022);
-  }
-  /* ---------- 右手食指胶布（09-10 赛季骨折） ---------- */
-  const TP=layer('tape',3,()=>set(C.tape,MAT.cloth)),tp=mk(TP);
-  {const HSD=(HANDS&&HANDS.R)||solveHand(-1,null,null),F=HSD.f[0],pt=chainPts(F.K,F.d0,[1,0,0],FINGER.L[0],F.a);
-   tp.c('handR',pt[0],pt[1],FINGER.r[0]+.0022,FINGER.r[0]*.92+.0022,'tape',.004);}
-
-  /* ---------- 篮球 ---------- */
-  const BA=layer('ball',4,ballColor);
-  BA.prims.push(prep({t:0,bone:BI.ball,c:[0,0,0],r:[.121,.121,.121],tag:'ball',k:.001,op:'u'}));
-  LAYERS=L;
-}
-
-/* ---------- 上色函数（坐标都在静止姿态空间） ---------- */
-function skinColor(tag,x,y,z,P){
-  if(tag==='head')return headColor(x,y,z);
-  if(tag==='ear'){const [dx,dy,dz]=headDesign(x,y,z),q=Math.hypot((Math.abs(dx)-.096)/.008,(dy-1.852)/.014,(dz+.009)/.011);
-    return set(C.skin,MAT.skin,q<1?.68:.93);}                                  // 耳甲腔里暗一档
-  if(tag==='palm')return set(C.palm,MAT.skin);
-  if(tag==='hand'){const inner=P.s*x<.232-.004;return inner?set(C.palm,MAT.skin):set(C.skin,MAT.skin,.96);}
-  if(tag==='finger'||tag==='finger0'||tag==='thumb'){
-    // 投影到这一节的轴上，看点在指腹侧还是指背侧
-    const ax=P.pb[0]-P.pa[0],ay=P.pb[1]-P.pa[1],az=P.pb[2]-P.pa[2],l2=ax*ax+ay*ay+az*az||1;
-    const t=clamp(((x-P.pa[0])*ax+(y-P.pa[1])*ay+(z-P.pa[2])*az)/l2,0,1);
-    const side=(x-P.pa[0])*P.pn[0]+(y-P.pa[1])*P.pn[1]+(z-P.pa[2])*P.pn[2];
-    if(side>.0045)return set(C.palm,MAT.skin,.97);
-    if(P.tip&&t>.45&&side<-.003)return set(0x9c7563,MAT.skin);            // 指甲
-    return set(C.skin,MAT.skin,.95);
-  }
-  return set(C.skin,MAT.skin);
-}
-/* ---------- 脸部像素图（1.2cm 专用，逐格手摆） ----------
-   14 列 × 22 行，定义在头骨静止空间（头已放大 12%）。列中心 x = ±.006 … ±.078
-   （第 0 列是角色右脸 = 画面左侧），第 8 行是眼睛（y = EYE_Y），每行 1.2cm。
-   头部单独在自己的局部网格里体素化，网格和这张图逐格对齐——转头、仰头时五官不错位。
-   科比是贴头皮的光头寸：头发只比皮肤深一档（H），发际线边缘干脆。
-   s 皮 l 受光 d 暗 n 鼻侧 D 深 | H 寸头 B 眉 | W 眼白 w 眼白(内眦压暗) E 瞳
-   u 上唇 m 唇缝 p 下唇 | b 胡 | . 回落到程序上色 */
-const FACE=[
- "HHHHHHHHHHHHHH", //  0 头顶
- "HHHHHHHHHHHHHH", //  1
- "HHHHHHHHHHHHHH", //  2
- "HHHHHHHHHHHHHH", //  3
- "ssHHHHHHHHHHss", //  4 发际线：正面平直，额角圆收
- "sdllllllllllds", //  5 高额头受光
- "dBBBBBllBBBBBd", //  6 眉：浓、平
- "sBdddnllndddBs", //  7 眉尾下压 + 深眼窝阴影
- "sddWEwllwEWdds", //  8 眼：外眼白 · 瞳 · 压暗的内眼白
- "slsddsllsddsls", //  9 下眼睑、颧骨高光起点
- "dllssdlldsslld", // 10 颧骨、鼻梁受光
- "dsdssnllnssdsd", // 11 鼻头、颧下凹
- "dsdsdDnnDdsdsd", // 12 鼻孔、鼻翼沟
- "dsssdsnnsdsssd", // 13 人中、法令纹
- "dssdskbbksdssd", // 14 细唇上须：中间两格实、两端浅
- "dssdkummukdssd", // 15 唇缝两格，嘴角浅胡往下带
- "sssdsppppsdsss", // 16 下唇（和皮肤接近，不再像张嘴）
- "sssssdbbdsssss", // 17 唇下一小撮
- "ssssskbbksssss", // 18 下巴山羊胡：窄
- ".ssssbbbbssss.", // 19 下巴
- "..sssdbbdsss..", // 20 下巴底
- "....dddddd....", // 21 下颌下
-];
-let FACE_ON=false;
-function faceMap(x,y,z){
-  if(!FACE_ON||z<.03)return null;
-  const col=Math.floor(x/.012)+7,row=Math.round((EYE_Y-y)/.012)+8;
-  if(col<0||col>13||row<0||row>=FACE.length)return null;
-  switch(FACE[row][col]){
-    case 's':return set(C.skin,MAT.skin);case 'l':return set(C.skin,MAT.skin,1.14);case 'd':return set(C.skin,MAT.skin,.8);
-    case 'n':return set(C.skin,MAT.skin,.7);case 'D':return set(0x2a140d,MAT.skin);
-    case 'H':return set(C.hair,MAT.skin);   // 光头寸：按皮肤材质走（有皮肤的光泽）case 'h':return set(0x46301f,MAT.hair);case 'B':return set(C.brow,MAT.hair);
-    case 'E':return set(C.iris,MAT.eye);case 'W':return set(C.sclera,MAT.eye,.82);case 'w':return set(C.sclera,MAT.eye,.66);
-    case 'm':return set(C.mouth,MAT.skin);case 'p':return set(0x57301f,MAT.skin);case 'u':return set(C.lipUp,MAT.skin,.92);   // 下唇压暗：受光后不再像张嘴
-    case 'b':return set(C.beard,MAT.hair);case 'k':return set(0x4a3024,MAT.hair);
-  }
-  return null;
-}
-function headColor(x,y,z){
-  {const fm=faceMap(x,y,z);if(fm)return fm;}
-  [x,y,z]=headDesign(x,y,z);
-  const ax=Math.abs(x);
-  // 1. 寸头（经典圆寸造型）：发际线平直规整，额角微圆，后脑自然收于颈后
-  // 颅骨顶部全覆盖头发，告别秃顶与奇形怪状发际
-  if(z > .015){
-    // 前额与鬓角
-    let hl = 1.906 - .006 * Math.min(1, Math.pow(ax / .042, 2));
-    if(ax > .042) hl -= (ax - .042) * 1.5; // 额角微后移折角
-    if(y > hl) return set(C.hair, MAT.hair, FS<.01?.97+hash3(Math.floor(x/.0022),Math.floor(y/.0022),Math.floor(z/.0022))*.06:1);
-    // 耳前垂直鬓角 (薄而利落)
-    if(ax > .062 && ax < .078 && z > -.018 && z < .020 && y > 1.832) return set(C.hair, MAT.hair);
-  } else {
-    // 后脑勺发际线：从耳后平缓包裹至颈后 (y: 1.865 -> 1.785)
-    const t = Math.max(0, Math.min(1, (-z) / .088));
-    const hl = 1.865 - .080 * t;
-    if(y > hl) return set(C.hair, MAT.hair, FS<.01?.97+hash3(Math.floor(x/.0022),Math.floor(y/.0022),Math.floor(z/.0022))*.06:1);
-  }
-
-  // 2. 胡须：科比标志性的精致圈胡（上唇胡 + 下唇中垂须 + 下巴胡），面颊两侧干净无胡
-  if(FS>=.01&&z > .055){
-    // 唇上须（八字胡）：紧贴上唇上方，绝不蔓延到脸颊
-    if(ax < .024 && y >= 1.802 && y <= 1.814) return set(C.beard, MAT.hair);
-    // 唇下垂须 (soul patch)
-    if(ax < .011 && y >= 1.764 && y < 1.778) return set(C.beard, MAT.hair);
-    // 下巴圈胡 (goatee)：规整收于下巴中央区，两颊完全保留干净肤色
-    if(ax < .028 && y < 1.764 && z > .042) return set(C.beard, MAT.hair);
-  }
-  // 下颌骨底沿极淡短茬 (仅底面，正面不可见)
-  if(y < 1.748 && ax < .045 && z > -.01) return set(C.beard, MAT.hair);
-
-  // 3. 面部五官细节（眉、眼、唇）
-  if(z > .052){
-    const ey = y - 1.866, ex = ax - .033;
-    if(FS >= .01){ // 粗体素分辨率
-      if(FS < .016 && ax > .012 && ax < .058 && band(ey, .0235, FS)) return set(C.brow, MAT.hair);
-      if(band(ey, -.001, FS) && Math.abs(ex) < FS * 1.5){
-        if(Math.abs(ex) < FS * .55) return set(C.iris, MAT.eye);
-        return FS < .016 && ex > 0 ? set(C.sclera, MAT.eye, .85) : set(C.skin, MAT.skin, .72);
-      }
-    } else { // 平滑/高模：逐区域手绘（D 平滑、C 像素化都走这里）
-      const grain=(q,sc)=>hash3(Math.floor(x/sc)+q,Math.floor(y/sc),Math.floor(z/sc));
-      // 眉：粗、平，眉头略方、眉尾收细；边缘按毛发颗粒羽化
-      const bx=(ax-.011)/.048;
-      if(bx>=0&&bx<=1){
-        const cy=.0158+.0028*Math.sin(bx*Math.PI*.85)-.0022*bx*bx,th=.0033*(1-.45*bx)+.0006,d=Math.abs(ey-cy);
-        if(d<th&&(d<th*.62||grain(0,.0016)>.35))return set(C.brow,MAT.hair,.88+grain(3,.0012)*.25);
-      }
-      // 眼：杏仁形睁眼范围（外眼角略高），睫毛线，深眼窝
-      const w=.0148,q=1-(ex/w)*(ex/w);
-      if(q>0){
-        const up=.0043*Math.pow(q,.6)+.0007*(ex/w),lo=-.0033*Math.pow(q,.75)+.0005*(ex/w);
-        if(ey>=up&&ey<up+.0017+.0008*(ex>0?ex/w:0))return set(C.lid,MAT.hair);            // 上睫毛线，外侧略粗
-        if(ey<up&&ey>lo){
-          const r=Math.hypot(ex+.0006,ey-.0004);
-          if(r<.0058)return set(r<.0025?0x080403:C.iris,MAT.eye);                           // 虹膜 + 瞳孔
-          return set(0x8f8173,MAT.eye,1-.3*Math.abs(ex/w));                                 // 眼白，眼角更暗
-        }
-        if(ey>=up+.0017&&ey<up+.0085)return set(C.skin,MAT.skin,.8);                       // 上眼睑压在深眼窝里
-        if(ey<=lo&&ey>lo-.0045)return set(C.skin,MAT.skin,.86);                            // 下眼睑
-      }
-      if(Math.abs(ex)<.02&&ey<-.006&&ey>-.017)return set(C.skin,MAT.skin,.92);              // 眼袋阴影
-      // 鼻孔、鼻翼沟、法令纹
-      if(Math.hypot((ax-.0095)/.0056,(y-1.8185)/.0027)<1&&z>.084)return set(0x2a140d,MAT.skin);
-      if(Math.hypot((ax-.0185)/.0022,(y-1.822)/.006)<1&&z>.08)return set(C.skin,MAT.skin,.78);
-      {const t=clamp((1.818-y)/.03,0,1),fx=.021+.009*t;if(y<1.818&&y>1.786&&Math.abs(ax-fx)<.0016&&z>.066)return set(C.skin,MAT.skin,.86);}
-      // 唇：上唇带唇峰，下唇更饱满、中间受光；嘴角略下沉
-      const mx=ax/.0235;
-      if(mx<1&&z>.07){
-        const my=1.7915-.0014*mx*mx;
-        if(Math.abs(y-my)<.00105)return set(C.mouth,MAT.skin);
-        const upTop=my+.0062*(1-.55*mx*mx)+.0011*Math.cos(mx*Math.PI*2.2)*(1-mx);
-        if(y>my&&y<upTop)return set(C.lipUp,MAT.skin);
-        const loBot=my-.0088*Math.sqrt(Math.max(0,1-mx*mx*.92));
-        if(y<my&&y>loBot)return set(C.lip,MAT.skin,mx<.45&&y<my-.0028&&y>my-.0062?1.18:1);
-      }
-      // 胡须：唇上须 / 唇下须 / 山羊胡，边缘做胡茬颗粒
-      const stub=g=>grain(7,.0014)<g;
-      {const m2=Math.min(1,ax/.0235),lipTop=1.7915-.0014*m2*m2+.0062*(1-.55*m2*m2)+.0011*Math.cos(m2*Math.PI*2.2)*(1-m2);
-        if(ax<.027&&y>lipTop+.0006&&y<lipTop+.0062-.0022*m2&&z>.07&&(ax<.021||stub(.55)))return set(C.beard,MAT.hair,.9+grain(9,.001)*.25);}
-      {const t=clamp((1.8-y)/.036,0,1),cx=.0262+.003*t;                                   // 嘴角下连：圈胡
-        if(y<1.8&&y>1.764&&Math.abs(ax-cx)<.0022&&z>.066&&stub(.45))return set(C.beard,MAT.hair,1.25+grain(9,.001)*.25);}   // 嘴角只留淡淡胡茬
-      if(ax<.0115&&y>=1.7635&&y<1.778&&z>.07&&(ax<.008||stub(.5)))return set(C.beard,MAT.hair,.9+grain(9,.001)*.25);
-      if(ax<.02&&y<1.764&&y>1.738&&z>.04&&(ax<.015||stub(.5)))return set(C.beard,MAT.hair,.9+grain(9,.001)*.25);   // 下巴山羊胡：窄
-    }
-    // 嘴唇（体素分辨率回落）
-    if(FS>=.01&&ax < .024 && band(y, 1.7915, .004) && z > .070) return set(C.mouth, MAT.skin); // 唇缝
-    if(FS>=.01&&ax < .025 && y > 1.778 && y < 1.802 && z > .070) return FS >= .01 ? set(C.skin, MAT.skin, .8) : y > 1.791 ? set(C.lipUp, MAT.skin) : set(C.lip, MAT.skin);
-    // 鼻底阴影
-    if(FS>=.01&&y > 1.812 && y < 1.822 && ax > .007 && ax < .018 && z > .085) return set(C.skin, MAT.skin, .7);
-  }
-  return set(C.skin, MAT.skin);
-}
-function jerseyColor(tag,x,y,z){
-  let dt=9;for(const P of LAYERS_BY.jersey.cuts)dt=Math.min(dt,primD(P,x,y,z));
-  if(dt<.016)return set(C.purple,MAT.cloth);
-  if(dt<.025)return set(C.white,MAT.cloth);
-  if(y>1.2&&y<1.7&&Math.abs(x)<.25){
-    const front=z>0,u=((front?x:-x)+.25)/.5,v=(1.7-y)/.5,c=(front?JF:JB)(u,v);
-    if(c>=0)return set(c,MAT.cloth);
-  }
-  return set(C.gold,MAT.cloth);
-}
-function shortsColor(tag,x,y,z,P){
-  if(y>1.074)return band(y,1.093,.008)?set(C.white,MAT.satin):set(C.purple,MAT.satin);
-  const s=P&&P.s||Math.sign(x)||1;
-  if(tag==='leg'){
-    if(y<.588)return set(C.purple,MAT.satin);
-    if(y<.598)return set(C.white,MAT.satin);
-  }
-  const dx=s*(x-s*.1);
-  if(dx>.03||Math.abs(x)>.15){                  // 外侧竖条
-    const dz=Math.abs(z-.005);
-    if(dz<.022)return set(C.purple,MAT.satin);
-    if(dz<.031)return set(C.white,MAT.satin);
-  }
-  if(s===1&&z>0){const r=Math.hypot(x-.125,y-.76);if(r<.03)return set(C.purple,MAT.satin);if(r<.038)return set(C.white,MAT.satin);}
-  return set(C.gold,MAT.satin);
-}
-function sockColor(tag,x,y){
-  if(y>.278&&y<.3)return set(C.white,MAT.cloth,band(y,.289,.006)?.86:1);
-  return set(C.white,MAT.cloth);
-}
-function shoeColor(tag,x,y,z,P){
-  const s=P.s,lx=s*(x-s*.105);
-  const soleY = z > .02 ? .011 + .018 * Math.min(1, Math.max(0, (z - .02) / .135)) : .011;
-  if(y < soleY) return set(C.sole, MAT.shoe);
-  if(y < soleY + .024) return set(C.white, MAT.shoe);
-  if(y > .116 && z < .02) return set(C.purple, MAT.shoe);               // 鞋领内衬
-  if(z < -.056 && y < .098) return set(C.purple, MAT.shoe);              // 后跟稳定片
-  if(Math.abs(lx) > .022){const c=SW((z+.11)/.32,(.16-y)/.16);if(c>=0)return set(c,MAT.shoe);}
-  if(Math.abs(lx) < .017 && y > .086 && z > -.01 && z < .12)           // 鞋带区
-    return set(Math.floor((z+.01)/Math.max(.016,FS))%2?C.white:C.gold,MAT.shoe,.97);
-  return set(C.gold,MAT.shoe);
-}
-function sleeveColor(tag,x,y){
-  const col=OPT.sleeve==='white'?C.white:C.black;
-  if(y>1.459)return set(OPT.sleeve==='white'?C.purple:C.white,MAT.cloth);
-  return set(col,MAT.cloth);
-}
-function ballColor(tag,x,y,z){
-  const e=BALL_INV;const lx=e[0]*x+e[4]*y+e[8]*z,ly=e[1]*x+e[5]*y+e[9]*z,lz=e[2]*x+e[6]*y+e[10]*z; // 球内部朝向
-  const l=Math.hypot(lx,ly,lz)||1,nx=lx/l,ny=ly/l,nz=lz/l,w=Math.max(.045,FS*.42/.121);
-  if(Math.abs(nx)<w||Math.abs(ny)<w||Math.abs(Math.abs(nz)-(.62+.3*nx*nx-.2*ny*ny))<w)return set(C.seam,MAT.ball);
-  return set(C.ballO,MAT.ball);
-}
-let LAYERS_BY={},LAYERS_PRIO=[],BALL_INV=[1,0,0,0,0,1,0,0,0,0,1,0];
-
-/* =====================================================================
-   5. 姿势：躯干 FK + 四肢两骨 IK
-   动作阶段参考 AIBA 的 T台投篮包（src/data/tstage-motion-pack.js 的关节世界坐标 +
-   motion.js 的持球/置球点/随挥注释），按科比 1.98m 的比例重新摆，不复刻四元数：
-     准备 ready_pose1   球在体前、屈膝下沉、投篮侧脚在前
-     置球 shot_high     球在额头前上方，投篮手掌托在球下、手腕后折，辅助手贴球侧
-     出手 shot_release  投篮臂几乎伸直；AIBA 的规矩是"球先离手、再压腕"
-     随挥 release_keep_land  落地缓冲，投篮手停在高处鹅颈压腕，辅助手放下
-   持球姿势先定球，再把掌心贴到球面上反解手臂——所以手一定贴球。
-   ===================================================================== */
-const BALL_R=.121;
-const V3=a=>new T.Vector3(a[0],a[1],a[2]);
-const nrm=a=>{const l=Math.hypot(a[0],a[1],a[2])||1;return [a[0]/l,a[1]/l,a[2]/l];};
-function perp(v,d){const r=v.clone(),k=r.dot(d);r.addScaledVector(d,-k);const l=r.length();return l<1e-4?null:r.multiplyScalar(1/l);}
-function frameRot(a0,b0,a1,b1){ // 旋转 R：R·a0=a1，且 b0 的垂直分量转到 b1 的垂直分量
-  const m=(a,b)=>{a=a.clone().normalize();b=perp(b,a)||perp(new T.Vector3(1,0,0),a);return new T.Matrix4().makeBasis(a,b,new T.Vector3().crossVectors(a,b));};
-  return m(a1,b1).multiply(m(a0,b0).transpose());
-}
-function twoBone(S,G,L1,L2,pole){
-  const d=G.clone().sub(S),dir=d.clone().normalize();let dl=clamp(d.length(),Math.abs(L1-L2)+1e-4,L1+L2-1e-4);
-  const a=(L1*L1-L2*L2+dl*dl)/(2*dl),h=Math.sqrt(Math.max(0,L1*L1-a*a));
-  const p=perp(V3(pole),dir)||perp(new T.Vector3(0,0,1),dir);
-  return {E:S.clone().addScaledVector(dir,a).addScaledVector(p,h),G:S.clone().addScaledVector(dir,dl)};
-}
-const Z3=new T.Vector3(0,0,1);
-const POSES={
-  idle:{name:'站立',ground:true,root:[0,0,0],hand:{L:{c:[.4,.5,.6,.68],sp:[.04,.01,-.02,-.05],tc:.35},R:{c:[.32,.42,.52,.6],sp:[.04,.01,-.02,-.05],tc:.3}},rot:{
-    pelvis:[0,.12,.015],spine:[.02,-.04,0],chest:[.02,-.06,-.012],neck:[.02,0,0],head:[-.03,.1,0],
-    upperArmL:[.06,0,.1],foreArmL:[-.28,0,0],handL:[0,-.1,0],
-    upperArmR:[.02,0,-.09],foreArmR:[-.22,0,0],handR:[0,.1,0],
-    thighL:[-.05,.08,.07],shinL:[.1,0,0],footL:[-.05,-.12,-.085],
-    thighR:[.03,-.04,-.03],shinR:[.03,0,0],footR:[-.06,.05,.045]}},
-  // 持球（AIBA ready）：投篮手托在球后方、指尖朝上张开，辅助手扶球侧；手腕朝向从这里锁到置球点
-  hold:{name:'持球准备',root:[0,-.12,0],ball:[-.1,1.0,.34],
-    hand:{R:{sp:[.22,.07,-.08,-.22],to:.3,ta:.3,tc:.25,grip:1},L:{sp:[.16,.05,-.06,-.17],to:.2,ta:.4,tc:.2,grip:.95}},
-    rot:{pelvis:[.14,.3,0],spine:[.12,-.02,0],chest:[.08,-.12,0],neck:[-.1,0,0],head:[-.12,-.14,0]},
-    ik:{armR:{on:'ball',u:[-.4,-.05,-.92],f:[.05,1,.2],pole:[-.6,-.4,-.6]},
-        armL:{on:'ball',u:[.92,.1,.25],f:[0,.9,.45],pole:[.7,-.5,-.2]},
-        legR:{ankle:[-.16,.09,.12],pole:[-.2,0,1],foot:[-.12,0,1]},
-        legL:{ankle:[.17,.09,-.07],pole:[.35,0,1],foot:[.35,0,1]}}},
-  // 置球点（AIBA shot_high）：球压在指根和指腹上，掌心留空、手腕后折；辅助手只扶侧面
-  set:{name:'置球点',root:[0,-.03,0],ball:[-.1,2.07,.24],
-    hand:{R:{sp:[.2,.06,-.07,-.2],to:.25,ta:.35,tc:.2,grip:1},L:{sp:[.12,.04,-.05,-.14],to:.15,ta:.45,tc:.15,grip:.9}},
-    rot:{pelvis:[0,.22,0],spine:[-.02,0,0],chest:[-.03,-.1,0],neck:[0,0,0],head:[-.12,-.12,0]},
-    ik:{armR:{on:'ball',u:[-.1,-1,-.28],f:[0,.25,-1],pole:[-.15,-.3,1]},
-        armL:{on:'ball',u:[1,.05,-.05],f:[0,1,.15],pole:[.8,-.4,.2]},
-        legR:{ankle:[-.14,.09,.08],pole:[-.1,0,1],foot:[-.1,0,1]},
-        legL:{ankle:[.15,.09,-.03],pole:[.25,0,1],foot:[.3,0,1]}}},
-  // 出手瞬间：球还压在指腹上，手腕尚未压下（AIBA：球先离手、再压腕）
-  fade:{name:'后仰出手',root:[0,.34,-.06],
-    hand:{R:{c:[.1,.12,.16,.2],sp:[.12,.04,-.05,-.13],to:.2,ta:.3,tc:.15,grip:.85},L:{c:[.1,.12,.16,.22],sp:[.1,.03,-.04,-.1],ta:.4,tc:.15}},
-    rot:{pelvis:[-.18,.22,0],spine:[-.14,0,0],chest:[-.12,-.08,0],neck:[.2,0,0],head:[.14,-.1,0]},
-    ik:{armR:{wrist:(c,S,L)=>S.clone().addScaledVector(V3(nrm([-.03,1,.42])),L-.012),F:[0,.28,1],N:[0,1,-.3],pole:[0,0,1]},
-        armL:{wrist:(c,S,L)=>S.clone().addScaledVector(V3(nrm([-.28,1,.3])),L-.05),F:[-.1,1,.25],N:[-1,0,0],pole:[1,0,.3]},
-        legR:{rel:[-.005,-.8,.07],pole:[0,0,1],foot:[0,-.75,1]},
-        legL:{rel:[.01,-.7,.2],pole:[0,0,1],foot:[0,-.6,1]}},
-    // 球还压在指腹上，刚要离手：手掌坐标系里掌心侧 + 指根处
-    ball:c=>c.P('handR',[-.218+BALL_R+.012,.872,.004])},
-  catch:{name:'接球',root:[0,-.03,0],ball:[-.03,1.4,.6],
-    hand:{R:{sp:[.2,.06,-.07,-.2],to:.35,ta:.3,tc:.2,grip:1},L:{sp:[.2,.06,-.07,-.2],to:.35,ta:.3,tc:.2,grip:1}},
-    rot:{pelvis:[.03,.18,0],spine:[.04,0,0],chest:[.02,-.08,0],neck:[-.02,0,0],head:[-.06,-.1,0]},
-    ik:{armR:{on:'ball',u:[-.85,.05,-.5],f:[0,1,.3],pole:[-.7,-.7,0]},
-        armL:{on:'ball',u:[.85,.05,-.5],f:[0,1,.3],pole:[.7,-.7,0]},
-        legR:{ankle:[-.15,.09,.08],pole:[-.15,0,1],foot:[-.12,0,1]},
-        legL:{ankle:[.16,.09,-.04],pole:[.3,0,1],foot:[.3,0,1]}}},
-  // 压腕：出手后约 0.1s 才翻腕——掌心朝地、指尖指向篮筐，手指各弯各的
-  snap:{name:'压腕（天鹅颈）',root:[0,.24,-.05],
-    hand:{R:{c:[.2,.42,.62,.5],sp:[.03,0,-.03,-.07],to:.1,ta:.05,tc:.35},L:{c:[.12,.14,.2,.26],sp:[.1,.03,-.04,-.1],ta:.4,tc:.15}},
-    rot:{pelvis:[-.17,.22,0],spine:[-.13,0,0],chest:[-.11,-.08,0],neck:[.18,0,0],head:[.12,-.1,0]},
-    ik:{armR:{wrist:(c,S,L)=>S.clone().addScaledVector(V3(nrm([-.03,1,.4])),L-.012),F:[0,-.74,.67],N:[0,-.67,-.74],pole:[0,0,1]},
-        armL:{wrist:(c,S,L)=>S.clone().addScaledVector(V3(nrm([-.4,1,.3])),L-.06),F:[-.15,1,.3],N:[-1,0,.1],pole:[1,0,.3]},
-        legR:{rel:[-.005,-.82,.06],pole:[0,0,1],foot:[0,-.7,1]},
-        legL:{rel:[.01,-.74,.17],pole:[0,0,1],foot:[0,-.6,1]}}},
-  follow:{name:'随挥落地',root:[0,-.08,0],
-    hand:{R:{c:[.2,.45,.66,.55],sp:[.03,0,-.03,-.07],to:.1,ta:.05,tc:.35},L:{c:[.35,.45,.55,.62],sp:[.04,.01,-.02,-.05],tc:.3}},
-    rot:{pelvis:[.06,.16,0],spine:[.02,0,0],chest:[-.02,-.06,0],neck:[0,0,0],head:[-.1,-.1,0]},
-    ik:{armR:{wrist:(c,S,L)=>S.clone().addScaledVector(V3(nrm([-.03,1,.36])),L-.014),F:[0,-.76,.65],N:[0,-.65,-.76],pole:[0,0,1]},
-        armL:{wrist:(c,S)=>S.clone().add(V3([.075,-.52,.13])),F:[0,-1,.2],N:[-1,0,.1],pole:[0,-.2,-1]},
-        legR:{ankle:[-.14,.09,.06],pole:[-.15,0,1],foot:[-.12,0,1]},
-        legL:{ankle:[.16,.09,-.02],pole:[.3,0,1],foot:[.3,0,1]}}},
-};
-function chainIK(W,kind,sd,spec,ballPos,ctx){
-  const s=sd==='L'?1:-1,arm=kind==='arm',rh=i=>V3(BN[i].head);
-  const [ia,ib,ic]=(arm?['upperArm','foreArm','hand']:['thigh','shin','foot']).map(n=>BI[n+sd]);
-  const S=new T.Vector3().setFromMatrixPosition(W[ia]),L1=rh(ib).distanceTo(rh(ia)),L2=rh(ic).distanceTo(rh(ib));
-  let G,endRot;
-  if(arm){
-    let F,N;
-    if(spec.on==='ball'){const u=V3(nrm(spec.u));N=u.clone().negate();F=perp(V3(spec.f),N);
-      G=ballPos.clone().addScaledVector(u,BALL_R+.014).addScaledVector(F,-.08);}   // 接触点在指根肉垫，掌心和掌根留空
-    else{G=typeof spec.wrist==='function'?spec.wrist(ctx,S,L1+L2):V3(spec.wrist);F=V3(nrm(spec.F));N=perp(V3(spec.N),F);}
-    endRot=frameRot(new T.Vector3(0,-1,0),new T.Vector3(-s,0,0),F,N);
-  }else{
-    G=spec.rel?S.clone().add(V3(spec.rel)):V3(spec.ankle);
-    const f=V3(nrm(spec.foot));endRot=frameRot(Z3,new T.Vector3(0,1,0),f,perp(new T.Vector3(0,1,0),f)||new T.Vector3(0,1,0));
-  }
-  const k=twoBone(S,G,L1,L2,spec.pole||[0,0,1]);
-  const d1r=rh(ib).sub(rh(ia)).normalize(),d2r=rh(ic).sub(rh(ib)).normalize();
-  const d1=k.E.clone().sub(S).normalize(),d2=k.G.clone().sub(k.E).normalize();
-  const poleF=perp(V3(spec.pole||[0,0,1]),d1);
-  const f1=(arm?perp(d2,d1):perp(d2.clone().negate(),d1))||poleF;
-  const f2=(arm?perp(d1.clone().negate(),d2):perp(d1,d2))||f1;
-  W[ia]=frameRot(d1r,Z3,d1,f1).setPosition(S);
-  W[ib]=frameRot(d2r,Z3,d2,f2).setPosition(k.E);
-  W[ic]=endRot.setPosition(k.G);
-}
-/* 求一个姿势：返回每根骨头的关节世界矩阵 W（把"相对关节的静止坐标"变到世界）和球心 */
-function solvePose(P){
-  const W=[],E=new T.Euler(),R=new T.Matrix4(),ik=P.ik||{};
-  const rh=i=>V3(BN[i].head);
-  const ctx={P:(bn,p)=>{const i=BI[bn];return V3(p).sub(rh(i)).applyMatrix4(W[i]);}};
-  const ballPos=Array.isArray(P.ball)?V3(P.ball):null;
-  const run=root=>{
-    W.length=0;
-    for(let i=0;i<NB;i++){
-      const b=BN[i];if(b.name==='ball'||W[i])continue;
-      const r=P.rot[b.name]||[0,0,0];E.set(r[0],r[1],r[2],'XYZ');R.makeRotationFromEuler(E);
-      const hp=b.parent<0?[0,0,0]:BN[b.parent].head,off=b.parent<0?root:[0,0,0];
-      const Lm=new T.Matrix4().makeTranslation(b.head[0]-hp[0]+off[0],b.head[1]-hp[1]+off[1],b.head[2]-hp[2]+off[2]).multiply(R);
-      W[i]=b.parent<0?Lm:W[b.parent].clone().multiply(Lm);
-      const m=b.name.match(/^(upperArm|thigh)(L|R)$/);
-      if(m){const kind=m[1]==='thigh'?'leg':'arm',key=kind+m[2];if(ik[key])chainIK(W,kind,m[2],ik[key],ballPos,ctx);}
-    }
-  };
-  const root=P.root.slice();run(root);
-  if(P.ground){ // 纯 FK 姿势：鞋底最低点落在 y=0
-    let mn=9;for(const sd of ['L','R'])for(const dx of [-.045,.045])for(const z of [-.1,-.02,.07,.19]){
-      const s=sd==='L'?1:-1,fi=BI['foot'+sd],v=new T.Vector3(s*.105+dx,0,z).sub(rh(fi)).applyMatrix4(W[fi]);mn=Math.min(mn,v.y);}
-    root[1]-=mn;run(root);
-  }
-  return {W,ball:typeof P.ball==='function'?P.ball(ctx):ballPos};
-}
-function dmFromW(W,i){return W[i].clone().multiply(new T.Matrix4().makeTranslation(-BN[i].head[0],-BN[i].head[1],-BN[i].head[2]));}
-const BALL_BASE=new T.Euler(.5,.9,.2);
-function finalizePose(ballOn){
-  const bi=BI.ball;
-  for(let i=0;i<NB;i++){const inv=DM[i].clone().invert().elements;const o=i*12;
-    INV[o]=inv[0];INV[o+1]=inv[1];INV[o+2]=inv[2];INV[o+3]=inv[4];INV[o+4]=inv[5];INV[o+5]=inv[6];
-    INV[o+6]=inv[8];INV[o+7]=inv[9];INV[o+8]=inv[10];INV[o+9]=inv[12];INV[o+10]=inv[13];INV[o+11]=inv[14];}
-  BALL_INV=DM[bi].clone().extractRotation(DM[bi]).invert().elements;
-  for(const ly of LAYERS){
-    let mn=[9,9,9],mx=[-9,-9,-9];ly.has=false;
-    for(const p of ly.prims){if(p.t===3)continue;const v=new T.Vector3(...p.bc).applyMatrix4(DM[p.bone]);p.wc=[v.x,v.y,v.z];
-      if(p.op!=='u')continue;ly.has=true;for(let a=0;a<3;a++){mn[a]=Math.min(mn[a],p.wc[a]-p.br);mx[a]=Math.max(mx[a],p.wc[a]+p.br);}}
-    if(!ballOn&&ly.name==='ball')ly.has=false;
-    ly.wc=mn.map((v,a)=>(v+mx[a])/2);ly.wr=Math.hypot(mx[0]-mn[0],mx[1]-mn[1],mx[2]-mn[2])/2;ly.mn=mn;ly.mx=mx;
-  }
-  LAYERS_BY={};for(const ly of LAYERS)LAYERS_BY[ly.name]=ly;
-  LAYERS_PRIO=LAYERS.slice().sort((a,b)=>b.prio-a.prio);
-}
-function applyPose(P){
-  const S=solvePose(P),bi=BI.ball;
-  for(let i=0;i<NB;i++)if(S.W[i])DM[i].copy(dmFromW(S.W,i));
-  if(S.ball)DM[bi].makeRotationFromEuler(BALL_BASE).setPosition(S.ball);else DM[bi].makeTranslation(0,-50,0);
-  HANDS=computeHands(P.hand,S.ball?S.ball.toArray():null);buildLayers();
-  finalizePose(!!S.ball);
-  return (bn,p)=>new T.Vector3(...p).applyMatrix4(DM[BI[bn]]).toArray();
-}
-function setDM(arr,ballOn){for(let i=0;i<NB;i++)DM[i].fromArray(arr,i*16);finalizePose(ballOn);}
-
-/* =====================================================================
-   6. 场求值（层次逻辑：外层衣物绝对包裹与遮蔽底层肉体）
-   ===================================================================== */
-const BP=new Float64Array(NB*3),BS=new Int32Array(NB);let STAMP=1;
-function rest(b){ // 当前采样点在骨骼 b 静止空间里的坐标（按采样点缓存）
-  if(BS[b]!==STAMP){const o=b*12,e=INV,x=_x,y=_y,z=_z;
-    BP[b*3]=e[o]*x+e[o+3]*y+e[o+6]*z+e[o+9];BP[b*3+1]=e[o+1]*x+e[o+4]*y+e[o+7]*z+e[o+10];BP[b*3+2]=e[o+2]*x+e[o+5]*y+e[o+8]*z+e[o+11];BS[b]=STAMP;}
-}
-let _x=0,_y=0,_z=0,_bestP=null,_bestD=9;
-let PF=null,CM=null;   // PF: 原语过滤；CM: 局部网格 → 世界 的矩阵（头部网格用）
-function layerD(ly,track){
-  let d=1e9;const x=_x,y=_y,z=_z;
-  for(const P of ly.prims){
-    if(PF!==null&&!PF(P))continue;
-    let lb=-9;
-    if(P.t!==3){const dx=x-P.wc[0],dy=y-P.wc[1],dz=z-P.wc[2];lb=Math.sqrt(dx*dx+dy*dy+dz*dz)-P.br;}
-    if(P.op==='u'){
-      if(lb>=d+P.k&&!track)continue;
-      if(track&&lb>=d+P.k&&lb>=_bestD)continue;
-      rest(P.bone);const b=P.bone*3;let di=primD(P,BP[b],BP[b+1],BP[b+2]);
-      if(P.clip)di=Math.max(di,P.qx*BP[b]+P.qy*BP[b+1]+P.qz*BP[b+2]-P.qo);
-      if(track&&di<_bestD){_bestD=di;_bestP=P;}
-      d=smin(d,di,P.k);
-    }else if(P.op==='s'){
-      if(lb>=P.k)continue;rest(P.bone);const b=P.bone*3,di=primD(P,BP[b],BP[b+1],BP[b+2]);
-      const h=Math.max(P.k-Math.abs(d+di),0)/P.k;d=Math.max(d,-di)+h*h*P.k*.25;   // 平滑差集
-    }else{rest(P.bone);const b=P.bone*3;d=Math.max(d,primD(P,BP[b],BP[b+1],BP[b+2]));}
-  }
-  return d;
-}
-function field(x,y,z){
-  _x=x;_y=y;_z=z;STAMP++;let dSkin=1e9,dOuter=1e9;
-  for(const ly of LAYERS){
-    if(!ly.has)continue;
-    const dx=x-ly.wc[0],dy=y-ly.wc[1],dz=z-ly.wc[2],lb=Math.sqrt(dx*dx+dy*dy+dz*dz)-ly.wr;
-    if(lb>.14||lb>=(ly.prio===0?dSkin:dOuter))continue;
-    const d=layerD(ly,false);
-    if(ly.prio===0){if(d<dSkin)dSkin=d;}
-    else{if(d<dOuter)dOuter=d;}
-  }
-  // 几何层次逻辑：当外层衣物存在并包裹身体时，底层皮肤几何被约束在衣物内侧 2mm，杜绝任何物理穿模
-  if(dOuter<0.006)dSkin=Math.max(dSkin,dOuter+0.002);
-  return Math.min(dSkin,dOuter);
-}
-const INFO={layer:null,prim:null,x:0,y:0,z:0};
-function info(x,y,z){ // 该点归哪一层、哪块原语、静止空间坐标
-  _x=x;_y=y;_z=z;STAMP++;
-  // 层次逻辑：外层优先（Layer Stacking）。按 prio 从高到低降序检查
-  // 如果一个点位于外层衣物（球鞋、短裤、护套、球衣等）表面或浅层（d <= 0.009），则无条件属于该外层衣物
-  for(const ly of LAYERS_PRIO){
-    if(!ly.has||ly.prio===0)continue;
-    const dx=x-ly.wc[0],dy=y-ly.wc[1],dz=z-ly.wc[2],lb=Math.sqrt(dx*dx+dy*dy+dz*dz)-ly.wr;
-    if(lb>0.04)continue;
-    _bestD=9;_bestP=null;const d=layerD(ly,true);
-    if(d<=0.009){
-      INFO.layer=ly;INFO.prim=_bestP;
-      if(_bestP){rest(_bestP.bone);INFO.x=BP[_bestP.bone*3];INFO.y=BP[_bestP.bone*3+1];INFO.z=BP[_bestP.bone*3+2];}
-      return INFO;
-    }
-  }
-  // 没有任何外层衣物包裹该点（如面部、颈部、手臂等裸露区域），才归属底层皮肤
-  const skin=LAYERS_BY.skin;
-  if(skin&&skin.has){
-    _bestD=9;_bestP=null;layerD(skin,true);
-    INFO.layer=skin;INFO.prim=_bestP;
-    if(_bestP){rest(_bestP.bone);INFO.x=BP[_bestP.bone*3];INFO.y=BP[_bestP.bone*3+1];INFO.z=BP[_bestP.bone*3+2];}
-    return INFO;
-  }
-  INFO.layer=null;INFO.prim=null;
-  return INFO;
-}
-function colorAt(x,y,z){
-  const I=info(x,y,z);if(!I.layer)return set(C.skin,0);
-  return I.layer.color(I.prim.tag,I.x,I.y,I.z,I.prim);
-}
-function fL(x,y,z){if(CM===null)return field(x,y,z);const e=CM;return field(e[0]*x+e[4]*y+e[8]*z+e[12],e[1]*x+e[5]*y+e[9]*z+e[13],e[2]*x+e[6]*y+e[10]*z+e[14]);}
-function cL(x,y,z){if(CM===null)return colorAt(x,y,z);const e=CM;return colorAt(e[0]*x+e[4]*y+e[8]*z+e[12],e[1]*x+e[5]*y+e[9]*z+e[13],e[2]*x+e[6]*y+e[10]*z+e[14]);}
-/* 窄带采样：粗块中心离表面远就整块填同一值，近才逐点求值 */
-function sampleGrid(o,s,n){
-  const [nx,ny,nz]=n,f=new Float32Array(nx*ny*nz),B=4,bandW=B*s*.9+.022;
-  for(let bz=0;bz<nz;bz+=B)for(let by=0;by<ny;by+=B)for(let bx=0;bx<nx;bx+=B){
-    const ex=Math.min(bx+B,nx),ey=Math.min(by+B,ny),ez=Math.min(bz+B,nz);
-    const dc=fL(o[0]+(bx+ex-1)/2*s,o[1]+(by+ey-1)/2*s,o[2]+(bz+ez-1)/2*s);
-    const near=Math.abs(dc)<bandW;
-    for(let k=bz;k<ez;k++)for(let j=by;j<ey;j++)for(let i=bx;i<ex;i++)
-      f[i+nx*(j+ny*k)]=near?fL(o[0]+i*s,o[1]+j*s,o[2]+k*s):dc;
-  }
-  return f;
-}
-function bounds(){
-  let mn=[9,9,9],mx=[-9,-9,-9];
-  for(const ly of LAYERS){if(!ly.has)continue;for(let a=0;a<3;a++){mn[a]=Math.min(mn[a],ly.mn[a]);mx[a]=Math.max(mx[a],ly.mx[a]);}}
-  mn[1]=Math.max(mn[1],-.05);return {mn,mx};
-}
-
-/* =====================================================================
-   7a. 体素网格化：只出外露面；逐顶点 AO（三邻格法）+ 逐面半球遮蔽
-   ===================================================================== */
-const SRGB=new T.Color();
-function linRGB(hex,mul){SRGB.setHex(hex);SRGB.convertSRGBToLinear();return [SRGB.r*mul,SRGB.g*mul,SRGB.b*mul];}
-function voxelize(s,o,n,M,filter,face){
-  FS=s;PF=filter||null;CM=M?M.elements.slice():null;FACE_ON=!!face;
-  const f=sampleGrid(o,s,n),[nx,ny,nz]=n;
-  const occ=new Uint8Array(nx*ny*nz);for(let i=0;i<f.length;i++)occ[i]=f[i]<0?1:0;
-  const at=(i,j,k)=>i<0||j<0||k<0||i>=nx||j>=ny||k>=nz?0:occ[i+nx*(j+ny*k)];
-  const DIR=[[1,0,0,[0,1,0],[0,0,1]],[-1,0,0,[0,0,1],[0,1,0]],[0,1,0,[0,0,1],[1,0,0]],[0,-1,0,[1,0,0],[0,0,1]],[0,0,1,[1,0,0],[0,1,0]],[0,0,-1,[0,1,0],[1,0,0]]];
-  const K=Math.max(3,Math.round(.1/s)),AOV=[.66,.79,.91,1];
-  const buckets={};let count=0,faces=0;
-  const hemi=DIR.map(([dx,dy,dz,U,V])=>{const out=[[dx,dy,dz]];for(const a of [-1,1])for(const b of [-1,1])out.push([dx+.7*(a*U[0]+b*V[0]),dy+.7*(a*U[1]+b*V[1]),dz+.7*(a*U[2]+b*V[2])]);
-    for(const a of [-1,1]){out.push([dx+a*U[0],dy+a*U[1],dz+a*U[2]]);out.push([dx+a*V[0],dy+a*V[1],dz+a*V[2]]);}return out;});
-  for(let k=0;k<nz;k++)for(let j=0;j<ny;j++)for(let i=0;i<nx;i++){
-    if(!occ[i+nx*(j+ny*k)])continue;
-    let exposed=false;for(const d of DIR)if(!at(i+d[0],j+d[1],k+d[2])){exposed=true;break;}
-    if(!exposed)continue;count++;
-    const cx=o[0]+i*s,cy=o[1]+j*s,cz=o[2]+k*s,C0=cL(cx,cy,cz);
-    let mul=C0.mul;const h=hash3(i,j,k)-.5;
-    if(C0.m===MAT.skin)mul*=1+(vnoise(cx,cy,cz,.05)-.5)*.07+h*.018;
-    else if(C0.m===MAT.cloth)mul*=1+h*.05+(((i+j+k)&1)?.018:-.018);
-    else if(C0.m===MAT.hair)mul*=1+h*.05;
-    else if(C0.m===MAT.ball)mul*=1+h*.1;
-    else mul*=1+h*.025;
-    const rgb=linRGB(C0.hex,mul);
-    const bk=buckets[C0.m]||(buckets[C0.m]={p:[],nrm:[],c:[],mt:[],sn:[],ao:[],idx:[]});
-    // 平滑法线（SDF 梯度）：给 E 版卡渲用，方块外形不变、明暗带不再被台阶切碎
-    // 直接用已采样网格做中心差分（表面格的邻格都在窄带内，不必再求场）
-    const F=(a,b,c)=>a<0||b<0||c<0||a>=nx||b>=ny||c>=nz?.05:f[a+nx*(b+ny*c)];
-    let gx=F(i+1,j,k)-F(i-1,j,k),gy=F(i,j+1,k)-F(i,j-1,k),gz=F(i,j,k+1)-F(i,j,k-1);
-    {const l=Math.hypot(gx,gy,gz)||1;gx/=l;gy/=l;gz/=l;}
-    for(let di=0;di<6;di++){
-      const [dx,dy,dz,U,V]=DIR[di];if(at(i+dx,j+dy,k+dz))continue;faces++;
-      // 半球遮蔽
-      let occl=0;const H=hemi[di];
-      for(const v of H){for(let st=1;st<=K;st++){if(at(Math.round(i+v[0]*st),Math.round(j+v[1]*st),Math.round(k+v[2]*st))){occl+=1-(st-1)/K*.6;break;}}}
-      const soft=1-(C0.m===MAT.skin?.4:.55)*occl/H.length;
-      const base=bk.p.length/3,ao=[];
-      for(const [a,b] of [[-1,-1],[1,-1],[1,1],[-1,1]]){
-        const pi=i+dx,pj=j+dy,pk=k+dz;
-        const s1=at(pi+a*U[0],pj+a*U[1],pk+a*U[2]),s2=at(pi+b*V[0],pj+b*V[1],pk+b*V[2]),cc=at(pi+a*U[0]+b*V[0],pj+a*U[1]+b*V[1],pk+a*U[2]+b*V[2]);
-        const lv=s1&&s2?0:3-(s1+s2+cc);ao.push(lv);
-        bk.p.push(cx+(dx+a*U[0]+b*V[0])*s/2,cy+(dy+a*U[1]+b*V[1])*s/2,cz+(dz+a*U[2]+b*V[2])*s/2);
-        bk.nrm.push(dx,dy,dz);bk.mt.push(C0.m);bk.sn.push(gx,gy,gz);const m=AOV[lv]*soft;bk.ao.push(m);bk.c.push(rgb[0]*m,rgb[1]*m,rgb[2]*m);
-      }
-      if(ao[0]+ao[2]>=ao[1]+ao[3])bk.idx.push(base,base+1,base+2,base,base+2,base+3);
-      else bk.idx.push(base+1,base+2,base+3,base+1,base+3,base);
-    }
-  }
-  PF=null;CM=null;FACE_ON=false;
-  const out={};
-  for(const m in buckets){const b=buckets[m];out[m]={p:new Float32Array(b.p),c:new Float32Array(b.c),idx:new Uint32Array(b.idx),
-    nrm:Int8Array.from(b.nrm,v=>v*127),sn:Int8Array.from(b.sn,v=>Math.round(v*127)),mt:Uint8Array.from(b.mt),ao:Uint8Array.from(b.ao,v=>Math.round(v*255))};}
-  return {buckets:out,count,faces};
-}
-const HB=BI.head;
-/* 身体：世界网格（格界对齐地面和 x=0），不含头 */
-function voxelBody(s){
-  const {mn,mx}=bounds();
-  const lo=mn.map(v=>Math.floor(v/s)*s),hi=mx.map(v=>Math.ceil(v/s)*s);lo[1]=Math.max(lo[1],0);
-  const n=[0,1,2].map(a=>Math.round((hi[a]-lo[a])/s));
-  return voxelize(s,lo.map(v=>v+s/2),n,null,P=>P.bone!==HB,false);
-}
-/* 头：头骨自己的静止空间网格。x 格界对称，眼睛那一行正好落在格中心 */
-function voxelHead(s){
-  let mn=[9,9,9],mx=[-9,-9,-9];
-  for(const ly of LAYERS)for(const P of ly.prims)if(P.bone===HB&&P.op==='u')for(let a=0;a<3;a++){mn[a]=Math.min(mn[a],P.bc[a]-P.br);mx[a]=Math.max(mx[a],P.bc[a]+P.br);}
-  const X=Math.ceil(Math.max(-mn[0],mx[0])/s)+1,j0=Math.ceil((EYE_Y-mn[1])/s)+1,j1=Math.ceil((mx[1]-EYE_Y)/s)+1;
-  const z0=Math.floor(mn[2]/s)-1,z1=Math.ceil(mx[2]/s)+1;
-  return voxelize(s,[-X*s+s/2,EYE_Y-j0*s,z0*s+s/2],[2*X,j0+j1+1,z1-z0],DM[HB],P=>P.bone===HB,Math.abs(s-.012)<1e-6);
-}
-/* ---------- 平滑网格：Surface Nets，纯数组输出（主线程和 Worker 共用） ----------
-   filter/M/bb 与 voxelize 同义：头部单独在头骨局部空间用更细的网格（五官细节 1~2mm，7.5mm 网格会糊）。
-   法线取顶点所在格子 8 个角点的差分——不再每个顶点额外求 6 次场，D 版逐帧烘焙才跑得动。 */
-function smoothData(s,filter,M,bb){
-  FS=M?.003:.006;PF=filter||null;CM=M?M.elements.slice():null;const {mn,mx}=bb||bounds();
-  const o=mn.map(v=>v-2*s),n=[0,1,2].map(a=>Math.ceil((mx[a]-mn[a])/s)+5);
-  const f=sampleGrid(o,s,n),[nx,ny,nz]=n,id=(i,j,k)=>i+nx*(j+ny*k);
-  const cell=new Int32Array(nx*ny*nz).fill(-1),pos=[],gr=[];
-  const E=[[0,1],[2,3],[4,5],[6,7],[0,2],[1,3],[4,6],[5,7],[0,4],[1,5],[2,6],[3,7]];
-  const g=new Float32Array(8);
-  for(let k=0;k<nz-1;k++)for(let j=0;j<ny-1;j++)for(let i=0;i<nx-1;i++){
-    let m=0;for(let c=0;c<8;c++){g[c]=f[id(i+(c&1),j+((c>>1)&1),k+((c>>2)&1))];if(g[c]<0)m|=1<<c;}
-    if(m===0||m===255)continue;
-    let vx=0,vy=0,vz=0,cnt=0;
-    for(const [a,b] of E){if((g[a]<0)===(g[b]<0))continue;const t=g[a]/(g[a]-g[b]);
-      vx+=(a&1)+((b&1)-(a&1))*t;vy+=((a>>1)&1)+(((b>>1)&1)-((a>>1)&1))*t;vz+=((a>>2)&1)+(((b>>2)&1)-((a>>2)&1))*t;cnt++;}
-    cell[id(i,j,k)]=pos.length/3;pos.push(o[0]+(i+vx/cnt)*s,o[1]+(j+vy/cnt)*s,o[2]+(k+vz/cnt)*s);
-    gr.push(g[1]-g[0]+g[3]-g[2]+g[5]-g[4]+g[7]-g[6],g[2]-g[0]+g[3]-g[1]+g[6]-g[4]+g[7]-g[5],g[4]-g[0]+g[5]-g[1]+g[6]-g[2]+g[7]-g[3]);
-  }
-  const idx=[];
-  const quad=(a,b,c,d,flip)=>{if(a<0||b<0||c<0||d<0)return;flip?idx.push(a,d,c,a,c,b):idx.push(a,b,c,a,c,d);};
-  for(let k=0;k<nz-1;k++)for(let j=0;j<ny-1;j++)for(let i=0;i<nx-1;i++){
-    const v0=f[id(i,j,k)]<0;
-    if(j>0&&k>0&&(f[id(i+1,j,k)]<0)!==v0)quad(cell[id(i,j,k)],cell[id(i,j-1,k)],cell[id(i,j-1,k-1)],cell[id(i,j,k-1)],!v0);
-    if(i>0&&k>0&&(f[id(i,j+1,k)]<0)!==v0)quad(cell[id(i,j,k)],cell[id(i,j,k-1)],cell[id(i-1,j,k-1)],cell[id(i-1,j,k)],!v0);
-    if(i>0&&j>0&&(f[id(i,j,k+1)]<0)!==v0)quad(cell[id(i,j,k)],cell[id(i-1,j,k)],cell[id(i-1,j-1,k)],cell[id(i,j-1,k)],!v0);
-  }
-  const nv=pos.length/3,P=new Float32Array(pos),nrm=new Float32Array(nv*3),col=new Float32Array(nv*3),rgh=new Float32Array(nv),mat=new Float32Array(nv);
-  const mR=[.62,.86,.36,.48,.95,.12,.72];
-  for(let v=0;v<nv;v++){
-    const x=P[v*3],y=P[v*3+1],z=P[v*3+2],gx=gr[v*3],gy=gr[v*3+1],gz=gr[v*3+2],l=Math.hypot(gx,gy,gz)||1;
-    nrm[v*3]=gx/l;nrm[v*3+1]=gy/l;nrm[v*3+2]=gz/l;
-    const C0=cL(x-gx/l*.002,y-gy/l*.002,z-gz/l*.002);let mul=C0.mul;
-    if(C0.m===MAT.skin)mul*=1+(vnoise(x,y,z,.035)-.5)*.1;
-    const rgb=linRGB(C0.hex,mul);col[v*3]=rgb[0];col[v*3+1]=rgb[1];col[v*3+2]=rgb[2];mat[v]=C0.m;rgh[v]=mR[C0.m]||.62;
-  }
-  const I=new Uint32Array(idx);
-  // 三角形朝向校正：几何法线与 SDF 梯度反向就翻
-  for(let t=0;t<I.length;t+=3){const a=I[t],b=I[t+1],c=I[t+2];
-    const ux=P[b*3]-P[a*3],uy=P[b*3+1]-P[a*3+1],uz=P[b*3+2]-P[a*3+2],wx=P[c*3]-P[a*3],wy=P[c*3+1]-P[a*3+1],wz=P[c*3+2]-P[a*3+2];
-    const cx=uy*wz-uz*wy,cy=uz*wx-ux*wz,cz=ux*wy-uy*wx;
-    if(cx*(nrm[a*3]+nrm[b*3]+nrm[c*3])+cy*(nrm[a*3+1]+nrm[b*3+1]+nrm[c*3+1])+cz*(nrm[a*3+2]+nrm[b*3+2]+nrm[c*3+2])<0){I[t+1]=c;I[t+2]=b;}}
-  PF=null;CM=null;
-  return {pos:P,nrm,col,mat,rgh,idx:I,tris:I.length/3};
-}
-/* Worker 入口：主线程给骨骼矩阵，这里出一帧身体的体素网格 */
-function workerJob(job){
-  if(job.decals){installDecals(job.decals);return {msg:{id:job.id},transfer:[]};}
-  OPT=job.opt;HANDS=job.hands;buildLayers();setDM(job.dm,job.ballOn);
-  if(job.kind==='smooth'){const d=smoothData(job.s,P=>P.bone!==HB);return {msg:{id:job.id,data:d},transfer:[d.pos.buffer,d.nrm.buffer,d.col.buffer,d.mat.buffer,d.rgh.buffer,d.idx.buffer]};}
-  const data=voxelBody(job.s),tr=[];
-  for(const k in data.buckets){const b=data.buckets[k];for(const a of ['p','nrm','c','mt','sn','ao','idx'])tr.push(b[a].buffer);}
-  return {msg:{id:job.id,data},transfer:tr};
-}
-
-</script>
+<script src="../../src/lab/kobe-core.js"></script>
 <script>
 "use strict";
 /* ======== 以下只在主线程：贴花绘制、平滑网格、渲染、UI、动画 ======== */
-/* 画布贴花：球衣正反面、鞋侧勾 */
-function decalData(w,h,draw){const cv=document.createElement('canvas');cv.width=w;cv.height=h;const g=cv.getContext('2d');draw(g);return {w,h,d:g.getImageData(0,0,w,h).data};}
-const hexCss=h=>'#'+h.toString(16).padStart(6,'0');
-const FONT="Impact,'Haettenschweiler','Arial Narrow Bold','Arial Black',sans-serif";
-function arcText(g,txt,cx,cy,R,size,spread,sx){
-  g.font=`${size}px ${FONT}`;g.textAlign='center';g.textBaseline='middle';
-  const n=txt.length;
-  for(const pass of ['stroke','fill'])for(let i=0;i<n;i++){
-    const a=(i-(n-1)/2)*spread;g.save();g.translate(cx+Math.sin(a)*R,cy+R-Math.cos(a)*R);g.rotate(a);g.scale(sx,1);
-    if(pass==='stroke')g.strokeText(txt[i],0,0);else g.fillText(txt[i],0,0);g.restore();}
-}
-function numText(g,txt,cx,cy,size,sx){
-  g.font=`${size}px ${FONT}`;g.textAlign='center';g.textBaseline='middle';
-  g.save();g.translate(cx,cy);g.scale(sx,1);g.strokeText(txt,0,0);g.fillText(txt,0,0);g.restore();
-}
-// 球衣贴花：x∈[-.25,.25]，y∈[1.20,1.70]，1600px/m 超清贴花
-const DEC={};DEC.JF=decalData(800,800,g=>{g.lineJoin='round';g.strokeStyle=hexCss(C.white);g.fillStyle=hexCss(C.purple);
-  g.lineWidth=14;arcText(g,'LAKERS',400,224,840,128,.105,.90);
-  g.lineWidth=18;numText(g,'24',400,488,264,.92);});
-DEC.JB=decalData(800,800,g=>{g.lineJoin='round';g.strokeStyle=hexCss(C.white);g.fillStyle=hexCss(C.purple);
-  g.lineWidth=12;arcText(g,'BRYANT',400,184,920,100,.09,.95);
-  g.lineWidth=22;numText(g,'24',400,524,456,.80);
-  g.fillStyle=hexCss(C.nbaB);g.fillRect(376,44,24,48);g.fillStyle=hexCss(C.nbaR);g.fillRect(400,44,24,48);g.fillStyle=hexCss(C.white);g.fillRect(394,60,12,24);});
-// 鞋侧 Swoosh：z∈[-.11,.21]，y∈[0,.16]
-DEC.SW=decalData(200,100,g=>{g.fillStyle=hexCss(C.purple);g.beginPath();g.moveTo(22,30);g.quadraticCurveTo(92,70,134,76);
-  g.quadraticCurveTo(166,79,162,52);g.quadraticCurveTo(152,66,130,65);g.quadraticCurveTo(88,62,22,30);g.fill();});
-
-installDecals(DEC);
+/* 每位球星一套贴花（胸前字、背后名字号码、鞋侧标），装进核心，Worker 池同样各发一份 */
+const mkCanvas=(w,h)=>{const c=document.createElement('canvas');c.width=w;c.height=h;return c;};
+const DECS=ROSTER_IDS.map(id=>{const D=buildDecals(mkCanvas,id);installDecals(D,id);return D;});
+const SHORT={kobe:'科比',jordan:'乔丹',iverson:'艾弗森',carter:'卡特',nowitzki:'诺维茨基',allen:'雷·阿伦',curry:'库里',mcgrady:'麦迪',harden:'哈登',irving:'欧文',durant:'杜兰特',doncic:'东契奇'};
+const LINEUP=()=>ST.mode==='props'||ST.mode==='roster';
 
 /* =====================================================================
    7b. 平滑网格：Surface Nets + SDF 梯度法线
@@ -1180,13 +200,19 @@ postQuad.frustumCulled=false;postScene.add(postQuad);
    ===================================================================== */
 const qs=new URLSearchParams(location.search);
 const ST={mode:qs.get('mode')||'all',pose:qs.get('pose')||'idle',cam:qs.get('cam')||'tq',pix:+(qs.get('px')||4),yaw:0,pitch:0,dist:0,tx:0,ty:0,tz:0};
-const MODES=[['v20','A 体素 2cm'],['v12','B 体素 1.2cm'],['pix','C 3D→像素化'],['smooth','D 平滑雕塑'],['hyb','E 体素+卡渲描边'],['all','五联对比']];
+/* 头身比变体：f 头部放大倍数（相对当前），g 四肢粗细。头身数按 头顶高 ÷（头顶 − 下巴）算 */
+const PROPS=[{k:'5',n:'5 头身',f:1.654,g:1.2},{k:'6',n:'6 头身',f:1.325,g:1.1},{k:'6.5',n:'6.5 头身',f:1.206,g:1.06},{k:'7',n:'7 头身（游戏）',f:1.106,g:1.03},{k:'7.6',n:'7.6 头身（真实）',f:1,g:1}];
+const propOf=k=>PROPS.find(p=>p.k===k)||PROPS[4];
+function propStats(){const crown=headPt([0,1.954,0])[1],chin=headPt([0,1.732,0])[1];return {h:crown,heads:crown/(crown-chin)};}
+const MODES=[['v20','A 体素 2cm'],['v12','B 体素 1.2cm'],['pix','C 3D→像素化'],['smooth','D 平滑雕塑'],['hyb','E 体素+卡渲描边'],['all','五联对比'],['props','E · 五种头身并排'],['roster','E · 全部球星并排']];
 const MODE_NOTE={v20:'真 3D 体素，每格 2cm（身高约 100 格）。方块感最强，五官靠上色，一格眼睛。',
   v12:'每格 1.2cm（约 165 格）。眉弓、鼻梁、嘴唇、肌肉开始有体积，字母和号码能读。',
   pix:'平滑 3D 模型 → 三段卡渲（亮面偏暖、暗面偏紫）→ 低分辨率 → 同色系加深描边 + 内轮廓线。Dead Cells / 八方旅人一类管线。',
   smooth:'额外思路：同一份定义直接出平滑网格 + PBR，"手办"质感。不是像素风，作参照。',
   hyb:'第五版（上一轮的建议）：B 的 1.2cm 方块几何，换成 C 的三段卡渲（亮面偏暖、暗面偏紫）+ 同色系外描边 + 肢体交叠内轮廓线。方块保留体积，描边给成品感。',
-  all:'同一姿势、同一机位，五种渲染并排。拖动任意一格一起转。'};
+  all:'同一姿势、同一机位，五种渲染并排。拖动任意一格一起转。',
+  roster:'E 体素卡渲，同一套骨架和建模代码，按球星档案换身高体格、肤色、发型胡子几何、脸部像素图、球衣配色字样、鞋袜护具。哈登是左手，整身镜像。',
+  props:'E 体素卡渲，同一姿势、同一骨架，只改头的大小和四肢粗细：5 / 6 / 6.5 / 7 / 7.6（当前）头身并排。头部方块随头等比放大，脸部像素图逐格对齐。'};
 const CAMS={front:['正面',0,.04],tq:['3/4',.62,.07],side:['侧面(右)',-Math.PI/2,.04],back:['背面',Math.PI,.06],face:['面部特写',.42,.02],feet:['球鞋特写',.62,.30]};
 const CACHE={};let CUR=null;
 const groups={v20:new T.Group(),v12:new T.Group(),smooth:new T.Group()};for(const g in groups)scene.add(groups[g]);
@@ -1216,7 +242,9 @@ function voxShow(target,v,mat,headM){target.add(vgroup(v.body,mat,null));target.
 function ensure(){
   if(ST.pose==='anim'){setupAnim();return;}
   stopAnim();
-  const key=ST.pose+'|'+OPT.sleeve,c=CACHE[key]||(CACHE[key]={});
+  if(LINEUP()){ensureProps();return;}
+  pixShadow.visible=true;
+  const key=ST.pose+'|'+OPT.sleeve+'|'+OPT.prop.k+'|'+OPT.char,c=CACHE[key]||(CACHE[key]={});
   WF=applyPose(POSES[ST.pose]);
   const t0=performance.now(),did=[];
   for(const m of need(ST.mode)){
@@ -1237,6 +265,25 @@ function ensure(){
   document.getElementById('stat').textContent=st.join(' · ')+(did.length?` · 构建 ${(performance.now()-t0|0)} ms`:'');
 }
 
+/* 五种头身并排：每种各建一次（按姿势缓存），横向排开，每人脚下一块阴影 */
+let PROPS_VIEW=null;
+function ensureProps(){
+  const roster=ST.mode==='roster';
+  const key=(roster?'roster|':'props|'+OPT.char+'|')+ST.pose+'|'+OPT.sleeve+'|'+(roster?OPT.prop.k:'');let c=CACHE[key];const save=OPT.prop,saveC=OPT.char,t0=performance.now();
+  if(!c){c=CACHE[key]={list:[]};
+    if(roster)for(const id of ROSTER_IDS){OPT.char=id;applyPose(POSES[ST.pose]);const v=buildVox(.012),b=bounds(),st=propStats();
+      c.list.push({P:{n:SHORT[id]},sub:`${ROSTER[id].num} · ${st.h.toFixed(2)}m`,mirror:!!ROSTER[id].mirror,v,b,st});}
+    else for(const P of PROPS){OPT.prop=P;applyPose(POSES[ST.pose]);const v=buildVox(.012),b=bounds(),st=propStats();c.list.push({P,sub:`${st.heads.toFixed(1)} · ${st.h.toFixed(2)}m`,v,b,st});}}
+  OPT.prop=save;OPT.char=saveC;WF=applyPose(POSES[ST.pose]);
+  hybGroup.clear();pixShadow.visible=false;contact.visible=false;
+  const GAP=1.05,xs=[];let mn=[9,9,9],mx=[-9,-9,-9];
+  c.list.forEach((it,i)=>{const g=new T.Group();voxShow(g,it.v,toonMat);const x=(i-(c.list.length-1)/2)*GAP;g.position.x=x;if(it.mirror)g.scale.x=-1;
+    const sh=new T.Mesh(new T.CircleGeometry(.36,32),pixShadow.material);sh.rotation.x=-Math.PI/2;sh.position.set((it.b.mn[0]+it.b.mx[0])/2,.002,(it.b.mn[2]+it.b.mx[2])/2);g.add(sh);
+    hybGroup.add(g);xs.push(x);for(let a=0;a<3;a++){mn[a]=Math.min(mn[a],it.b.mn[a]+(a===0?x:0));mx[a]=Math.max(mx[a],it.b.mx[a]+(a===0?x:0));}});
+  PROPS_VIEW={list:c.list,xs,mn,mx};
+  document.getElementById('stat').textContent=c.list.map(it=>`${it.P.k||it.P.n}: 头顶 ${it.st.h.toFixed(2)}m · ${it.st.heads.toFixed(1)} 头身`).join('  |  ')+` · ${(performance.now()-t0|0)} ms`;
+}
+
 /* =====================================================================
    10. 投篮动画
    关键帧 = 上面的静态姿势（各自先解好 IK），帧与帧之间插值骨骼局部旋转：
@@ -1253,6 +300,7 @@ const ANIM={keys:[['catch',0],['hold',.32],['set',.66],['fade',.86],['snap',1.03
 const BALL_V=[.05,5.3,3.4],BALL_VIN=[0,-2.2,-7],GRAV=-9.8;
 const lerp=(a,b,t)=>a+(b-a)*t,lerp3=(a,b,t)=>[lerp(a[0],b[0],t),lerp(a[1],b[1],t),lerp(a[2],b[2],t)];
 function keyData(name){
+  setChar(OPT.char);
   const P=POSES[name],S=solvePose(P),loc=[];
   for(let i=0;i<NB;i++){
     if(!S.W[i]){loc.push(null);continue;}
@@ -1303,7 +351,7 @@ function animPose(t){
   const hands={};
   for(const [sd,s] of [['L',1],['R',-1]]){
     const hs=mixHand(A.hand[sd],B.hand[sd],e);let br=null;
-    if(ball&&hs.grip>0)br=ball.clone().applyMatrix4(dmFromW(W,BI['hand'+sd]).invert()).toArray();
+    if(ball&&hs.grip>0){br=ball.clone().applyMatrix4(dmFromW(W,BI['hand'+sd]).invert()).toArray();br[0]/=BUILD.W;}
     hands[sd]=solveHand(s,hs,br);
   }
   return {dm,ballOn:!!ball,hands,ballPos:ball?ball.toArray():null};
@@ -1314,10 +362,11 @@ function makePool(){
   if(POOL_OK!==null)return POOL_OK;
   try{
     const three=new URL('../../vendor/three.min.r128.js',location.href).href;
-    const src=`importScripts(${JSON.stringify(three)});\n${document.getElementById('core').textContent}\n;self.onmessage=e=>{const r=workerJob(e.data);self.postMessage(r.msg,r.transfer);};`;
+    const core=new URL('../../src/lab/kobe-core.js',location.href).href;
+    const src=`importScripts(${JSON.stringify(three)},${JSON.stringify(core)});\nself.onmessage=e=>{const r=workerJob(e.data);self.postMessage(r.msg,r.transfer);};`;
     const url=URL.createObjectURL(new Blob([src],{type:'text/javascript'}));
     const n=clamp((navigator.hardwareConcurrency||4)-1,1,8);
-    for(let i=0;i<n;i++){const w=new Worker(url);w.postMessage({id:-1,decals:DEC});POOL.push({w,busy:false});}
+    for(let i=0;i<n;i++){const w=new Worker(url);for(const D of DECS)w.postMessage({id:-1,decals:D,char:D.id});POOL.push({w,busy:false});}
     POOL_OK=true;
   }catch(e){console.warn('worker 不可用，改主线程烘焙',e);POOL_OK=false;}
   return POOL_OK;
@@ -1366,7 +415,7 @@ function bakeFrames(style,withBall,fps,onFrame,near){
 }
 function setupAnim(){
   if(ST.mode!=='v12'&&ST.mode!=='hyb')ST.mode='hyb';
-  const sig=ANIM.fps+'|'+OPT.sleeve;
+  const sig=ANIM.fps+'|'+OPT.sleeve+'|'+OPT.prop.k+'|'+OPT.char;
   ensureKeys();
   const {mn,mx}=ANIM.bounds,cx=(mn[0]+mx[0])/2,cz=(mn[2]+mx[2])/2;contact.position.set(cx,.001,cz);pixShadow.position.set(cx,.001,cz);contact.visible=true;
   if(!ANIM.bk||ANIM.sig!==sig){
@@ -1486,9 +535,9 @@ function courtCam(aspect){
   rig.rotation.y=Math.atan2(pos[0]-look[0],pos[2]-look[2]);rig.position.set(0,0,0);rig.updateMatrixWorld(true);
 }
 function ctBake(style){
-  if(CT.bk[style])return;
+  const bkKey=style+'|'+OPT.prop.k+'|'+OPT.char;if(CT.bk[bkKey])return;
   setBusy(`烘焙${style==='hyb'?' E 体素':' D 平滑'}动作 0/${Math.round(ANIM.T*CT.fps)}`);
-  CT.bk[style]=bakeFrames(style==='hyb'?'vox':'smooth',false,CT.fps,B=>{
+  CT.bk[bkKey]=bakeFrames(style==='hyb'?'vox':'smooth',false,CT.fps,B=>{
     if(CT.style===style)setBusy(B.ready<B.N?`烘焙${style==='hyb'?' E 体素':' D 平滑'}动作 ${B.ready}/${B.N}`:null);
     if(B.ready===B.N)document.getElementById('stat').textContent=`球场 · ${style==='hyb'?'E 体素卡渲':'D 平滑'} · ${B.N} 帧 @${B.fps}fps · 烘焙 ${((performance.now()-B.t0)/1000).toFixed(1)} s`;
   },ANIM.tIn);
@@ -1506,7 +555,7 @@ function exitCourt(){
   ST.mode='hyb';ST.pose='set';rebuild(true);
 }
 function ctFrame(){
-  const B=CT.bk[CT.style];if(!B)return null;
+  const B=CT.bk[CT.style+'|'+OPT.prop.k+'|'+OPT.char];if(!B)return null;
   const f=Math.min(B.N-1,Math.floor(CT.t*B.fps+1e-6));let fr=B.frames[f];
   if(!fr)for(let k=1;k<B.N&&!fr;k++)fr=B.frames[(f-k+B.N)%B.N];
   if(fr&&fr!==CT.shown){
@@ -1576,7 +625,7 @@ function stepBall(dt){
 function ctTick(now){
   CT.raf=0;if(!CT.on)return;
   const dt=CT.last?Math.min(.05,(now-CT.last)/1000):0;CT.last=now;
-  const D=CT_DIFF[CT.diff],B=CT.bk[CT.style],ready=B&&B.ready>=B.N;
+  const D=CT_DIFF[CT.diff],B=CT.bk[CT.style+'|'+OPT.prop.k+'|'+OPT.char],ready=B&&B.ready>=B.N;
   if(CT.state==='boot'){if(ready){CT.state='pass';CT.t=ANIM.tIn;}}
   else if(CT.state==='pass'){const nt=CT.t+dt;CT.t=(CT.t<ANIM.T&&nt>=ANIM.T)?nt-ANIM.T:nt;if(CT.t>=.32&&CT.t<1){CT.t=.32;CT.state='ready';}}
   else if(CT.state==='charge'){CT.power=Math.min(100,CT.power+D.fill*dt);CT.t=.32+(ANIM.tRel-.32)*Math.min(1,CT.power/CT_IDEAL);}
@@ -1598,19 +647,20 @@ function ctUI(){
   document.getElementById('cZone').style.bottom=(CT_IDEAL-D.zone*1.8)+'%';document.getElementById('cZone').style.height=(D.zone*3.6)+'%';
   document.getElementById('cSweet').style.bottom=(CT_IDEAL-D.zone*.5)+'%';document.getElementById('cSweet').style.height=(D.zone)+'%';
   document.getElementById('cScore').innerHTML=`<b>${CT.score}</b> 分 <small>${CT.made}/${CT.shots} · ${D.n}</small>`;
-  const B=CT.bk[CT.style];
+  const B=CT.bk[CT.style+'|'+OPT.prop.k+'|'+OPT.char];
   document.getElementById('cHint').textContent=!B||B.ready<B.N?'动作烘焙中…':CT.state==='ready'?'按住 空格 / 鼠标 蓄力，在亮黄甜区松手':CT.state==='charge'?'松手出手':CT.lastErr!=null?`出手误差 ${CT.lastErr>0?'+':''}${CT.lastErr.toFixed(1)}`:'';
 }
 function frame(camName){
   const [,yaw,pitch]=CAMS[camName];ST.yaw=yaw;ST.pitch=pitch;
-  const {mn,mx}=ST.pose==='anim'&&ANIM.bounds?ANIM.bounds:bounds();
+  const {mn,mx}=LINEUP()&&PROPS_VIEW?PROPS_VIEW:ST.pose==='anim'&&ANIM.bounds?ANIM.bounds:bounds();
   if(camName==='face'){const h=ST.pose==='anim'&&ANIM.face?ANIM.face:WF('head',headPt([0,1.855,.03]));[ST.tx,ST.ty,ST.tz]=h;ST.dist=1.05;}
   else if(camName==='feet'){ST.tx=0;ST.ty=.12;ST.tz=0;ST.dist=1.35;}
-  else{ST.tx=(mn[0]+mx[0])/2;ST.tz=(mn[2]+mx[2])/2;ST.ty=(Math.max(mn[1],0)+mx[1])/2+.02;ST.dist=(mx[1]-Math.max(mn[1],0))*2.72+.6;}
+  else{ST.tx=(mn[0]+mx[0])/2;ST.tz=(mn[2]+mx[2])/2;ST.ty=(Math.max(mn[1],0)+mx[1])/2+.02;ST.dist=Math.max((mx[1]-Math.max(mn[1],0))*2.72+.6,LINEUP()?(mx[0]-mn[0])*1.55:0);}
 }
 function place(aspect){
-  camera.fov=24;camera.aspect=aspect;const fit=aspect<.8?.8/aspect:1;camera.updateProjectionMatrix();
-  const d=ST.dist*fit,cp=Math.cos(ST.pitch);
+  // 并排比较用长焦（10°）：五个人离镜头的远近差被压平，大小可以直接比
+  const tele=LINEUP();camera.fov=tele?10:24;camera.aspect=aspect;const fit=aspect<.8?.8/aspect:1;camera.updateProjectionMatrix();
+  const d=ST.dist*fit*(tele?Math.tan(12*Math.PI/180)/Math.tan(5*Math.PI/180):1),cp=Math.cos(ST.pitch);
   camera.position.set(ST.tx+Math.sin(ST.yaw)*cp*d,ST.ty+Math.sin(ST.pitch)*d,ST.tz+Math.cos(ST.yaw)*cp*d);
   camera.lookAt(ST.tx,ST.ty,ST.tz);camera.updateMatrixWorld();
   rig.rotation.y=ST.yaw;rig.position.set(ST.tx,0,ST.tz);rig.updateMatrixWorld(true);
@@ -1619,11 +669,13 @@ function show(mode){groups.v20.visible=mode==='v20';groups.v12.visible=mode==='v
 function drawCell(mode,x,y,w,h){ // CSS 像素，左上原点
   const H=canvas.clientHeight;if(CT.on)courtCam(w/h);else place(w/h);
   renderer.setViewport(x,H-y-h,w,h);renderer.setScissor(x,H-y-h,w,h);renderer.setScissorTest(true);
+  if(mode==='props'||mode==='roster')mode='hyb';
   if(mode!=='pix'&&mode!=='hyb'){show(mode);floor.visible=true;renderer.render(scene,camera);return;}
   // C 按像素颗粒降采样；E 按 1 CSS 像素出图（描边 1px，方块保持清晰）
   const sc=mode==='pix'?ST.pix:1,rw=Math.max(8,Math.round(w/sc)),rh=Math.max(8,Math.round(h/sc));
   pixMesh.visible=mode==='pix';hybGroup.visible=mode==='hyb';
-  toonMat.uniforms.uS.value=mode==='hyb'?.8:1;toonMat.uniforms.uA.value=mode==='hyb'?.35:1;postMat.uniforms.th.value=mode==='hyb'?2:1;
+  toonMat.uniforms.uS.value=mode==='hyb'?.8:1;toonMat.uniforms.uA.value=1;   // 平滑 AO 之后不再有台阶，E 版也全开
+  postMat.uniforms.th.value=mode==='hyb'?2:1;
   let pixRT=RTS[mode];
   if(!pixRT||pixRT.width!==rw||pixRT.height!==rh){if(pixRT)pixRT.dispose();
     pixRT=RTS[mode]=new T.WebGLRenderTarget(rw,rh,{minFilter:T.NearestFilter,magFilter:T.NearestFilter});pixRT.depthTexture=new T.DepthTexture(rw,rh);pixRT.depthTexture.type=T.UnsignedIntType;}
@@ -1639,6 +691,8 @@ function drawCell(mode,x,y,w,h){ // CSS 像素，左上原点
   renderer.render(postScene,postCam);renderer.toneMapping=tm;renderer.outputEncoding=oe;
 }
 function render(){
+  {const mir=!LINEUP()&&ROSTER[OPT.char]&&ROSTER[OPT.char].mirror?-1:1;   // 左手球员（哈登）整身镜像，贴花已预翻
+    for(const g of [groups.v20,groups.v12,groups.smooth,hybGroup,pixMesh])g.scale.x=mir;}
   const W=canvas.clientWidth,H=canvas.clientHeight;
   if(canvas.width!==Math.round(W*renderer.getPixelRatio())||canvas.height!==Math.round(H*renderer.getPixelRatio()))renderer.setSize(W,H,false);
   renderer.setScissorTest(false);renderer.clear();
@@ -1650,6 +704,9 @@ function render(){
     list.forEach(([m,t,s],i)=>{const cx=(i%cols)*cw,cy=Math.floor(i/cols)*ch;drawCell(m,Math.round(cx),Math.round(cy),Math.round(cw),Math.round(ch));
       lab(t,s,cx+cw/2-44,cy+ch-40);});
   }else drawCell(ST.mode,0,0,W,H);
+  if(LINEUP()&&PROPS_VIEW&&!CT.on)PROPS_VIEW.list.forEach((it,i)=>{   // 每人脚下标出头身数 / 名字
+    const v=new T.Vector3(PROPS_VIEW.xs[i],-.05,(PROPS_VIEW.mn[2]+PROPS_VIEW.mx[2])/2).project(camera);
+    lab(it.P.n,it.sub,(v.x*.5+.5)*W-60,(1-(v.y*.5+.5))*H+6);});
   renderer.setScissorTest(false);
 }
 let raf=0;const req=()=>{if(!raf)raf=requestAnimationFrame(()=>{raf=0;render();});};
@@ -1663,7 +720,9 @@ function refreshUI(){
   buttons('rDiff',Object.entries(CT_DIFF).map(([k,v])=>[k,v.n]),CT.diff,k=>{CT.diff=k;refreshUI();});
   buttons('rCCam',[['over','越肩'],['side','转播侧面']],CT.cam,k=>{CT.cam=k;refreshUI();});
   if(CT.on){document.getElementById('note').textContent='从 AIBA 剥出来的蓄力投篮：按住蓄力、在甜区松手。判定规则、飞行时间、甜区宽度都和 AIBA 一致；角色动作由蓄力相位驱动，满值那一帧就是出手帧。';return;}
-  buttons('rMode',MODES,ST.mode,k=>{ST.mode=k;if(ST.pose==='anim'&&k!=='v12'&&k!=='hyb')ST.pose='set';rebuild(false);});
+  buttons('rChar',ROSTER_IDS.map(id=>[id,SHORT[id]]),ST.mode==='roster'?'':OPT.char,k=>{OPT.char=k;ANIM.kd=null;
+    if(CT.on){CT.shown=null;ctBake(CT.style);refreshUI();}else{if(ST.mode==='roster')ST.mode='hyb';rebuild(true);}});
+  buttons('rMode',MODES,ST.mode,k=>{ST.mode=k;if(ST.pose==='anim'&&k!=='v12'&&k!=='hyb')ST.pose='set';rebuild(true);});
   buttons('rPose',[...Object.entries(POSES).map(([k,v])=>[k,v.name]),['anim','▶ 投篮动画']],ST.pose,k=>{ST.pose=k;rebuild(true);});
   const ra=document.getElementById('rAnim');ra.style.display=ST.pose==='anim'?'':'none';
   buttons('rAnim',[['play',ANIM.playing?'暂停':'播放'],['1','1×'],['.5','0.5×'],['.25','0.25×'],['f12','12fps'],['f24','24fps']],'',k=>{
@@ -1672,6 +731,8 @@ function refreshUI(){
   for(const b of ra.querySelectorAll('button'))if(b.textContent===onSp||b.textContent===ANIM.fps+'fps')b.className='on';
   ra.appendChild(document.getElementById('aScrub'));
   buttons('rCam',Object.entries(CAMS).map(([k,v])=>[k,v[0]]),ST.cam,k=>{ST.cam=k;frame(k);refreshUI();req();});
+  buttons('rProp',PROPS.map(p=>[p.k,p.n]),OPT.prop.k,k=>{OPT.prop=propOf(k);ANIM.kd=null;
+    if(CT.on){CT.shown=null;ctBake(CT.style);refreshUI();}else{if(ST.mode==='props')ST.mode='hyb';rebuild(true);}});
   buttons('rSleeve',[['black','黑'],['white','白'],['none','无']],OPT.sleeve,k=>{OPT.sleeve=k;rebuild(false);});
   document.getElementById('note').textContent=MODE_NOTE[ST.mode];
   document.getElementById('rPix').style.display=ST.mode==='pix'||ST.mode==='all'?'':'none';
@@ -1694,7 +755,7 @@ canvas.addEventListener('pointerup',()=>{drag=null;if(CT.on)ctRelease();});
 canvas.addEventListener('wheel',e=>{e.preventDefault();ST.dist=clamp(ST.dist*Math.exp(e.deltaY*.001),.5,14);req();},{passive:false});
 canvas.addEventListener('dblclick',()=>{frame(ST.cam);req();});
 addEventListener('resize',req);
-OPT.sleeve=qs.get('sleeve')||'black';
+OPT.sleeve=qs.get('sleeve')||'black';OPT.char=ROSTER[qs.get('char')]?qs.get('char'):'kobe';OPT.prop=propOf(qs.get('prop')||'7');
 if(qs.get('nohud'))document.body.classList.add('nohud');
 if(CT.on){CT.on=false;enterCourt();}else{refreshUI();ensure();if(ST.pose!=='anim')frame(ST.cam);refreshUI();render();}
 window.LAB={ST,OPT,POSES,ANIM,CT,ctCharge,ctRelease,ctTickManual(now){CT.raf=0;const on=CT.on;ctTick(now);if(CT.raf){cancelAnimationFrame(CT.raf);CT.raf=0;}},wp:(bn,p)=>new T.Vector3(...p).applyMatrix4(DM[BI[bn]]).toArray(),render,rebuild,frame,ensure,CACHE,seek(t){ANIM.playing=false;ANIM.t=t;showAt(t,true);},tune(pose,rot){Object.assign(POSES[pose].rot,rot);for(const k in CACHE)delete CACHE[k];ST.pose=pose;rebuild(true);}};

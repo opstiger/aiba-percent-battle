@@ -175,8 +175,9 @@ try{
      而不是“按下蓄力过了多少毫秒”。 */
   await page.waitForTimeout(360);
   const airborneCharge=await inspect(page);
-  assert(airborneCharge.gameState.charging&&!airborneCharge.releaseFeet.source,
-    "第三种越过起跳点但尚未出手时仍不提前写入踢腿");
+  /* 踢腿按真实发力顺序：起跳离地就开始踢，不等球出手（2026-09-30 用户要求） */
+  assert(airborneCharge.gameState.charging&&airborneCharge.gameState.jump>.05&&airborneCharge.releaseFeet.source&&airborneCharge.releaseFeet.kickWeight>0,
+    "第三种越过起跳点、尚未出手时已经开始踢腿（起跳即踢）");
   await page.evaluate(()=>{G.power=weatherAdjustedIdeal(curShot(),true);doRelease();});
   /* 不用固定毫秒猜峰值：等运行时明确报告 airborne，避免浏览器调度稍慢时
      截到刚松手、尚未起跳的旧腿姿势。 */

@@ -1613,6 +1613,8 @@ function poseGuy(o,c,lk,landingImpact){
     o.g.userData.shotHipFlex=[hipLead,hipTrail];
     o.g.userData.shotLowerBodyHingeComp=lowerBodyHingeComp;
     o.g.userData.shotReadyLowerBlend=loadBlend;
+    o.g.userData.shotLoad=load;
+    o.g.userData.shotDip=c.dip||0;
   }
   /* 待机呼吸:站定时人不该是一尊雕像。用 G.tNow 驱动,不需要额外状态。
      **只在完全没有投篮动作时生效**:蓄力/举球/起跳/跟随/落地任何一项一介入就退到 0。

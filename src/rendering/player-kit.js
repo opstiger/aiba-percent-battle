@@ -5,6 +5,7 @@
   j23:{sock:.21,knee:1,kneeColor:0x18191b,tattoo:'upper'},a03:{sock:.22,tattoo:'dense',forearmSleeve:0},lillard:{sock:.2,tattoo:'dense'},
   curry:{sock:.18,tattoo:'small'},k24:{sock:.19,tattoo:'upper'},t01:{sock:.2,knee:0,tattoo:'small'},v15:{sock:.2,tattoo:'small'},
   thompson:{sock:.19,tattoo:'small'},h13:{sock:.19,tattoo:'dense'},korver:{sock:.19,tattoo:'small'},stojakovic:{sock:.20,tattoo:'small'},
+  irving:{sock:.2,tattoo:'small'},durant:{sock:.21,tattoo:'small'},doncic:{sock:.19,tattoo:'small'},nowitzki:{sock:.2,tattoo:'small'},
   ionescu:{sock:.19,tattoo:'small'},taurasi:{sock:.22,tattoo:'small'},'sue-bird':{sock:.2,tattoo:'small'}
  };
  function clear(g){for(const root of g.playerKit||[]){root.parent.remove(root);root.traverse(o=>{if(o.isMesh){o.geometry.dispose();if(o.material.map)o.material.map.dispose();o.material.dispose();}});}g.playerKit=[];g.knees.forEach(k=>k.traverse(o=>{if(o.name==="legacySock")o.visible=true;}));}

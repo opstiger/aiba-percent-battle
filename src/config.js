@@ -50,6 +50,10 @@
        没有这个字段的球星一律按右手处理,所以老球星逐位不变。 */
     {id:"h13",n:"詹姆斯·哈登",t:"三届得分王 · 左手后撤步",r:93,col:[0xce1141,0xf7f7f7],num:13,hand:"left",
      skin:0x895a3c,shoe:0xd33238,headband:false,wrist:null,sleeve:0x111111,hair:0x171310,hairStyle:"fade",beard:0x171310,beardStyle:"full",shortsColor:0xce1141},
+    {id:"durant",n:"凯文·杜兰特",t:"两届FMVP · 四届得分王",r:95,col:[0x007ac1,0xef3b24],num:35,skin:0x6c412d,hair:0x1d1511,hairStyle:"buzz",beard:0x1d1511,beardStyle:"goatee",shoe:0xf1efea,headband:false,wrist:null,sleeve:null,shortsColor:0x007ac1},
+    {id:"doncic",n:"卢卡·东契奇",t:"得分王 · 后撤步三分",r:95,col:[0x552583,0xfdb927],num:77,skin:0xd6a887,hair:0x5a3c27,hairStyle:"short",beard:0x5e4230,beardStyle:"stubble",shoe:0x552583,headband:false,wrist:null,sleeve:null,shortsColor:0x552583},
+    {id:"nowitzki",n:"德克·诺维茨基",t:"2011总冠军+FMVP · 金鸡独立",r:93,col:[0x0b5cad,0x0c2340],num:41,skin:0xd2a283,hair:0x9b7a4f,hairStyle:"short",beard:0x7d5e3c,beardStyle:"stubble",shoe:0xf1efea,headband:false,wrist:null,sleeve:null,shortsColor:0x0b5cad},
+    {id:"irving",n:"凯里·欧文",t:"2016总冠军 · 抢七关键三分",r:92,col:[0x141416,0x6f263d],num:2,skin:0x93603f,hair:0x1a1310,hairStyle:"fade",beard:0x1a1310,beardStyle:"full",shoe:0x141416,headband:false,wrist:null,sleeve:null,shortsColor:0x141416},
     {id:"thompson",n:"克莱·汤普森",t:"四届总冠军 · 单节37分",r:93,col:[0xffc72c,0x1d428a],num:11,skin:0xc6a080,hair:0x29221c,hairStyle:"croppedCurls",beard:0x29221c,beardStyle:"stubble",shoe:0xeeeeea,headband:false,wrist:null,sleeve:null,shortsColor:0xffc72c},
     {id:"allen",n:"雷·阿伦",t:"两届总冠军 · 致命底角",r:91,col:[0x007a33,0xffffff],num:20,skin:0xa87851,hair:0x211813,hairStyle:"bald",beard:false,beardStyle:"none",shoe:0xf3f3ee,headband:false,wrist:null,sleeve:null,shortsColor:0x007a33},
     {id:"bird",n:"拉里·伯德",t:"三届总冠军 · 三届MVP",r:89,col:[0x007a33,0x111111],num:33,skin:0xe8bd98,hair:0xa78a4d,hairStyle:"sidepart",beard:false,beardStyle:"none",shoe:0x111111,headband:false,wrist:null,sleeve:null,shortsColor:0x007a33},
@@ -78,6 +82,10 @@
     a03:{speed:1.04,window:.99,arc:.96,arcLabel:"低平快拔",label:"快速拔起"},
     v15:{speed:.87,window:.92,arc:1.15,arcLabel:"高点大弧",label:"高点出手"},
     t01:{speed:.92,window:.97,arc:.90,arcLabel:"极低平弧",label:"舒展远射"},
+    durant:{speed:.98,window:1.06,arc:1.06,arcLabel:"高点平稳",label:"无解高点"},
+    doncic:{speed:.94,window:1,arc:1.09,arcLabel:"后撤高弧",label:"慢速后撤"},
+    nowitzki:{speed:.9,window:1.02,arc:1.12,arcLabel:"金鸡独立高弧",label:"后仰高点"},
+    irving:{speed:1.06,window:1.03,arc:1.07,arcLabel:"高弧柔投",label:"丝滑急停"},
     h13:{speed:.96,window:1.03,arc:1.04,arcLabel:"后撤高弧",label:"左手后撤"},
     ionescu:{speed:1.08,window:1.06,arc:1.05,arcLabel:"高弧快射",label:"快速出手"},
     taurasi:{speed:1,window:1.05,arc:1.03,arcLabel:"标准高弧",label:"冷血出手"},
@@ -118,6 +126,14 @@
     v15:{kick:1.25,lean:0,turn:0.0,release:.05,setPoint:0,drift:0,jump:1.38,fade:0.05,hold:0.2},
     /* 后撤步:明显向后 + 轻微后仰,踢腿中等 */
     h13:{kick:.80,lean:.06,turn:0.125,release:.01,setPoint:-.02,drift:-.09,jump:1.0,fade:0.2,hold:0.3},
+    /* 金鸡独立:单腿抬起(大踢腿) + 往后飘 + 后仰,起跳不高——靠后仰和身高,不靠跳 */
+    nowitzki:{kick:1.40,lean:.09,turn:0.2,release:.05,setPoint:.06,drift:-.08,jump:.95,fade:0.3,hold:0.3},
+    /* 后撤步三分:往后撤得比哈登还多,跳得不高,出手慢 */
+    doncic:{kick:.90,lean:.07,turn:0.15,release:.02,setPoint:-.01,drift:-.11,jump:.88,fade:0.22,hold:0.3},
+    /* 高举高打:出手点全表最高,身体几乎不晃,腿收得干净 */
+    durant:{kick:.60,lean:.02,turn:0.05,release:.06,setPoint:.07,drift:0,jump:1.1,fade:0.06,hold:0.4},
+    /* 急停跳投:紧凑、快,轻微后飘 */
+    irving:{kick:.45,lean:.03,turn:0.1,release:.02,setPoint:.01,drift:-.03,jump:1.1,fade:0.08,hold:0.3},
     j23:{kick:1.10,lean:.08,turn:0.175,release:.045,setPoint:.04,drift:-.05,jump:1.35,fade:0.22,hold:0.3},
     lillard:{kick:.95,lean:.04,turn:0.0,release:0,setPoint:-.04,drift:-.05,jump:1.05,fade:0.06,hold:0.4},
     a03:{kick:.70,lean:0,turn:0.075,release:-.045,setPoint:-.05,drift:.07,jump:1.2,fade:0.1,hold:0.1},
@@ -153,7 +169,8 @@
     thompson:"front",nova24:"front",taurasi:"front",k24:"front",
     miller:"back",bird:"back",korver:"back",allen:"back",
     "sue-bird":"back",stojakovic:"back",t01:"back",v15:"back",
-    j23:"back",h13:"back"
+    j23:"back",h13:"back",
+    irving:"front",doncic:"back",durant:"back",nowitzki:"back"
   });
   function rackDetourFor(star){
     const m=RACK_DETOURS[star&&(star.id||star.n)];
@@ -182,6 +199,10 @@
     a03:{h:.93,w:.94},
     v15:{h:1.01,w:1.03},
     t01:{h:1.07,w:.93},
+    durant:{h:1.07,w:.9},
+    doncic:{h:1.02,w:1.06},
+    nowitzki:{h:1.08,w:.98},
+    irving:{h:.95,w:.95},
     ionescu:{h:.94,w:.9},
     taurasi:{h:.95,w:.93},
     "sue-bird":{h:.92,w:.88}

@@ -21,7 +21,7 @@ function startWinCine(win,ball){
   G.battleResultRecord=saveBattleRecord(makeBattleRecord(win,stopBattleClock()));
   G.battleOver=true;G.running=false;G.canShoot=false;G.charging=false;
   if(typeof cancelOppPass==="function")cancelOppPass(true);
-  G.cutAway=null;G.battleCut=null;G.glideCam=false;G.state="wincine";
+  G.cutAway=null;G.battleCut=null;G.glideCam=false;G.state="wincine";benchVis();
   endHero();
   // 隐藏比赛 HUD/控件,但保留比分牌与角色
   $("battleControls").style.display="none";$("midBtn").style.display="none";
@@ -32,12 +32,16 @@ function startWinCine(win,ball){
   balls.forEach(bb=>{bb.mesh.visible=false;bb.blob.visible=false;bb.silent=true;bb.life=Math.min(bb.life,0.02);});
   // 投篮者 / 失败者
   const oppGuyPos=(OPP&&(OPP.pos||(OPP.guy&&OPP.guy.g?OPP.guy.g.position:null)))||V3(2,0,-4);
+  /* 投篮者站在**这一球出手时**的位置（球上记着 shooterPos / shooterFace）。
+     百分大战里球还在飞、人就能走向下一个点位；按当前位置摆人，
+     回放里人和球的轨迹对不上，球只能从手里横着甩到轨迹上 */
+  const shotAt=ball&&ball.shooterPos?V3(ball.shooterPos.x,0,ball.shooterPos.z):null;
   if(win){
     w.shooter=player; w.loser=OPP&&OPP.guy;
-    w.sPos=(P.pos||V3(0,0,-4)).clone(); w.sFace=P.face||0;
+    w.sPos=(shotAt||P.pos||V3(0,0,-4)).clone(); w.sFace=shotAt&&ball.shooterFace!=null?ball.shooterFace:(P.face||0);
   }else{
     w.shooter=OPP&&OPP.guy?OPP.guy:player; w.loser=player;
-    w.sPos=oppGuyPos.clone(); w.sFace=faceTo(w.sPos,HOOP);
+    w.sPos=(shotAt||oppGuyPos).clone(); w.sFace=shotAt&&ball.shooterFace!=null?ball.shooterFace:faceTo(w.sPos,HOOP);
   }
   w.lPos=(win?oppGuyPos:(P.pos||V3(0,0,-4))).clone();
   w.lFace=faceTo(w.lPos,HOOP);
@@ -94,7 +98,7 @@ function updWinCine(dt){
   const perp=V3(sdir.z,0,-sdir.x);
   const side=w.sPos.x>0?-1:1; // 取靠场内一侧,避免镜头穿到看台外
   // 角色始终可见(此刻 applyCamMode 视为非比赛态会隐藏,故每帧强制)
-  hands.visible=false;passer.g.visible=false;if(typeof oppPasser!=="undefined")oppPasser.g.visible=false;
+  hands.visible=false;passer.g.visible=true;if(typeof oppPasser!=="undefined")oppPasser.g.visible=G.mode==="battle";   // 场边传球人也留在画面里
   if(w.shooter)w.shooter.g.visible=true;
   if(w.loser)w.loser.g.visible=true;
 
@@ -120,6 +124,8 @@ function updWinCine(dt){
       w.shooter.ballGrips[0].getWorldPosition(gripPos);
       gripQuat=new THREE.Quaternion();
       w.shooter.ballGrips[0].getWorldQuaternion(gripQuat);
+      // 换了外观的球员（?kobe=）手的位置和骨架不同：球跟着画面上的手走
+      {const skin=[window.AIBAKobe,window.AIBAKobeOpp].find(k=>k&&k.ready&&k.player===w.shooter&&k.ballShift);if(skin)gripPos.add(skin.ballShift);}
     }
   }
 
@@ -156,7 +162,7 @@ function updWinCine(dt){
       const startPt=winCineBallAt(0);
       w.relOffset=(w.lastHandPos||gripPos||w.p0).clone().sub(startPt);
     }
-    const blend=Math.max(0,1-prog/0.15); // 起手平滑过渡,消除脱手帧微小跳跃
+    const u=clamp(prog/0.3,0,1),blend=1-u*u*(3-2*u); // 起手平滑过渡：起点斜率为 0，脱手不拐
     ballPos=pathPos.clone().addScaledVector(w.relOffset,blend);
     w.ghost.position.copy(ballPos);
     w.ghost.visible=true;

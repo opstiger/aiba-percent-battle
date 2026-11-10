@@ -112,7 +112,8 @@ const ring=new THREE.Mesh(new THREE.TorusGeometry(2.6,.008,6,96),new THREE.MeshB
 const CFG=window.AIBA_CONFIG||{};
 const STARS=(CFG.CLASSIC_LEGENDS||[]).concat((window.AIBA_ASSETS&&AIBA_ASSETS.coverStars)||[]);
 const LAST={j23:"Jordan",curry:"Curry",h13:"Harden",thompson:"Thompson",allen:"Allen",bird:"Bird",miller:"Miller",lillard:"Lillard",korver:"Korver",
-  stojakovic:"Stojakovic",ionescu:"Ionescu",taurasi:"Taurasi","sue-bird":"Bird",k24:"Bryant",t01:"McGrady",v15:"Carter",a03:"Iverson",nova24:"Nova"};
+  stojakovic:"Stojakovic",ionescu:"Ionescu",taurasi:"Taurasi","sue-bird":"Bird",k24:"Bryant",t01:"McGrady",v15:"Carter",a03:"Iverson",nova24:"Nova",
+  irving:"Irving",durant:"Durant",doncic:"Doncic",nowitzki:"Nowitzki"};
 const sel=document.getElementById("star");
 STARS.forEach(s=>{const o=document.createElement("option");o.value=s.id;o.textContent=s.n||s.id;sel.appendChild(o);});
 sel.value=state.star;

@@ -218,7 +218,9 @@
       const material=spot.super?superBallMat():(spot.deep!=null?matDeep:matBall);
       balls.push(physicsBallForOutcome(start,sim,tf,made,aibaRoll,material,{
         val:spot.val,money:false,deep:spot.deep!=null,super:!!spot.super,life:1.6,
-        silent:true,opp:true,sp:spot,collided:false,superChanceId:OPP.possessionSuperChanceId||0}));
+        silent:true,opp:true,sp:spot,collided:false,superChanceId:OPP.possessionSuperChanceId||0,
+        // 出手时站在哪、朝哪：英雄时刻回放按这里摆人（对手投完会走开）
+        shooterPos:(OPP.pos||base).clone(),shooterFace:OPP.guy&&OPP.guy.g?OPP.guy.g.rotation.y:null}));
       OPP.guy.ball.visible=false;
       return;
     }

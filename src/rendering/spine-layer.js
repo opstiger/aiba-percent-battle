@@ -155,7 +155,10 @@
   const tmpQ=new THREE.Quaternion(),tmpE=new THREE.Euler(0,0,0,"YXZ"),tmpV=new THREE.Vector3();
   const nodeBuf=[];
   function save(a,n){
-    a.saved.push(n,n.position.x,n.position.y,n.position.z,n.quaternion.x,n.quaternion.y,n.quaternion.z,n.quaternion.w);
+    /* 存欧拉角原值，不存四元数：写回四元数时 three 会从它反算欧拉角，同一朝向有两种写法，
+       反算可能给出 x=π、z=π 的那一种。根节点的前倾按身体左右轴解释（characters.js localLeanRoot），
+       那种写法就会被读成倒立——百分大战英雄时刻里对手倒插进地板就是这么来的。 */
+    a.saved.push(n,n.position.x,n.position.y,n.position.z,n.rotation.x,n.rotation.y,n.rotation.z,0);
   }
   const HOLD_CAPTURE=.1,HOLD_BLEND=.22;
   function armChain(o){
@@ -189,7 +192,11 @@
     }
     /* 3. 胸腔：绕腰椎整体转 */
     if(Math.abs(a.pitch.a)>=1e-4||Math.abs(a.yaw.a)>=1e-4){
-      tmpE.set(a.pitch.a,a.yaw.a,0,"YXZ");tmpQ.setFromEuler(tmpE);
+      /* 符号：a.pitch 按"正 = 后仰"算（见上面的驱动）。但胸腔节点是朝上的——绕 X 转正角时
+         头顶往 +Z（球员正前方）走，是前倾；上面那条"rotation.x 正号是后仰"只对朝下的四肢成立。
+         所以这里取反：科比的签名后仰、屈膝前倾、落地前沉才按设计的方向出现
+         （之前出手顶点胸口反而前屈约 16°）。 */
+      tmpE.set(-a.pitch.a,a.yaw.a,0,"YXZ");tmpQ.setFromEuler(tmpE);
       const nodes=torsoNodes(o,a,nodeBuf);
       // 持球：还挂在根节点上的球跟着胸口走（挂在手上的球本来就在手臂下面）
       if(isPlayer(o)&&typeof pBall!=="undefined"&&pBall.parent===o.g)nodes.push(pBall);
@@ -206,7 +213,7 @@
   function restoreOne(a){
     if(!a.applied)return;
     const s=a.saved;
-    for(let i=s.length-8;i>=0;i-=8){const n=s[i];n.position.set(s[i+1],s[i+2],s[i+3]);n.quaternion.set(s[i+4],s[i+5],s[i+6],s[i+7]);}
+    for(let i=s.length-8;i>=0;i-=8){const n=s[i];n.position.set(s[i+1],s[i+2],s[i+3]);n.rotation.set(s[i+4],s[i+5],s[i+6]);}
     s.length=0;a.applied=false;
   }
   let lastT=0;

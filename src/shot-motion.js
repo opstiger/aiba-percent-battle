@@ -34,8 +34,10 @@
   let releaseCurve={dip:0,lift:1,rise:1,jmp:1,over:0},lastPoseCurve=releaseCurve,pendingRelease=null;
   let shotCycleClock=0,shotCycleActive=false,shotCycleReleased=false,shotCycleWasCharging=false;
   let releaseFeetClock=0,releaseFeetLandClock=0,releaseFeetAirClock=0,releaseFeetActive=false,releaseFeetReleased=false,
-    releaseFeetLanded=false,releaseFeetAirborne=false,releaseFeetWasCharging=false;
-  /* 踢腿峰值与真正球脱手的 BALL_RELEASE_AT 对齐：起跳后开始，球离手时达到最大。 */
+    releaseFeetLanded=false,releaseFeetAirborne=false,releaseFeetWasCharging=false,releaseFeetPreKick=0,releaseFeetPeakJump=0;
+  /* 踢腿时机按真实发力顺序：起跳离地那一刻就开始踢（起跳带动身体转动），到最高点角度最大，
+     下落时收回一部分，落地后交给落地姿势。蓄力阶段身体离地靠的是跳跃曲线 jmp（蓄到理想值 = 顶点），
+     物理层要到松手才记 airborne，所以起跳段按 jmp 驱动，不再等球出手。 */
   const RELEASE_FEET_KICK_BLEND=BALL_RELEASE_AT,RELEASE_FEET_KICK_WEIGHT=.62,RELEASE_FEET_LAND_BLEND=.18,
     RELEASE_FEET_LAND_HOLD=.18,RELEASE_FEET_RECOVER=.28,RELEASE_FEET_EARLY_RELEASE_LIMIT=.72;
   const RELEASE_OVER_FADE=.12,RELEASE_FEET_GROUND_BAND=.12;
@@ -55,11 +57,17 @@
     for(let p=node;p;p=p.parent)if(p===root)return true;
     return false;
   }
+  /* 持球时 pBall 挂在真实投篮手的 ballGrip 上，是手臂子树的一部分。第一人称有自己的显示球 handBall，
+     镜像里再拷一份 pBall 就是"手里两个球"。镜像和结构指纹都要把它排除在外。 */
+  function isHeldBall(node){return typeof pBall!=="undefined"&&node===pBall;}
   function mirrorArm(source,name){
     const clone=source.clone(true),sourceNodes=[],cloneNodes=[];
     clone.name=name;
     source.traverse(node=>sourceNodes.push(node));
     clone.traverse(node=>cloneNodes.push(node));
+    const dropped=sourceNodes.map((node,i)=>isHeldBall(node)?cloneNodes[i]:null).filter(Boolean);
+    const keep=sourceNodes.map((node,i)=>!dropped.some(d=>underNode(cloneNodes[i],d)));
+    dropped.forEach(node=>{if(node.parent)node.parent.remove(node);});
     // 肘 pivot = handRig 往上走到 clone 的直接子节点
     let elbowRoot=clone.getObjectByName("handRig");
     while(elbowRoot&&elbowRoot.parent&&elbowRoot.parent!==clone)elbowRoot=elbowRoot.parent;
@@ -70,7 +78,7 @@
       const hide=elbowRoot?!underNode(node,elbowRoot):(FP_HIDDEN_PARTS.indexOf(node.name)>=0);
       if(hide)node.userData.fpAlwaysHidden=true;
     });
-    return {source,clone,pairs:sourceNodes.map((node,index)=>[node,cloneNodes[index]])};
+    return {source,clone,pairs:sourceNodes.map((node,index)=>[node,cloneNodes[index]]).filter((pair,index)=>keep[index])};
   }
   function mountFpBall(){
     if(!fpRig||!fpRig.ballGrip||typeof handBall==="undefined")return;
@@ -90,7 +98,7 @@
      这里记一个结构指纹,每帧比一下,对不上就整体重建。
      指纹只数节点个数:装备的增删一定会改变节点数,而纯粹的姿态变化不会 ——
      刚好是"要不要重建"的判据,又不用每帧做深比较。 */
-  function armNodeCount(root){let n=0;root.traverse(()=>n++);return n;}
+  function armNodeCount(root){let n=0;(function walk(o){if(isHeldBall(o))return;n++;o.children.forEach(walk);})(root);return n;}   // 球拿起放下不算结构变化
   function armStructureSig(){
     if(!player||!player.arms||!player.arms[0]||!player.arms[1])return "";
     return armNodeCount(player.arms[0])+":"+armNodeCount(player.arms[1]);
@@ -138,7 +146,9 @@
   function syncFpRigFromPlayer(){
     if(!fpRig||!player||!player.g)return;
     if(fpRig.sig!==armStructureSig()){rebuildFpRig();if(!fpRig)return;}
-    fpRig.g.position.copy(player.g.position);fpRig.g.quaternion.copy(player.g.quaternion);fpRig.g.scale.copy(player.g.scale);
+    // 复制 rotation（不是 quaternion）：玩家根节点的前倾按身体左右轴算（characters.js localLeanRoot），镜像体用同一套换算
+    if(typeof localLeanRoot==="function")localLeanRoot(fpRig.g);
+    fpRig.g.position.copy(player.g.position);fpRig.g.rotation.copy(player.g.rotation);fpRig.g.scale.copy(player.g.scale);
     syncArmMirror(fpRig.shoot);syncArmMirror(fpRig.guide);
     // handBall 是第一人称显示副本；位置来自真实投篮手的 ballGrip，不再另写一套持球坐标。
     if(fpRig.ballGrip&&handBall.parent!==fpRig.ballGrip)mountFpBall();
@@ -216,14 +226,19 @@
     const charging=!!G.charging,safeDt=Math.max(0,Math.min(.08,dt||0));
     if(charging&&!releaseFeetWasCharging){
       releaseFeetClock=0;releaseFeetLandClock=0;releaseFeetAirClock=0;releaseFeetActive=true;releaseFeetReleased=false;
-      releaseFeetLanded=false;releaseFeetAirborne=false;
+      releaseFeetLanded=false;releaseFeetAirborne=false;releaseFeetPreKick=0;releaseFeetPeakJump=0;
     }
     /* 用户松手前取消蓄力时清回原版游戏下肢，不留下半截 release pose。 */
     if(!charging&&releaseFeetWasCharging&&!releaseFeetReleased){resetReleaseFeet();return null;}
     if(!releaseFeetActive){releaseFeetWasCharging=charging;return null;}
-    /* 地面蓄力段不叠加 release pose。releaseShot 可能先于物理 airborne 到达，
-       这里等真正离地后才启动踢腿时钟；因此不会出现“先在地上踢、再起跳”。 */
-    if(!releaseFeetReleased){releaseFeetWasCharging=charging;return null;}
+    /* 还没出手：站在地上蓄力时不踢；身体一离地（跳跃曲线开始上升）就开始踢，按上升进度加到顶点最大。 */
+    const jmpNow=clampN(Number(c&&c.jmp)||0,0,1);
+    if(!releaseFeetReleased){
+      releaseFeetWasCharging=charging;
+      if(!charging||jmpNow<.02){releaseFeetPreKick=0;return null;}
+      releaseFeetPreKick=ease01(jmpNow)*RELEASE_FEET_KICK_WEIGHT;releaseFeetPeakJump=Math.max(releaseFeetPeakJump,jmpNow);
+      return {released:true,airborne:true,takeoff:true,kickWeight:releaseFeetPreKick,landBlend:0,recover:0};
+    }
     releaseFeetClock+=safeDt;
     if(!releaseFeetAirborne&&phys&&phys.airborne){
       releaseFeetAirborne=true;releaseFeetAirClock=0;
@@ -241,7 +256,12 @@
     const recoverNow=ease01(clampN((releaseFeetLandClock-RELEASE_FEET_LAND_BLEND-RELEASE_FEET_LAND_HOLD)/RELEASE_FEET_RECOVER,0,1));
     if(recoverNow>=1){resetReleaseFeet();return null;}
     releaseFeetWasCharging=charging;
-    const kickWeight=ease01(releaseFeetAirClock/RELEASE_FEET_KICK_BLEND)*RELEASE_FEET_KICK_WEIGHT;
+    /* 出手后：接着起跳段已经踢出的量（不从 0 重来）。还在上升就继续加到最大；
+       过了顶点按下落进度收回约四成，落地再由 landBlend 交给落地姿势。 */
+    releaseFeetPeakJump=Math.max(releaseFeetPeakJump,jmpNow);
+    const rising=Math.max(releaseFeetPreKick,ease01(releaseFeetAirClock/RELEASE_FEET_KICK_BLEND)*RELEASE_FEET_KICK_WEIGHT);
+    const fallBack=releaseFeetPeakJump>.05?clampN(1-jmpNow/releaseFeetPeakJump,0,1):0;
+    const kickWeight=rising*(1-.24*fallBack);
     const landBlend=releaseFeetLanded?ease01(releaseFeetLandClock/RELEASE_FEET_LAND_BLEND):0;
     return {
       released:true,airborne:true,kickWeight,landBlend,recover:recoverNow,
