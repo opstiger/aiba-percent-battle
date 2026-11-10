@@ -54,16 +54,20 @@
       const j=(seededRandom()*(i+1))|0;
       [pool[i],pool[j]]=[pool[j],pool[i]];
     }
+    /* 玩家指定的对手排在最前面，没指定满的位置用洗好的池子补；洗牌照常做，随机数消耗次数不变 */
+    const keyOf=star=>star&&(star.id||star.n)||"";
+    const chosen=global.AIBAOpponentSelect?global.AIBAOpponentSelect.picks(G.mode,LEGENDS,G.myStar).map(star=>({...star})):[];
+    const rest=pool.filter(star=>!chosen.some(c=>keyOf(c)===keyOf(star)));
 
     if(G.mode==="rackrush"){
       G.opponents=[];global.showRackRushIntro();return;
     }
     if(G.mode==="battle"){
-      G.battleOpp=pool[0];G.opponents=[G.battleOpp];applyStarStyle(rivals[0],G.battleOpp);showBattleIntro();return;
+      G.battleOpp=chosen[0]||rest[0];G.opponents=[G.battleOpp];applyStarStyle(rivals[0],G.battleOpp);showBattleIntro();return;
     }
 
-    const count=seededRandom()<.5?2:3;
-    G.opponents=pool.slice(0,count);
+    const count=Math.max(seededRandom()<.5?2:3,chosen.length);
+    G.opponents=[...chosen,...rest].slice(0,count);
     G.opponents.forEach((opponent,index)=>applyStarStyle(rivals[index],opponent));
     G.stage="semi";G.stats={best:0,moneyM:0,moneyT:0,deepM:0,deepT:0};G.semiDone=false;G.finalDone=false;
 

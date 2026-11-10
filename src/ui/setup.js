@@ -39,7 +39,8 @@
     }
     let html=(global.AIBAModeLeaderboardMarkup?global.AIBAModeLeaderboardMarkup(G.mode):"")+
       '<h1 class="title" style="font-size:24px">选择难度</h1>'+
-      (global.AIBAPlayerSelectMarkup?global.AIBAPlayerSelectMarkup(LEGENDS,G.mode):"");
+      (global.AIBAPlayerSelectMarkup?global.AIBAPlayerSelectMarkup(LEGENDS,G.mode):"")+
+      (global.AIBAOpponentSelectMarkup?global.AIBAOpponentSelectMarkup(G.mode):"");
     html+=sceneSelectMarkup();
     html+=global.visionModeMarkup();
     if(G.mode==="battle")html+='<div class="note">百分大战中,难度会影响你的甜区宽度和对手命中节奏。</div>';
