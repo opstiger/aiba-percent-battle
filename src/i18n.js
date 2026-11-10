@@ -264,6 +264,13 @@ const DICT={
 "随机上场":"Random starter",
 "每局从球星池随机抽选":"A random star from the pool each game",
 "换球员 ›":"Swap player ›",
+/* ---- 对手选择（src/opponent-select.js） ---- */
+"随机对手":"Random opponents","换对手 ›":"Swap opponents ›","选择对手":"Choose opponents","确认对手":"Confirm opponents","全部随机":"All random",
+"每局从球星池随机抽一位对手":"A random rival from the pool each game","每局随机抽 2~3 名对手":"2–3 random rivals each game",
+"已指定 1v1 对手":"1v1 rival locked","已指定 3 名对手":"3 rivals locked","随机":"Random","你的球员":"Your player",
+"最多指定 3 名对手":"Up to 3 opponents","对手已锁定":"Opponents locked","已切回随机对手":"Back to random opponents",
+"百分大战 · 选 1 名对手,和你同场竞投":"Percent Battle · Pick 1 rival to shoot against you",
+"三分大赛 · 最多选 3 名,没选满的位置随机补位":"3PT Contest · Pick up to 3 — empty slots are filled at random",
 "换球员":"Swap player",
 "赛场":"Court",
 "室内经典":"Classic indoor",
@@ -307,7 +314,12 @@ const DICT={
 "未知弧线":"Unknown arc",
 "随机甜区":"Random sweet zone",
 /* ---- 球星名 ---- */
-"斯蒂芬·库里":"Stephen Curry","克莱·汤普森":"Klay Thompson","雷·阿伦":"Ray Allen","拉里·伯德":"Larry Bird",
+"斯蒂芬·库里":"Stephen Curry",
+"凯里·欧文":"Kyrie Irving","凯文·杜兰特":"Kevin Durant","卢卡·东契奇":"Luka Dončić","德克·诺维茨基":"Dirk Nowitzki","詹姆斯·哈登":"James Harden",
+"2016总冠军 · 抢七关键三分":"2016 champ · Game 7 dagger","两届FMVP · 四届得分王":"2× Finals MVP · 4× scoring champ",
+"得分王 · 后撤步三分":"Scoring champ · Step-back threes","2011总冠军+FMVP · 金鸡独立":"2011 champ + Finals MVP · One-legged fadeaway",
+"丝滑急停":"Silky pull-up","高弧柔投":"High soft arc","无解高点":"Unguardable high release","高点平稳":"High, steady arc",
+"慢速后撤":"Slow step-back","后撤高弧":"Step-back high arc","后仰高点":"High fadeaway","金鸡独立高弧":"One-legged fade arc","左手后撤":"Lefty step-back","克莱·汤普森":"Klay Thompson","雷·阿伦":"Ray Allen","拉里·伯德":"Larry Bird",
 "雷吉·米勒":"Reggie Miller","达米安·利拉德":"Damian Lillard","凯尔·科沃尔":"Kyle Korver","佩贾·斯托贾科维奇":"Peja Stojakovic",
 "萨布丽娜·约内斯库":"Sabrina Ionescu","戴安娜·陶乐西":"Diana Taurasi","苏·伯德":"Sue Bird","自建球员":"Custom player",
 "科比·布莱恩特":"Kobe Bryant","迈克尔·乔丹":"Michael Jordan","阿伦·艾弗森":"Allen Iverson","文斯·卡特":"Vince Carter","特雷西·麦克格雷迪":"Tracy McGrady",
@@ -1169,6 +1181,9 @@ const DICT={
 /* 出手点嵌进句子时的写法(词典里的 "Left corner" 是独立标签用的) */
 const SPOT_IN_SENTENCE={"弧顶":"at the top of the arc","左底角":"in the left corner","右底角":"in the right corner","左侧 45°":"on the left wing","右侧 45°":"on the right wing"};
 const RULES=[
+[/^已指定 (\d+) 名 · 其余随机补位$/,m=>m[1]+" locked · rest random"],
+[/^对手 (\d+)$/,m=>"Rival "+m[1]],
+[/^#(\d+) · 三分 (\d+)$/,m=>"#"+m[1]+" · 3PT "+m[2]],
 /* ---- v2.19.7:拼接与插值文案 ---- */
 [/^第 ?(\d+) ?关,(.+)。目标 ?(\d+) ?分。$/,m=>"Stage "+m[1]+" — "+t(m[2])+". Target "+m[3]+" pts."],
 [/^第 ?(\d+) ?架$/,m=>"Rack "+m[1]],
