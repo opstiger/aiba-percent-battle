@@ -11,8 +11,27 @@ const mixN=(a,b,k)=>a+(b-a)*k;
    setPoint 正=二段式:抬球提前开始也提前结束(0.22→0.58),到起跳(0.76)之间空出一段
    "球停在置球点"的保持;负=一段式:抬球推后开始、一直延续到起跳之后,读成一个连贯动作。
    未配置的球星 setPoint=0,得到的曲线和今天**逐位相同**。 */
+/* 真实弹道版曲线(style.flow):下蹲到底立刻蹬伸(越蹬越快),蹬直那一刻离地;腾空是抛物线 —— 离地速度最大,一路减速到顶点。
+   游戏里实际的下蹲/蹬伸/腾空由 shot-physics.js 按时间算(同一套形状),这里是回放、过场这些按进度取姿势的地方用的。 */
+function shotFlowJump(u){u=Math.max(0,Math.min(1,u));return 1-(1-u)*(1-u);}
+/* 节奏参照真人定点跳投(科比训练录像逐帧):蹬地 0.3~0.45 秒、滞空约 0.4 秒、刚离地还在上升时出手。
+   这里取实战和训练之间:蹬地 .26 秒,上升/下落各 .25 秒(跳起约 31 厘米 = 0.55*HEIGHT),身体顶点比甜区晚 .12 秒
+   (松手到球离手还有约 .09 秒,所以球是在离地后约 .14 秒、离顶点还有 .11 秒时离手)。 */
+const SHOT_FLOW_PUSH=.26,SHOT_FLOW_POW=3.8,SHOT_FLOW_AIR=.25,SHOT_FLOW_LAG=.12,SHOT_FLOW_HEIGHT=.56;
+const SHOT_FLOW_LOAD=.62,SHOT_FLOW_TAKEOFF=.94,SHOT_FLOW_APEX=1.24;
 function shotCurves(ph,style){
   const sp=style&&Number(style.setPoint)||0;
+  if(style&&style.flow){
+    const loadIn=ease01(ph/SHOT_FLOW_LOAD);
+    const pu=clamp((ph-SHOT_FLOW_LOAD)/(SHOT_FLOW_TAKEOFF-SHOT_FLOW_LOAD),0,1),rise=Math.pow(pu,SHOT_FLOW_POW);
+    return {
+      dip:loadIn*(1-rise),
+      lift:ease01((ph-(0.50-sp))/(0.34-2*sp)),
+      rise,
+      jmp:shotFlowJump((ph-SHOT_FLOW_TAKEOFF)/(SHOT_FLOW_APEX-SHOT_FLOW_TAKEOFF)),
+      over:Math.max(0,ph-1)
+    };
+  }
   const loadIn=ease01(ph/0.32);
   const rise=ease01((ph-0.58)/0.28);
   return {

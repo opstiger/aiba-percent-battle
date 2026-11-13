@@ -1,0 +1,216 @@
+<!doctype html>
+<html lang="zh">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Tripo 球星 · 蒙皮预览</title>
+<style>
+  html,body{margin:0;height:100%;background:#14161b;color:#dde;font:13px/1.4 -apple-system,system-ui,sans-serif;overflow:hidden}
+  #c{position:fixed;inset:0;width:100%;height:100%;display:block;cursor:grab}
+  #c:active{cursor:grabbing}
+  #ui{position:fixed;top:10px;left:10px;width:250px;max-height:calc(100% - 20px);overflow:auto;background:#1d2027ee;border:1px solid #333a46;border-radius:10px;padding:10px 12px}
+  h1{font-size:14px;margin:0 0 6px}
+  .row{display:flex;gap:6px;flex-wrap:wrap;margin:6px 0}
+  button{background:#2b3240;color:#dde;border:1px solid #3d4658;border-radius:6px;padding:5px 9px;cursor:pointer;font-size:12px}
+  button:hover{background:#38425a}
+  label{display:flex;align-items:center;gap:6px;margin:3px 0}
+  label span{width:86px;color:#9aa3b5}
+  input[type=range]{flex:1}
+  .g{margin-top:8px;color:#7fb2ff;font-weight:600}
+  #info{position:fixed;right:12px;bottom:10px;color:#8a93a6;font-size:12px;text-align:right;white-space:pre}
+</style>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="ui">
+  <h1>Tripo 球星 · 蒙皮预览</h1>
+  <div class="row" id="presets"></div>
+  <label><span>显示骨骼</span><input type="checkbox" id="skel"></label>
+  <label><span>线框</span><input type="checkbox" id="wire"></label>
+  <div class="g">投篮动作(游戏曲线)</div>
+  <div class="row">
+    <button id="shotPlay">▶ 播放投篮</button>
+    <button id="shotStop">退出</button>
+    <select id="shotSpeed"><option value="1">1x</option><option value="0.5">0.5x</option><option value="0.2">0.2x</option></select>
+  </div>
+  <label><span>时间轴</span><input type="range" id="shotT" min="0" max="1000" value="0"></label>
+  <div id="shotInfo" style="color:#9aa3b5;font-size:11px;white-space:pre;min-height:28px"></div>
+  <div id="sliders"></div>
+</div>
+<div id="info">加载中…</div>
+<script src="three.min.r128.js"></script>
+<script src="GLTFLoader.r128.js"></script>
+<script>
+"use strict";
+const canvas = document.getElementById('c');
+const renderer = new THREE.WebGLRenderer({canvas, antialias:true, preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+renderer.outputEncoding = THREE.sRGBEncoding;
+const scene = new THREE.Scene();
+scene.background = new THREE.Color(0x14161b);
+const cam = new THREE.PerspectiveCamera(35, 1, 0.1, 100);
+scene.add(new THREE.HemisphereLight(0xffffff, 0x445566, 0.9));
+const sun = new THREE.DirectionalLight(0xffffff, 0.9); sun.position.set(2,4,3); scene.add(sun);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(1.4, 48), new THREE.MeshBasicMaterial({color:0x222732}));
+floor.rotation.x = -Math.PI/2; scene.add(floor);
+
+// ---- 轨道相机(手写,不依赖 OrbitControls) ----
+let yaw = 0.35, pitch = 0.12, dist = 4.2, target = new THREE.Vector3(0,1,0);
+function placeCam(){
+  cam.position.set(target.x + dist*Math.sin(yaw)*Math.cos(pitch), target.y + dist*Math.sin(pitch), target.z + dist*Math.cos(yaw)*Math.cos(pitch));
+  cam.lookAt(target);
+}
+let drag = null;
+canvas.addEventListener('pointerdown', e=>{drag={x:e.clientX,y:e.clientY};canvas.setPointerCapture(e.pointerId)});
+canvas.addEventListener('pointermove', e=>{ if(!drag) return;
+  yaw -= (e.clientX-drag.x)*0.008; pitch = Math.max(-0.6, Math.min(1.2, pitch + (e.clientY-drag.y)*0.006));
+  drag={x:e.clientX,y:e.clientY}; });
+canvas.addEventListener('pointerup', ()=>drag=null);
+canvas.addEventListener('wheel', e=>{ e.preventDefault(); dist = Math.max(1.5, Math.min(16, dist*(1+e.deltaY*0.001))); }, {passive:false});
+function resize(){ const w=innerWidth,h=innerHeight; renderer.setSize(w,h,false); cam.aspect=w/h; cam.updateProjectionMatrix(); }
+addEventListener('resize', resize); resize();
+
+// ---- 姿势控制 ----
+// 旋转一律按"角色空间"的轴给出(角色面朝 +Z,头顶 +Y),再换算到每根骨骼自己的局部轴。
+// 这样不依赖绑定时骨骼局部轴的朝向。side: 该骨骼在身体哪一侧(左=+1,右=-1),载入后实测得出。
+// 每项: [骨骼, 键, 标签, 轴, 符号函数(side)=>±1];滑块正值 = 标签写的方向。
+const CONTROLS = [
+  ['躯干', null],
+  ['Hips',  'tilt',  '胯部前倾',       'x', ()=>1],
+  ['Spine', 'bend',  '躯干前弯',       'x', ()=>1],
+  ['Spine', 'twist', '躯干左转',       'y', ()=>1],
+  ['头', null],
+  ['Head',  'nod',   '低头',           'x', ()=>1],
+  ['Head',  'turn',  '头左转',         'y', ()=>1],
+  ['左臂', null],
+  ['LeftArm',     'raise', '左臂 上抬(负=下垂)', 'z', s=>s],
+  ['LeftArm',     'swing', '左臂 前摆(垂臂后)',   'x', ()=>-1],
+  ['LeftArm',     'fwd',   '左臂 水平前收',       'y', s=>-s],
+  ['LeftForeArm', 'flex',  '左肘 弯曲',           'y', s=>-s],
+  ['右臂', null],
+  ['RightArm',     'raise', '右臂 上抬(负=下垂)', 'z', s=>s],
+  ['RightArm',     'swing', '右臂 前摆(垂臂后)',   'x', ()=>-1],
+  ['RightArm',     'fwd',   '右臂 水平前收',       'y', s=>-s],
+  ['RightForeArm', 'flex',  '右肘 弯曲',           'y', s=>-s],
+  ['腿', null],
+  ['LeftUpLeg',  'lift', '左大腿 前抬', 'x', ()=>-1],
+  ['LeftLeg',    'flex', '左膝 弯曲',   'x', ()=>1],
+  ['RightUpLeg', 'lift', '右大腿 前抬', 'x', ()=>-1],
+  ['RightLeg',   'flex', '右膝 弯曲',   'x', ()=>1],
+  ['LeftFoot',   'pitch', '左脚尖 下压', 'x', ()=>1],
+  ['RightFoot',  'pitch', '右脚尖 下压', 'x', ()=>1],
+];
+const state = {};          // "骨骼.键" -> 角度(度)
+const sliderEls = {};
+const bones = {};          // 短名 -> Bone
+const rest = {};           // 短名 -> 静止时的局部 Quaternion
+const restW = {};          // 短名 -> 静止时的世界 Quaternion
+const side = {};           // 短名 -> +1(角色左侧) / -1(右侧)
+const key = (b,a)=>b+'.'+a;
+
+const slidersBox = document.getElementById('sliders');
+for (const c of CONTROLS){
+  if (c[1]===null){ const g=document.createElement('div'); g.className='g'; g.textContent=c[0]; slidersBox.appendChild(g); continue; }
+  const [b,a,label]=c, k=key(b,a); state[k]=0;
+  const l=document.createElement('label'); l.innerHTML='<span>'+label+'</span>';
+  const r=document.createElement('input'); r.type='range'; r.min=-130; r.max=130; r.value=0;
+  r.addEventListener('input',()=>{ state[k]=+r.value; });
+  l.appendChild(r); slidersBox.appendChild(l); sliderEls[k]=r;
+}
+function setPose(p){ for(const k in state){ state[k]=p[k]||0; sliderEls[k].value=state[k]; } }
+
+const ARMS_DOWN = {'LeftArm.raise':-78,'RightArm.raise':-78};
+const PRESETS = {
+  'T-pose': {},
+  '手臂放下': {...ARMS_DOWN},
+  '行走': {...ARMS_DOWN,'LeftArm.swing':-20,'RightArm.swing':25,'LeftForeArm.flex':15,'RightForeArm.flex':25,
+           'LeftUpLeg.lift':28,'LeftLeg.flex':12,'RightUpLeg.lift':-18,'RightLeg.flex':25,'Spine.bend':4},
+  '跑步': {...ARMS_DOWN,'LeftArm.swing':-35,'RightArm.swing':45,'LeftForeArm.flex':85,'RightForeArm.flex':95,
+           'LeftUpLeg.lift':60,'LeftLeg.flex':75,'RightUpLeg.lift':-25,'RightLeg.flex':70,'Spine.bend':12},
+  '投篮预备': {'LeftArm.raise':-85,'RightArm.raise':-85,'RightArm.swing':105,'RightForeArm.flex':105,
+               'LeftArm.swing':80,'LeftForeArm.flex':75,
+               'LeftUpLeg.lift':28,'RightUpLeg.lift':28,'LeftLeg.flex':50,'RightLeg.flex':50,'Spine.bend':6,'Head.nod':-8},
+  '下蹲防守': {'LeftArm.raise':-35,'RightArm.raise':-35,'LeftForeArm.flex':25,'RightForeArm.flex':25,
+               'LeftUpLeg.lift':70,'RightUpLeg.lift':70,'LeftLeg.flex':95,'RightLeg.flex':95,'Spine.bend':22,'Head.nod':-18},
+};
+const pbox=document.getElementById('presets');
+for(const n in PRESETS){ const b=document.createElement('button'); b.textContent=n; b.onclick=()=>{ if(window.Shot) Shot.stop(); setPose(PRESETS[n]); }; pbox.appendChild(b); }
+
+// ---- 载入模型 ----
+let root=null, helper=null, mesh=null;
+new THREE.GLTFLoader().load('star.glb', gltf=>{
+  root = gltf.scene; scene.add(root);
+  root.traverse(o=>{
+    if(o.isBone){ const s=o.name.replace(/^mixamorig:?/,''); bones[s]=o; rest[s]=o.quaternion.clone(); }
+    if(o.isSkinnedMesh){ mesh=o; o.frustumCulled=false; }
+  });
+  // 量身高 -> 缩放到 1.9 米,脚踩地
+  root.updateMatrixWorld(true);
+  const box=new THREE.Box3().setFromObject(root);
+  const h=box.max.y-box.min.y, s=1.98/h;
+  root.scale.setScalar(s); root.updateMatrixWorld(true);
+  const b2=new THREE.Box3().setFromObject(root);
+  root.position.y -= b2.min.y; root.position.x -= (b2.min.x+b2.max.x)/2; root.position.z -= (b2.min.z+b2.max.z)/2;
+  root.updateMatrixWorld(true);
+  root.rotation.y = -Math.PI/2;   // Tripo 导出的模型默认朝 +X,转成面朝 +Z(镜头)
+  root.updateMatrixWorld(true);
+  const wp=new THREE.Vector3();
+  for(const n in bones){ restW[n]=bones[n].getWorldQuaternion(new THREE.Quaternion()); bones[n].getWorldPosition(wp); side[n]=wp.x>=0?1:-1; }
+  baseY=root.position.y; restFootY=footMinY();
+  helper=new THREE.SkeletonHelper(root); helper.visible=false; scene.add(helper);
+  target.set(0,0.95,0);
+  const tris = mesh ? (mesh.geometry.index? mesh.geometry.index.count/3 : mesh.geometry.attributes.position.count/3) : 0;
+  document.getElementById('info').textContent =
+    `骨骼 ${Object.keys(bones).length} · 三角面 ${tris|0} · 身高按 1.98 米 · 球直径 24 厘米\n拖动旋转 · 滚轮缩放`;
+  if(window.Shot) Shot.init();
+  window.__ready = true;
+}, undefined, err=>{ document.getElementById('info').textContent='加载失败: '+err.message; console.error(err); });
+
+document.getElementById('skel').onchange=e=>{ if(helper) helper.visible=e.target.checked; };
+document.getElementById('wire').onchange=e=>{ if(mesh){ (Array.isArray(mesh.material)?mesh.material:[mesh.material]).forEach(m=>m.wireframe=e.target.checked); } };
+
+const AX={x:new THREE.Vector3(1,0,0),y:new THREE.Vector3(0,1,0),z:new THREE.Vector3(0,0,1)};
+const ORDER={x:0,y:1,z:2};   // 合成顺序 R = Rx·Ry·Rz,即先绕 z、再 y、最后 x
+const tmpQ=new THREE.Quaternion(), R=new THREE.Quaternion(), inv=new THREE.Quaternion(), tv=new THREE.Vector3();
+let baseY=0, restFootY=0;
+const FEET=['LeftFoot','RightFoot','LeftToeBase','RightToeBase','LeftToe_End','RightToe_End'];
+function footMinY(){ let m=Infinity; for(const n of FEET){ if(bones[n]){ bones[n].getWorldPosition(tv); if(tv.y<m) m=tv.y; } } return m; }
+function applyPose(P, liftY, fixedY){   // fixedY: 给了就不做脚踩地,直接用这个高度
+  if(!root) return;
+  P=P||state; liftY=liftY||0;
+  for(const s in bones) bones[s].quaternion.copy(rest[s]);
+  const per={};
+  for(const c of CONTROLS){ if(c[1]===null) continue;
+    const [b,a,,axis,sgn]=c, deg=P[key(b,a)]; if(!deg||!bones[b]) continue;
+    (per[b]=per[b]||[]).push([axis, deg*sgn(side[b])*Math.PI/180]);
+  }
+  for(const b in per){
+    per[b].sort((p,q)=>ORDER[p[0]]-ORDER[q[0]]);
+    R.set(0,0,0,1);
+    for(const [axis,rad] of per[b]){ tmpQ.setFromAxisAngle(AX[axis],rad); R.multiply(tmpQ); }
+    // 角色空间旋转 R 换到骨骼局部: local = rest · (restW⁻¹ · R · restW)
+    inv.copy(restW[b]).invert();
+    bones[b].quaternion.copy(rest[b]).multiply(inv).multiply(R).multiply(restW[b]);
+  }
+  // 脚踩地:姿势变了以后把整个人上下平移,让最低的脚回到地面
+  root.position.y=baseY; root.updateMatrixWorld(true);
+  if(fixedY!=null){ root.position.y=fixedY; root.updateMatrixWorld(true); return; }
+  root.position.y=baseY+(restFootY-footMinY())+liftY; root.updateMatrixWorld(true);
+}
+let lastNow=performance.now();
+function frame(){
+  const now=performance.now(), dt=Math.min(0.1,(now-lastNow)/1000); lastNow=now;
+  if(window.Shot && Shot.active) Shot.tick(dt); else applyPose();
+  placeCam(); renderer.render(scene,cam);
+}
+function loop(){ requestAnimationFrame(loop); frame(); }
+loop();
+// 标签被隐藏时 rAF 会停,用定时器兜底(仅在隐藏时),保证截图/验证拿到真画面
+setInterval(()=>{ if(document.hidden) frame(); }, 100);
+window.__frame = frame;
+// 供自动化验证:window.__setPose({...}) 直接设置
+window.__setPose=p=>setPose(p); window.__presets=PRESETS;
+</script>
+<script>document.write('<script src="shot.js?v='+Date.now()+'"><\/script>')</script>
+</body>
+</html>

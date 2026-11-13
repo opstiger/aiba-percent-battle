@@ -60,6 +60,13 @@
     {id:"miller",n:"雷吉·米勒",t:"五届全明星 · 关键三分",r:88,col:[0xfdbb30,0x002d62],num:31,skin:0xac7b58,hair:0x211a15,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xeeeeea,headband:false,wrist:null,sleeve:null,shortsColor:0xfdbb30},
     {id:"lillard",n:"达米安·利拉德",t:"八届全明星 · 超远三分",r:90,col:[0xe03a3e,0x111111],num:0,skin:0x986744,hair:0x1c1713,hairStyle:"buzz",beard:0x1c1713,beardStyle:"goatee",shoe:0xeeeeea,headband:false,wrist:null,sleeve:0x111111,shortsColor:0xe03a3e},
     {id:"korver",n:"凯尔·科沃尔",t:"全明星射手 · 接球投篮",r:86,col:[0xc8102e,0x26282a],num:26,skin:0xe8c3a3,hair:0x65492e,hairStyle:"sidepart",beard:false,beardStyle:"none",shoe:0xeeeeea,headband:false,wrist:null,sleeve:null,shortsColor:0xc8102e},
+    /* 写实模型试验角色:画面上的身体由 src/lab/tripo-avatar.js 换成 assets/3d model/star8.glb(Tripo 生成+绑骨)。
+       这条记录里的外观字段只用于选人卡片和被隐藏的方块骨架,不和其他球星共用任何皮套。 */
+    {id:"star8",n:"8 号 · 全明星",t:"写实模型试验 · 蒙皮骨骼",r:95,col:[0xf4f4f0,0x24348f],num:8,skin:0x8a5a3a,hair:0x15110f,hairStyle:"cornrows",beard:0x15110f,beardStyle:"stubble",shoe:0xf4f4ef,headband:false,wrist:0xf4f4f0,sleeve:null,shortsColor:0xf4f4f0},
+    /* 第二个写实模型角色:同样由 src/lab/tripo-avatar.js 换皮,用 assets/models/star1.glb(Mixamo 绑骨)。外观字段只用于选人卡片。 */
+    {id:"star1",n:"1 号 · 太阳",t:"写实模型试验 · 蒙皮骨骼",r:95,col:[0x1d1160,0xe56020],num:1,skin:0x7a4b32,hair:0x15110f,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xf4f4ef,headband:false,wrist:0xf4f4f0,sleeve:null,shortsColor:0x1d1160},
+    /* 第三个写实模型角色:assets/models/star15.glb(Tripo 生成 + Mixamo 绑骨)。 */
+    {id:"star15",n:"15 号 · 猛龙",t:"写实模型试验 · 蒙皮骨骼",r:95,col:[0x4b2a85,0xce1141],num:15,skin:0x8a5a3a,hair:0xd04a6a,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xe86fd0,headband:false,wrist:0x111111,sleeve:0x111111,shortsColor:0x4b2a85},
     {id:"stojakovic",n:"佩贾·斯托贾科维奇",t:"两届三分大赛冠军",r:87,col:[0x5a2d81,0x8a8d8f],num:16,skin:0xd5ae8b,hair:0x35271e,hairStyle:"short",beard:0x35271e,beardStyle:"stubble",shoe:0x111111,headband:false,wrist:null,sleeve:null,shortsColor:0x5a2d81},
     {id:"ionescu",n:"萨布丽娜·约内斯库",t:"WNBA全明星 · 三分大赛纪录",r:91,col:[0x6eceb2,0x101820],num:20,sex:"f",hairStyle:"ponytail",hair:0x463020,skin:0xe5bc9c,beard:false,beardStyle:"none",shoe:0xd8eee5,headband:false,wrist:null,sleeve:null,shortsColor:0x6eceb2},
     {id:"taurasi",n:"戴安娜·陶乐西",t:"三届WNBA总冠军 · 历史得分王",r:92,col:[0x2b1a4e,0xe56020],num:3,sex:"f",hairStyle:"bun",hair:0x29201b,skin:0xdbb28e,beard:false,beardStyle:"none",shoe:0xeeeeea,headband:false,wrist:null,sleeve:null,shortsColor:0x2b1a4e},
@@ -143,6 +150,10 @@
     ionescu:{kick:.40,lean:0,turn:0.0,release:.01,setPoint:-.04,drift:0,jump:0.95,fade:0.03,hold:0.45},
     bird:{kick:.35,lean:0,turn:0.075,release:.02,setPoint:.06,drift:0,jump:0.78,fade:0.05,hold:0.55},
     korver:{kick:.20,lean:0,turn:0.0,release:.02,setPoint:-.03,drift:0,jump:0.72,fade:0,hold:0.65},
+    /* 写实模型试验角色:flow=1 走连贯版蓄力曲线(motion.js shotCurves / shot-physics.js),其他球星不受影响 */
+    star8:{flow:1},
+    star1:{flow:1},
+    star15:{flow:1},
     allen:{kick:.18,lean:0,turn:0.0,release:.01,setPoint:-.02,drift:0,jump:1.0,fade:0,hold:0.8},
     "sue-bird":{kick:.18,lean:0,turn:0.0,release:-.01,setPoint:-.02,drift:0,jump:0.88,fade:0,hold:0.5},
     /* 库里 / 汤普森:几乎不踢腿。两个人是全表最小值,和麦迪拉开一个数量级 */

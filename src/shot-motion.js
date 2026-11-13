@@ -28,8 +28,9 @@
   function save(){try{localStorage.setItem(LS_KEY,on?"on":"off");}catch(e){}}
 
   /* ================= 第一人称 V2：第三人称双臂的显示镜像 ================= */
+  const FLOW_FOLLOW_FADE=0.5,FLOW_FOLLOW_HOLD=0.6;
   const FOLLOW_EXTEND=0.105,BALL_RELEASE_AT=0.092,FOLLOW_HOLD=0.24,FOLLOW_FADE=0.38;
-  let fpRig=null,fpHidden=[],fpBallHome=null,followAge=0,followActive=false;
+  let fpRig=null,fpHidden=[],fpBallHome=null,followAge=0,followActive=false,followLong=false;
   let releasePose=null;
   let releaseCurve={dip:0,lift:1,rise:1,jmp:1,over:0},lastPoseCurve=releaseCurve,pendingRelease=null;
   let shotCycleClock=0,shotCycleActive=false,shotCycleReleased=false,shotCycleWasCharging=false;
@@ -162,7 +163,7 @@
     fpHidden.forEach(c=>{c.visible=!on;});
   }
   function beginFollow(){
-    followAge=0;followActive=true;
+    followAge=0;followActive=true;followLong=false;
   }
   function followForce(){
     if(typeof G!=="undefined"&&Number.isFinite(Number(G.lastShotFollowForce)))
@@ -175,9 +176,13 @@
     if(!followActive)return {active:false,extend:0,follow:0,recover:1,age:followAge,force};
     followAge+=Math.max(0,Math.min(.08,dt||0));
     const extend=ease01(followAge/FOLLOW_EXTEND);
-    const recover=ease01((followAge-FOLLOW_EXTEND-FOLLOW_HOLD)/FOLLOW_FADE);
+    /* 连贯版(style.flow):收手放慢,不要一甩到底再急停 */
+    const fade=(typeof player!=="undefined"&&player&&player.shotStyle&&player.shotStyle.flow)?FLOW_FOLLOW_FADE:FOLLOW_FADE;
+    /* 真人出手后投篮手会一直举到落地之后(约 0.5 秒以上)才放下 */
+    const hold=followLong?FLOW_FOLLOW_HOLD:FOLLOW_HOLD;
+    const recover=ease01((followAge-FOLLOW_EXTEND-hold)/fade);
     const follow=extend*(1-recover);
-    if(followAge>=FOLLOW_EXTEND+FOLLOW_HOLD+FOLLOW_FADE){
+    if(followAge>=FOLLOW_EXTEND+hold+fade){
       followActive=false;
       return {active:false,extend:1,follow:0,recover:1,age:followAge,force};
     }
@@ -240,7 +245,8 @@
       return {released:true,airborne:true,takeoff:true,kickWeight:releaseFeetPreKick,landBlend:0,recover:0};
     }
     releaseFeetClock+=safeDt;
-    if(!releaseFeetAirborne&&phys&&phys.airborne){
+    /* 真实弹道版蹬地途中松手时 airborne 已经为真(这一跳收不住了),但脚还在地上:等真正离地再开始空中的脚型 */
+    if(!releaseFeetAirborne&&phys&&phys.airborne&&phys.offGround!==false){
       releaseFeetAirborne=true;releaseFeetAirClock=0;
     }
     if(!releaseFeetAirborne){
@@ -333,9 +339,13 @@
       typeof global.AIBAInteractiveTutorial.isHoldingRelease==="function"&&
       global.AIBAInteractiveTutorial.isHoldingRelease());
     // v1.52 物理:顶点前沿用原曲线,顶点后接管自然下落;落地前自动出手
-    const phys=AIBAShotPhysics.update({charging:G.charging,paused:tutorialHold,dt,ideal,rate:playerChargeRate(),curve:base});
+    const flowJump=style&&style.flow&&typeof shotFlowJump==="function"?{push:SHOT_FLOW_PUSH,pow:SHOT_FLOW_POW,air:SHOT_FLOW_AIR,lag:SHOT_FLOW_LAG,height:SHOT_FLOW_HEIGHT}:null;
+    const phys=AIBAShotPhysics.update({charging:G.charging,paused:tutorialHold,dt,ideal,rate:playerChargeRate(),curve:base,flow:flowJump});
     const rawCurve=phys.curve;
     if(G.charging)lastPoseCurve={dip:rawCurve.dip,lift:rawCurve.lift,rise:rawCurve.rise,jmp:rawCurve.jmp,over:rawCurve.over};
+    /* 真实弹道版:蹬地途中松手后腿还在继续蹬(物理按时间走完这一跳),出手跟随不能把下蹲/蹬伸/举球冻在松手那一刻,
+       否则人会半蹲着悬在空中;跟着实时值走,落地后跟随用的就是腾空末尾的值(腿已蹬直、球已举到位)。 */
+    if(flowJump&&phys.airborne&&!G.charging){followLong=true;releaseCurve.dip=rawCurve.dip;releaseCurve.lift=rawCurve.lift;releaseCurve.rise=rawCurve.rise;}
     if(phys.apexCue&&G.charging&&!G.apexed){
       G.apexed=true;
       if(navigator.vibrate)navigator.vibrate(12);
@@ -355,7 +365,9 @@
     /* 蓄力时物理还不算离地，身体走地面公式、被 over 压低；松手后切到空中公式，
        over 那一项若直接丢掉身体会往上弹一下。改成从出手那帧的 over 在 0.12s 内淡出。 */
     const releaseSink=(lastPoseCurve.over||0)*0.28*(1-ease01((follow.age||0)/RELEASE_OVER_FADE));
-    P.jump=phys.airborne?Math.max(0,rawCurve.jmp*0.55-releaseSink):Math.max(-0.06,rawCurve.jmp*0.55-rawCurve.over*0.28);
+    /* 真实弹道版的跳高由滞空时长定(高度 = ½g·t²),不是固定 0.55 米 */
+    const jumpAmp=0.55*(flowJump?flowJump.height:1);
+    P.jump=phys.airborne?Math.max(0,rawCurve.jmp*jumpAmp-releaseSink):Math.max(-0.06,rawCurve.jmp*jumpAmp-rawCurve.over*0.28);
     P.eyeDip=-0.26*c.dip-0.09*lk;
     const stance=shotStanceBlend(c,G.canShoot||G.charging);
     // 第三人称
