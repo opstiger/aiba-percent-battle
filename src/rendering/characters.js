@@ -82,7 +82,7 @@ function jerseyPanelGeometry(){
    这正好对应真实球馆的样子:**脚下是一团模糊的圆影,而不是一条有方向的投影**,
    所以落地感主要由这层无方向的软圆斑承担,把它提到接近满强度。
    灯阵那几层极淡的方向影仍然保留,它们负责"光是从上面多个方向来的"这个读感。 */
-const GROUND_SHADOW_SCALE=(typeof SHADOWS!=="undefined"&&SHADOWS)?.95:1;
+const GROUND_SHADOW_SCALE=(typeof SHADOWS!=="undefined"&&SHADOWS)?.34:1;
 /* 角色自阴影开关。自阴影是最吃 shadow map 分辨率的一项：512 的图上，手臂压在
    躯干上的那条影容易退化成噪点或整片糊黑。真机上用 ?selfshadow=0 单独关掉它
    （地面投影保留），就能一眼看出这一层值不值那点开销。 */

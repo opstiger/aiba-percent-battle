@@ -1511,11 +1511,10 @@ function shotReadyLowerTarget(index){
     ?target:READY_LOWER_FALLBACK[index]||READY_LOWER_FALLBACK[0];
 }
 /* 待机呼吸的频率与幅度。1cm 量级 —— 方块画风下再大就成了喘气。 */
-const BREATH_RATE=1.25,BREATH_AMP=0.010;
-/* 投篮后的 ready bounce：不改 P.pos，只让脚下有一点持续的踝/膝弹性。
-   只在真实比赛站定时启用，蓄力、起跳、走位和过场仍由各自姿势完全接管。 */
-const READY_BOUNCE_RATE=4.8,READY_BOUNCE_AMP=.012,READY_KNEE_FLEX=.060,READY_ANKLE_FLEX=.075;
-const READY_FOOT_ROLL=.12,LAND_FOOT_PITCH=.10;
+const BREATH_RATE=1.25,BREATH_AMP=0;
+/* 投篮后的 ready bounce：保持稳定站姿，避免持球待机时人物与 FBX 皮套周期性抖动/晃动。 */
+const READY_BOUNCE_RATE=4.8,READY_BOUNCE_AMP=0,READY_KNEE_FLEX=0,READY_ANKLE_FLEX=0;
+const READY_FOOT_ROLL=0,LAND_FOOT_PITCH=.10;
 /* 起跳离地后脚掌自然下垂的幅度(正号=脚尖朝下,与 RUN_TOE_OFF_PITCH 同向)。
    最高点踝关节本身是 -.18*jmp 的背屈,所以这里要先抵消掉再给出净下垂,
    .52 大致等于净 19° —— 站立参考帧不受影响,因为它整条乘 c.jmp。 */
@@ -1576,10 +1575,10 @@ function poseGuy(o,c,lk,landingImpact){
   const readyClock=isReadyPlayer&&Number.isFinite(G.tNow)?G.tNow:0;
   const readyWave=isReadyPlayer?Math.sin(readyClock*READY_BOUNCE_RATE):0;
   const readyPulse=readyWave>0?readyWave*readyWave:0;
-  const targetReadyZ=isReadyPlayer&&readyPulse?(0.5+0.16*Math.sin(readyClock*READY_BOUNCE_RATE+Math.PI*.5)-.5)*.014:0;
+  const targetReadyZ=0;
   o.g.rotation.z+=(targetReadyZ-o.g.rotation.z)*0.18;
   if(Math.abs(o.g.rotation.z)<1e-4&&targetReadyZ===0)o.g.rotation.z=0;
-  if(readyPulse){
+  if(readyPulse&&READY_BOUNCE_AMP>0){
     /* 一只脚稍多承重，另一只脚随 beat 轻轻卸力；幅度很小，观感是踝关节有弹性，
        不是原地踏步，也不产生水平位移。 */
     const weight=0.5+0.16*Math.sin(readyClock*READY_BOUNCE_RATE+Math.PI*.5);
@@ -2085,7 +2084,7 @@ let walk=null;
    改成梯形:起步加速 22% → 巡航 → 减速 38%。减速段明显更长,
    配合步幅随速度走(见 poseRunCycle),收尾自然变成小碎步再站定,
    而不是匀速滑到点急停。 */
-const WALK_ACC=.22,WALK_DEC=.38,WALK_CRUISE=1.82;
+const WALK_ACC=.22,WALK_DEC=.38,WALK_CRUISE=3.6;
 const WALK_TURN_START=.40,WALK_TURN_END=.84,WALK_TURN_RATE=16;
 function walkEase(k){
   const A=WALK_ACC,D=WALK_DEC,total=1-A/2-D/2;
@@ -2115,7 +2114,7 @@ function walkTo(shot,cb,opts){
   }
   const legA=via?from.distanceTo(via):0;
   const total=legA+(via?via.distanceTo(to):from.distanceTo(to));
-  const dur=clamp(total/WALK_CRUISE,0.55,5.4);
+  const dur=clamp(total/WALK_CRUISE,0.42,3.6);
   const overlapPass=!!(opts&&opts.overlapPass);
   let passStartK=1;
   if(overlapPass){
