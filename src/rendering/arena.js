@@ -234,18 +234,46 @@ function buildCourtsideRibbon(){
   scScreen.position.set(scX+0.40,0.44,scZ);scScreen.rotation.y=Math.PI/2;
   indoorRoot.add(scScreen);
 
-  // 两侧场边名人席 / 替补席紫金皮质折叠椅（rot=0 使 sx 为前后进深、sz 为左右椅宽）
+  // 两侧及近端底线场边 3 排阶梯式 VIP 名人席（紧密排布，含 2/3 排紫金地毯阶梯地台）
+  const pushChair=(cx,cy,cz,rotY)=>{
+    const c=Math.cos(rotY),s=Math.sin(rotY);
+    const ox=s*0.18,oz=c*0.18;
+    cabParts.push({color:0x24143b,matrix:mat4At(cx,cy+0.42,cz,rotY,0.44,0.08,0.46)});
+    cabParts.push({color:0x1d1030,matrix:mat4At(cx+ox,cy+0.70,cz+oz,rotY,0.44,0.50,0.09),taperZ:0.74});
+    cabParts.push({color:0xfdb927,matrix:mat4At(cx+ox,cy+0.96,cz+oz,rotY,0.42,0.042,0.095)});
+    for(const dx of [-0.18,0.18]){
+      cabParts.push({color:0x323a4a,matrix:mat4At(cx+c*dx,cy+0.21,cz-s*dx,rotY,0.04,0.42,0.42)});
+    }
+  };
+  const vipZ0=COURT.nearBaseline+0.95,vipZ1=COURT.farBaseline-1.85;
+  const sideRows=[
+    {dist:9.25,y:0.00,step:0.62,skipScorer:true},
+    {dist:10.05,y:0.22,step:0.64,skipScorer:true},
+    {dist:10.82,y:0.46,step:0.66,skipScorer:false}
+  ];
   for(const side of [-1,1]){
-    const cx=side*9.95;
-    for(let i=0;i<9;i++){
-      const cz=COURT.nearBaseline+1.8+i*1.28;
-      if(side<0&&Math.abs(cz-scZ)<3.2)continue;
-      cabParts.push({color:0x24143b,matrix:mat4At(cx,0.42,cz,0,0.46,0.09,0.48)});
-      cabParts.push({color:0x1d1030,matrix:mat4At(cx+side*0.19,0.70,cz,0,0.10,0.50,0.46),taperX:0.72});
-      cabParts.push({color:0xfdb927,matrix:mat4At(cx+side*0.19,0.96,cz,0,0.105,0.045,0.44)});
-      for(const dz of [-0.19,0.19]){
-        cabParts.push({color:0x323a4a,matrix:mat4At(cx,0.21,cz+dz,0,0.44,0.42,0.04)});
+    // 2/3 排阶梯式 VIP 紫金地毯地台
+    const deckLen=vipZ1-vipZ0+0.8,deckMid=(vipZ0+vipZ1)*0.5;
+    cabParts.push({color:0x161222,matrix:mat4At(side*10.05,0.11,deckMid,0,0.78,0.22,deckLen)});
+    cabParts.push({color:0xfdb927,matrix:mat4At(side*9.66,0.215,deckMid,0,0.03,0.02,deckLen)});
+    cabParts.push({color:0x141020,matrix:mat4At(side*10.82,0.23,deckMid,0,0.82,0.46,deckLen)});
+    cabParts.push({color:0x58278a,matrix:mat4At(side*10.41,0.455,deckMid,0,0.03,0.025,deckLen)});
+    const rot=side>0?Math.PI/2:-Math.PI/2;
+    for(const row of sideRows){
+      const cx=side*row.dist;
+      for(let cz=vipZ0;cz<=vipZ1;cz+=row.step){
+        if(row.skipScorer&&side<0&&Math.abs(cz-scZ)<2.95)continue;
+        pushChair(cx,row.y,cz,rot);
       }
+    }
+  }
+  // 近端底线两侧 VIP 阶梯席（位于摄影记者区后方，朝向 +Z 球场）
+  const baseVipZ=COURT.nearBaseline-4.45;
+  for(const side of [-1,1]){
+    cabParts.push({color:0x161222,matrix:mat4At(side*5.2,0.08,baseVipZ,0,6.6,0.16,0.84)});
+    cabParts.push({color:0xfdb927,matrix:mat4At(side*5.2,0.155,baseVipZ+0.42,0,6.6,0.02,0.03)});
+    for(let x=2.3;x<=8.1;x+=0.68){
+      pushChair(side*x,0.16,baseVipZ,Math.PI);
     }
   }
   bakeVoxelMesh(indoorRoot,cabParts,{materialKey:"ledCabinets",standard:true,material:{roughness:0.34,metalness:0.42,envMapIntensity:0.56}});
@@ -319,16 +347,23 @@ function buildSuiteRing(){
 }
 /* 底线摄影记者席：随扩建后的宽阔底线后移至 nearBaseline-3.9m，不再挤压篮架空间 */
 function buildPressRow(){
-  const parts=[],mm=new THREE.Matrix4();
-  const q=new THREE.Quaternion();
-  const push=(x,y,z,sx,sy,sz,c,tx,tz)=>{
-    mm.compose(new THREE.Vector3(x,y,z),q,new THREE.Vector3(sx,sy,sz));
-    parts.push({color:c,matrix:mm.clone(),taperX:tx,taperZ:tz});
+  const personParts=[],barrierParts=[],mm=new THREE.Matrix4();
+  const q=new THREE.Quaternion(),eul=new THREE.Euler();
+  const pVec=new THREE.Vector3(),sVec=new THREE.Vector3();
+  const pushPerson=(shape,x,y,z,sx,sy,sz,c,tx,tz,rx=0)=>{
+    q.setFromEuler(eul.set(rx,0,0));
+    mm.compose(pVec.set(x,y,z),q,sVec.set(sx,sy,sz));
+    personParts.push({shape,color:c,matrix:mm.clone(),taperX:tx,taperZ:tz});
   };
-  const COAT=[0x141720,0x10131b,0x191e28,0x12151c];
-  const VEST=[0x222938,0x1b2230,0x271e38];
+  const pushBarrier=(x,y,z,sx,sy,sz,c,tx,tz)=>{
+    q.identity();
+    mm.compose(pVec.set(x,y,z),q,sVec.set(sx,sy,sz));
+    barrierParts.push({color:c,matrix:mm.clone(),taperX:tx,taperZ:tz});
+  };
+  const COAT=[0x181c26,0x141720,0x1c222e,0x161922];
+  const VEST=[0x252d3e,0x1e2636,0x2c223e];
   const SKIN=[0xd9a066,0xf0c294,0x8d5524];
-  const HAIR=[0x141210,0x2b1d14,0x1c2028];
+  const HAIR=[0x181512,0x2f2016,0x1e222c];
   const rows=[[COURT.nearBaseline-3.9,1],[COURT.farBaseline+3.9,-1]];
   for(let ri=0;ri<rows.length;ri++){
     const bz=rows[ri][0],dir=rows[ri][1];
@@ -340,27 +375,30 @@ function buildPressRow(){
         const vest=VEST[(i+ri)%VEST.length];
         const skin=SKIN[(i+ri*2)%SKIN.length];
         const hair=HAIR[(i+ri)%HAIR.length];
-        push(x,0.12,z,0.34,0.22,0.32,0x161a22,0.90,0.90);
-        push(x,0.36,z,0.38,0.48,0.28,coat,0.86,0.84);
-        push(x,0.40,z+dir*0.01,0.39,0.34,0.29,vest,0.88,0.86);
-        push(x,0.64,z,0.11,0.08,0.11,skin);
-        push(x,0.74,z,0.20,0.21,0.20,skin,0.88,0.88);
-        push(x,0.83,z-dir*0.01,0.21,0.08,0.21,hair,0.84,0.84);
-        push(x-0.11,0.12,z+dir*0.26,0.14,0.14,0.42,0x12151e,0.85,0.90);
-        push(x+0.11,0.12,z+dir*0.26,0.14,0.14,0.42,0x12151e,0.85,0.90);
-        push(x,0.64,z+dir*0.24,0.18,0.15,0.22,0x0f1218,0.90,0.90);
-        push(x,0.64,z+dir*0.40,0.11,0.11,0.20,0xc8d0dc,0.92,0.92);
-        push(x,0.64,z+dir*0.52,0.13,0.13,0.10,0x0a0d12,1.12,1.0);
+        pushPerson("sphere",x,0.14,z,0.34,0.18,0.30,0x161a22);
+        pushPerson("cyl",x,0.35,z,0.34,0.40,0.26,coat,1.15,1.10);
+        pushPerson("sphere",x,0.46,z,0.42,0.24,0.29,vest);
+        pushPerson("cyl",x,0.63,z,0.10,0.10,0.10,skin);
+        pushPerson("sphere",x,0.75,z,0.21,0.23,0.22,skin,1.06,1.04);
+        pushPerson("dome",x,0.78,z-dir*0.01,0.225,0.19,0.235,hair);
+        pushPerson("cyl",x-0.11,0.12,z+dir*0.24,0.135,0.38,0.135,0x12151e,0.88,0.88,dir*Math.PI*0.48);
+        pushPerson("cyl",x+0.11,0.12,z+dir*0.24,0.135,0.38,0.135,0x12151e,0.88,0.88,dir*Math.PI*0.48);
+        pushPerson("cyl",x-0.19,0.52,z+dir*0.10,0.10,0.28,0.10,coat,0.86,0.86,dir*-0.72);
+        pushPerson("cyl",x+0.19,0.52,z+dir*0.10,0.10,0.28,0.10,coat,0.86,0.86,dir*-0.72);
+        pushPerson("box",x,0.65,z+dir*0.24,0.18,0.14,0.18,0x0f1218,0.92,0.92);
+        pushPerson("cyl",x,0.65,z+dir*0.41,0.115,0.22,0.115,0xc8d0dc,1.0,1.0,Math.PI*0.5);
+        pushPerson("cyl",x,0.65,z+dir*0.54,0.135,0.09,0.135,0x0a0d12,1.08,1.08,Math.PI*0.5);
       }
     }
     /* 媒体区软包挡板 + 紫金防撞护条 */
     for(let i=0;i<12;i++){
       const bx=(i-5.5)*1.55,bzz=bz-dir*0.58;
-      push(bx,0.52,bzz,1.58,1.02,0.18,0x0d1018);
-      push(bx,1.06,bzz,1.60,0.09,0.22,0x341954,0.85,0.82);
+      pushBarrier(bx,0.52,bzz,1.58,1.02,0.18,0x0d1018);
+      pushBarrier(bx,1.06,bzz,1.60,0.09,0.22,0x341954,0.85,0.82);
     }
   }
-  bakeVoxelMesh(indoorRoot,parts,{materialKey:"press",standard:true,material:{roughness:0.48,metalness:0.18,envMapIntensity:0.35}});
+  bakeOrganicMesh(indoorRoot,personParts,{materialKey:"pressPeople",standard:true,material:{roughness:0.58,metalness:0.12,envMapIntensity:0.32}});
+  bakeVoxelMesh(indoorRoot,barrierParts,{materialKey:"press",standard:true,material:{roughness:0.48,metalness:0.18,envMapIntensity:0.35}});
 }
 /* 300 层看台顶部以上的环场深色建筑高墙 */
 function buildUpperWall(){
@@ -472,27 +510,124 @@ function buildRetiredJerseys(){
   }
   bakeVoxelMesh(indoorRoot,rodParts,{materialKey:"bannerRig",standard:true,material:{roughness:0.35,metalness:0.65,envMapIntensity:0.50}});
 }
+let jumboRT=null,jumboCam=null,jumboRoot=null,jumboOverlayTex=null,jumboCamMode="",jumboFrame=0,jumboLastT=-1;
+function drawJumboOverlay(g,w,h,camLabel,scoreTxt,clockTxt){
+  g.clearRect(0,0,w,h);
+  // 左上角 LIVE 直播角标
+  g.fillStyle="rgba(180,24,38,0.92)";g.fillRect(14,12,78,24);
+  g.fillStyle="#ffffff";g.beginPath();g.arc(28,24,4.5,0,Math.PI*2);g.fill();
+  g.font="bold 14px Orbitron, monospace";g.textAlign="left";g.textBaseline="middle";
+  g.fillText("LIVE",38,24);
+  // 右上角机位标签（赛场直播 / 名人席 / 观众席 / 球星特写）
+  g.fillStyle="rgba(12,16,28,0.84)";g.fillRect(w-178,12,164,24);
+  g.strokeStyle="rgba(253,185,39,0.75)";g.lineWidth=1.5;g.strokeRect(w-178,12,164,24);
+  g.fillStyle="#fdb927";g.font="bold 12px Orbitron, monospace";g.textAlign="center";
+  g.fillText(camLabel||"COURT CAM",w-96,24);
+  // 底部 NBA 转播比分条 (Lower-Third Score Bug)
+  g.fillStyle="rgba(10,13,22,0.88)";g.fillRect(0,h-42,w,42);
+  g.fillStyle="#58278a";g.fillRect(0,h-42,118,42);
+  g.fillStyle="#fdb927";g.fillRect(118,h-42,4,42);
+  g.fillStyle="#ffffff";g.font="bold 16px Orbitron, monospace";g.textAlign="center";
+  g.fillText("LAKERS",59,h-21);
+  g.fillStyle="#fdb927";g.font="bold 22px Orbitron, monospace";
+  g.fillText(scoreTxt||"108 : 96",w*0.5,h-21);
+  g.fillStyle="#7ee7ff";g.font="bold 15px Orbitron, monospace";g.textAlign="right";
+  g.fillText(clockTxt||"Q4  03:47",w-16,h-21);
+}
+function getJumboOverlayTex(){
+  if(!jumboOverlayTex){
+    jumboOverlayTex=pixTex(512,256,(g,w,h)=>drawJumboOverlay(g,w,h,"COURT CAM","108 : 96","Q4  03:47"),{smooth:true});
+  }
+  return jumboOverlayTex;
+}
+function updJumbotronBroadcast(t){
+  if(!jumboRoot||!indoorRoot||!indoorRoot.visible||typeof renderer==="undefined"||!renderer)return;
+  if(!jumboRT){
+    jumboRT=new THREE.WebGLRenderTarget(320,192,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
+    jumboCam=new THREE.PerspectiveCamera(46,320/192,0.5,90);
+    for(const ch of jumboRoot.children){
+      if(ch.userData&&ch.userData.isLiveFeed){ch.material.map=jumboRT.texture;ch.material.needsUpdate=true;}
+    }
+  }
+  jumboFrame++;
+  if(jumboFrame<4||(t-jumboLastT>=0&&t-jumboLastT<0.12))return;
+  jumboLastT=t;
+  // 每 3.8 秒自动切换真实直播机位：赛场直播 / 球星特写 / 名人VIP席 / 观众席
+  const slot=Math.floor(t/3.8)%4;
+  const labels=["COURT LIVE","STAR CLOSE-UP","COURTSIDE VIP","FAN CROWD CAM"];
+  const label=labels[slot];
+  if(slot===0){
+    // 赛场直播机位（投篮弧顶望向篮筐）
+    jumboCam.position.set(Math.sin(t*0.25)*2.2,3.4,COURT.midZ-0.8);
+    jumboCam.lookAt(0,2.2,HOOP.z);
+  }else if(slot===1){
+    // 球星 / 射手 / 底线吉祥物特写机位
+    const px=(typeof G!=="undefined"&&G.player&&G.player.group)?G.player.group.position.x:0;
+    const pz=(typeof G!=="undefined"&&G.player&&G.player.group)?G.player.group.position.z:0;
+    jumboCam.position.set(px+Math.sin(t*0.5)*1.8,1.9,pz-2.8);
+    jumboCam.lookAt(px,1.35,pz);
+  }else if(slot===2){
+    // 场边三排名人 VIP 席特写巡航
+    const sweepZ=COURT.midZ-2.5+Math.sin(t*0.35)*3.5;
+    jumboCam.position.set(4.5,1.8,sweepZ);
+    jumboCam.lookAt(9.8,1.0,sweepZ-0.8);
+  }else{
+    // 看台观众席欢呼扫拍
+    jumboCam.position.set(-4.0,3.2,COURT.midZ);
+    jumboCam.lookAt(-18.5,4.2,COURT.midZ+Math.sin(t*0.3)*6.0);
+  }
+  if(jumboCamMode!==label){
+    jumboCamMode=label;
+    if(jumboOverlayTex&&jumboOverlayTex.image){
+      const cv=jumboOverlayTex.image,g=cv.getContext("2d");
+      const sc=(typeof G!=="undefined"&&G.score!=null)?(G.score+" : "+(G.oppScore||0)):"108 : 96";
+      drawJumboOverlay(g,cv.width,cv.height,label,sc,"LIVE HD");
+      jumboOverlayTex.needsUpdate=true;
+    }
+  }
+  const prevVis=jumboRoot.visible;
+  const prevShadowAuto=renderer.shadowMap?renderer.shadowMap.autoUpdate:false;
+  jumboRoot.visible=false;
+  if(renderer.shadowMap)renderer.shadowMap.autoUpdate=false;
+  const prevTarget=renderer.getRenderTarget();
+  renderer.setRenderTarget(jumboRT);
+  renderer.render(scene,jumboCam);
+  renderer.setRenderTarget(prevTarget);
+  if(renderer.shadowMap)renderer.shadowMap.autoUpdate=prevShadowAuto;
+  jumboRoot.visible=prevVis;
+}
 function buildCenterHung(){
-  /* 中央吊挂巨型斗屏（Crypto.com Arena 级 Jumbotron）：抬升至 y=16.4m，半径扩至 R=4.25m，
-     八面环绕巨幕 + 上下双层发光紫金 LED Halo 光环 + 重型桁架吊塔。 */
-  const y=16.4,cz=COURT.midZ,tex=scoreboardTex();
+  /* 中央吊挂巨型斗屏（Crypto.com Arena 级 Jumbotron）：悬吊于 y=12.2m（高于三分抛物线，且在主转播视角顶部清晰可见），
+     四面主转播巨幕实时播放球场/VIP席/观众席/球星特写，四角斜屏同步显示实时比分与计时！ */
+  const y=12.2,cz=COURT.midZ,scoreTex=scoreboardTex(),ovTex=getJumboOverlayTex();
   const N=8,R=4.25;
   const parts=[];
   const root=new THREE.Group();root.name="centerHungScoreboard";indoorRoot.add(root);
+  jumboRoot=root;jumboFrame=0;jumboLastT=-1;jumboCamMode="";
   for(let i=0;i<N;i++){
     const a=i/N*Math.PI*2;
+    const isMain=(i%2===0); // 四正方向为宽幅直播屏，四角为比分数据屏
     const sx=Math.sin(a)*R,sz=cz+Math.cos(a)*R;
-    const m=new THREE.Mesh(new THREE.PlaneGeometry(3.38,2.74),
-      new THREE.MeshBasicMaterial({map:tex,side:THREE.DoubleSide}));
+    const w=isMain?3.65:2.95,h=isMain?2.55:2.45;
+    const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),
+      new THREE.MeshBasicMaterial({map:isMain?(jumboRT?jumboRT.texture:scoreTex):scoreTex,side:THREE.DoubleSide}));
     m.position.set(sx,y,sz);
     m.rotation.y=a;
+    if(isMain)m.userData.isLiveFeed=true;
     root.add(m);
+    if(isMain){
+      const ov=new THREE.Mesh(new THREE.PlaneGeometry(w,h),
+        new THREE.MeshBasicMaterial({map:ovTex,transparent:true,side:THREE.DoubleSide,depthWrite:false}));
+      ov.position.set(Math.sin(a)*(R+0.03),y,cz+Math.cos(a)*(R+0.03));
+      ov.rotation.y=a;
+      root.add(ov);
+    }
     const bx=Math.sin(a)*(R-0.15),bz=cz+Math.cos(a)*(R-0.15);
-    parts.push({color:0x121622,matrix:mat4At(bx,y,bz,a,3.46,2.88,0.24)});
-    parts.push({color:0xfdb927,matrix:mat4At(sx,y+1.42,sz,a,3.44,0.07,0.10)});
-    parts.push({color:0x7c3aed,matrix:mat4At(sx,y-1.42,sz,a,3.44,0.07,0.10)});
+    parts.push({color:0x121622,matrix:mat4At(bx,y,bz,a,w+0.12,2.76,0.24)});
+    parts.push({color:0xfdb927,matrix:mat4At(sx,y+1.36,sz,a,w+0.10,0.07,0.10)});
+    parts.push({color:0x7c3aed,matrix:mat4At(sx,y-1.36,sz,a,w+0.10,0.07,0.10)});
     const ca=a+Math.PI/N;
-    parts.push({color:0x252d3e,matrix:mat4At(Math.sin(ca)*(R+0.05),y,cz+Math.cos(ca)*(R+0.05),ca,0.20,2.98,0.20)});
+    parts.push({color:0x252d3e,matrix:mat4At(Math.sin(ca)*(R+0.05),y,cz+Math.cos(ca)*(R+0.05),ca,0.20,2.88,0.20)});
   }
   const env=typeof makeArenaEnvPMREM==="function"?makeArenaEnvPMREM():null;
   const capMat=new THREE.MeshStandardMaterial({color:0x161b28,roughness:0.34,metalness:0.64,envMap:env,envMapIntensity:env?0.58:0});
@@ -731,6 +866,108 @@ function bakeVoxelMesh(parent,parts,opts){
   if(parent)parent.add(mesh);
   return mesh;
 }
+/* ---------------- smooth organic human baking: 光滑低模人形几何烘焙 ----------------
+   与建筑硬表面使用的 bakeVoxelGeometry 分离，专用于看台观众、场边球迷、记者、啦啦队等人体模型：
+   使用光滑顶点法线的 sphere / dome / cyl 原语合并为单几何体，带自然轮廓收腰与皮肤/织物柔光调制。 */
+const ORGANIC_PRIMS_HI={
+  sphere:new THREE.SphereGeometry(0.5,12,10).toNonIndexed(),
+  dome:new THREE.SphereGeometry(0.5,12,6,0,Math.PI*2,0,Math.PI*0.58).toNonIndexed(),
+  cyl:new THREE.CylinderGeometry(0.5,0.5,1,12,1).toNonIndexed(),
+  box:VOXEL_UNIT_BOX
+};
+const ORGANIC_PRIMS_LO={
+  sphere:new THREE.SphereGeometry(0.5,8,6).toNonIndexed(),
+  dome:new THREE.SphereGeometry(0.5,8,5,0,Math.PI*2,0,Math.PI*0.58).toNonIndexed(),
+  cyl:new THREE.CylinderGeometry(0.5,0.5,1,8,1).toNonIndexed(),
+  box:VOXEL_UNIT_BOX
+};
+function bakeOrganicGeometry(parts,lowPoly){
+  const bank=lowPoly?ORGANIC_PRIMS_LO:ORGANIC_PRIMS_HI;
+  let total=0;
+  for(const part of parts)total+=(bank[part.shape||"sphere"]||bank.sphere).getAttribute("position").count;
+  const pos=new Float32Array(total*3),norm=new Float32Array(total*3),col=new Float32Array(total*3);
+  const m=new THREE.Matrix4(),nm=new THREE.Matrix3(),q=new THREE.Quaternion(),eul=new THREE.Euler();
+  const sVec=new THREE.Vector3(),pVec=new THREE.Vector3();
+  const v=new THREE.Vector3(),vn=new THREE.Vector3(),c=new THREE.Color();
+  const partVertCounts=[];
+  let off=0;
+  for(const part of parts){
+    const src=bank[part.shape||"sphere"]||bank.sphere;
+    const srcPos=src.getAttribute("position"),srcNorm=src.getAttribute("normal"),per=srcPos.count;
+    if(part.matrix)m.copy(part.matrix);
+    else{
+      const s=part.scale||[1,1,1],p=part.pos||[0,0,0],r=part.rot;
+      if(r)q.setFromEuler(eul.set(r[0]||0,r[1]||0,r[2]||0));else q.identity();
+      m.compose(pVec.set(p[0],p[1],p[2]),q,sVec.set(s[0],s[1],s[2]));
+    }
+    nm.getNormalMatrix(m);
+    if(part.color&&part.color.isColor)c.copy(part.color);else c.set(part.color==null?0xffffff:part.color);
+    const tx=part.taperX==null?1:part.taperX,tz=part.taperZ==null?1:part.taperZ,sh=part.shearZ||0;
+    for(let i=0;i<per;i++){
+      v.fromBufferAttribute(srcPos,i);
+      const localY=v.y;
+      if(tx!==1||tz!==1||sh!==0){
+        const u=localY+0.5;
+        v.x*=1+(tx-1)*u;
+        v.z=v.z*(1+(tz-1)*u)+sh*u;
+      }
+      v.applyMatrix4(m);
+      vn.fromBufferAttribute(srcNorm,i).applyMatrix3(nm).normalize();
+      const shade=part.noShade?1.0:(0.93+0.075*(vn.x*0.22+vn.y*0.72+vn.z*0.42)+0.035*localY);
+      const o=(off+i)*3;
+      pos[o]=v.x;pos[o+1]=v.y;pos[o+2]=v.z;
+      norm[o]=vn.x;norm[o+1]=vn.y;norm[o+2]=vn.z;
+      col[o]=Math.min(1,c.r*shade);
+      col[o+1]=Math.min(1,c.g*shade);
+      col[o+2]=Math.min(1,c.b*shade);
+    }
+    off+=per;
+    partVertCounts.push(off);
+  }
+  const geo=new THREE.BufferGeometry();
+  geo.setAttribute("position",new THREE.BufferAttribute(pos,3));
+  geo.setAttribute("normal",new THREE.BufferAttribute(norm,3));
+  geo.setAttribute("color",new THREE.BufferAttribute(col,3));
+  geo.userData.partVertCounts=partVertCounts;
+  geo.computeBoundingSphere();
+  return geo;
+}
+function bakeOrganicMesh(parent,parts,opts){
+  const geo=bakeOrganicGeometry(parts,!!(opts&&opts.lowPoly));
+  const mat=bakedVoxelMaterial((opts&&opts.materialKey)||"organic",opts&&opts.material,!!(opts&&opts.standard));
+  const mesh=new THREE.Mesh(geo,mat);
+  if(parent)parent.add(mesh);
+  return mesh;
+}
+const ORGANIC_LIMB_CACHE=new Map();
+function makeOrganicLimbGeo(radius,length,sleeveRatio,sleeveCol,skinCol){
+  const sr=sleeveRatio||0;
+  const parts=[];
+  if(sr>0.02){
+    const slLen=length*sr,skinLen=length*(1-sr);
+    parts.push({shape:"sphere",color:sleeveCol==null?0xffffff:sleeveCol,pos:[0,0,0],scale:[radius*1.08,radius*1.08,radius*1.08]});
+    parts.push({shape:"cyl",color:sleeveCol==null?0xffffff:sleeveCol,pos:[0,-slLen*0.5,0],scale:[radius*0.92,slLen,radius*0.92],taperX:1.10,taperZ:1.10});
+    parts.push({shape:"cyl",color:skinCol==null?0xffffff:skinCol,pos:[0,-slLen-skinLen*0.5,0],scale:[radius*0.72,skinLen,radius*0.72],taperX:1.25,taperZ:1.25});
+    parts.push({shape:"sphere",color:skinCol==null?0xffffff:skinCol,pos:[0,-length,0],scale:[radius*0.78,radius*0.86,radius*0.78]});
+  }else{
+    parts.push({shape:"sphere",color:0xffffff,pos:[0,0,0],scale:[radius*1.05,radius*1.05,radius*1.05]});
+    parts.push({shape:"cyl",color:0xffffff,pos:[0,-length*0.5,0],scale:[radius*0.78,length,radius*0.78],taperX:1.28,taperZ:1.28});
+    parts.push({shape:"sphere",color:0xf6eee8,pos:[0,-length,0],scale:[radius*0.78,radius*0.88,radius*0.78]});
+  }
+  return bakeOrganicGeometry(parts,false);
+}
+function makeOrganicLimbMesh(parent,mat,x,y,z,radius,length,opts){
+  const sr=(opts&&opts.sleeveRatio)||0;
+  const sc=opts&&opts.sleeveColor!=null?opts.sleeveColor:0xffffff;
+  const kc=opts&&opts.skinColor!=null?opts.skinColor:0xffffff;
+  const key=`${radius.toFixed(3)}:${length.toFixed(3)}:${sr.toFixed(2)}:${sc}:${kc}`;
+  let geo=ORGANIC_LIMB_CACHE.get(key);
+  if(!geo){geo=makeOrganicLimbGeo(radius,length,sr,sc,kc);ORGANIC_LIMB_CACHE.set(key,geo);}
+  const mesh=new THREE.Mesh(geo,mat);
+  mesh.position.set(x,y,z);
+  if(parent)parent.add(mesh);
+  return mesh;
+}
 function makeAdBoard(txt,bg,fg,x,z,rot,w=2.7){
   /* 独立场边广告牌：正面单向发光面 + 立体深色金属机箱与顶部缓冲条，彻底解决背面反字穿帮 */
   const g=new THREE.Group();
@@ -748,25 +985,26 @@ function makeAdBoard(txt,bg,fg,x,z,rot,w=2.7){
 }
 function makeCheerleader(x,z,jersey,pom){
   const g=new THREE.Group();
-  const cube=new THREE.BoxGeometry(1,1,1);
   const skin=new THREE.MeshLambertMaterial({color:0xf4c89c});
   const pomMat=new THREE.MeshLambertMaterial({color:pom,emissive:pom,emissiveIntensity:.18});
-  bakeVoxelMesh(g,[
-    {color:jersey,pos:[0,0.92,0],scale:[0.30,0.44,0.20],taperX:1.12,taperZ:1.05},
-    {color:0xffffff,pos:[0,0.62,0],scale:[0.38,0.20,0.24],taperX:0.78,taperZ:0.78},
-    {color:0xf4c89c,pos:[0,1.20,0],scale:[0.09,0.09,0.09]},
-    {color:0xf4c89c,pos:[0,1.34,0],scale:[0.22,0.24,0.21],taperX:0.90,taperZ:0.90},
-    {color:0x2b1710,pos:[0,1.48,-0.02],scale:[0.24,0.10,0.23],taperX:0.86,taperZ:0.86},
-    {color:0x2b1710,pos:[0,1.36,0.12],scale:[0.10,0.22,0.08],taperX:0.65,taperZ:0.65},
-    {color:0xf4c89c,pos:[-0.10,0.34,0],scale:[0.10,0.46,0.11],taperX:1.15,taperZ:1.15},
-    {color:0xf4c89c,pos:[0.10,0.34,0],scale:[0.10,0.46,0.11],taperX:1.15,taperZ:1.15},
-    {color:0xffffff,pos:[-0.10,0.07,-0.02],scale:[0.12,0.10,0.18]},
-    {color:0xffffff,pos:[0.10,0.07,-0.02],scale:[0.12,0.10,0.18]}
+  bakeOrganicMesh(g,[
+    {shape:"cyl",color:jersey,pos:[0,0.92,0],scale:[0.23,0.40,0.17],taperX:1.28,taperZ:1.18},
+    {shape:"sphere",color:jersey,pos:[0,1.02,0],scale:[0.30,0.20,0.21]},
+    {shape:"cyl",color:0xffffff,pos:[0,0.62,0],scale:[0.42,0.22,0.30],taperX:0.64,taperZ:0.64},
+    {shape:"cyl",color:0xf4c89c,pos:[0,1.18,0],scale:[0.095,0.10,0.095]},
+    {shape:"sphere",color:0xf4c89c,pos:[0,1.34,0],scale:[0.21,0.25,0.22],taperX:1.06,taperZ:1.04},
+    {shape:"dome",color:0x2b1710,pos:[0,1.37,-0.01],scale:[0.225,0.21,0.235]},
+    {shape:"sphere",color:0x2b1710,pos:[0,1.34,0.14],scale:[0.11,0.24,0.10]},
+    {shape:"cyl",color:0xf4c89c,pos:[-0.095,0.33,0],scale:[0.092,0.46,0.095],taperX:1.30,taperZ:1.25},
+    {shape:"cyl",color:0xf4c89c,pos:[0.095,0.33,0],scale:[0.092,0.46,0.095],taperX:1.30,taperZ:1.25},
+    {shape:"dome",color:0xffffff,pos:[-0.095,0.02,-0.025],scale:[0.125,0.10,0.21]},
+    {shape:"dome",color:0xffffff,pos:[0.095,0.02,-0.025],scale:[0.125,0.10,0.21]}
   ]);
-  const leftArm=showBox(g,cube,skin,-0.26,1.02,0,0.08,0.40,0.09);
-  const rightArm=showBox(g,cube,skin,0.26,1.02,0,0.08,0.40,0.09);
-  const leftPom=showBox(g,cube,pomMat,-0.36,1.24,0,0.22,0.22,0.22);
-  const rightPom=showBox(g,cube,pomMat,0.36,1.24,0,0.22,0.22,0.22);
+  const leftArm=makeOrganicLimbMesh(g,skin,-0.19,1.09,0,0.078,0.39);
+  const rightArm=makeOrganicLimbMesh(g,skin,0.19,1.09,0,0.078,0.39);
+  const pomGeo=new THREE.SphereGeometry(0.125,10,8);
+  const leftPom=new THREE.Mesh(pomGeo,pomMat);leftPom.position.set(-0.36,1.24,0);g.add(leftPom);
+  const rightPom=new THREE.Mesh(pomGeo,pomMat);rightPom.position.set(0.36,1.24,0);g.add(rightPom);
   g.position.set(x,0,z);
   g.rotation.y=x<0?0.35:-0.35;
   indoorRoot.add(g);
@@ -774,30 +1012,32 @@ function makeCheerleader(x,z,jersey,pom){
 }
 function makeMascot(x,z){
   const g=new THREE.Group();
-  const cube=new THREE.BoxGeometry(1,1,1);
-  const orange=new THREE.MeshLambertMaterial({color:0xf28b22});
-  const cream=new THREE.MeshLambertMaterial({color:0xffd2a1});
-  const dark=new THREE.MeshLambertMaterial({color:0x1e1210});
-  showBox(g,cube,orange,0,0.82,0,0.56,0.82,0.42);
-  showBox(g,cube,orange,0,1.55,0,0.64,0.54,0.48);
-  showBox(g,cube,cream,0,1.45,-0.26,0.42,0.24,0.08);
-  showBox(g,cube,dark,-0.18,1.62,-0.3,0.07,0.07,0.04);
-  showBox(g,cube,dark,0.18,1.62,-0.3,0.07,0.07,0.04);
-  showBox(g,cube,orange,-0.28,1.9,0,0.18,0.18,0.12).rotation.z=0.45;
-  showBox(g,cube,orange,0.28,1.9,0,0.18,0.18,0.12).rotation.z=-0.45;
-  const stripes=[-0.25,0,0.25].map(px=>showBox(g,cube,dark,px,1.57,-0.33,0.04,0.24,0.03));
-  const armL=showBox(g,cube,orange,-0.52,1.15,0,0.15,0.62,0.16);
-  const armR=showBox(g,cube,orange,0.52,1.15,0,0.15,0.62,0.16);
-  showBox(g,cube,dark,-0.18,0.18,0,0.15,0.34,0.14);
-  showBox(g,cube,dark,0.18,0.18,0,0.15,0.34,0.14);
+  const orangeMat=new THREE.MeshLambertMaterial({color:0xf28b22});
+  bakeOrganicMesh(g,[
+    {shape:"sphere",color:0xf28b22,pos:[0,0.82,0],scale:[0.56,0.84,0.46]},
+    {shape:"sphere",color:0xffd2a1,pos:[0,0.80,-0.16],scale:[0.38,0.56,0.22]},
+    {shape:"sphere",color:0xf28b22,pos:[0,1.52,0],scale:[0.60,0.56,0.54]},
+    {shape:"sphere",color:0xffd2a1,pos:[0,1.43,-0.24],scale:[0.38,0.24,0.20]},
+    {shape:"sphere",color:0x1e1210,pos:[0,1.49,-0.33],scale:[0.10,0.07,0.06]},
+    {shape:"sphere",color:0x1e1210,pos:[-0.16,1.60,-0.24],scale:[0.075,0.085,0.05]},
+    {shape:"sphere",color:0x1e1210,pos:[0.16,1.60,-0.24],scale:[0.075,0.085,0.05]},
+    {shape:"sphere",color:0xf28b22,pos:[-0.25,1.82,0],scale:[0.17,0.18,0.11],rot:[0,0,0.42]},
+    {shape:"sphere",color:0xf28b22,pos:[0.25,1.82,0],scale:[0.17,0.18,0.11],rot:[0,0,-0.42]},
+    {shape:"cyl",color:0x1e1210,pos:[-0.17,0.20,0],scale:[0.16,0.40,0.16],taperX:1.12,taperZ:1.12},
+    {shape:"cyl",color:0x1e1210,pos:[0.17,0.20,0],scale:[0.16,0.40,0.16],taperX:1.12,taperZ:1.12},
+    {shape:"dome",color:0xf28b22,pos:[-0.17,0.01,-0.04],scale:[0.20,0.13,0.28]},
+    {shape:"dome",color:0xf28b22,pos:[0.17,0.01,-0.04],scale:[0.20,0.13,0.28]}
+  ]);
+  const armL=makeOrganicLimbMesh(g,orangeMat,-0.33,1.12,0,0.14,0.56);
+  const armR=makeOrganicLimbMesh(g,orangeMat,0.33,1.12,0,0.14,0.56);
   g.position.set(x,0,z);g.rotation.y=-0.55;indoorRoot.add(g);
-  showCrew.push({type:"mascot",g,arms:[armL,armR],stripes,phase:Math.random()*7});
+  showCrew.push({type:"mascot",g,arms:[armL,armR],phase:Math.random()*7});
 }
 function buildBackcourtShow(){
-  makeAdBoard("N1KE AIR","#11131a","#f7f7f7",-9.6,COURT.midZ+5.2,Math.PI/2,2.8);
-  makeAdBoard("ADI-DASH","#f7f7f7","#11131a",-9.6,COURT.midZ+9.0,Math.PI/2,2.8);
-  makeAdBoard("PIXEL SPORT","#1c1032","#fdb927",9.6,COURT.midZ+5.2,-Math.PI/2,2.8);
-  makeAdBoard("SHOWTIME","#2a1245","#fdb927",9.6,COURT.midZ+9.0,-Math.PI/2,2.8);
+  makeAdBoard("N1KE AIR","#11131a","#f7f7f7",-11.55,COURT.midZ+5.2,Math.PI/2,2.8);
+  makeAdBoard("ADI-DASH","#f7f7f7","#11131a",-11.55,COURT.midZ+9.0,Math.PI/2,2.8);
+  makeAdBoard("PIXEL SPORT","#1c1032","#fdb927",11.55,COURT.midZ+5.2,-Math.PI/2,2.8);
+  makeAdBoard("SHOWTIME","#2a1245","#fdb927",11.55,COURT.midZ+9.0,-Math.PI/2,2.8);
   makeAdBoard("MINE-DEW","#0c3a14","#9dff8d",-5.2,COURT.farBaseline+2.2,Math.PI,3.2);
   makeAdBoard("COURT CAM","#1c1230","#7ee7ff",0,COURT.farBaseline+2.2,Math.PI,3.2);
   makeAdBoard("3PT KING","#38124a","#fdb927",5.2,COURT.farBaseline+2.2,Math.PI,3.2);
@@ -807,20 +1047,21 @@ function buildBackcourtShow(){
 }
 function updBackcourtShow(t){
   if(!indoorRoot.visible)return;
+  updJumbotronBroadcast(t);
   showCrew.forEach((c,i)=>{
     const s=Math.sin(t*5+c.phase), c2=Math.cos(t*4.2+c.phase);
     if(c.type==="mascot"){
       c.g.position.y=Math.max(0,s)*0.08;
       c.g.rotation.y=-0.55+Math.sin(t*2+c.phase)*0.08;
-      c.arms[0].rotation.z=0.5+Math.sin(t*4+c.phase)*0.35;
-      c.arms[1].rotation.z=-0.9+Math.sin(t*5+c.phase)*0.45;
+      c.arms[0].rotation.z=-0.85-Math.sin(t*4+c.phase)*0.40;
+      c.arms[1].rotation.z=1.75+Math.sin(t*5+c.phase)*0.50;
     }else{
       c.g.position.y=Math.max(0,s)*0.05;
       c.g.rotation.y+=(c2*0.0015);
-      c.arms[0].rotation.z=-0.75+s*0.55;
-      c.arms[1].rotation.z=0.75-s*0.55;
-      c.poms[0].position.y=1.24+Math.max(0,s)*0.18;
-      c.poms[1].position.y=1.24+Math.max(0,-s)*0.18;
+      c.arms[0].rotation.z=-2.25+s*0.42;
+      c.arms[1].rotation.z=2.25-s*0.42;
+      c.poms[0].position.set(-0.19+0.39*Math.sin(c.arms[0].rotation.z),1.09-0.39*Math.cos(c.arms[0].rotation.z),0);
+      c.poms[1].position.set(0.19+0.39*Math.sin(c.arms[1].rotation.z),1.09-0.39*Math.cos(c.arms[1].rotation.z),0);
     }
   });
 }
@@ -868,7 +1109,7 @@ function syncCrowdTeams(){
       const cShirt=recede(s.shirtColor,desat,dark);
       if(warmBoost>0)cShirt.lerp(warmCol,warmBoost);
       cShirt.convertSRGBToLinear();
-      const cHead=recede(s.hasCap?s.capColor:s.skinColor,desat*0.75,dark*0.88).convertSRGBToLinear();
+      const cHead=recede(s.skinColor,desat*0.75,dark*0.88).convertSRGBToLinear();
       const cArm=recede(s.isJersey?s.skinColor:s.shirtColor,desat*0.80,dark*0.90).convertSRGBToLinear();
       group.body.setColorAt(i,cShirt);
       group.head.setColorAt(i,cHead);
@@ -905,36 +1146,102 @@ function recede(hex,desat,dark){
 const CROWD_BODY=[0x12151e,0x191d28,0x1c172c,0x222734,0x241d2e,0x161c28];
 const CROWD_HEAD=[0xd8ad82,0xc49060,0x7d4b22];
 
-// 无袖球衣/短袖 T 恤体态几何体
+// 无袖球衣/短袖 T 恤体态几何体（Lathe 光滑解剖学轮廓：臀-腰-胸-斜肩-领口 + 坐姿大腿）
+function bakeLatheCrowdGeo(rings,segments,scaleZ,extraParts){
+  const pts=rings.map(r=>new THREE.Vector2(Math.max(0.0005,r[0]),r[1]));
+  let lathe=new THREE.LatheGeometry(pts,segments);
+  lathe.scale(1,1,scaleZ==null?1:scaleZ);
+  lathe.computeVertexNormals();
+  lathe=lathe.toNonIndexed();
+  const lPos=lathe.getAttribute("position"),lNorm=lathe.getAttribute("normal"),lCount=lPos.count;
+  const colArr=new Float32Array(lCount*3),c=new THREE.Color();
+  const pickCol=y=>{
+    for(let k=rings.length-1;k>=0;k--){
+      if(y>=rings[k][1]-1e-4)return rings[k][2];
+    }
+    return rings[0][2];
+  };
+  for(let i=0;i<lCount;i++){
+    const vy=lPos.getY(i),nx=lNorm.getX(i),ny=lNorm.getY(i),nz=lNorm.getZ(i);
+    c.setHex(pickCol(vy));
+    const shade=0.93+0.075*(nx*0.22+ny*0.72+nz*0.42);
+    colArr[i*3]=Math.min(1,c.r*shade);
+    colArr[i*3+1]=Math.min(1,c.g*shade);
+    colArr[i*3+2]=Math.min(1,c.b*shade);
+  }
+  if(!extraParts||!extraParts.length){
+    lathe.setAttribute("color",new THREE.BufferAttribute(colArr,3));
+    return lathe;
+  }
+  const exGeo=bakeOrganicGeometry(extraParts,true);
+  const ePos=exGeo.getAttribute("position"),eNorm=exGeo.getAttribute("normal"),eCol=exGeo.getAttribute("color"),eCount=ePos.count;
+  const tot=lCount+eCount;
+  const pos=new Float32Array(tot*3),norm=new Float32Array(tot*3),col=new Float32Array(tot*3);
+  pos.set(lPos.array,0);pos.set(ePos.array,lCount*3);
+  norm.set(lNorm.array,0);norm.set(eNorm.array,lCount*3);
+  col.set(colArr,0);col.set(eCol.array,lCount*3);
+  const out=new THREE.BufferGeometry();
+  out.setAttribute("position",new THREE.BufferAttribute(pos,3));
+  out.setAttribute("normal",new THREE.BufferAttribute(norm,3));
+  out.setAttribute("color",new THREE.BufferAttribute(col,3));
+  out.computeBoundingSphere();
+  return out;
+}
 function makeJerseyBodyGeo(){
-  return bakeVoxelGeometry([
-    {color:0x1b202c,pos:[0,-0.16,0.02],scale:[0.44,0.34,0.34],taperX:0.92,taperZ:0.88},
-    {color:0xffffff,pos:[0,0.14,0],scale:[0.48,0.38,0.28],taperX:0.86,taperZ:0.84},
-    {color:0x363c4c,pos:[0,0.34,0],scale:[0.22,0.06,0.18],taperX:0.72,taperZ:0.72}
+  return bakeLatheCrowdGeo([
+    [0.001,-0.17,0x343a48],
+    [0.19,-0.15,0x343a48],
+    [0.17,-0.02,0xffffff],
+    [0.215,0.16,0xffffff],
+    [0.21,0.25,0xffffff],
+    [0.088,0.30,0x484f60],
+    [0.001,0.31,0x484f60]
+  ],8,0.66,[
+    {shape:"cyl",color:0x343a48,pos:[-0.105,-0.13,0.11],scale:[0.13,0.24,0.13],rot:[1.30,0,0],taperX:0.86,taperZ:0.86},
+    {shape:"cyl",color:0x343a48,pos:[0.105,-0.13,0.11],scale:[0.13,0.24,0.13],rot:[1.30,0,0],taperX:0.86,taperZ:0.86}
   ]);
 }
-// 连帽卫衣/休闲夹克体态几何体（略宽肩与前袋，打破千人一面）
+// 连帽卫衣/休闲夹克体态几何体（略宽圆润肩线与连帽兜）
 function makeHoodieBodyGeo(){
-  return bakeVoxelGeometry([
-    {color:0x151922,pos:[0,-0.16,0.02],scale:[0.46,0.34,0.35],taperX:0.94,taperZ:0.90},
-    {color:0xffffff,pos:[0,0.14,0],scale:[0.52,0.38,0.32],taperX:0.88,taperZ:0.86},
-    {color:0xffffff,pos:[0,0.03,0.14],scale:[0.36,0.15,0.08],taperX:0.84},
-    {color:0x283040,pos:[0,0.34,-0.04],scale:[0.26,0.10,0.16],taperX:0.75}
+  return bakeLatheCrowdGeo([
+    [0.001,-0.17,0x2e3442],
+    [0.20,-0.15,0x2e3442],
+    [0.195,-0.02,0xffffff],
+    [0.23,0.16,0xffffff],
+    [0.235,0.25,0xd8dde8],
+    [0.125,0.32,0xd8dde8],
+    [0.001,0.33,0xd8dde8]
+  ],8,0.70,[
+    {shape:"cyl",color:0x2e3442,pos:[-0.105,-0.13,0.11],scale:[0.135,0.24,0.135],rot:[1.30,0,0],taperX:0.88,taperZ:0.88},
+    {shape:"cyl",color:0x2e3442,pos:[0.105,-0.13,0.11],scale:[0.135,0.24,0.135],rot:[1.30,0,0],taperX:0.88,taperZ:0.88}
   ]);
 }
-// 自然发型头部
+// 自然发型光滑头部（含脖颈、下颌收窄、卵形颅骨与圆润发冠）
 function makeFacetCrowdHeadGeo(){
-  return bakeVoxelGeometry([
-    {color:0xffffff,pos:[0,-0.02,0],scale:[0.23,0.24,0.22],taperX:0.88,taperZ:0.88},
-    {color:0x181518,pos:[0,0.10,-0.01],scale:[0.24,0.09,0.23],taperX:0.82,taperZ:0.82}
-  ]);
+  return bakeLatheCrowdGeo([
+    [0.001,-0.16,0xffffff],
+    [0.052,-0.15,0xffffff],
+    [0.048,-0.09,0xffffff],
+    [0.088,-0.05,0xffffff],
+    [0.110,0.00,0xffffff],
+    [0.114,0.055,0x221c18],
+    [0.092,0.105,0x221c18],
+    [0.001,0.135,0x221c18]
+  ],8,1.06);
 }
-// 佩戴湖人鸭舌帽头部（前檐突出，增加剪影丰富度）
+// 佩戴鸭舌帽光滑头部
 function makeCapCrowdHeadGeo(){
-  return bakeVoxelGeometry([
-    {color:0xffffff,pos:[0,-0.02,0],scale:[0.23,0.24,0.22],taperX:0.88,taperZ:0.88},
-    {color:0xffffff,pos:[0,0.10,0],scale:[0.25,0.10,0.24],taperX:0.86,taperZ:0.86},
-    {color:0xffffff,pos:[0,0.08,0.13],scale:[0.24,0.035,0.12],taperX:0.78}
+  return bakeLatheCrowdGeo([
+    [0.001,-0.16,0xffffff],
+    [0.052,-0.15,0xffffff],
+    [0.048,-0.09,0xffffff],
+    [0.088,-0.05,0xffffff],
+    [0.110,0.00,0xffffff],
+    [0.122,0.05,0x2b3040],
+    [0.105,0.11,0x2b3040],
+    [0.001,0.145,0x2b3040]
+  ],8,1.06,[
+    {shape:"cyl",color:0x222634,pos:[0,0.045,0.11],scale:[0.19,0.024,0.14],rot:[0.14,0,0],taperX:0.86,taperZ:0.86}
   ]);
 }
 
@@ -943,7 +1250,15 @@ function buildCrowd(seats){
   const hoodieGeo=makeHoodieBodyGeo();
   const headGeo=makeFacetCrowdHeadGeo();
   const capGeo=makeCapCrowdHeadGeo();
-  const armGeo=new THREE.BoxGeometry(.095,.44,.105);armGeo.translate(0,-.20,0);
+  const armGeo=bakeLatheCrowdGeo([
+    [0.001,0.03,0xffffff],
+    [0.054,0.00,0xffffff],
+    [0.050,-0.12,0xffffff],
+    [0.044,-0.21,0xffffff],
+    [0.035,-0.33,0xf5ede6],
+    [0.030,-0.38,0xf5ede6],
+    [0.001,-0.40,0xf5ede6]
+  ],6,1.0);
 
   const NT=BOWL_TIERS.length,NC=CROWD_BODY.length;
   const buckets=[];for(let i=0;i<NT*NC;i++)buckets.push([]);
@@ -981,9 +1296,9 @@ function buildCrowd(seats){
     const bGeo=useHoodie?hoodieGeo:jerseyGeo;
     const hGeo=useCap?capGeo:headGeo;
 
-    const body=new THREE.InstancedMesh(bGeo,new THREE.MeshLambertMaterial({color:0xffffff}),arr.length);
-    const head=new THREE.InstancedMesh(hGeo,new THREE.MeshLambertMaterial({color:0xffffff}),arr.length);
-    const arms=new THREE.InstancedMesh(armGeo,new THREE.MeshLambertMaterial({color:0xffffff}),arr.length*2);
+    const body=new THREE.InstancedMesh(bGeo,new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:true}),arr.length);
+    const head=new THREE.InstancedMesh(hGeo,new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:true}),arr.length);
+    const arms=new THREE.InstancedMesh(armGeo,new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:true}),arr.length*2);
 
     body.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
     head.instanceMatrix.setUsage(THREE.DynamicDrawUsage);

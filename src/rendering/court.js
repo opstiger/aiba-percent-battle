@@ -4,22 +4,21 @@ let courtFloor=null,courtIndoorTexture=null,courtOutdoorTexture=null,courtRoughT
 /* 地板材质的**唯一权威配置**。必须放在模块顶层:
    buildCourt 和 buildCourtZones 是两个独立函数,写在任何一个内部另一个都拿不到。 */
 const FLOOR_PHYS={
-  roughness:0.34,          // 木材本体上限;roughnessMap 调制到 0.28~0.34
+  roughness:0.48,          // 现代 NBA 2K 缎面哑光枫木基底（告别塑料膜镜面感）
   metalness:0.0,
-  clearcoat:0.46,          // 次世代高光清漆强度
-  clearcoatRoughness:0.22,
-  envMapIntensity:0.62     // 球馆顶灯与紫金灯带反射强度
+  clearcoat:0.16,          // 柔和清漆微反光 + clearcoatRoughnessMap 划痕打散
+  clearcoatRoughness:0.44,
+  envMapIntensity:0.38     // 克制球馆顶灯反射，保留丝滑漫反射质感
 };
 
 function courtWoodRng(seed){let s=seed>>>0;return()=>{s=(Math.imul(s,1664525)+1013904223)>>>0;return s/4294967296;};}
-/* 室内枫木地板：保留低频防摩尔纹基底，加入极柔和的错缝长条枫木色温层次。 */
+/* 室内枫木地板：参照 NBA 2K 湖人斯台普斯淡雅白枫木色调（偏浅米灰/亚麻白木，去黄腻），并加入球鞋擦痕与细微划痕。 */
 function paintHardwood(g,W,D,PXM){
   const rr=courtWoodRng(0x9e3779b1),w=W*PXM,h=D*PXM;
-  /* 1. 统一底色:浅枫木。 */
-  g.fillStyle="#b89267";g.fillRect(0,0,w,h);
+  /* 1. 统一底色:NBA 2K 经典淡白枫木 (Pale Blonde/Ash Maple)。 */
+  g.fillStyle="#cfc3b0";g.fillRect(0,0,w,h);
 
-  /* 1.5 极低对比度的错缝枫木条色温层次（alpha 控制在 .018~.028，不制造高频边缘，
-     但近景能清晰读出长条实木地板的冷暖交替与端头错缝）。 */
+  /* 1.5 极低对比度的错缝枫木条色温层次（浅米白/灰橡木冷暖交替与端头错缝）。 */
   const plankW=0.28*PXM;
   for(let px=0;px<w;px+=plankW){
     let py=-rr()*2.5*PXM;
@@ -27,33 +26,33 @@ function paintHardwood(g,W,D,PXM){
       const plen=(2.4+rr()*2.8)*PXM;
       const tone=rr();
       if(tone<0.42){
-        g.fillStyle="rgba(232,202,156,"+(0.014+rr()*0.016).toFixed(3)+")";
+        g.fillStyle="rgba(232,224,210,"+(0.020+rr()*0.022).toFixed(3)+")";
         g.fillRect(px,Math.max(0,py),plankW-0.8,Math.min(h-py,plen));
-      }else if(tone>0.62){
-        g.fillStyle="rgba(112,78,44,"+(0.014+rr()*0.016).toFixed(3)+")";
+      }else if(tone>0.60){
+        g.fillStyle="rgba(164,150,130,"+(0.018+rr()*0.020).toFixed(3)+")";
         g.fillRect(px,Math.max(0,py),plankW-0.8,Math.min(h-py,plen));
       }
       py+=plen;
     }
   }
 
-  /* 2. 低频色斑。整块地板同一个明度会变回"平贴图",用十来团很淡的冷暖斑打散它。 */
+  /* 2. 低频色斑：浅米/淡灰自然木色变化，避免整块死板发黄。 */
   for(let i=0;i<14;i++){
-    const cx=rr()*w,cy=rr()*h,r=(3+rr()*9)*PXM,warm=rr()<.55;
+    const cx=rr()*w,cy=rr()*h,r=(3+rr()*9)*PXM,warm=rr()<.5;
     const gr=g.createRadialGradient(cx,cy,0,cx,cy,r);
-    gr.addColorStop(0,warm?"rgba(214,178,124,.055)":"rgba(118,86,50,.05)");
+    gr.addColorStop(0,warm?"rgba(228,218,200,.048)":"rgba(154,142,126,.045)");
     gr.addColorStop(1,"rgba(0,0,0,0)");
     g.fillStyle=gr;g.fillRect(cx-r,cy-r,r*2,r*2);
   }
 
-  /* 3. 随机木纹。沿球场长边的淡纹路,长度、位置、弧度、深浅全部随机。 */
+  /* 3. 随机淡木纹：中性灰棕木纹。 */
   for(let i=0;i<185;i++){
     const x0=rr()*w,amp=8+rr()*26;
     const y0=rr()*h,y1=Math.min(h,y0+(.3+rr()*.9)*h);
     g.strokeStyle=rr()<.55
-      ?"rgba(122,88,52,"+(.020+rr()*.030).toFixed(3)+")"
-      :"rgba(226,198,152,"+(.015+rr()*.028).toFixed(3)+")";
-    g.lineWidth=1.2+rr()*3.2;
+      ?"rgba(156,142,122,"+(.022+rr()*.028).toFixed(3)+")"
+      :"rgba(236,228,214,"+(.018+rr()*.026).toFixed(3)+")";
+    g.lineWidth=1.1+rr()*2.8;
     g.beginPath();
     let y=y0;g.moveTo(x0,y);
     while(y<y1){y+=40+rr()*110;g.lineTo(x0+Math.sin(y*.004+i)*amp,Math.min(y,y1));}
@@ -62,16 +61,35 @@ function paintHardwood(g,W,D,PXM){
 
   /* 4. 接缝:低alpha保持近看有实木拼接感、远看无摩尔纹。 */
   for(let jz=rr()*3*PXM;jz<h;jz+=(3+rr()*2.5)*PXM){
-    g.fillStyle="rgba(96,66,38,.045)";g.fillRect(0,jz,w,1.2);
+    g.fillStyle="rgba(130,118,100,.045)";g.fillRect(0,jz,w,1.2);
   }
   for(let x=rr()*2*PXM;x<w;x+=(1.8+rr()*1.4)*PXM){
-    g.fillStyle="rgba(96,66,38,.05)";g.fillRect(x,0,1.0,h);
+    g.fillStyle="rgba(130,118,100,.05)";g.fillRect(x,0,1.0,h);
   }
 
-  /* 5. 球馆顶灯舞台聚光层次：场地中央与两侧三秒区暖白提亮 */
+  /* 4.5 现代 2K 真实木地板细微划痕与球鞋急停擦痕（主要分布于油漆区、三分线与罚球线附近） */
+  const u=x=>(x+W/2)*PXM,v=z=>(z-COURT.floorMinZ)*PXM;
+  g.save();
+  for(let i=0;i<240;i++){
+    const inPaint=i<140;
+    const x0=inPaint?u((rr()-0.5)*13.5):rr()*w;
+    const y0=inPaint?v(COURT.nearBaseline+0.6+rr()*8.5):rr()*h;
+    const len=(0.25+rr()*0.95)*PXM,ang=(rr()-0.5)*2.4;
+    g.strokeStyle=rr()<0.65
+      ?"rgba(120,112,102,"+(0.025+rr()*0.032).toFixed(3)+")"
+      :"rgba(246,242,235,"+(0.022+rr()*0.028).toFixed(3)+")";
+    g.lineWidth=0.7+rr()*0.9;
+    g.beginPath();
+    g.moveTo(x0,y0);
+    g.quadraticCurveTo(x0+Math.cos(ang)*len*0.5+(rr()-0.5)*8,y0+Math.sin(ang)*len*0.5+(rr()-0.5)*8,x0+Math.cos(ang)*len,y0+Math.sin(ang)*len);
+    g.stroke();
+  }
+  g.restore();
+
+  /* 5. 球馆顶灯舞台聚光层次：中性微暖白提亮（不偏黄） */
   const stageGr=g.createRadialGradient(w*0.5,h*0.46,1.5*PXM,w*0.5,h*0.48,13.5*PXM);
-  stageGr.addColorStop(0,"rgba(255,242,212,0.09)");
-  stageGr.addColorStop(0.65,"rgba(255,232,190,0.04)");
+  stageGr.addColorStop(0,"rgba(255,252,246,0.06)");
+  stageGr.addColorStop(0.65,"rgba(248,244,236,0.025)");
   stageGr.addColorStop(1,"rgba(0,0,0,0)");
   g.fillStyle=stageGr;g.fillRect(0,0,w,h);
 }
@@ -106,8 +124,8 @@ function buildCourtZones(){
   /* 罚球圈(半径 1.8 的细环) */
   face(new THREE.RingGeometry(1.70,1.88,40),lineMat,COURT.nearBaseline+5.79);
   face(new THREE.RingGeometry(1.70,1.88,40),lineMat,COURT.farBaseline-5.79);
-  /* 中圈 */
-  face(new THREE.RingGeometry(1.68,1.90,48),lineMat,COURT.midZ);
+  /* 中圈外环（紧贴中心徽标外缘，不压住字母） */
+  face(new THREE.RingGeometry(2.36,2.48,48),lineMat,COURT.midZ);
 }
 
 function makeCourtTexture(theme){
@@ -251,12 +269,82 @@ function makeCourtTexture(theme){
     }
     g.stroke();
 
-    // 中圈多层紫金赛会徽标
-    g.fillStyle=outdoor?"#176b66":"#2b134d";g.beginPath();g.arc(u(0),v(COURT.midZ),2.18*PXM,0,Math.PI*2);g.fill();
-    g.strokeStyle=outdoor?"#f4e7b0":"#fdb927";g.lineWidth=7;g.beginPath();g.arc(u(0),v(COURT.midZ),2.04*PXM,0,Math.PI*2);g.stroke();
-    g.fillStyle=outdoor?"#f4e7b0":"#fdb927";g.font="bold 58px Orbitron, monospace";g.textAlign="center";
-    g.fillText("aiBA",u(0),v(COURT.midZ-.15));
-    g.font="bold 32px Orbitron, monospace";g.fillText("★ SHOWTIME ★",u(0),v(COURT.midZ+.78));
+    // 中圈专属设计感徽标：紫金动态篮球 + 速度羽翼 + 专属斜切几何变形 "AIBA" 字体
+    g.save();
+    const lcX=u(0),lcY=v(COURT.midZ),R=2.24*PXM;
+    // 1. 底部紫金双环徽章底盘 + 顶部弧形冠军星
+    g.fillStyle=outdoor?"#176b66":"#281048";
+    g.beginPath();g.arc(lcX,lcY,R,0,Math.PI*2);g.fill();
+    g.strokeStyle=outdoor?"#f4e7b0":"#fdb927";g.lineWidth=8;
+    g.beginPath();g.arc(lcX,lcY,R-6,0,Math.PI*2);g.stroke();
+    g.strokeStyle="rgba(255,255,255,0.75)";g.lineWidth=2.5;
+    g.beginPath();g.arc(lcX,lcY,R-14,0,Math.PI*2);g.stroke();
+
+    // 2. 左侧动态速度羽翼条纹（致敬经典 NBA 湖人飞翼动感）
+    g.fillStyle=outdoor?"#7ee7ff":"#fdb927";
+    for(let si=-2;si<=2;si++){
+      const sy=lcY+si*17-8,len=(1.45-Math.abs(si)*0.18)*PXM;
+      g.beginPath();
+      g.moveTo(lcX-R*0.86,sy-4);
+      g.lineTo(lcX-R*0.86+len,sy-4);
+      g.lineTo(lcX-R*0.86+len-10,sy+5);
+      g.lineTo(lcX-R*0.86-6,sy+5);
+      g.closePath();g.fill();
+    }
+
+    // 3. 中央倾斜金球体 + 紫金篮球筋线
+    g.save();
+    g.translate(lcX+0.12*PXM,lcY-0.06*PXM);
+    g.rotate(-0.18);
+    const bR=1.36*PXM;
+    const bGr=g.createRadialGradient(-bR*0.25,-bR*0.25,bR*0.1,0,0,bR);
+    bGr.addColorStop(0,"#ffd66b");bGr.addColorStop(0.65,"#f4ad22");bGr.addColorStop(1,"#c87d10");
+    g.fillStyle=bGr;
+    g.beginPath();g.arc(0,0,bR,0,Math.PI*2);g.fill();
+    g.strokeStyle="#281048";g.lineWidth=6;
+    g.beginPath();g.arc(0,0,bR,0,Math.PI*2);g.stroke();
+    g.beginPath();g.moveTo(-bR,0);g.lineTo(bR,0);g.stroke();
+    g.beginPath();g.moveTo(0,-bR);g.lineTo(0,bR);g.stroke();
+    g.beginPath();g.arc(-bR*0.62,0,bR*0.72,-Math.PI*0.42,Math.PI*0.42);g.stroke();
+    g.beginPath();g.arc(bR*0.62,0,bR*0.72,Math.PI*0.58,Math.PI*1.42);g.stroke();
+    g.restore();
+
+    // 4. 专属斜切几何变形 "AIBA" 矢量字标（-14° 动感前倾 + 锐角切面 + 紫金白三重描边）
+    g.save();
+    g.translate(lcX,lcY-0.04*PXM);
+    g.transform(1,0,-0.24,1,0,0); // -14° 动感斜切
+    const drawPoly=(pts)=>{
+      g.beginPath();
+      pts.forEach((p,idx)=>{if(idx===0)g.moveTo(p[0],p[1]);else g.lineTo(p[0],p[1]);});
+      g.closePath();
+      g.lineJoin="round";
+      g.strokeStyle="#ffffff";g.lineWidth=13;g.stroke();
+      g.strokeStyle="#220b3d";g.lineWidth=8;g.stroke();
+      g.fillStyle="#fdb927";g.fill();
+    };
+    const drawA=(ox,tail)=>{
+      // 锐角动感 A 外框 + 中空三角 + 斜切横梁
+      drawPoly([[ox-28,36],[ox-4,-38],[ox+14,-38],[ox+34+(tail?12:0),36],[ox+16,36],[ox+11,16],[ox-7,16],[ox-12,36]]);
+      g.fillStyle="#281048";
+      g.beginPath();g.moveTo(ox-3,3);g.lineTo(ox+4,-20);g.lineTo(ox+9,3);g.closePath();g.fill();
+    };
+    // A
+    drawA(-76,false);
+    // I（带上下锐角衬线）
+    drawPoly([[-32,-38],[-10,-38],[-12,-24],[-16,-24],[-16,22],[-12,22],[-14,36],[-36,36],[-34,22],[-30,22],[-30,-24],[-34,-24]]);
+    // B（运动切割双弧 B）
+    drawPoly([[2,-38],[40,-38],[48,-24],[42,-4],[50,12],[42,36],[2,36]]);
+    g.fillStyle="#281048";
+    g.fillRect(16,-24,14,14);
+    g.fillRect(16,6,16,16);
+    // A（带飞翼尾标）
+    drawA(84,true);
+    g.restore();
+
+    // 5. 底部弧形星徽标语
+    g.fillStyle="#ffffff";g.font="bold 22px Orbitron, monospace";g.textAlign="center";g.textBaseline="middle";
+    g.fillText("★  SHOWTIME ARENA  ★",lcX,lcY+R*0.68);
+    g.restore();
 
     function spotDecal(x,z,r,fill,line,lw,txt,txtCol,fs){
       g.fillStyle=fill;g.beginPath();g.arc(u(x),v(z),r*PXM,0,7);g.fill();
@@ -269,37 +357,44 @@ function makeCourtTexture(theme){
   },{smooth:true,mipmaps:true,anisotropy:16});
 }
 
-/* 独立的 roughness map —— 木板节奏放在粗糙度起伏里。 */
+/* 独立的 roughness map —— 木板粗糙度起伏 + 细微划痕/球鞋擦痕打散高光，消除塑料膜质感。 */
 function makeCourtRoughness(){
-  const PXM=24,W=32,D=COURT.floorMaxZ-COURT.floorMinZ;
+  const PXM=32,W=32,D=COURT.floorMaxZ-COURT.floorMinZ;
   return pixTex(W*PXM,D*PXM,(g)=>{
     const u=x=>(x+W/2)*PXM,v=z=>(z-COURT.floorMinZ)*PXM,w=W*PXM,h=D*PXM;
-    g.fillStyle="#ffffff";g.fillRect(0,0,w,h);
+    g.fillStyle="rgb(220,220,220)";g.fillRect(0,0,w,h);
     const rr=courtWoodRng(0x5bf03635);
     const BW=0.28;
     for(let x=-W/2;x<W/2;x+=BW){
-      const gv=Math.round(215+rr()*40);
+      const gv=Math.round(196+rr()*46);
       g.fillStyle="rgb("+gv+","+gv+","+gv+")";
       g.fillRect(u(x),0,BW*PXM,h);
       g.fillStyle="rgba(255,255,255,.55)";
       g.fillRect(u(x+BW)-1.2,0,1.2,h);
     }
-    for(let i=0;i<90;i++){
-      const x=u(-W/2+rr()*W),y=v(COURT.floorMinZ+rr()*D);
-      g.fillStyle="rgba(255,255,255,.30)";
-      g.fillRect(x,y,(0.5+rr()*1.2)*PXM,1.1);
+    // 细微划痕与球鞋急停擦痕（高粗糙度哑光线条，直接打散顶灯镜面反光）
+    for(let i=0;i<360;i++){
+      const inPaint=i<220;
+      const x=inPaint?u((rr()-0.5)*14.0):u(-W/2+rr()*W);
+      const y=inPaint?v(COURT.nearBaseline+0.4+rr()*9.5):v(COURT.floorMinZ+rr()*D);
+      const len=(0.22+rr()*1.15)*PXM,ang=(rr()-0.5)*2.6;
+      g.strokeStyle="rgba(255,255,255,"+(0.32+rr()*0.42).toFixed(2)+")";
+      g.lineWidth=1.0+rr()*1.6;
+      g.beginPath();
+      g.moveTo(x,y);
+      g.quadraticCurveTo(x+Math.cos(ang)*len*0.5+(rr()-0.5)*10,y+Math.sin(ang)*len*0.5+(rr()-0.5)*10,x+Math.cos(ang)*len,y+Math.sin(ang)*len);
+      g.stroke();
     }
-    const slick=(cx,cz,r,amount)=>{
+    // 轻微磨损哑光斑块（中圈与三秒区高频踩踏区，防止局部死亮塑料反光）
+    const wear=(cx,cz,r,amount)=>{
       const gr=g.createRadialGradient(u(cx),v(cz),0,u(cx),v(cz),r*PXM);
-      gr.addColorStop(0,"rgba(0,0,0,"+amount+")");
-      gr.addColorStop(1,"rgba(0,0,0,0)");
-      g.globalCompositeOperation="multiply";
+      gr.addColorStop(0,"rgba(255,255,255,"+amount+")");
+      gr.addColorStop(1,"rgba(255,255,255,0)");
       g.fillStyle=gr;g.fillRect(u(cx-r),v(cz-r),r*2*PXM,r*2*PXM);
-      g.globalCompositeOperation="source-over";
     };
-    slick(0,HOOP.z,5.2,.07);
-    slick(0,COURT.farHoopZ,5.2,.07);
-    slick(0,COURT.midZ,2.6,.05);
+    wear(0,HOOP.z+1.8,4.6,0.22);
+    wear(0,COURT.farHoopZ-1.8,4.6,0.18);
+    wear(0,COURT.midZ,3.2,0.16);
   },{smooth:true,mipmaps:true,anisotropy:16,linear:true});
 }
 
@@ -371,6 +466,7 @@ function buildCourt(){
     ? new THREE.MeshPhysicalMaterial({
         map:courtIndoorTexture,
         roughnessMap:courtRoughTexture,
+        clearcoatRoughnessMap:courtRoughTexture,
         roughness:FLOOR_PHYS.roughness,metalness:FLOOR_PHYS.metalness,
         clearcoat:FLOOR_PHYS.clearcoat,
         clearcoatRoughness:FLOOR_PHYS.clearcoatRoughness,

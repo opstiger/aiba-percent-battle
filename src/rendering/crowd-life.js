@@ -33,22 +33,32 @@
       }
     }
     bakeVoxelMesh(root,parts).name="arenaAisleSteps";
-    const cube=new THREE.BoxGeometry(1,1,1),mat=c=>new THREE.MeshLambertMaterial({color:new THREE.Color(c).convertSRGBToLinear()});
+    const mat=c=>new THREE.MeshLambertMaterial({color:new THREE.Color(c).convertSRGBToLinear()});
     const skin=mat(0xc99970),pants=mat(0x253344),shoe=mat(0xc7c6b6),shirt=[mat(0x3a4659),mat(0x476578),mat(0x5c4338)];
     for(let i=0;i<(mobile?4:8);i++){
       const g=new THREE.Group();g.name="aisleWalker";root.add(g);
-      bakeVoxelMesh(g,[
-        {color:shirt[i%3].color,pos:[0,.95,0],scale:[.34,.48,.21],taperX:.88,taperZ:.90},
-        {color:shirt[i%3].color,pos:[0,.68,0],scale:[.30,.16,.19],taperX:1.08},
-        {color:skin.color,pos:[0,1.24,0],scale:[.10,.09,.10]},
-        {color:skin.color,pos:[0,1.40,0],scale:[.21,.24,.21],taperX:.90,taperZ:.92},
-        {color:0x292622,pos:[0,1.54,0],scale:[.23,.08,.22],taperX:.92,taperZ:.92}
+      const sc=shirt[i%3].color;
+      bakeOrganicMesh(g,[
+        {shape:"cyl",color:sc,pos:[0,.95,0],scale:[.32,.40,.21],taperX:1.16,taperZ:1.10},
+        {shape:"sphere",color:sc,pos:[0,1.06,0],scale:[.37,.22,.23]},
+        {shape:"sphere",color:sc,pos:[-.16,1.11,0],scale:[.13,.12,.15]},
+        {shape:"sphere",color:sc,pos:[.16,1.11,0],scale:[.13,.12,.15]},
+        {shape:"sphere",color:pants.color,pos:[0,.68,0],scale:[.31,.15,.20]},
+        {shape:"cyl",color:skin.color,pos:[0,1.22,0],scale:[.095,.10,.095]},
+        {shape:"sphere",color:skin.color,pos:[0,1.38,0],scale:[.205,.24,.215],taperX:1.06,taperZ:1.04},
+        {shape:"dome",color:0x292622,pos:[0,1.41,0],scale:[.22,.20,.23]}
       ]);
       const legs=[],arms=[];
       for(const side of [-1,1]){
         const leg=new THREE.Group();leg.position.set(side*.095,.68,0);g.add(leg);
-        showBox(leg,cube,pants,0,-.3,0,.13,.6,.15);showBox(leg,cube,shoe,0,-.64,.045,.17,.09,.25);legs.push(leg);
-        const arm=new THREE.Group();arm.position.set(side*.24,1.15,0);g.add(arm);showBox(arm,cube,skin,0,-.22,0,.1,.45,.12);arms.push(arm);
+        bakeOrganicMesh(leg,[
+          {shape:"cyl",color:pants.color,pos:[0,-.16,0],scale:[.12,.32,.125],taperX:1.18,taperZ:1.15},
+          {shape:"cyl",color:pants.color,pos:[0,-.46,0],scale:[.10,.30,.105],taperX:1.20,taperZ:1.18},
+          {shape:"dome",color:shoe.color,pos:[0,-.65,.035],scale:[.14,.10,.22]}
+        ]);
+        legs.push(leg);
+        const arm=makeOrganicLimbMesh(g,skin,side*.23,1.12,0,.084,.42);
+        arms.push(arm);
       }
       const path=state.paths[[2,4,1,5,8,10,7,11][i]],duration=22+i*2.1;
       state.walkers.push({g,legs,arms,path,duration,offset:i*5.71,status:"walk",distance:0});

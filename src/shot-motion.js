@@ -445,6 +445,14 @@
         applyReleaseFeetPose(player,releaseFeetPhase,gameFootY);
       }
     }
+    /* 放松/反应动作层(gameplay/reaction.js):只在完全站定、没有任何出手/接球/跟随动作时写头和手臂。
+       出手帧(c 非零)走 decay 分支快速回正,不会渗进 check.js 锁定的球心位置。 */
+    if(global.AIBAReaction){
+      const fpView=typeof CAM!=="undefined"&&CAM.mode===0;
+      const calm=!P.walking&&(c.dip||0)+(c.lift||0)+(c.jmp||0)+(c.over||0)<.02&&P.jump<.01&&
+        !follow.active&&!(catchState&&catchState.active&&((catchState.progress||0)>.04||catchState.settling))&&!releaseFeetPhase&&!(G.pickupReach>.02)&&!G.charging;
+      global.AIBAReaction.apply(player,dt,fpView||P.walking?"off":(calm?"on":"decay"),!!G.canShoot);
+    }
     // 球挂在投篮手 handRig 上，伸肘与压腕期间连续随手，真正 release 后才隐藏/脱离。
     if(!ballAttached)poseBallPos(pBall.position,c,style);
     // 先完成真实球员姿势，再把同一组肩肘腕与手指结果镜像给第一人称。
