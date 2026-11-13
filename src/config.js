@@ -67,6 +67,8 @@
     {id:"star1",n:"1 号 · 太阳",t:"写实模型试验 · 蒙皮骨骼",r:95,col:[0x1d1160,0xe56020],num:1,skin:0x7a4b32,hair:0x15110f,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xf4f4ef,headband:false,wrist:0xf4f4f0,sleeve:null,shortsColor:0x1d1160},
     /* 第三个写实模型角色:assets/models/star15.glb(Tripo 生成 + Mixamo 绑骨)。 */
     {id:"star15",n:"15 号 · 猛龙",t:"写实模型试验 · 蒙皮骨骼",r:95,col:[0x4b2a85,0xce1141],num:15,skin:0x8a5a3a,hair:0xd04a6a,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xe86fd0,headband:false,wrist:0x111111,sleeve:0x111111,shortsColor:0x4b2a85},
+    /* 第四个写实模型角色:assets/models/star30.glb(混元生成 + Mixamo 绑骨)。 */
+    {id:"star30",n:"30 号 · 勇士",t:"写实模型试验 · 蒙皮骨骼",r:95,col:[0xf4f4f0,0x1d428a],num:30,skin:0xa87851,hair:0xd04a6a,hairStyle:"short",beard:0x15110f,beardStyle:"stubble",shoe:0xf4f4ef,headband:false,wrist:0x1d428a,sleeve:0xf4f4f0,shortsColor:0xf4f4f0},
     {id:"stojakovic",n:"佩贾·斯托贾科维奇",t:"两届三分大赛冠军",r:87,col:[0x5a2d81,0x8a8d8f],num:16,skin:0xd5ae8b,hair:0x35271e,hairStyle:"short",beard:0x35271e,beardStyle:"stubble",shoe:0x111111,headband:false,wrist:null,sleeve:null,shortsColor:0x5a2d81},
     {id:"ionescu",n:"萨布丽娜·约内斯库",t:"WNBA全明星 · 三分大赛纪录",r:91,col:[0x6eceb2,0x101820],num:20,sex:"f",hairStyle:"ponytail",hair:0x463020,skin:0xe5bc9c,beard:false,beardStyle:"none",shoe:0xd8eee5,headband:false,wrist:null,sleeve:null,shortsColor:0x6eceb2},
     {id:"taurasi",n:"戴安娜·陶乐西",t:"三届WNBA总冠军 · 历史得分王",r:92,col:[0x2b1a4e,0xe56020],num:3,sex:"f",hairStyle:"bun",hair:0x29201b,skin:0xdbb28e,beard:false,beardStyle:"none",shoe:0xeeeeea,headband:false,wrist:null,sleeve:null,shortsColor:0x2b1a4e},
@@ -154,6 +156,7 @@
     star8:{flow:1},
     star1:{flow:1},
     star15:{flow:1},
+    star30:{flow:1},
     allen:{kick:.18,lean:0,turn:0.0,release:.01,setPoint:-.02,drift:0,jump:1.0,fade:0,hold:0.8},
     "sue-bird":{kick:.18,lean:0,turn:0.0,release:-.01,setPoint:-.02,drift:0,jump:0.88,fade:0,hold:0.5},
     /* 库里 / 汤普森:几乎不踢腿。两个人是全表最小值,和麦迪拉开一个数量级 */

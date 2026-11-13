@@ -1,4 +1,4 @@
-/* 写实蒙皮皮套(试验):选中 MODELS 里登记的球星(star8、star1、star15)时,把画面上的身体换成对应的 glb
+/* 写实蒙皮皮套(试验):选中 MODELS 里登记的球星(star8、star1、star15、star30)时,把画面上的身体换成对应的 glb
    (Mixamo 规范绑骨,65 根骨骼,自带一条 run 动画)。每个球星用自己的模型,互不混用。
    其他球星完全不经过这里;?tripo=1 可以强制任何球星都换成 star8(只为调试)。
 
@@ -15,7 +15,9 @@
     star8:{file:"star8.glb",yaw:-Math.PI/2},
     /* star1:4.8 万面高模,先焊接重复顶点再减到 1.45 万面(直接减会在脸和衣褶里撕出缝),权重从 Mixamo 绑好的版本转过来 */
     star1:{file:"star1.glb",yaw:0},
-    star15:{file:"star15.glb",yaw:0}
+    star15:{file:"star15.glb",yaw:0},
+    /* star30:混元生成的 4.9 万面静态模型,先焊接重复顶点再减到 1.48 万面,Mixamo 绑骨(护齿是独立碎片,单独拿出来再并回) */
+    star30:{file:"star30.glb",yaw:0}
   };
   const QS=new URLSearchParams(location.search),FORCE=QS.get("tripo")==="1";
   if(QS.get("tripo")==="0")return;
