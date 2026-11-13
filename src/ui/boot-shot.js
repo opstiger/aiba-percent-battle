@@ -59,13 +59,15 @@ const CINE=[
 ];
 const WALK_AT=1.05;        // 空镜多久后人物起步
 const CINE_END=CINE[CINE.length-1].t;
+const MODEL_WAIT=3.5;     // 开场人物是写实模型时,等它下载好再起步;最多等这么久,超时就照常起步
 const WALK_TIMEOUT=4.0;   // 走位万一卡住,到点强制就位
 const CATCH_TIMEOUT=2.2;  // 传球没到手的兜底
 
 const S={on:false,phase:"idle",ball:null,idleTimer:0,flightTimer:0,raf:0,
   savedCam:0,savedTilt:null,savedHud:undefined,savedFov:0,fovRaf:0,onDone:null,
   cineT:0,cineLast:0,cineRaf:0,fov:CINE[0].fov,walkStarted:false,walkDone:false,
-  pendingFire:false,savedGlide:false,savedBody:null,walkK:0,walkStep:-1};
+  pendingFire:false,savedGlide:false,savedBody:null,walkK:0,walkStep:-1,
+  introStar:null,savedStar:undefined,savedNum:undefined,holdT:0,starTried:false};
 
 const clamp01=v=>v<0?0:(v>1?1:v);
 const nowMs=()=>(global.performance&&performance.now)?performance.now():Date.now();
@@ -105,6 +107,37 @@ function shouldRun(){
   return true;
 }
 
+/* 开场人物:从写实蒙皮角色(tripo-avatar.js 的模型表,也就是球星列表里那几个)里随机挑一个,
+   整段开场(走进画面、蓄力、起跳、出手、落地)都用它现在的写实动作。收场时把玩家原来选的球星还回去。
+   调试:?introStar=star15 指定一个;?tripo=0 关掉写实模型时这里自动退回原来的开场人物。 */
+function pickIntroStar(){
+  try{
+    const T=global.AIBATripo,ids=T&&Array.isArray(T.models)?T.models:null;
+    if(!ids||!ids.length||typeof global.applyStarStyle!=="function")return null;
+    const list=(global.AIBA_CONFIG&&global.AIBA_CONFIG.CLASSIC_LEGENDS)||[];
+    const pool=list.filter(s=>ids.indexOf(s.id)>=0);
+    if(!pool.length)return null;
+    const want=q("introStar"),forced=want&&pool.find(s=>s.id===want);
+    return forced||pool[(Math.random()*pool.length)|0];
+  }catch(e){return null;}
+}
+/* 不能在 start() 里选:bootGame 在 index.html 里比 tripo-avatar.js 先执行(start 同步跑在它前面),
+   那时 AIBATripo 还不存在。运镜是逐帧跑的,等它出现的第一帧再选 —— 这段时间人物还在画面外、模型是隐藏的。 */
+function applyIntroStar(){
+  if(S.starTried||!global.AIBATripo)return;
+  S.starTried=true;
+  const star=pickIntroStar();if(!star)return;
+  const G=ctx.G;
+  S.savedStar=G.myStar;S.savedNum=G.myNum;
+  try{G.myStar=star;G.myNum=star.num;global.applyStarStyle(ctx.player,star);S.introStar=star;}
+  catch(e){G.myStar=S.savedStar;G.myNum=S.savedNum;S.introStar=null;}
+}
+function introModelReady(){
+  if(!S.introStar)return true;
+  const T=global.AIBATripo;
+  return !!T&&(T.failed||(T.ready&&T.modelId===S.introStar.id));
+}
+
 function layer(){return document.getElementById("bootShot");}
 function setHint(text,cls){
   const el=document.getElementById("bootShotHint");
@@ -121,6 +154,7 @@ function start(onDone){
   document.documentElement.dataset.bootShot="1";
 
   const G=ctx.G;
+  S.introStar=null;S.holdT=0;S.starTried=false;   // 开场人物在运镜的头几帧里选(见 applyIntroStar)
   /* curShot() 在非 battle/rackrush 时读 G.seq[G.shotIdx],给它一颗弧顶球 */
   G.mode="";G.seq=[{rack:2,ball:0,val:3,money:false,deep:null}];G.shotIdx=0;
   /* practice=true 有一个关键作用:barHiddenFor() 第一行就是 `if(!shot||G.practice)return false`,
@@ -216,7 +250,11 @@ function updCine(){
      单帧封顶 50ms —— 卡多久都只吃掉一帧的进度,该看到的画面一帧不少。 */
   const n=nowMs();
   const dtFrame=S.cineLast?Math.min(0.05,(n-S.cineLast)/1000):0;
-  S.cineT+=dtFrame;
+  applyIntroStar();
+  /* 人物是写实模型时,起步那一刻要等模型下载好(1~2MB):时间轴停在"人物起步"之前,
+     镜头和空镜都不动,下好了接着走;最多等 MODEL_WAIT 秒,超时照常起步,绝不卡死。 */
+  if(S.introStar&&!S.walkStarted&&S.cineT>=WALK_AT&&S.holdT<MODEL_WAIT&&!introModelReady())S.holdT+=dtFrame;
+  else S.cineT+=dtFrame;
   S.cineLast=n;
   const t=S.cineT;
   const f=cineSample(Math.min(t,CINE_END));
@@ -228,7 +266,7 @@ function updCine(){
   }catch(e){}
   S.fov=f.fov;
 
-  if(!S.walkStarted&&t>=WALK_AT)beginWalkIn();
+  if(!S.walkStarted&&t>=WALK_AT&&!(S.introStar&&S.holdT<MODEL_WAIT&&!introModelReady()))beginWalkIn();
   if(S.walkStarted&&!S.walkDone){
     updWalkIn(dtFrame);
     if(t>WALK_AT+WALK_TIMEOUT)onWalkDone();   // 兜底,绝不卡在半路
@@ -476,6 +514,14 @@ function cleanup(){
   try{if(S.savedBody!==null){ctx.player.g.visible=S.savedBody;S.savedBody=null;}}catch(e){}
   if(global.TILT&&S.savedTilt!==null){global.TILT.on=S.savedTilt;S.savedTilt=null;}
   G.state="menu";
+  /* 把玩家原来选的球星还回去(没有就清掉,写实模型随之收起,回到方块人) */
+  if(S.introStar){
+    try{
+      G.myStar=S.savedStar;G.myNum=S.savedNum;
+      if(S.savedStar&&typeof global.applyStarStyle==="function")global.applyStarStyle(ctx.player,S.savedStar);
+    }catch(e){}
+    S.introStar=null;
+  }
 }
 
 /* 跳过:任何时候都能走,直接进首页 */
@@ -500,7 +546,7 @@ function abort(){
 global.AIBABootShot=Object.freeze({shouldRun,start,skip,abort,resetFirstRun,
   /* t = 运镜真实经过秒数。取景检查台(scripts/boot-shot.frames.mjs)靠它对齐时间轴 ——
      外面用 Date.now() 自己计时会把"页面加载完"当成起点,实测偏了 2.4 秒。 */
-  state:()=>({on:S.on,phase:S.phase,t:S.cineT})});
+  state:()=>({on:S.on,phase:S.phase,t:S.cineT,star:S.introStar&&S.introStar.id||null,holdT:S.holdT})});
 global.skipBootShot=skip;
 runtime.register("ui:boot-shot",global.AIBABootShot);
 })(window);
