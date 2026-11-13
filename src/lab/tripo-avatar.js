@@ -313,7 +313,18 @@
       const free=S0.clone().addScaledVector(Wa.clone().sub(Sa).normalize(),Math.min(.995,Wa.distanceTo(Sa)/La)*Lk);
       const low=clamp((1.22-free.y)/.2,0,1)*Math.max(0,1-Math.abs(free.z)/.28);       // 垂手时别插进短裤
       if(low>0&&s*free.x<.25)free.x=s*(s*free.x+(.25-s*free.x)*low);
-      let pole=Ea.clone().sub(Sa.clone().add(Wa).multiplyScalar(.5));if(pole.lengthSq()<1e-6)pole=V(s*.3,-.2,-1);
+      const rawPole=Ea.clone().sub(Sa.clone().add(Wa).multiplyScalar(.5));
+      const fallbackPole=V(s*.35,-.25,-.85).normalize();
+      let pole=rawPole.lengthSq()<.015
+        ? fallbackPole.clone().lerp(rawPole.lengthSq()>1e-5?rawPole.clone().normalize():fallbackPole,Math.min(1,rawPole.length()/.12))
+        : rawPole;
+      state.prevPole=state.prevPole||{};
+      const pn=pole.clone().normalize();
+      if(state.prevPole[sd]&&dt>0){
+        pn.lerp(state.prevPole[sd],Math.exp(-18*dt)).normalize();
+      }
+      state.prevPole[sd]=pn.clone();
+      pole=pn;
       /* 持球时肘部放松外张:方块人的肘是贴着身体夹住的,真人抱球时两肘自然离开躯干。
          手举过肩(举球、出手)时逐渐收回,投篮手的肘要回到球的正下方。 */
       {const fl=state.elbowOut*hw*clamp((S0.y+.02-free.y)/.3,0,1);if(fl>.001)pole.normalize().add(V(s*fl,0,-.25*fl));}

@@ -14,12 +14,12 @@
   const ZERO=()=>{const o={};for(const k of CH)o[k]=0;return o;};
   /* 目标值(=动画想去的位置),实际值按指数逼近,所以出入场都是平滑的 */
   const CLIPS={
-    nod:{dur:.85,f(u){const e=bump(u,.22,.55);return {hx:.3*e,hy:.06*e};}},
-    fist:{dur:.9,f(u){const e=bump(u,.2,.5),p=1+.1*Math.sin(u*18)*e;return {hx:.14*e,sx:-1.75*e*p,se:-1.3*e*p,sz:-.3*e};}},
-    shrug:{dur:1.0,f(u){const e=bump(u,.25,.55);return {hx:-.05*e,hz:.14*e,sz:-.65*e,gz:.65*e,se:-.7*e,ge:-.7*e};}},
-    shake:{dur:.95,f(u){const e=bump(u,.15,.6);return {hx:.24*e,hy:.42*Math.sin(u*Math.PI*4)*e};}},
-    handhead:{dur:1.0,f(u){const e=bump(u,.25,.55);return {hx:.14*e,gx:-1.95*e,ge:-2.6*e,gz:-.35*e};}},
-    slump:{dur:1.0,f(u){const e=bump(u,.3,.55);return {hx:.5*e,hy:-.2*e};}}
+    nod:{dur:.85,f(u){const e=bump(u,.22,.55);return {hx:.24*e,hy:.05*e};}},
+    fist:{dur:.9,f(u){const e=bump(u,.2,.5),p=1+.06*Math.sin(u*16)*e;return {hx:.12*e,sx:-1.15*e*p,se:-.92*e*p,sz:-.22*e};}},
+    shrug:{dur:1.0,f(u){const e=bump(u,.25,.55);return {hx:-.04*e,hz:.10*e,sz:-.42*e,gz:.42*e,se:-.45*e,ge:-.45*e};}},
+    shake:{dur:.95,f(u){const e=bump(u,.15,.6);return {hx:.18*e,hy:.30*Math.sin(u*Math.PI*4)*e};}},
+    handhead:{dur:1.0,f(u){const e=bump(u,.25,.55);return {hx:.12*e,gx:-1.25*e,ge:-1.55*e,gz:-.24*e};}},
+    slump:{dur:1.0,f(u){const e=bump(u,.3,.55);return {hx:.36*e,hy:-.14*e};}}
   };
   const R={
     enabled:!/[?&]react=0\b/.test(String(global.location&&global.location.search)),
@@ -47,7 +47,10 @@
     dt=clamp(+dt||0,0,.1);R.mode=mode;
     const tgt=ZERO();
     if(mode==="off"){
-      cancel();for(const k of CH)R.cur[k]=0;R.wrote=false;return;
+      cancel();R.idle.dur=0;
+      const aOff=1-Math.exp(-18*dt);
+      for(const k of CH)R.cur[k]+=(0-R.cur[k])*aOff;
+      R.wrote=false;return;
     }
     if(mode==="on"){
       if(R.pending){
@@ -66,8 +69,8 @@
         else{I.next-=dt;if(I.next<=0){
           const dir=Math.random()<.5?-1:1;
           I.t=0;I.dur=.8+Math.random()*.9;
-          if(Math.random()<.3){I.yaw=0;I.pitch=.28;}                                   // 低头看手/看球
-          else{I.yaw=dir*(.3+Math.random()*.3)*(Math.sign(I.yaw)===dir?.5:1);I.pitch=(Math.random()-.5)*.14;}
+          if(Math.random()<.3){I.yaw=0;I.pitch=.18;}                                   // 轻低头看手/看球
+          else{I.yaw=dir*(.16+Math.random()*.14)*(Math.sign(I.yaw)===dir?.5:1);I.pitch=(Math.random()-.5)*.08;}
         }}
       }
     }else{

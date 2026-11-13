@@ -1576,9 +1576,9 @@ function poseGuy(o,c,lk,landingImpact){
   const readyClock=isReadyPlayer&&Number.isFinite(G.tNow)?G.tNow:0;
   const readyWave=isReadyPlayer?Math.sin(readyClock*READY_BOUNCE_RATE):0;
   const readyPulse=readyWave>0?readyWave*readyWave:0;
-  if(isReadyPlayer){
-    o.g.rotation.z=readyPulse?(0.5+0.16*Math.sin(readyClock*READY_BOUNCE_RATE+Math.PI*.5)-.5)*.018:0;
-  }
+  const targetReadyZ=isReadyPlayer&&readyPulse?(0.5+0.16*Math.sin(readyClock*READY_BOUNCE_RATE+Math.PI*.5)-.5)*.014:0;
+  o.g.rotation.z+=(targetReadyZ-o.g.rotation.z)*0.18;
+  if(Math.abs(o.g.rotation.z)<1e-4&&targetReadyZ===0)o.g.rotation.z=0;
   if(readyPulse){
     /* 一只脚稍多承重，另一只脚随 beat 轻轻卸力；幅度很小，观感是踝关节有弹性，
        不是原地踏步，也不产生水平位移。 */

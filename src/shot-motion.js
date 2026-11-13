@@ -418,7 +418,6 @@
          下次起步第一帧还会把瞬移当成高速。 */
       if(typeof resetWalkSpeed==="function")resetWalkSpeed();
       if(P.walkRig)P.walkRig.phase=0;
-      player.g.rotation.z=0;
       const gamePoseY=poseGuy(player,c,lk,landingImpact);
       const gameRootLean=player.g&&player.g.rotation?player.g.rotation.x:0;
       const gameFootY=(poseFootBottomY(player.legs[0].rotation.x+gameRootLean,player.knees[0].rotation.x,player.ankles[0].rotation.x)+
