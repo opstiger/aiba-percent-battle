@@ -16,18 +16,23 @@ function makeNearCourtPerson(parent,cube,cfg,mats){
   /* 躯干/头/帽/腿/鞋原本各自一个 Mesh(且只做 ±5° 的呼吸式微动),烘焙成单个带顶点色的
      身体网格:整体前倾代替各部件微动,手臂与道具仍然独立驱动,观感几乎无差别。 */
   const bodyParts=[
-    {color:shirt.color,pos:[0,.9,0],scale:[.42,.72,.25]},
-    {color:skin.color,pos:[0,1.48,-.02],scale:[.31,.31,.28]},
-    {color:hair.color,pos:[0,1.66,-.03],scale:[.34,.12,.3]},
-    {color:pants.color,pos:[-.13,.38,0],scale:[.13,.64,.13]},
-    {color:pants.color,pos:[.13,.38,0],scale:[.13,.64,.13]},
-    {color:shoe.color,pos:[-.13,.08,-.04],scale:[.18,.11,.24]},
-    {color:shoe.color,pos:[.13,.08,-.04],scale:[.18,.11,.24]}
+    {color:shirt.color,pos:[0,.96,0],scale:[.40,.46,.24],taperX:.88,taperZ:.90},
+    {color:shirt.color,pos:[0,.66,0],scale:[.35,.22,.22],taperX:1.08,taperZ:1.04},
+    {color:skin.color,pos:[0,1.24,-.01],scale:[.11,.10,.11]},
+    {color:skin.color,pos:[0,1.43,-.01],scale:[.23,.26,.23],taperX:.90,taperZ:.92},
+    {color:hair.color,pos:[0,1.58,-.02],scale:[.25,.09,.25],taperX:.92,taperZ:.92},
+    {color:hair.color,pos:[0,1.46,.08],scale:[.23,.18,.08],taperX:.90},
+    {color:pants.color,pos:[-.11,.37,0],scale:[.14,.58,.15],taperX:1.12,taperZ:1.10},
+    {color:pants.color,pos:[.11,.37,0],scale:[.14,.58,.15],taperX:1.12,taperZ:1.10},
+    {color:shoe.color,pos:[-.11,.06,-.03],scale:[.15,.09,.24],taperX:.90},
+    {color:shoe.color,pos:[.11,.06,-.03],scale:[.15,.09,.24],taperX:.90},
+    {color:0xe8edf5,pos:[-.11,.015,-.03],scale:[.16,.025,.25]},
+    {color:0xe8edf5,pos:[.11,.015,-.03],scale:[.16,.025,.25]}
   ];
-  if(cfg.kind==="cheer")bodyParts.push({color:shirt.color,pos:[0,.58,0],scale:[.52,.18,.27]});
+  if(cfg.kind==="cheer")bodyParts.push({color:shirt.color,pos:[0,.56,0],scale:[.48,.16,.26],taperX:1.22,taperZ:1.16});
   const body=bakeVoxelMesh(g,bodyParts);
-  const armL=showBox(g,cube,skin,-.34,1.05,-.02,.1,.52,.11);
-  const armR=showBox(g,cube,skin,.34,1.05,-.02,.1,.52,.11);
+  const armL=showBox(g,cube,skin,-.28,1.03,-.01,.095,.48,.105);
+  const armR=showBox(g,cube,skin,.28,1.03,-.01,.095,.48,.105);
   armL.rotation.z=hype?-.45:-.08;armR.rotation.z=hype?.45:.08;
   let phone=null,sign=null,prop=null,pomL=null,pomR=null;
   if(cfg.kind==="filmer"){
@@ -58,49 +63,42 @@ function makeNearCourtPerson(parent,cube,cfg,mats){
 function buildNearCourtCrowd(){
   nearCourtCrowd.root=null;nearCourtCrowd.people.length=0;nearCourtCrowd.reaction=0;nearCourtCrowd.miss=0;
   const root=new THREE.Group();root.name="nearCourtCrowdRoot";scene.add(root);nearCourtCrowd.root=root;
-  const cube=new THREE.BoxGeometry(1,1,1),mat=hex=>new THREE.MeshLambertMaterial({color:hex});
+  const cube=new THREE.BoxGeometry(1,1,1),mat=hex=>new THREE.MeshLambertMaterial({color:hex}),dimMat=(hex,desat=0.08,dark=0.14)=>new THREE.MeshLambertMaterial({color:recede(hex,desat,dark)});
   const mats={
-    skin:[mat(0xf4c89c),mat(0xd9a066),mat(0x8d5524),mat(0x5f351f)],
-    hair:[mat(0x16100d),mat(0x3b2415),mat(0xcaa36a),mat(0x0f1118),mat(0xffffff)],
-    /* 配色从"糖果色拼盘"改成中性深色系。原来 9 色里有 5 个高饱和
-       (金黄/粉红/浅蓝/紫/纯白),即使过一遍 recede 仍然偏粉偏浅,
-       看台读起来像一堆积木而不是观众。
-       真实球馆观众的衣服以黑/灰/藏蓝/棕为主,彩色只是零星点缀 ——
-       所以这里 6 个中性深色打底,只留暗酒红、暗绿两色点缀,1 个浅灰提亮。
-       同时把 recede 从 (.30,.16) 收到 (.18,.08):基础色本来就暗,
-       再按原力度压会黑成一团,失去"看得见的人"。
-       啦啦队(cheer)保持鲜艳 —— 他们本来就该是画面里的亮色。 */
-    shirts:[0x1a1d24,0x2b3038,0x1f2a3a,0x39404d,0x2a2f38,
-            0x4a3728,0x3d2b33,0x2f3a2c,0x545b66].map(h=>mat(recede(h,.18,.08))),
-    pants:[mat(0x181b24),mat(0x273b59),mat(0x6e727b),mat(0x0d3527),mat(0xffffff),mat(0x2a1d16)],
-    shoes:[mat(0xffffff),mat(0x111111),mat(0xff4d6d),mat(0x68e6ff),mat(0xffe36e)],
-    cheer:[mat(0xff2f4f),mat(0x21a7ff),mat(0xffc72c),mat(0x7CFC6B)],
+    skin:[0xf6cdab,0xedb48a,0xda9d6e,0xb87848,0x824b22,0x4e2c16].map(h=>dimMat(h,0.08,0.14)),
+    hair:[mat(0x16100d),mat(0x2c1b10),mat(0x8a6d42),mat(0x0f1118),mat(0x3a3e48)],
+    // 场边名流与死忠球迷：置于球场外缘 ~85% 暖色溢光过渡带，自然衔接赛场与看台聚光池
+    shirts:[0xf2ae29,0x58278a,0xeef1f7,0x1b202c,0x3a4860,0xf8bb34,0x4b2078,0xe0e5ef,0x252a38].map(h=>dimMat(h,0.08,0.14)),
+    pants:[0x141720,0x1d2b42,0x2c303a,0x122620,0x242834,0x221814].map(h=>dimMat(h,0.08,0.18)),
+    shoes:[mat(0x88909c),mat(0x111116),mat(0x6e2838),mat(0x2e5870),mat(0x8a7030)],
+    cheer:[0xf2ae29,0x58278a,0xf8bb34,0x4b2078].map(h=>dimMat(h,0.08,0.14)),
     cheerPants:mat(0x10131c),
     phone:mat(0x07131f),mouth:mat(0x502c29),
-    towel:new THREE.MeshLambertMaterial({color:0xff5bd7,emissive:0xff2aa8,emissiveIntensity:.16}),
-    ball:new THREE.MeshLambertMaterial({color:0xf28b22,emissive:0x9a3d00,emissiveIntensity:.08}),
-    pomA:new THREE.MeshLambertMaterial({color:0xff4fd8,emissive:0xff4fd8,emissiveIntensity:.2}),
-    pomB:new THREE.MeshLambertMaterial({color:0x7CFC6B,emissive:0x7CFC6B,emissiveIntensity:.2}),
-    signs:[miniSignTex("MVP","#10131b","#ffd23f"),miniSignTex("BRICK?","#260c12","#ff6b6b"),miniSignTex("LOCK IN","#0c2232","#72dfff"),miniSignTex("AI-BA","#101a13","#7CFC6B")]
+    towel:new THREE.MeshLambertMaterial({color:0xfdb927,emissive:0x8a6010,emissiveIntensity:.15}),
+    ball:new THREE.MeshLambertMaterial({color:0xc86d1c,emissive:0x5a2200,emissiveIntensity:.06}),
+    pomA:new THREE.MeshLambertMaterial({color:0xfdb927,emissive:0x8a6010,emissiveIntensity:.16}),
+    pomB:new THREE.MeshLambertMaterial({color:0x552583,emissive:0x3b195e,emissiveIntensity:.16}),
+    signs:[miniSignTex("MVP","#140c24","#fdb927"),miniSignTex("SHOWTIME","#180d2c","#fdb927"),miniSignTex("LOCK IN","#0c1828","#7ee7ff"),miniSignTex("AI-BA","#120d22","#b388ff")]
   };
+  /* 场边观众随扩建后的 NBA 场边缓冲区同步后退至底线外 3.25~3.55m、边线外 ±10.7m，彻底释放赛场呼吸感 */
   const slots=[
-    [-7.2,COURT.nearBaseline-1.55,"filmer"],[-6.05,COURT.nearBaseline-1.7,"hype"],[-4.85,COURT.nearBaseline-1.52,"cheer"],[-3.55,COURT.nearBaseline-1.78,"heckler"],
-    [-2.25,COURT.nearBaseline-1.48,"calm"],[-.95,COURT.nearBaseline-1.86,"distract"],[.95,COURT.nearBaseline-1.86,"cheer"],[2.25,COURT.nearBaseline-1.48,"calm"],
-    [3.55,COURT.nearBaseline-1.78,"hype"],[4.85,COURT.nearBaseline-1.52,"filmer"],[6.05,COURT.nearBaseline-1.7,"heckler"],[7.2,COURT.nearBaseline-1.55,"player"],
-    [-8.88,COURT.nearBaseline+.75,"distract"],[-8.95,COURT.nearBaseline+2.1,"filmer"],[-8.82,COURT.nearBaseline+3.65,"cheer"],[-8.92,COURT.nearBaseline+5.2,"hype"],
-    [-8.75,COURT.nearBaseline+6.9,"calm"],[-8.9,COURT.nearBaseline+8.55,"heckler"],[-8.82,COURT.nearBaseline+10.2,"player"],[-8.95,COURT.nearBaseline+11.9,"hype"],
-    [8.88,COURT.nearBaseline+.75,"filmer"],[8.95,COURT.nearBaseline+2.1,"cheer"],[8.82,COURT.nearBaseline+3.65,"hype"],[8.92,COURT.nearBaseline+5.2,"heckler"],
-    [8.75,COURT.nearBaseline+6.9,"distract"],[8.9,COURT.nearBaseline+8.55,"calm"],[8.82,COURT.nearBaseline+10.2,"filmer"],[8.95,COURT.nearBaseline+11.9,"player"],
-    [-7.8,COURT.nearBaseline-.35,"hype"],[7.8,COURT.nearBaseline-.35,"distract"]
+    [-8.6,COURT.nearBaseline-3.25,"filmer"],[-7.1,COURT.nearBaseline-3.45,"hype"],[-5.6,COURT.nearBaseline-3.22,"cheer"],[-4.1,COURT.nearBaseline-3.48,"heckler"],
+    [-2.6,COURT.nearBaseline-3.20,"calm"],[-1.1,COURT.nearBaseline-3.52,"distract"],[1.1,COURT.nearBaseline-3.52,"cheer"],[2.6,COURT.nearBaseline-3.20,"calm"],
+    [4.1,COURT.nearBaseline-3.48,"hype"],[5.6,COURT.nearBaseline-3.22,"filmer"],[7.1,COURT.nearBaseline-3.45,"heckler"],[8.6,COURT.nearBaseline-3.25,"player"],
+    [-10.68,COURT.nearBaseline+.75,"distract"],[-10.82,COURT.nearBaseline+2.3,"filmer"],[-10.65,COURT.nearBaseline+3.95,"cheer"],[-10.78,COURT.nearBaseline+5.6,"hype"],
+    [-10.62,COURT.nearBaseline+7.3,"calm"],[-10.80,COURT.nearBaseline+9.05,"heckler"],[-10.68,COURT.nearBaseline+10.8,"player"],[-10.82,COURT.nearBaseline+12.5,"hype"],
+    [10.68,COURT.nearBaseline+.75,"filmer"],[10.82,COURT.nearBaseline+2.3,"cheer"],[10.65,COURT.nearBaseline+3.95,"hype"],[10.78,COURT.nearBaseline+5.6,"heckler"],
+    [10.62,COURT.nearBaseline+7.3,"distract"],[10.80,COURT.nearBaseline+9.05,"calm"],[10.68,COURT.nearBaseline+10.8,"filmer"],[10.82,COURT.nearBaseline+12.5,"player"],
+    [-9.6,COURT.nearBaseline-1.85,"hype"],[9.6,COURT.nearBaseline-1.85,"distract"]
   ];
   const mobile=(window.matchMedia&&window.matchMedia("(pointer:coarse)").matches)||Math.min(innerWidth,innerHeight)<700;
   const max=mobile?12:30;
   slots.slice(0,max).forEach((s,i)=>{
     const pos=V3(s[0]+rnd(-.12,.12),0,s[1]+rnd(-.16,.16));
-    const target=Math.abs(pos.x)>8?V3(0,0,Math.min(COURT.playMaxZ,pos.z+.45)):V3(0,0,HOOP.z+.9);
-    const side=Math.abs(pos.x)>8,axis=side?V3(0,0,1):V3(1,0,0);
+    const target=Math.abs(pos.x)>9.8?V3(0,0,Math.min(COURT.playMaxZ,pos.z+.45)):V3(0,0,HOOP.z+.9);
+    const side=Math.abs(pos.x)>9.8,axis=side?V3(0,0,1):V3(1,0,0);
     makeNearCourtPerson(root,cube,{x:pos.x,z:pos.z,rot:faceTo(pos,target)+Math.PI,kind:s[2],skin:i%4,hair:(i*2)%5,shirt:(i*3)%9,
-      pants:(i+1)%6,shoe:(i*5)%5,sign:i%4,scale:rnd(.86,1.09),phase:rnd(0,Math.PI*2),amp:rnd(.7,1.2),
+      pants:(i+1)%6,shoe:(i*5)%5,sign:i%4,scale:rnd(.82,.96),phase:rnd(0,Math.PI*2),amp:rnd(.7,1.2),
       axis,move:(s[2]==="hype"||s[2]==="distract"||s[2]==="filmer")?rnd(.08,.22):0},mats);
   });
 }
@@ -111,23 +109,40 @@ function triggerNearCourtCrowdReaction(kind,points){
   else nearCourtCrowd.reaction=Math.max(nearCourtCrowd.reaction,big?1:.76);
   nearCourtCrowd.last=kind||"make";
   const scorer=kind==="oppMake"||kind==="oppMiss"?1:0,miss=kind==="miss"||kind==="oppMiss";
-  nearCourtCrowd.people.forEach((p,i)=>{p.responseStart=crowd.clock+.1+(Math.sin(p.phase*17+i)+1)*.32;p.responseDuration=2.1+p.amp;p.responseSign=(p.team===scorer?1:-.42)*(miss?-.6:1);});
+  nearCourtCrowd.people.forEach((p,i)=>{
+    p.responseStart=crowd.clock+.05+(Math.sin(p.phase*17+i)+1)*.25;
+    p.responseDuration=2.0+p.amp;
+    p.responseLinger=2.6+p.amp*1.2;
+    p.responseSign=(p.team===scorer?1:-.42)*(miss?-.6:1);
+  });
 }
 function updNearCourtCrowd(t,dt){
   if(!nearCourtCrowd.root)return;
   const hit=nearCourtCrowd.reaction,miss=nearCourtCrowd.miss,base=Math.max(hit*.84,G.cheer*.28),shock=miss*.85;
   nearCourtCrowd.people.forEach((p,i)=>{
     const wave=Math.sin(t*(2.5+p.amp*1.4)+p.phase),pulse=Math.max(0,Math.sin(t*(5.2+p.amp)+p.phase));
-    const age=t-p.responseStart,react=age>=0&&age<p.responseDuration?Math.sin(age/p.responseDuration*Math.PI)*p.responseSign:0;
+    const age=t-p.responseStart;
+    let react=0;
+    if(age>=0){
+      if(age<p.responseDuration){
+        react=Math.sin(age/p.responseDuration*Math.PI)*p.responseSign;
+      }else if(age<p.responseDuration+(p.responseLinger||2.5)){
+        const lingerProgress=(age-p.responseDuration)/(p.responseLinger||2.5);
+        react=Math.cos(lingerProgress*Math.PI*0.5)*0.32*p.responseSign;
+      }
+    }
     const move=Math.sin(t*.55+p.phase)*p.move;
     p.g.position.set(p.base.x+p.axis.x*move,p.baseY||0,p.base.z+p.axis.z*move);
     p.g.position.y=Math.max(0,wave)*(.012+.19*Math.max(0,react))*p.amp;
     p.g.rotation.y=p.baseRot+Math.sin(t*1.25+p.phase)*(.018+.055*base);
     const cheer=Math.max(0,react),taunt=Math.max(0,-react);
     if(p.teamKey!==crowd.teamKey){
-      const colors=p.body.geometry.attributes.color,c=new THREE.Color(crowdTeams()[p.team]).convertSRGBToLinear();
-      for(let j=0;j<Math.min(36,colors.count);j++)colors.setXYZ(j,c.r,c.g,c.b);
-      colors.needsUpdate=true;p.teamKey=crowd.teamKey;
+      if(p.kind==="hype"||p.kind==="heckler"||p.kind==="player"||(i%3===0&&p.kind!=="cheer")){
+        const colors=p.body.geometry.attributes.color,c=new THREE.Color(recede(crowdTeams()[p.team],.32,.38)).convertSRGBToLinear();
+        for(let j=0;j<Math.min(72,colors.count);j++)colors.setXYZ(j,c.r,c.g,c.b);
+        colors.needsUpdate=true;
+      }
+      p.teamKey=crowd.teamKey;
     }
     if(p.kind==="filmer"){
       p.arms[0].rotation.z=-.16-.28*cheer+.2*taunt;

@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>切面运动员 · 全员合影</title>
+<!-- 游戏里所有球星用同一个基模（src/lab/facet-athlete.js）站成一排，核对每个人的体型 / 肤色 / 发型 / 胡子 / 脸。
+     外貌 = 游戏的 star 记录 + AIBAFacet.TUNE 里那一行。点名字进换装实验室。拖动旋转，滚轮缩放。
+     URL：?ids=k24,j23（只看这几个）&cols=11&yaw=弧度&d=距离&body=1（只看身体）&pose=stand|set|release&head=1（头部特写机位） -->
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#14161b;color:#e9edf3;font:12px/1.4 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif}
+  #stage{position:fixed;inset:0} #stage canvas{display:block;touch-action:none}
+  #bar{position:fixed;left:12px;right:12px;top:10px;display:flex;flex-wrap:wrap;gap:4px;pointer-events:none}
+  #bar a{pointer-events:auto;text-decoration:none;color:#e9edf3;border:1px solid rgba(255,255,255,.1);background:rgba(16,19,26,.8);border-radius:7px;padding:2px 8px}
+  #bar a:hover{border-color:#ffb547;color:#ffb547}
+  #stat{position:fixed;right:14px;bottom:12px;color:#8d97a6}
+  body[data-hud="0"] #bar,body[data-hud="0"] #stat{display:none}
+</style>
+<body data-hud="1">
+<div id="stage"></div><div id="bar"></div><div id="stat"></div>
+<script src="../../vendor/three.min.r128.js"></script>
+<script>
+window.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true});
+window.V3=function(x,y,z){return new THREE.Vector3(x,y,z);};
+window.G=window.G||{};
+</script>
+<script src="../../src/core/runtime.js"></script>
+<script src="../../src/config.js"></script>
+<script src="../../src/assets-manifest.js"></script>
+<script src="../../src/rendering/materials.js"></script>
+<script src="../../src/rendering/model-detail.js"></script>
+<script src="../../src/rendering/shoe-last.js"></script>
+<script src="../../src/rendering/retro-high.js"></script>
+<script src="../../src/rendering/shoe-styles.js"></script>
+<script src="../../src/rendering/basketball-shoes.js"></script>
+<script src="../../src/rendering/shoe-colorways.js"></script>
+<script src="../../src/rendering/player-kit.js"></script>
+<script src="../../src/lab/facet-athlete.js"></script>
+<script>
+(function(){
+  "use strict";
+  const QS=new URLSearchParams(location.search),F=AIBAFacet;
+  if(QS.get("nohud")==="1")document.body.dataset.hud="0";
+  renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+  renderer.outputEncoding=THREE.sRGBEncoding;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.08;
+  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  document.getElementById("stage").appendChild(renderer.domElement);
+  const scene=new THREE.Scene();scene.background=new THREE.Color(0x14161b);
+  const camera=new THREE.PerspectiveCamera(26,1,.1,200);
+  scene.add(new THREE.HemisphereLight(0xc4d6ff,0x3a3128,.62));
+  const key=new THREE.DirectionalLight(0xfff0da,1.55);key.position.set(4,8,6);key.castShadow=true;
+  key.shadow.mapSize.set(4096,4096);key.shadow.bias=-.0004;
+  Object.assign(key.shadow.camera,{left:-12,right:12,top:8,bottom:-6,near:.5,far:30});scene.add(key);
+  const rim=new THREE.DirectionalLight(0x8fb6ff,.95);rim.position.set(-3,3.4,-4.2);scene.add(rim);
+  const fill=new THREE.DirectionalLight(0xffe4c8,.28);fill.position.set(-3.2,1.6,3);scene.add(fill);
+  const floor=new THREE.Mesh(new THREE.PlaneGeometry(60,40),new THREE.MeshStandardMaterial({color:0x2a2d35,roughness:.92}));
+  floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
+
+  const CFG=window.AIBA_CONFIG||{};
+  let STARS=(CFG.CLASSIC_LEGENDS||[]).concat((window.AIBA_ASSETS&&AIBA_ASSETS.coverStars)||[]);
+  if(QS.get("ids")){const want=QS.get("ids").split(",");STARS=want.map(id=>STARS.find(s=>s.id===id)).filter(Boolean);}
+  const COLS=+QS.get("cols")||Math.min(STARS.length,11),GAP=1.0,ROWGAP=2.6,rowsN=Math.ceil(STARS.length/COLS);
+  const bodyOnly=QS.get("body")==="1",POSE=F.POSES[QS.get("pose")]||F.POSES.stand;
+  const label=t=>{
+    const c=document.createElement("canvas");c.width=256;c.height=64;const g=c.getContext("2d");
+    g.font="600 26px -apple-system,'PingFang SC',sans-serif";g.textAlign="center";g.textBaseline="middle";g.fillStyle="#e9edf3";g.fillText(t,128,32);
+    const sp=new THREE.Sprite(new THREE.SpriteMaterial({map:new THREE.CanvasTexture(c),depthTest:false}));sp.scale.set(.9,.225,1);return sp;
+  };
+  const people=[],bar=document.getElementById("bar");let tris=0;
+  STARS.forEach((s,i)=>{
+    const a=F.build(F.fromStar(s));a.apply(POSE);a.ball.visible=false;
+    const col=i%COLS,row=(i/COLS)|0,inRow=Math.min(COLS,STARS.length-row*COLS);
+    a.root.position.set((col-(inRow-1)/2)*GAP,0,-row*ROWGAP);scene.add(a.root);
+    if(bodyOnly)for(const n of ["kit","socks","shoes"])for(const o of a.slots[n]||[])o.visible=false;
+    const name=String(s.name||s.id).split("·").pop(),sp=label(name);sp.position.set(a.root.position.x,-.14,a.root.position.z+.45);scene.add(sp);
+    const link=document.createElement("a");link.href="index.html?star="+encodeURIComponent(s.id);link.textContent=name;bar.appendChild(link);
+    people.push({a,s});tris+=a.tris;
+  });
+  document.getElementById("stat").textContent=STARS.length+" 人 · 平均 "+Math.round(tris/Math.max(1,STARS.length)).toLocaleString()+" 三角面 / 人";
+
+  const head=QS.get("head")==="1",w0=Math.max(1,Math.min(COLS,STARS.length))*GAP;
+  const cam={t:new THREE.Vector3(0,head?1.82:1.02,-(rowsN-1)*ROWGAP/2),d:QS.has("d")?+QS.get("d"):(head?w0*1.15+1.2:w0*1.9+3.4+(rowsN-1)*2.2),yaw:QS.has("yaw")?+QS.get("yaw"):0,pitch:QS.has("pitch")?+QS.get("pitch"):(head?.03:.12)};
+  function resize(){const w=innerWidth,h=innerHeight;renderer.setSize(w,h);camera.aspect=w/h;camera.updateProjectionMatrix();}
+  addEventListener("resize",resize);
+  const el=renderer.domElement;let drag=null;
+  el.addEventListener("pointerdown",e=>{drag=[e.clientX,e.clientY];el.setPointerCapture(e.pointerId);});
+  el.addEventListener("pointermove",e=>{if(!drag)return;cam.yaw-=(e.clientX-drag[0])*.008;cam.pitch=Math.max(-.2,Math.min(1.2,cam.pitch+(e.clientY-drag[1])*.005));drag=[e.clientX,e.clientY];});
+  el.addEventListener("pointerup",()=>{drag=null;});
+  el.addEventListener("wheel",e=>{e.preventDefault();cam.d=Math.max(1,Math.min(80,cam.d*(1+e.deltaY*.001)));},{passive:false});
+  function frame(){
+    const cp=Math.cos(cam.pitch);
+    camera.position.set(cam.t.x+cam.d*Math.sin(cam.yaw)*cp,cam.t.y+cam.d*Math.sin(cam.pitch),cam.t.z+cam.d*Math.cos(cam.yaw)*cp);
+    camera.lookAt(cam.t);renderer.render(scene,camera);
+  }
+  (function loop(){requestAnimationFrame(loop);frame();})();
+  window.FacetRoster={people,cam,frame};
+  resize();
+})();
+</script>

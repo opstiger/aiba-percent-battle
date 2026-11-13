@@ -42,8 +42,8 @@ scene.background=new THREE.Color(0x05060c);
    near 拉到 12:球员通常在 3~8m(完全清晰),看台和远端在 12m 外开始被推远。
    雾色从近黑 0x05060c 改成深蓝灰:近黑会让远景"死黑",而真实场馆的远景是
    **偏冷、低对比**,不是变暗到没有。这一层才是背景分离的主力,DOF 只是辅助。 */
-scene.fog=new THREE.Fog(0x141a24,12,52);
-const camera=new THREE.PerspectiveCamera(68,1,0.1,120);
+scene.fog=new THREE.Fog(0x0c0e1a,22,96);
+const camera=new THREE.PerspectiveCamera(68,1,0.1,180);
 scene.add(camera);
 const indoorRoot=new THREE.Group();indoorRoot.name="indoorRoot";
 const environmentRoot=new THREE.Group();environmentRoot.name="environmentRoot";
@@ -161,16 +161,10 @@ resize();
    而不是靠一束斜射的硬阴影。
    主体突出改由"照明分层"负责:场地被顶灯照亮、顶棚与看台相对暗(见 arena.js),
    不再靠压暗背景 + 相机补光硬抠。 */
-const ambient=new THREE.AmbientLight(0x9fb4d0,0.58);scene.add(ambient);
-const hemi=new THREE.HemisphereLight(0x6f86b6,0x241a12,0.54);scene.add(hemi);
-const sun=new THREE.DirectionalLight(0xffdcae,0.30);sun.position.set(6.5,17,5);scene.add(sun);
-/* 灯位为什么偏到右前方而不是正上方:正上方的主光把影子压在人脚底下,被身体自己挡住,
-   实测只覆盖画面 0.37%,等于没有。偏出来之后影子朝左前方拉开,覆盖 1.36% —— "落地感"
-   来自影子的方向,不是影子的存在。偏太多又会变成夕阳长影,和球馆顶灯的设定冲突。 */
-/* 1.05→0.82。压这一盏不是为了压暗画面(环境项同步补回来了),是为了压**阴影的深浅**:
-   被遮挡处的亮度 ≈ 环境/(环境+主光),1.05 时约 48%,影子很实;0.82 时约 58%,
-   再配合上面 radius=6 的柔边,才接近多灯照明下那种"几乎看不出方向"的淡影。 */
-const spot=new THREE.SpotLight(0xfff2d8,0.82,42,0.68,0.55,1.1);spot.position.set(6.2,11.8,4.2);
+const ambient=new THREE.AmbientLight(0x8494b8,0.36);scene.add(ambient);
+const hemi=new THREE.HemisphereLight(0x647ab0,0x1a120d,0.34);scene.add(hemi);
+const sun=new THREE.DirectionalLight(0xffe0b2,0.28);sun.position.set(6.5,22,5);scene.add(sun);
+const spot=new THREE.SpotLight(0xfff2d8,0.42,54,0.68,0.68,1.05);spot.position.set(6.2,16.5,4.2);
 spot.target.position.set(0,0.9,-4.2);indoorRoot.add(spot);indoorRoot.add(spot.target);
 /* 背光。从篮筐那一侧斜上方打过来,过肩机位下正好勾出人物轮廓边;
    看台在球筐后方、背对这盏灯,所以只吃到背面,不会被提亮。 */
@@ -231,19 +225,7 @@ const ARENA_LIGHT_LAYOUT=[
   [-8.5,11.5,-5.0],[8.5,11.5,-5.0],
   [-8.5,11.5, 7.0],[8.5,11.5, 7.0]
 ];
-/* 投影灯和纯照明灯用**两套强度** —— 这是"多灯填亮"能成立的关键。
-     投影灯 .10:它只负责"投出一条很淡的影",强度高了影就黑(实测 .20 时平均深度 25+)
-     纯照明灯 .32:不投影,专门把别人投出来的影**填亮**
-   四盏合计 ≈ .84,和原来单盏 .82 的总光量持平,所以场地亮度不变、只有影变淡。
-   同一个灯不可能既投出深影又把影填平,这两件事必须由不同的灯分担。 */
-/* 0.35/0.32 → 0.26/0.23。压地板亮度优先动这里而不是 exposure:
-   灯阵是俯照,能量绝大部分落在球场上;顶棚和看台主要靠 ambient/hemi 维持,
-   降灯阵对它们影响小。而 exposure 是全局的,调它等于把整个画面一起压暗,
-   连本来合适的看台和人物也跟着变闷 —— 用户只说地板亮,那就只降地板那一端。 */
-/* 0.26/0.23 → 0.20/0.17。换 PBR 之后地板整体抬到 171(Phong 时是 150),
-   因为 clearcoat 多了一层反射、而 PBR 的 color 保持白(木色全靠贴图给)。
-   继续压 exposure 会把角色一起压暗,所以这里还是只降灯阵 —— 它主要照地板。 */
-const ARENA_KEY_I=0.20,ARENA_FILL_I=0.17;
+const ARENA_KEY_I=0.22,ARENA_FILL_I=0.19;
 function applyArenaLightMix(){
   arenaLights.forEach(l=>{
     l.color.setHex(0xfff6e8);
@@ -251,17 +233,8 @@ function applyArenaLightMix(){
   });
 }
 const arenaLights=ARENA_LIGHT_LAYOUT.map(p=>{
-  /* angle .70→1.02、penumbra .70→.98。评测点出"左右两侧有明显白色光斑,像曝光溢出",
-     根因是四盏灯在地面各留一块独立亮区、而且中心最亮 —— 真实馆是几十盏灯把光斑
-     **糊成一片均匀照明**,看不到单块光斑。
-     加灯数会线性增加 shader 与 shadow 成本,所以这里用加大柔边来解决:
-     angle 放到 1.02(约 58°)后四束光在地面大幅交叠,penumbra 拉到 .98
-     让中心到边缘几乎没有落差,光斑随之消失。
-     (之前以为改过这一处,实际没生效,所以"调了没变化"。) */
-  const l=new THREE.SpotLight(0xfff6e8,0.20,46,1.02,0.98,0.9);
+  const l=new THREE.SpotLight(0xfff6e8,0.22,48,1.02,0.98,0.95);
   l.position.set(p[0],p[1],p[2]);
-  /* 目标点朝球场中心收一点,四盏的光锥在地面交叠 —— 交叠区就是"被多盏共同照亮"的地方,
-     单盏的影在这里最容易被填平。 */
   l.target.position.set(p[0]*0.3,0,p[2]);
   indoorRoot.add(l);indoorRoot.add(l.target);
   return l;

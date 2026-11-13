@@ -19,21 +19,31 @@
         const a=point(path,j/path.steps),b=point(path,(j+1)/path.steps),mid=a.clone().add(b).multiplyScalar(.5),h=b.y-a.y;
         mid.y=b.y-h*.5-.035;
         q.setFromAxisAngle(new THREE.Vector3(0,1,0),Math.atan2(b.x-a.x,b.z-a.z));
-        matrix.compose(mid,q,new THREE.Vector3(.76,h+.07,Math.hypot(b.x-a.x,b.z-a.z)+.035));
-        parts.push({color:0x3c414a,matrix:matrix.clone()});
+        const stepDepth=Math.hypot(b.x-a.x,b.z-a.z)+.035;
+        matrix.compose(mid,q,new THREE.Vector3(.76,h+.07,stepDepth));
+        parts.push({color:0x363b45,matrix:matrix.clone()});
+        const nose=a.clone();nose.y=b.y-.012;
+        matrix.compose(nose,q,new THREE.Vector3(.74,.022,.038));
+        parts.push({color:0x667080,matrix:matrix.clone()});
       }
       for(const k of [0,1]){
         const p=point(path,k),next=point(path,k===0?.01:.99),angle=Math.atan2(next.x-p.x,next.z-p.z);
         q.setFromAxisAngle(new THREE.Vector3(0,1,0),angle);p.y-=.07;
-        matrix.compose(p,q,new THREE.Vector3(.76,.14,.85));parts.push({color:0x3c414a,matrix:matrix.clone()});
+        matrix.compose(p,q,new THREE.Vector3(.76,.14,.85));parts.push({color:0x363b45,matrix:matrix.clone()});
       }
     }
     bakeVoxelMesh(root,parts).name="arenaAisleSteps";
     const cube=new THREE.BoxGeometry(1,1,1),mat=c=>new THREE.MeshLambertMaterial({color:new THREE.Color(c).convertSRGBToLinear()});
-    const skin=mat(0xc99970),pants=mat(0x253344),shoe=mat(0xc7c6b6),shirt=[mat(0xb7a669),mat(0x477782),mat(0x7e5144)];
+    const skin=mat(0xc99970),pants=mat(0x253344),shoe=mat(0xc7c6b6),shirt=[mat(0x3a4659),mat(0x476578),mat(0x5c4338)];
     for(let i=0;i<(mobile?4:8);i++){
       const g=new THREE.Group();g.name="aisleWalker";root.add(g);
-      bakeVoxelMesh(g,[{color:shirt[i%3].color,pos:[0,.93,0],scale:[.34,.54,.22]},{color:skin.color,pos:[0,1.39,0],scale:[.25,.28,.24]},{color:0x292622,pos:[0,1.55,0],scale:[.27,.07,.25]}]);
+      bakeVoxelMesh(g,[
+        {color:shirt[i%3].color,pos:[0,.95,0],scale:[.34,.48,.21],taperX:.88,taperZ:.90},
+        {color:shirt[i%3].color,pos:[0,.68,0],scale:[.30,.16,.19],taperX:1.08},
+        {color:skin.color,pos:[0,1.24,0],scale:[.10,.09,.10]},
+        {color:skin.color,pos:[0,1.40,0],scale:[.21,.24,.21],taperX:.90,taperZ:.92},
+        {color:0x292622,pos:[0,1.54,0],scale:[.23,.08,.22],taperX:.92,taperZ:.92}
+      ]);
       const legs=[],arms=[];
       for(const side of [-1,1]){
         const leg=new THREE.Group();leg.position.set(side*.095,.68,0);g.add(leg);

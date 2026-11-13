@@ -3,8 +3,41 @@
 (function(global){
   "use strict";
   const enabled=new URLSearchParams(location.search).get("model")!=="classic";
+  function envTex(){
+    return typeof makeArenaEnvPMREM==="function"?makeArenaEnvPMREM():null;
+  }
+  function stdMat(hex,roughness,metalness,envIntensity,extra){
+    const env=envTex();
+    return new THREE.MeshStandardMaterial(Object.assign({
+      color:hex,
+      roughness:roughness==null?0.45:roughness,
+      metalness:metalness==null?0.15:metalness,
+      envMap:env,
+      envMapIntensity:env?(envIntensity==null?0.55:envIntensity):0
+    },extra||{}));
+  }
   function box(g,w,h,d,x,y,z,m){
     const o=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),m);o.position.set(x,y,z);g.add(o);return o;
+  }
+  /* 切面斜棱柱：顶面可按 tx/tz 缩放并沿 Z 轴偏移 shearZ（用于斜面护垫、梯形机箱、斜撑壳体），
+     生成后自动重算面法线，与 batch() 无缝合并。 */
+  function prism(g,w,h,d,x,y,z,m,tx,tz,shearZ){
+    const geom=new THREE.BoxGeometry(w,h,d).toNonIndexed();
+    const p=geom.attributes.position;
+    const sx=tx==null?1:tx,sz=tz==null?1:tz,sh=shearZ||0;
+    for(let i=0;i<p.count;i++){
+      const vy=p.getY(i);
+      if(vy>0){
+        p.setX(i,p.getX(i)*sx);
+        p.setZ(i,p.getZ(i)*sz+sh);
+      }
+    }
+    p.needsUpdate=true;
+    geom.computeVertexNormals();
+    const o=new THREE.Mesh(geom,m);
+    o.position.set(x,y,z);
+    g.add(o);
+    return o;
   }
   function beam(g,a,b,width,depth,m){
     const delta=b.clone().sub(a),o=box(g,width,delta.length(),depth,0,0,0,m);
@@ -24,8 +57,10 @@
     buckets.forEach((geos,mat)=>{
       const result=new THREE.BufferGeometry();
       for(const key of ["position","normal","uv"]){
-        const size=key==="uv"?2:3,total=geos.reduce((n,g)=>n+g.attributes[key].array.length,0),data=new Float32Array(total);
-        let offset=0;geos.forEach(g=>{data.set(g.attributes[key].array,offset);offset+=g.attributes[key].array.length;});
+        const size=key==="uv"?2:3,total=geos.reduce((n,g)=>n+(g.attributes[key]?g.attributes[key].array.length:0),0);
+        if(!total)continue;
+        const data=new Float32Array(total);
+        let offset=0;geos.forEach(g=>{if(g.attributes[key]){data.set(g.attributes[key].array,offset);offset+=g.attributes[key].array.length;}});
         result.setAttribute(key,new THREE.BufferAttribute(data,size));
       }
       geos.forEach(g=>g.dispose());result.computeBoundingSphere();
@@ -46,116 +81,150 @@
      坡度不是装饰,是真实器材的功能件:球员抽走最低那颗,后面的靠重力自己滚下来补位,
      全程不用回头找球。平托盘做不到这件事 —— 拿走一颗就留一个洞。
 
-     槽位几何(RACK_SLOTS / SLOT_DX / SLOT_DROP)必须导出去给 props.js 摆球用。
-     两边各写一份的话,改了坡度球就会浮在轨道外面 —— 这类"同一组数写两遍"的坑
-     这个项目里已经踩过好几次。 */
+     槽位几何(RACK_SLOTS / SLOT_DX / SLOT_DROP)必须导出去给 props.js 摆球用。 */
   const RACK_SLOTS=5,RACK_SLOT_DX=.30,RACK_SLOT_DROP=.042;
   const RACK_BALL_Y=.41;                       // 最中间那格的球心局部高度
   function rackSlotLocal(i){
     const k=(RACK_SLOTS-1)/2;
     return {x:(i-k)*RACK_SLOT_DX,y:RACK_BALL_Y+(k-i)*RACK_SLOT_DROP};
   }
-  /* 端面用的方形广告贴图。bannerTex 是 768x144(5.33:1)的长条,
-     贴到 0.44x0.52 的端面上会被拉成一坨糊字,所以短边单独画一张。 */
-  let rackEndTexCache=null;
+  /* 端面与长边的高精度赛事涂装贴图：带金属包边、斜向赛会饰条与 LED 像素纹理 */
+  let rackEndTexCache=null,rackLongTexCache=null;
   function rackEndTex(){
     if(rackEndTexCache)return rackEndTexCache;
     rackEndTexCache=pixTex(192,192,(g,w,h)=>{
-      g.fillStyle="#13213f";g.fillRect(0,0,w,h);
-      g.fillStyle="rgba(255,255,255,.05)";
-      for(let i=0;i<w;i+=16)g.fillRect(i,0,8,h);
-      g.fillStyle="#ffd23f";g.fillRect(0,h*.5-3,w,6);
-      g.font="bold 44px Orbitron, monospace";g.textAlign="center";g.textBaseline="middle";
-      g.fillStyle="#ffd23f";g.fillText("aiBA",w/2,h*.28);
+      const gr=g.createLinearGradient(0,0,0,h);
+      gr.addColorStop(0,"#0d182e");gr.addColorStop(0.5,"#132342");gr.addColorStop(1,"#091120");
+      g.fillStyle=gr;g.fillRect(0,0,w,h);
+      g.fillStyle="rgba(255,255,255,.04)";
+      for(let y=0;y<h;y+=6)g.fillRect(0,y,w,2);
+      g.strokeStyle="#2e4d82";g.lineWidth=6;g.strokeRect(6,6,w-12,h-12);
+      g.fillStyle="#ffd23f";g.fillRect(14,h*.52-3,w-28,5);
+      g.fillStyle="#5fd8ff";g.fillRect(14,h*.52+5,w-28,2);
+      g.font="bold 46px Orbitron, monospace";g.textAlign="center";g.textBaseline="middle";
+      g.fillStyle="#ffd23f";g.fillText("aiBA",w/2,h*.30);
       g.font="bold 26px Orbitron, monospace";g.fillStyle="#f2f6ff";
-      g.fillText("3PT",w/2,h*.72);
-    },{smooth:true});
+      g.fillText("3PT PRO",w/2,h*.73);
+    },{smooth:true,mipmaps:true});
     return rackEndTexCache;
+  }
+  function rackLongTex(){
+    if(rackLongTexCache)return rackLongTexCache;
+    rackLongTexCache=pixTex(512,160,(g,w,h)=>{
+      const gr=g.createLinearGradient(0,0,w,h);
+      gr.addColorStop(0,"#0a1324");gr.addColorStop(0.5,"#15274a");gr.addColorStop(1,"#0c162b");
+      g.fillStyle=gr;g.fillRect(0,0,w,h);
+      g.fillStyle="rgba(126,231,255,.05)";
+      for(let i=-h;i<w;i+=28){
+        g.beginPath();g.moveTo(i,h);g.lineTo(i+14,h);g.lineTo(i+14+h*.55,0);g.lineTo(i+h*.55,0);g.closePath();g.fill();
+      }
+      g.strokeStyle="#2b4a7f";g.lineWidth=6;g.strokeRect(5,5,w-10,h-10);
+      g.fillStyle="#ffd23f";g.fillRect(16,14,w-32,4);g.fillRect(16,h-18,w-32,4);
+      g.fillStyle="#ffd23f";g.font="bold 44px Orbitron, monospace";g.textAlign="center";g.textBaseline="middle";
+      g.fillText("aiBA  3PT CONTEST",w/2,h*.45);
+      g.fillStyle="#8fd8ff";g.font="bold 18px Orbitron, monospace";
+      g.fillText("OFFICIAL SHOOTING RACK  ·  CHAMPIONSHIP SERIES",w/2,h*.78);
+    },{smooth:true,mipmaps:true});
+    return rackLongTexCache;
   }
   function rack(teamMat){
     const g=new THREE.Group();g.name="detailBallRack";
-    const steel=new THREE.MeshLambertMaterial({color:0x59636f});
-    const rubber=new THREE.MeshLambertMaterial({color:0x20252b});
-    const skirt=new THREE.MeshLambertMaterial({color:0x161c26});
-    /* 广告面压光到 0x9aa3b2:它离镜头很近,满亮会在近景抢过主角。 */
-    const adLong=typeof bannerTex==="function"
-      ?new THREE.MeshBasicMaterial({map:bannerTex("aiBA 3PT CONTEST","#13213f","#ffd23f"),color:0x9aa3b2})
-      :new THREE.MeshLambertMaterial({color:0x13213f});
-    const adEnd=new THREE.MeshBasicMaterial({map:rackEndTex(),color:0x9aa3b2});
+    const baseHex=(teamMat&&teamMat.color)?teamMat.color.getHex():0x2255aa;
+    const steel=stdMat(0x8c98a8,0.25,0.78,0.70);
+    const darkSteel=stdMat(0x28303d,0.38,0.58,0.50);
+    const rubber=stdMat(0x181c22,0.76,0.08,0.20);
+    const skirt=stdMat(0x111722,0.44,0.28,0.42);
+    const coat=stdMat(baseHex,0.32,0.22,0.55);
+    const adLong=new THREE.MeshBasicMaterial({map:rackLongTex(),color:0xa6b2c2});
+    const adEnd=new THREE.MeshBasicMaterial({map:rackEndTex(),color:0xa6b2c2});
 
     const hi=rackSlotLocal(0),lo=rackSlotLocal(RACK_SLOTS-1);
     const railDrop=.115;
-    /* ---------------- 箱体 ----------------
-       上一版是"开放钢架 + 一块挂牌",验收原话是"铁架贴了块纸皮"。
-       真实三分大赛的架子是**封闭的带轮广告箱**:四面都是赞助商板,
-       上面才是放球的托盘。所以这里先做一个实心箱体,再在四面贴广告。 */
     const BW=1.46,BH=.52,BD=.46,BY=-.10;          // 箱体尺寸与中心高度
     box(g,BW,BH,BD,0,BY,0,skirt);                  // 芯:保证任何缝隙里都不是空的
-    // 四面广告板,各自外移 1cm 贴在箱体表面(不共面,避免 z-fighting)
+    // 四面广告板,各自外移 6mm 贴在箱体表面(不共面,避免 z-fighting)
     for(const sz of [1,-1]){
-      const m=new THREE.Mesh(new THREE.PlaneGeometry(BW*.94,BH*.72),adLong);
-      m.position.set(0,BY+.02,sz*(BD/2+.006));
+      const m=new THREE.Mesh(new THREE.PlaneGeometry(BW*.92,BH*.74),adLong);
+      m.position.set(0,BY+.015,sz*(BD/2+.006));
       if(sz<0)m.rotation.y=Math.PI;
       g.add(m);
     }
     for(const sx of [1,-1]){
-      const m=new THREE.Mesh(new THREE.PlaneGeometry(BD*.86,BH*.72),adEnd);
-      m.position.set(sx*(BW/2+.006),BY+.02,0);
+      const m=new THREE.Mesh(new THREE.PlaneGeometry(BD*.84,BH*.74),adEnd);
+      m.position.set(sx*(BW/2+.006),BY+.015,0);
       m.rotation.y=sx>0?Math.PI/2:-Math.PI/2;
       g.add(m);
     }
-    // 上下收边:队色顶盖 + 深色底裙,箱体因此有"做工"而不是一块平板
-    box(g,BW+.05,.055,BD+.05,0,BY+BH/2+.02,0,teamMat);
-    box(g,BW+.03,.06,BD+.03,0,BY-BH/2-.015,0,skirt);   // 收薄一点,脚轮才露得出来
-    box(g,BW+.06,.018,BD+.06,0,BY+BH/2-.05,0,teamMat);   // 腰线
-    // 四角立柱,把箱体框住
-    for(const sx of [-1,1])for(const sz of [-1,1])
-      box(g,.05,BH+.10,.05,sx*(BW/2-.01),BY,sz*(BD/2-.01),steel);
-    /* 脚轮。⚠ 段数不能随便改:圆柱绕 Z 转 90° 之后,只有段数能让某个顶点正好落在
-       最低处时,包围盒底才等于 圆心-半径。实测 8/12/16 可以,**10 不行**(最低点只到
-       半径的 0.951),换成 10 之后整个架子离地 2.4mm,model-detail 的"架底贴地"直接红。 */
+    // 上下收边:烤漆队色顶盖 + 金属压条 + 深色底裙
+    box(g,BW+.045,.052,BD+.045,0,BY+BH/2+.02,0,coat);
+    box(g,BW+.052,.016,BD+.052,0,BY+BH/2-.01,0,steel);
+    box(g,BW+.03,.056,BD+.03,0,BY-BH/2-.014,0,darkSteel);
+    box(g,BW+.055,.018,BD+.055,0,BY+BH/2-.052,0,coat);
+    // 四角倒角防撞立柱 + 两端推车扶手
+    for(const sx of [-1,1])for(const sz of [-1,1]){
+      box(g,.052,BH+.10,.052,sx*(BW/2-.008),BY,sz*(BD/2-.008),darkSteel);
+      box(g,.032,BH*.68,.032,sx*(BW/2+.014),BY+.01,sz*(BD/2+.014),steel);
+    }
+    for(const sx of [-1,1]){
+      box(g,.026,.026,BD*.56,sx*(BW/2+.025),BY+BH/2+.01,0,steel);
+    }
+    /* 脚轮：段数 12 保证包围盒底精确等于 圆心(-.40)-半径(.05) = -.45，世界 min.y = 0 */
     for(const x of [-.60,.60])for(const z of [-.17,.17]){
       const wheel=new THREE.Mesh(new THREE.CylinderGeometry(.05,.05,.045,12),rubber);
       wheel.rotation.z=Math.PI/2;wheel.position.set(x,-.40,z);g.add(wheel);
-      box(g,.05,.09,.05,x,-.335,z,steel);
+      const hub=new THREE.Mesh(new THREE.CylinderGeometry(.024,.024,.048,8),steel);
+      hub.rotation.z=Math.PI/2;hub.position.set(x,-.40,z);g.add(hub);
+      box(g,.054,.088,.054,x,-.335,z,steel);
     }
-    /* ---------------- 放球托盘 ----------------
-       两条倾斜承球轨,倾角必须和 rackSlotLocal 的落差一致,否则球会陷进去或浮起来。 */
+    /* 放球托盘：双金属承球导轨 + 烤漆护翼 */
     const railA=new THREE.Vector3(hi.x-.10,hi.y-railDrop,0);
     const railB=new THREE.Vector3(lo.x+.10,lo.y-railDrop,0);
     for(const z of [-.14,.14]){
       const a=railA.clone(),b=railB.clone();a.z=b.z=z;
-      beam(g,a,b,.05,.05,steel);
+      beam(g,a,b,.046,.046,steel);
     }
-    /* 托盘两侧的挡边。高度必须压在**球心以下** —— 第一版抬了 7cm、厚 10cm,
-       正好横在球的中段把球挡掉一半(球心 0.326、半径 0.16,挡边落在 0.231~0.331)。
-       改成抬 1cm、厚 6cm,落在 0.18~0.24,只挡住球的下缘,球整颗都露出来。 */
-    for(const z of [-.205,.205]){
+    for(const z of [-.195,.195]){
       const a=railA.clone(),b=railB.clone();a.z=b.z=z;a.y+=.01;b.y+=.01;
-      beam(g,a,b,.03,.06,teamMat);
+      beam(g,a,b,.028,.058,coat);
     }
-    // 低端挡球头
-    box(g,.05,.15,.42,lo.x+.19,lo.y-railDrop+.055,0,teamMat);
-    for(let i=0;i<RACK_SLOTS;i++){                 // 每格分隔销
+    // 导轨立柱支撑脚
+    for(const kx of [-.52,0,.52])for(const z of [-.14,.14]){
+      const ty=hi.y-railDrop+(lo.y-hi.y)*((kx+.60)/1.20);
+      const topY=BY+BH/2+.045,h=Math.max(.03,ty-topY);
+      box(g,.032,h,.032,kx,topY+h/2,z,darkSteel);
+    }
+    // 低端缓冲挡球头 + 橡胶防撞垫
+    box(g,.05,.15,.42,lo.x+.19,lo.y-railDrop+.055,0,coat);
+    box(g,.022,.11,.36,lo.x+.162,lo.y-railDrop+.06,0,rubber);
+    for(let i=0;i<RACK_SLOTS;i++){
       const p=rackSlotLocal(i);
-      box(g,.024,.055,.34,p.x-RACK_SLOT_DX/2,p.y-railDrop+.02,0,rubber);
+      box(g,.024,.052,.34,p.x-RACK_SLOT_DX/2,p.y-railDrop+.018,0,rubber);
     }
     return batch(g);
   }
   function pedestal(width,height,mat,ballBottom=height-.01){
     const g=new THREE.Group();g.name="detailSingleBallStand";
-    const steel=new THREE.MeshLambertMaterial({color:0x414b57});
-    box(g,width,.065,width,0,-height/2+.0325,0,steel);
-    box(g,.105,height-.11,.105,0,0,0,steel);
-    box(g,.20,.28,.13,0,-.02,0,mat);
-    box(g,.30,.025,.30,0,ballBottom-height/2-.0125,0,steel);
-    for(const x of [-.13,.13])box(g,.035,.035,.30,x,height/2-.0175,0,mat);
-    for(const z of [-.13,.13])box(g,.29,.035,.035,0,height/2-.0175,z,mat);
+    const baseHex=(mat&&mat.color)?mat.color.getHex():0x1f7a28;
+    const steel=stdMat(0x3a4350,0.30,0.72,0.60);
+    const chrome=stdMat(0x9aa6b5,0.22,0.82,0.70);
+    const accent=stdMat(baseHex,0.32,0.24,0.55);
+    const rubber=stdMat(0x161a20,0.75,0.10,0.20);
+    // 阶梯式配重底座（最低点严格在 -height/2）
+    box(g,width,.055,width,0,-height/2+.0275,0,steel);
+    prism(g,width*.88,.045,width*.88,0,-height/2+.0775,0,accent,0.76,0.76,0);
+    // 主立柱 + 镀铬内芯 + 队色护套
+    box(g,.12,height-.16,.12,0,-.01,0,steel);
+    box(g,.085,height-.12,.085,0,.01,0,chrome);
+    prism(g,.21,.34,.15,0,-.02,0,accent,0.88,0.88,0);
+    // 顶部托盘与四角承球爪
+    const topY=ballBottom-height/2-.0125;
+    box(g,.31,.026,.31,0,topY,0,steel);
+    box(g,.24,.016,.24,0,topY+.016,0,rubber);
+    for(const x of [-.13,.13])box(g,.036,.038,.30,x,height/2-.019,0,accent);
+    for(const z of [-.13,.13])box(g,.29,.038,.036,0,height/2-.019,z,accent);
     return batch(g);
   }
   function net(){
-    // Knotted diamond weave instead of triangulated wireframe. The existing deformation
-    // reads position attributes, so these rope vertices retain the same response path.
     const g=new THREE.Group(),mat=new THREE.MeshLambertMaterial({color:0xecece6});
     const count=12,rows=5;
     const point=(row,i)=>{
@@ -168,80 +237,157 @@
     }
     batch(g);const mesh=g.children[0];g.remove(mesh);mesh.name="diamondRopeNet";return mesh;
   }
+  /* 24 秒进攻计时器 + 比赛钟双层 LED 贴图 */
+  let shotClockTexCache=null,stanchionLogoTexCache=null;
+  function shotClockTex(){
+    if(shotClockTexCache)return shotClockTexCache;
+    shotClockTexCache=pixTex(256,256,(g,w,h)=>{
+      g.fillStyle="#06080d";g.fillRect(0,0,w,h);
+      g.strokeStyle="#283242";g.lineWidth=8;g.strokeRect(6,6,w-12,h-12);
+      // 上栏：比赛计时器 (Game Clock)
+      g.fillStyle="#0c1018";g.fillRect(16,16,w-32,62);
+      g.strokeStyle="#3d495c";g.lineWidth=3;g.strokeRect(16,16,w-32,62);
+      g.fillStyle="#ffd23f";g.font="bold 38px Orbitron, monospace";g.textAlign="center";g.textBaseline="middle";
+      g.fillText("01:14.2",w/2,48);
+      // 下栏：24 秒红字大屏
+      g.fillStyle="#0d0608";g.fillRect(16,86,w-32,154);
+      g.strokeStyle="#ff3328";g.lineWidth=4;g.strokeRect(18,88,w-36,150);
+      // LED 点阵底纹
+      g.fillStyle="rgba(255,60,40,.06)";
+      for(let y=92;y<234;y+=6)g.fillRect(22,y,w-44,2);
+      g.fillStyle="#ff382e";g.font="bold 118px Orbitron, monospace";
+      g.fillText("24",w/2,168);
+    },{smooth:true,mipmaps:true});
+    return shotClockTexCache;
+  }
+  function stanchionLogoTex(){
+    if(stanchionLogoTexCache)return stanchionLogoTexCache;
+    stanchionLogoTexCache=pixTex(128,384,(g,w,h)=>{
+      const gr=g.createLinearGradient(0,0,w,h);
+      gr.addColorStop(0,"#162238");gr.addColorStop(0.5,"#1e3050");gr.addColorStop(1,"#10192b");
+      g.fillStyle=gr;g.fillRect(0,0,w,h);
+      g.strokeStyle="#324d7a";g.lineWidth=5;g.strokeRect(6,6,w-12,h-12);
+      g.fillStyle="#ffd23f";g.fillRect(20,32,w-40,5);g.fillRect(20,h-37,w-40,5);
+      g.fillStyle="#ffd23f";g.font="bold 42px Orbitron, monospace";g.textAlign="center";g.textBaseline="middle";
+      g.fillText("aiBA",w/2,96);
+      g.fillStyle="#7ee7ff";g.font="bold 22px Orbitron, monospace";
+      g.fillText("ARENA",w/2,146);
+      g.fillText("PRO",w/2,178);
+      // 护垫横向压痕线
+      g.fillStyle="rgba(8,12,20,.48)";
+      for(const y of [224,276,328])g.fillRect(10,y,w-20,4);
+    },{smooth:true,mipmaps:true});
+    return stanchionLogoTexCache;
+  }
   function hoopHardware(parent,boardZ,baseZ,dir,frameMat){
     const g=new THREE.Group();g.name="detailHoopHardware";
-    const steel=new THREE.MeshLambertMaterial({color:0x46515d}),pad=new THREE.MeshLambertMaterial({color:0x253043});
-    // Rear yoke stops behind the existing glass: board centre and rim stay untouched.
+    const steel=stdMat(0x3b4554,0.34,0.68,0.60);
+    const darkSteel=stdMat(0x1f2530,0.42,0.52,0.45);
+    const chrome=stdMat(0xc4d0dc,0.18,0.88,0.80);
+    const pad=stdMat(0x1b2944,0.46,0.08,0.38);
+    const padDark=stdMat(0x121b2d,0.52,0.08,0.30);
+    const ledFrame=new THREE.MeshBasicMaterial({color:0xffaa2b});
     const rear=boardZ-dir*.15;
-    for(const x of [-.60,.60]){
-      box(g,.055,.60,.06,x,3.53,rear,steel);
-      beam(g,new THREE.Vector3(0,3.45,boardZ-dir*.40),new THREE.Vector3(x,3.57,rear),.055,.055,steel);
-      box(g,.095,.08,.10,x,3.78,rear,steel);
+    // 1. 篮板背部中央紧凑型承力固定座（对照参考图去除篮板背后多余交叉杂杆与斜撑，保持透视纯净）
+    box(g,.44,.38,.16,0,3.48,rear,steel);
+    box(g,1.32,.05,.05,0,3.28,rear,steel);
+    box(g,1.32,.05,.05,0,3.74,rear,steel);
+    // 2. 篮板下沿 NBA 级加厚防撞软包护垫（带倒角与中央篮筐避让槽）
+    box(g,1.98,.10,.20,0,2.93,boardZ,pad);
+    box(g,1.92,.04,.21,0,2.87,boardZ,padDark);
+    for(const sx of [-1,1]){
+      box(g,.09,.42,.19,sx*.955,3.14,boardZ,pad);
     }
-    box(g,1.27,.055,.055,0,3.30,rear,steel);
-    box(g,1.98,.09,.19,0,2.94,boardZ,pad);
-    // Mechanical breakaway housing directly behind the original rim connector.
-    box(g,.22,.15,.15,0,3.05,boardZ+dir*.12,frameMat);
-    box(g,.17,.055,.13,0,3.015,boardZ+dir*.23,steel);
-    for(const x of [-.36,.36])box(g,.022,1.50,.025,x,.90,baseZ+dir*.369,steel);
-    box(g,.58,.035,.025,0,.40,baseZ+dir*.369,steel);
-    parent.add(batch(g));return g;
-  }
-  /* ---------- 阶段 5：看台分区扶手 ----------
-     通道本身已经是 arena.js 用 AISLE_COUNT 切出来的**实体缺口**,这里只在缺口两侧
-     立栏杆 —— 不新增任何墙体。计划明确禁止"贯穿看台的长墙"和"贯穿多层的长楼梯墙",
-     而扶手随通道一起被 AISLE_SKEW 斜移、每层各自起止,天然不会连成竖直长条。
+    // 篮板内沿一圈纤细的比赛计时灯带（橙黄 LED 导光条）
+    box(g,1.82,.018,.02,0,3.99,boardZ-dir*.05,ledFrame);
+    for(const sx of [-1,1])box(g,.018,.98,.02,sx*.90,3.50,boardZ-dir*.05,ledFrame);
+    // 3. 弹簧篮筐机械盒（Breakaway housing）
+    box(g,.23,.155,.16,0,3.05,boardZ+dir*.12,frameMat);
+    box(g,.18,.06,.14,0,3.01,boardZ+dir*.23,chrome);
+    // 4. 底座前倾式软包防撞护垫 + 配重箱折面装甲
+    prism(g,.78,1.68,.38,0,.92,baseZ+dir*.38,pad,0.86,0.55,-dir*.10);
+    prism(g,1.24,.46,1.48,0,.23,baseZ+dir*.15,darkSteel,0.92,0.90,0);
+    for(const sx of [-1,1]){
+      box(g,.04,1.52,.04,sx*.37,.90,baseZ+dir*.38,steel);
+      box(g,.08,.18,1.38,sx*.60,.12,baseZ+dir*.15,padDark);
+    }
+    // 6. 篮板正上方：24 秒进攻计时器塔（Shot Clock Tower）
+    const scZ=boardZ-dir*.24;
+    box(g,.09,.78,.09,0,3.84,scZ,darkSteel);                // 计时器立杆
+    box(g,.64,.58,.20,0,4.52,scZ,darkSteel);                // 计时器主机箱
+    prism(g,.70,.07,.26,0,4.84,scZ,steel,0.92,0.88,0);      // 顶部遮光檐
+    box(g,.66,.035,.22,0,4.89,scZ,ledFrame);                // 顶部蜂鸣红黄灯条
+    batch(g);
 
-     入参是已经算好的世界坐标(每条通道一串点,从最低排到最高排),几何在这里生成,
-     全部作为 matrix 交给 bakeVoxelMesh 烘成**单个网格** —— 静态器材的预算要压在
-     draw call 和阴影提交上,不是压在外形上。 */
+    // 7. 独立贴图面片（24秒双面 LED 屏 + 支架正面品牌软垫铭牌）
+    const scMat=new THREE.MeshBasicMaterial({map:shotClockTex(),color:0xd8e0ea});
+    for(const f of [1,-1]){
+      const scr=new THREE.Mesh(new THREE.PlaneGeometry(.56,.50),scMat);
+      scr.position.set(0,4.52,scZ+f*.104);
+      if(f<0)scr.rotation.y=Math.PI;
+      g.add(scr);
+    }
+    const logoMat=new THREE.MeshBasicMaterial({map:stanchionLogoTex(),color:0x9aa8bc});
+    const padFace=new THREE.Mesh(new THREE.PlaneGeometry(.46,1.32),logoMat);
+    padFace.position.set(0,.96,baseZ+dir*.525);
+    padFace.rotation.y=dir>0?0:Math.PI;
+    padFace.rotation.x=-dir*0.118;
+    g.add(padFace);
+
+    parent.add(g);return g;
+  }
+  /* ---------- 阶段 5：看台分区双层扶手 ---------- */
   function railParts(lanes,color,postH){
     const parts=[],up=new THREE.Vector3(0,1,0),mm=new THREE.Matrix4(),q=new THREE.Quaternion();
-    const c=new THREE.Color(color),ident=new THREE.Quaternion();
+    const c=new THREE.Color(color),cDark=new THREE.Color(color).multiplyScalar(0.68),ident=new THREE.Quaternion();
     for(const lane of lanes){
       for(let i=0;i<lane.length;i++){
         const p=lane[i];
         mm.compose(new THREE.Vector3(p[0],p[1]+postH/2,p[2]),ident,new THREE.Vector3(.055,postH,.055));
-        parts.push({color:c,matrix:mm.clone()});
+        parts.push({color:cDark,matrix:mm.clone()});
+        // 底座法兰盘
+        mm.compose(new THREE.Vector3(p[0],p[1]+.02,p[2]),ident,new THREE.Vector3(.11,.04,.11));
+        parts.push({color:cDark,matrix:mm.clone()});
         if(i+1>=lane.length)continue;
         const n=lane[i+1];
-        const a=new THREE.Vector3(p[0],p[1]+postH,p[2]);
-        const b=new THREE.Vector3(n[0],n[1]+postH,n[2]);
-        const d=b.clone().sub(a),len=d.length();
-        if(len<1e-4)continue;
-        q.setFromUnitVectors(up,d.normalize());
-        mm.compose(a.clone().add(b).multiplyScalar(.5),q,new THREE.Vector3(.05,len,.05));
-        parts.push({color:c,matrix:mm.clone()});
+        for(const [hFrac,thick,col] of [[1.0,.052,c],[0.54,.036,cDark]]){
+          const a=new THREE.Vector3(p[0],p[1]+postH*hFrac,p[2]);
+          const b=new THREE.Vector3(n[0],n[1]+postH*hFrac,n[2]);
+          const d=b.clone().sub(a),len=d.length();
+          if(len<1e-4)continue;
+          q.setFromUnitVectors(up,d.normalize());
+          mm.compose(a.clone().add(b).multiplyScalar(.5),q,new THREE.Vector3(thick,len,thick));
+          parts.push({color:col,matrix:mm.clone()});
+        }
       }
     }
     return parts;
   }
 
-  /* ---------- 阶段 5：记者区 ----------
-     底线外那条 2m 宽的地带现在只有篮架底座。真实馆这里坐着摄影记者:矮凳 + 三脚架 +
-     机身。全部压在 1.1m 以下 —— 它在篮筐正后方,高一点就会挡住篮圈下沿。
-     x 上避开篮架立柱(|x|<1.3)和两侧球架。 */
+  /* ---------- 阶段 5：记者区专业长焦摄像机位 ---------- */
   function pressRow(z,xs){
     const parts=[],mm=new THREE.Matrix4(),ident=new THREE.Quaternion();
-    const stool=new THREE.Color(0x2a3140),steel=new THREE.Color(0x3c4552),body=new THREE.Color(0x14181f);
-    const put=(col,w,h,d,x,y,zz)=>{
+    const stool=new THREE.Color(0x252c3a),steel=new THREE.Color(0x4b5668),body=new THREE.Color(0x12161d),hood=new THREE.Color(0x0b0e13),accent=new THREE.Color(0xc89d3c);
+    const put=(col,w,h,d,x,y,zz,tx,tz)=>{
       mm.compose(new THREE.Vector3(x,y,zz),ident,new THREE.Vector3(w,h,d));
-      parts.push({color:col,matrix:mm.clone()});
+      parts.push({color:col,matrix:mm.clone(),taperX:tx,taperZ:tz});
     };
     for(const x of xs){
-      put(stool,.42,.07,.38,x,.40,z);                       // 凳面
+      put(stool,.44,.075,.40,x,.40,z,0.92,0.92);            // 软垫折凳面
       for(const dx of [-.16,.16])for(const dz of [-.14,.14])
         put(steel,.035,.40,.035,x+dx,.20,z+dz);             // 凳腿
       const tz=z-.42;                                        // 三脚架略靠球场一侧
-      put(steel,.05,.62,.05,x,.31,tz);
+      put(steel,.055,.62,.055,x,.31,tz);
       for(const a of [0,2.1,4.2])
-        put(steel,.03,.34,.03,x+Math.cos(a)*.17,.17,tz+Math.sin(a)*.17);
-      put(body,.22,.13,.30,x,.68,tz);                        // 机身
-      put(steel,.10,.10,.16,x,.68,tz-.20);                   // 镜头
+        put(steel,.032,.36,.032,x+Math.cos(a)*.18,.18,tz+Math.sin(a)*.18);
+      put(body,.24,.15,.32,x,.69,tz,0.90,0.94);             // 广播级摄像机机身
+      put(accent,.25,.025,.28,x,.62,tz);                    // 快装板金边
+      put(steel,.12,.12,.18,x,.69,tz-.22);                  // 长焦白炮镜身
+      put(hood,.15,.14,.10,x,.69,tz-.34,1.18,1.0);          // 遮光斗(Matte Box)
     }
     return parts;
   }
 
-  global.AIBAModelDetail=Object.freeze({enabled,revision:"model-detail-02",profile,rack,pedestal,net,hoopHardware,box,batch,railParts,pressRow,
+  global.AIBAModelDetail=Object.freeze({enabled,revision:"model-detail-03",profile,rack,pedestal,net,hoopHardware,box,prism,batch,railParts,pressRow,stdMat,
     RACK_SLOTS,RACK_SLOT_DX,RACK_SLOT_DROP,rackSlotLocal});
 })(window);

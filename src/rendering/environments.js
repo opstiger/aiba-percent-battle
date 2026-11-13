@@ -517,25 +517,13 @@ function applyScenePreset(name,opts){
        灯位/强度全被上面的分支改过了,漏写哪一项,那一项就停在户外的值上。 */
     /* 不用纯黑当背景。顶棚和横幅墙之间那条缝里没有几何体,露出来的就是背景色 ——
        纯黑在那里读作"破洞",带一点蓝的深色才读作"暗处的空气"。 */
-    scene.background.setHex(0x0d1220);
-    /* 雾色比背景亮一档:远处观众不是"淡入黑洞",而是淡进一层空气。
-       near 15 / far 52 —— 主角(3~4m)和篮筐(9m)完全不吃雾,
-       看台(13m)刚起雾,横幅墙(20m)约 14%,后场(30m)约 43%。 */
-    /* ⚠ 这组才是室内灯光与雾的**权威值**。core.js 里那几盏灯只是初始定义,
-       每次切场景都会被这里整体覆盖 —— 改了 core.js 不改这里等于没改
-       (v2.20.4 踩过:只改 core.js,实测地面阴影深度纹丝不动,查出来是这里在重置)。 */
-    scene.fog.color.setHex(0x141a24);scene.fog.near=12;scene.fog.far=52;
-    /* 主光:环境由 5.3:1 改为约 1:1 —— 真实球馆是几十盏顶灯均匀漫射,
-       不是一束追光。被遮挡处亮度 = 环境/(环境+主光),1.75 时约 36%(影子死实),
-       0.82 时约 58%(读得出遮蔽但看不出方向)。 */
-    ambient.color.setHex(0x9fb4d0);ambient.intensity=.58;
-    hemi.color.setHex(0x6f86b6);hemi.groundColor.setHex(0x241a12);hemi.intensity=.54;
-    sun.color.setHex(0xffdcae);sun.intensity=.30;sun.position.set(6.5,17,5);
-    /* spot 从 .82 降到 .30。它已经不再 castShadow(见 core.js),这里降强度是因为
-       灯阵 4×.30=1.20 已经承担了主要照明,spot 再保持 .82 会重新变回"单方向主导",
-       多方向填亮的效果就没了。它现在只留一点点方向感,让暗面不至于完全平。 */
-    spot.color.setHex(0xfff2d8);spot.intensity=.30;spot.distance=42;spot.angle=.68;spot.penumbra=.55;spot.decay=1.1;
-    spot.position.set(6.2,11.8,4.2);spot.target.position.set(0,.9,-4.2);spot.target.updateMatrixWorld();
+    scene.background.setHex(0x05070e);
+    scene.fog.color.setHex(0x080a14);scene.fog.near=26;scene.fog.far=96;
+    ambient.color.setHex(0x8494b8);ambient.intensity=.36;
+    hemi.color.setHex(0x647ab0);hemi.groundColor.setHex(0x1a120d);hemi.intensity=.34;
+    sun.color.setHex(0xffe0b2);sun.intensity=.28;sun.position.set(6.5,22,5);
+    spot.color.setHex(0xfff2d8);spot.intensity=.42;spot.distance=54;spot.angle=.68;spot.penumbra=.68;spot.decay=1.05;
+    spot.position.set(6.2,16.5,4.2);spot.target.position.set(0,.9,-4.2);spot.target.updateMatrixWorld();
     /* 灯阵恢复。户外分支把强度清成 0 了,切回来必须逐盏写回 ——
        和 spot/ambient 一样,漏写就会停在户外的值上(全黑)。 */
     applyArenaLightMix();

@@ -1,0 +1,211 @@
+<!doctype html>
+<html lang="zh-CN">
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>切面运动员 v2 · 换装实验室</title>
+<!-- 第四条人物路线的独立展示页（不接主链路）。模型在 src/lab/facet-athlete.js。
+     只做 24 号：真实人体比例 + 身体 / 球衣 / 发型 / 胡子 / 头饰 / 护具 / 球鞋 / 纹身分槽，面板里每一项都是运行时单独换。
+     外貌数据直接读游戏的 star 记录（AIBAFacet.fromStar），球鞋槽可以挂游戏里已验收的鞋款模块。
+     拖动旋转，滚轮缩放，H 隐藏面板。
+     URL：?pose=stand|hold|dip|set|release|follow&view=studio|back|far|head&yaw=弧度&sil=1&anim=1&body=1（只看身体）&nohud=1 -->
+<style>
+  :root{--bg:#14161b;--panel:rgba(16,19,26,.86);--line:rgba(255,255,255,.08);--text:#e9edf3;--dim:#8d97a6;--accent:#ffb547}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:var(--bg);color:var(--text);font:12px/1.4 -apple-system,BlinkMacSystemFont,"PingFang SC","Helvetica Neue",Arial,sans-serif}
+  #stage{position:fixed;inset:0}
+  #stage canvas{display:block;touch-action:none}
+  #ui{position:fixed;left:12px;top:12px;bottom:12px;width:300px;padding:12px;border-radius:14px;background:var(--panel);border:1px solid var(--line);backdrop-filter:blur(10px);overflow-y:auto}
+  #ui h1{font-size:14px;margin-bottom:2px} #ui p{color:var(--dim);margin-bottom:8px}
+  #ui h2{font-size:11px;color:var(--accent);letter-spacing:.1em;margin:10px 0 6px;padding-top:8px;border-top:1px solid var(--line)}
+  .row{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:6px;align-items:center}
+  .row label{width:44px;color:var(--dim);font-size:11px;flex:none}
+  button{appearance:none;border:1px solid var(--line);background:rgba(255,255,255,.04);color:var(--text);border-radius:7px;padding:3px 8px;font:inherit;cursor:pointer}
+  button.on{border-color:var(--accent);color:var(--accent);background:rgba(255,181,71,.08)}
+  #stat{position:fixed;top:14px;right:14px;padding:6px 12px;border-radius:999px;background:var(--panel);border:1px solid var(--line);color:var(--dim)}
+  body[data-hud="0"] #ui,body[data-hud="0"] #stat{display:none}
+</style>
+<body data-hud="1">
+<div id="stage"></div>
+<div id="stat"></div>
+<div id="ui">
+  <h1>切面球员 · 换装实验室</h1>
+  <p>真实人体比例 · 身体与穿戴分槽。每一项都是运行时只重建那一个槽位。</p>
+  <div id="rows"></div>
+</div>
+
+<script src="../../vendor/three.min.r128.js"></script>
+<script>
+/* 与 character-lab.html 同一套前置：materials.js 加载时就要 renderer / V3 */
+window.renderer=new THREE.WebGLRenderer({antialias:true,alpha:false,preserveDrawingBuffer:true});
+window.V3=function(x,y,z){return new THREE.Vector3(x,y,z);};
+window.G=window.G||{};
+</script>
+<!-- 游戏的数据和球鞋模块：star 记录、体格、袜子 / 纹身档案、四个鞋款品系 + 配色。缺了也能跑（退回内置外观和切面鞋） -->
+<script src="../../src/core/runtime.js"></script>
+<script src="../../src/config.js"></script>
+<script src="../../src/assets-manifest.js"></script>
+<script src="../../src/rendering/materials.js"></script>
+<script src="../../src/rendering/model-detail.js"></script>
+<script src="../../src/rendering/shoe-last.js"></script>
+<script src="../../src/rendering/retro-high.js"></script>
+<script src="../../src/rendering/shoe-styles.js"></script>
+<script src="../../src/rendering/basketball-shoes.js"></script>
+<script src="../../src/rendering/shoe-colorways.js"></script>
+<script src="../../src/rendering/player-kit.js"></script>
+<script src="../../src/lab/facet-athlete.js"></script>
+<script>
+(function(){
+  "use strict";
+  const QS=new URLSearchParams(location.search),F=AIBAFacet;
+  const state={pose:QS.get("pose")||"stand",view:QS.get("view")||"studio",sil:QS.get("sil")==="1",anim:QS.get("anim")==="1",bodyOnly:QS.get("body")==="1"};
+  if(QS.get("nohud")==="1")document.body.dataset.hud="0";
+  const PANEL=()=>document.body.dataset.hud==="1"&&innerWidth>720?312:0;
+
+  renderer.setPixelRatio(Math.min(devicePixelRatio||1,2));
+  renderer.outputEncoding=THREE.sRGBEncoding;
+  renderer.toneMapping=THREE.ACESFilmicToneMapping;renderer.toneMappingExposure=1.08;
+  renderer.shadowMap.enabled=true;renderer.shadowMap.type=THREE.PCFSoftShadowMap;
+  document.getElementById("stage").appendChild(renderer.domElement);
+  const scene=new THREE.Scene(),BG=new THREE.Color(0x14161b),BG_SIL=new THREE.Color(0xe9e6df);
+  scene.background=BG;
+  const camera=new THREE.PerspectiveCamera(30,1,.1,100);
+
+  /* 灯：暖主光 + 冷轮廓光。切面模型靠"每个面一个明度"出体积，主光要够侧 */
+  scene.add(new THREE.HemisphereLight(0xc4d6ff,0x3a3128,.62));
+  const key=new THREE.DirectionalLight(0xfff0da,1.55);key.position.set(2.6,5.2,3.6);key.castShadow=true;
+  key.shadow.mapSize.set(2048,2048);key.shadow.bias=-.0004;key.shadow.radius=3;
+  Object.assign(key.shadow.camera,{left:-3,right:3,top:4,bottom:-2,near:.5,far:16});scene.add(key);
+  const rim=new THREE.DirectionalLight(0x8fb6ff,.95);rim.position.set(-3,3.4,-4.2);scene.add(rim);
+  const fill=new THREE.DirectionalLight(0xffe4c8,.28);fill.position.set(-3.2,1.6,3);scene.add(fill);
+
+  const floorMat=new THREE.MeshStandardMaterial({color:0x2a2d35,roughness:.92});
+  const floor=new THREE.Mesh(new THREE.CircleGeometry(9,72),floorMat);floor.rotation.x=-Math.PI/2;floor.receiveShadow=true;scene.add(floor);
+  const WOOD=new THREE.Color(0x9a6a3c).convertSRGBToLinear(),SLATE=new THREE.Color(0x2a2d35).convertSRGBToLinear();
+  const silMat=new THREE.MeshBasicMaterial({color:0x121316});
+
+  /* ---------- 24 号：外貌从游戏的 star 记录来 ---------- */
+  const CFG=window.AIBA_CONFIG||{};
+  const STARS=(CFG.CLASSIC_LEGENDS||[]).concat((window.AIBA_ASSETS&&AIBA_ASSETS.coverStars)||[]);
+  const star=STARS.find(s=>s.id===(QS.get("star")||"k24"))||STARS.find(s=>s.id==="k24");   // ?star=球星 id，默认 24 号
+  const gameLook=star?F.fromStar(star):null;
+  const a=F.build(gameLook||F.LOOK24);
+  scene.add(a.root);
+  const hasGameShoes=!!(window.AIBAShoeStyles&&window.AIBAShoeColorways);
+
+  function pose(){if(!state.anim)a.apply(F.POSES[state.pose]||F.POSES.stand);}
+  function bodyOnly(){for(const n of ["kit","socks","shoes"])for(const o of a.slots[n]||[])o.visible=!state.bodyOnly;}
+  function stat(){document.getElementById("stat").textContent=a.tris.toLocaleString()+" 三角面 · "+(gameLook?"外貌读自游戏 star 记录":"内置 24 号外观");}
+
+  /* 机位。back / far 对应游戏里的默认背后机位和侧跟机位 —— 模型好不好以这两个为准，不看特写 */
+  const VIEWS={
+    studio:{t:[0,1.02,0],d:5.6,yaw:.5,pitch:.08,wood:false},
+    back:{t:[0,1.45,0],d:6.4,yaw:Math.PI-.22,pitch:.2,wood:true},
+    far:{t:[0,1.0,0],d:9.5,yaw:Math.PI-.95,pitch:.34,wood:true},
+    head:{t:[0,1.74,0],d:1.7,yaw:.5,pitch:.04,wood:false}
+  };
+  const cam={t:new THREE.Vector3(),d:6,yaw:0,pitch:0};
+  function setView(v){
+    const o=VIEWS[v]||VIEWS.studio;cam.t.fromArray(o.t);cam.d=o.d;cam.yaw=QS.has("yaw")?+QS.get("yaw"):o.yaw;cam.pitch=o.pitch;
+    floorMat.color.copy(o.wood&&!state.sil?WOOD:SLATE);
+  }
+  function applySil(){scene.overrideMaterial=state.sil?silMat:null;scene.background=state.sil?BG_SIL:BG;floor.visible=!state.sil;}
+  function resize(){
+    const w=innerWidth,h=innerHeight,p=PANEL();renderer.setSize(w,h);camera.aspect=w/h;
+    /* 面板占掉左边一条：把画面中心挪到剩下那块的中间 */
+    if(p)camera.setViewOffset(w,h,-p/2,0,w,h);else camera.clearViewOffset();
+    camera.updateProjectionMatrix();
+  }
+  addEventListener("resize",resize);
+
+  const el=renderer.domElement;let drag=null;
+  el.addEventListener("pointerdown",e=>{drag=[e.clientX,e.clientY];el.setPointerCapture(e.pointerId);});
+  el.addEventListener("pointermove",e=>{if(!drag)return;cam.yaw-=(e.clientX-drag[0])*.008;cam.pitch=Math.max(-.2,Math.min(1.2,cam.pitch+(e.clientY-drag[1])*.005));drag=[e.clientX,e.clientY];});
+  el.addEventListener("pointerup",()=>{drag=null;});
+  el.addEventListener("wheel",e=>{e.preventDefault();cam.d=Math.max(1,Math.min(30,cam.d*(1+e.deltaY*.001)));},{passive:false});
+
+  /* ---------- 面板：每一行 = 一个槽位的几个候选值 ---------- */
+  const rows=document.getElementById("rows"),sel={};
+  function head(t){const h=document.createElement("h2");h.textContent=t;rows.appendChild(h);}
+  function row(key,label,items,pick,init){
+    const box=document.createElement("div");box.className="row";box.dataset.key=key;
+    const l=document.createElement("label");l.textContent=label;box.appendChild(l);
+    items.forEach(([id,name,val])=>{
+      const b=document.createElement("button");b.textContent=name;b.dataset.v=id;
+      b.onclick=()=>{sel[key]=id;pick(val===undefined?id:val,id);bodyOnly();stat();sync();};box.appendChild(b);
+    });
+    rows.appendChild(box);sel[key]=init;
+  }
+  function sync(){
+    rows.querySelectorAll(".row").forEach(r=>{const k=r.dataset.key;r.querySelectorAll("button").forEach(b=>b.classList.toggle("on",k==="pose"?!state.anim&&b.dataset.v===sel[k]:k==="show"?!!state[b.dataset.v]:b.dataset.v===sel[k]));});
+  }
+  const L=a.look,BLK=0x111111,WHT=0xf1efe9;
+
+  {
+    /* 换球星 = 换一份外貌数据重开这一页；全员站一排看在 roster.html */
+    const box=document.createElement("div");box.className="row";
+    const sl=document.createElement("select");sl.style.cssText="flex:1;background:#1b1f28;color:#e9edf3;border:1px solid rgba(255,255,255,.12);border-radius:7px;padding:3px 6px;font:inherit";
+    STARS.forEach(s=>{const o=document.createElement("option");o.value=s.id;o.textContent=(s.name||s.id)+" #"+s.num;if(star&&s.id===star.id)o.selected=true;sl.appendChild(o);});
+    sl.onchange=()=>{const q=new URLSearchParams(location.search);q.set("star",sl.value);location.search=q.toString();};
+    const lk=document.createElement("a");lk.href="roster.html";lk.textContent="全员合影 ›";lk.style.cssText="color:#ffb547;text-decoration:none;margin-left:6px";
+    box.appendChild(sl);box.appendChild(lk);rows.appendChild(box);
+  }
+  head("身体");
+  row("build","体格",[["lean","精瘦",.94],["std","标准",L.body.w||1],["strong","壮",1.07]],w=>a.set("body",{w}),"std");
+  row("tattoo","纹身",[["none","无",{}],["upper","右上臂",{upperArmR:"upper"}],["band","臂环",{upperArmL:"band"}],["small","右小臂",{forearmR:"small"}],["dense","双臂满",{upperArmL:"dense",upperArmR:"dense",forearmL:"dense",forearmR:"dense"}]],
+    v=>a.set("tattoo",v),L.tattoo.upperArmR==="upper"&&!L.tattoo.upperArmL?"upper":"none");
+  head("头");
+  row("hair","发型",[["bald","光头"],["shaved","剃光"],["buzz","寸头"],["short","短发"],["fade","渐变"],["flattop","平头"],["croppedCurls","短卷"],["sidepart","偏分"],["afro","爆炸头"],["cornrows","地垄沟"],["ponytail","马尾"],["bun","丸子头"]],v=>a.set("hair",{style:v}),L.hair.style);
+  row("beard","胡子",[["none","无"],["stubble","胡茬"],["circle","薄胡茬"],["goatee","山羊胡"],["moustache","八字胡"],["full","络腮胡"]],v=>a.set("beard",{style:v}),L.beard.style);
+  row("headgear","头饰",[["none","无",null],["white","白头带",{kind:"band",color:WHT}],["black","黑头带",{kind:"band",color:BLK}]],v=>a.set("gear.head",v),L.gear.head?"white":"none");
+  head("服装");
+  const KITS=[["gold","黑金",{jersey:BLK,trim:0xf1c641,shorts:BLK}],["purple","金紫",{jersey:0xf5b324,trim:0x4b2a8c,shorts:0xf5b324,numColor:0x4b2a8c,numStroke:0xf1efe9}],["white","白金",{jersey:WHT,trim:0xf1c641,shorts:WHT,numColor:0x4b2a8c}]];
+  if(gameLook)KITS.unshift(["game","游戏原配",Object.assign({numColor:null,numStroke:null},gameLook.kit)]);
+  row("kit","球衣",KITS,v=>a.set("kit",Object.assign({numColor:null,numStroke:null},v)),gameLook?"game":"gold");
+  row("socks","袜长",[["none","无",0],["low","短",.10],["mid","中",.19],["high","长",.27]],h=>a.set("socks",{h}),"mid");
+  head("护具（对应装备槽）");
+  row("sleeve","护臂",[["none","无",null],["Lb","左·黑",{side:"L",color:BLK,kind:"full"}],["Rb","右·黑",{side:"R",color:BLK,kind:"full"}],["Lw","左·白",{side:"L",color:WHT,kind:"full"}],["elbow","双肘套",{side:"LR",color:BLK,kind:"elbow"}]],
+    v=>a.set("gear.sleeve",v),L.gear.sleeve?(L.gear.sleeve.side==="L"?"Lb":"Rb"):"none");
+  row("wrist","护腕",[["none","无",null],["R","右腕",{side:"R",color:WHT}],["LR","双腕",{side:"LR",color:WHT}]],v=>a.set("gear.wrist",v),L.gear.wrist?"LR":"none");
+  row("knee","护膝",[["none","无",null],["L","左护膝",{side:"L",kind:"pad",color:0x1f242d}],["LR","双护膝",{side:"LR",kind:"pad",color:0x1f242d}],["long","长腿套",{side:"LR",kind:"sleeve",color:WHT}]],v=>a.set("gear.knee",v),L.gear.knee?"L":"none");
+  row("comp","内搭",[["none","无",null],["black","黑短袖",{color:0x181a22}],["white","白短袖",{color:WHT}]],v=>a.set("gear.compression",v),"none");
+  head("球鞋");
+  {
+    const tone={v:"mono"};
+    const items=[["facet","切面鞋",{style:"facet",main:0x1b1c20,accent:0xf1c641,sole:0xf3f1ea,outsole:0x2a2a2e}]];
+    const NAMES={RetroHighPanels:"复古高帮",StripeMidPanels:"条纹中帮",CanvasHighPanels:"帆布高帮",AirRunnerPanels:"气垫跑型"};
+    if(hasGameShoes)for(const f of AIBAShoeColorways.families)items.push([f,NAMES[f]||f,{style:"game",family:f}]);
+    const wear=v=>a.set("shoes",v.style==="game"?{style:"game",family:v.family,colorway:"approved_"+v.family+"_"+tone.v}:v);
+    row("shoes","鞋款",items,wear,L.shoes.style==="game"?L.shoes.family:"facet");
+    if(hasGameShoes)row("tone","配色",[["mono","黑灰"],["red","红"],["blue","蓝"],["green","绿"]],v=>{tone.v=v;if(a.look.shoes.style==="game")wear(a.look.shoes);},
+      L.shoes.style==="game"?String(L.shoes.colorway).split("_").pop():"mono");
+  }
+  head("查看");
+  row("pose","姿势",[["stand","站姿"],["hold","三威胁"],["dip","下沉"],["set","举球"],["release","出手"],["follow","随挥"]],v=>{state.pose=v;state.anim=false;pose();},state.pose);
+  row("view","机位",[["studio","棚拍"],["back","比赛·背后"],["far","比赛·侧跟"],["head","头部"]],v=>{state.view=v;setView(v);},state.view);
+  {
+    const box=document.createElement("div");box.className="row";box.dataset.key="show";
+    const l=document.createElement("label");l.textContent="显示";box.appendChild(l);
+    for(const [v,label] of [["anim","▶ 投篮循环"],["bodyOnly","只看身体"],["sil","剪影"]]){
+      const b=document.createElement("button");b.textContent=label;b.dataset.v=v;
+      b.onclick=()=>{state[v]=!state[v];if(v==="sil"){applySil();setView(state.view);}else if(v==="bodyOnly")bodyOnly();else pose();sync();};box.appendChild(b);
+    }
+    rows.appendChild(box);
+  }
+  addEventListener("keydown",e=>{if(e.key==="h"||e.key==="H"){document.body.dataset.hud=document.body.dataset.hud==="1"?"0":"1";resize();}});
+
+  const clock=new THREE.Clock();let time=0;
+  function frame(dt){
+    if(state.anim){time+=dt;a.shot(time);}
+    const cp=Math.cos(cam.pitch);
+    camera.position.set(cam.t.x+cam.d*Math.sin(cam.yaw)*cp,cam.t.y+cam.d*Math.sin(cam.pitch),cam.t.z+cam.d*Math.cos(cam.yaw)*cp);
+    camera.lookAt(cam.t);
+    renderer.render(scene,camera);
+  }
+  function loop(){requestAnimationFrame(loop);frame(Math.min(clock.getDelta(),.05));}
+  /* 调试口：FacetLab.a 就是这个球员，控制台里可以直接 FacetLab.a.set("hair",{style:"afro"}) */
+  window.FacetLab={a,state,cam,frame,setView,pose,applySil,bodyOnly,sync,gameLook};
+  resize();setView(state.view);applySil();pose();bodyOnly();stat();sync();loop();
+})();
+</script>
+</body>
+</html>
