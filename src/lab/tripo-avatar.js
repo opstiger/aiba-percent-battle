@@ -13,6 +13,7 @@
   /* 每个写实球星一条:glb 文件,和模型"面朝哪边"(Tripo 导出的 star8 面朝 +X,Mixamo 绑的 star1 面朝 +Z) */
   const MODELS={
     star8:{file:"star8.glb",yaw:-Math.PI/2},
+    /* star1:4.8 万面高模,先焊接重复顶点再减到 1.45 万面(直接减会在脸和衣褶里撕出缝),权重从 Mixamo 绑好的版本转过来 */
     star1:{file:"star1.glb",yaw:0},
     star15:{file:"star15.glb",yaw:0}
   };
