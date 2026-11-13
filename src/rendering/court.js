@@ -78,16 +78,18 @@ function paintHardwood(g,W,D,PXM){
 
 /* 三秒区、罚球圈、中圈独立薄几何，带连续清漆。 */
 function buildCourtZones(){
-  const Y=0.014;
+  const Y=0.020;
   const zoneMat=new THREE.MeshPhysicalMaterial({
     color:0x261142,transparent:true,opacity:0.26,
     roughness:0.34,metalness:0,
+    polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,
     clearcoat:FLOOR_PHYS.clearcoat,
     clearcoatRoughness:FLOOR_PHYS.clearcoatRoughness,
     envMap:makeArenaEnvPMREM(),envMapIntensity:FLOOR_PHYS.envMapIntensity});
   const lineMat=new THREE.MeshPhysicalMaterial({
     color:0xe8edf2,side:THREE.DoubleSide,
     roughness:0.36,metalness:0,
+    polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,
     clearcoat:FLOOR_PHYS.clearcoat,
     clearcoatRoughness:FLOOR_PHYS.clearcoatRoughness,
     envMap:makeArenaEnvPMREM(),envMapIntensity:FLOOR_PHYS.envMapIntensity*0.55});
@@ -381,17 +383,31 @@ function buildCourt(){
   courtFloor.rotation.x=-Math.PI/2;
   courtFloor.position.set(0,0,(COURT.floorMinZ+COURT.floorMaxZ)/2);
   scene.add(courtFloor);
-  // 大型 NBA 球馆外围深炭黑防滑地坪：延伸到 68m × 88m，填满球场围边到远端看台/球员通道之间的全部地面
+  // 大型 NBA 球馆外围深炭黑防滑地坪：仅在 courtFloor (W×D) 四周外围拼接 4 块不重叠地面，
+  // 彻底消除 courtFloor 下方大平面重叠导致的远景 Z-fighting 横向黑线！
   if(typeof indoorRoot!=="undefined"&&indoorRoot){
-    const subFloor=new THREE.Mesh(
-      new THREE.PlaneGeometry(68,88),
-      new THREE.MeshStandardMaterial({color:0x0b0d15,roughness:0.78,metalness:0.08})
-    );
-    subFloor.rotation.x=-Math.PI/2;
-    subFloor.position.set(0,-0.012,COURT.midZ);
-    subFloor.receiveShadow=true;
-    subFloor.name="arenaSubFloor";
-    indoorRoot.add(subFloor);
+    const subMat=new THREE.MeshStandardMaterial({
+      color:0x070912,roughness:0.78,metalness:0.08,
+      polygonOffset:true,polygonOffsetFactor:2,polygonOffsetUnits:2
+    });
+    const cz=(COURT.floorMinZ+COURT.floorMaxZ)/2;
+    const outerW=68,outerD=88;
+    const sideW=(outerW-W)/2+0.08;
+    const endD=(outerD-D)/2+0.08;
+    const slabs=[
+      [-(W+sideW)/2+0.04,cz,sideW,outerD],
+      [(W+sideW)/2-0.04,cz,sideW,outerD],
+      [0,COURT.floorMinZ-endD/2+0.04,W+0.08,endD],
+      [0,COURT.floorMaxZ+endD/2-0.04,W+0.08,endD]
+    ];
+    slabs.forEach((s,idx)=>{
+      const m=new THREE.Mesh(new THREE.PlaneGeometry(s[2],s[3]),subMat);
+      m.rotation.x=-Math.PI/2;
+      m.position.set(s[0],-0.025,s[1]);
+      m.receiveShadow=true;
+      if(idx===0)m.name="arenaSubFloor";
+      indoorRoot.add(m);
+    });
   }
   buildCourtZones();
   const ringTex=pixTex(128,128,(g)=>{

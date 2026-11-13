@@ -110,11 +110,10 @@ function buildStands(){
           const arc=Math.hypot(nx-x,nz-z)*STEP_OVERLAP;
           const rotY=Math.atan2(nx-x,nz-z);
           qRot.setFromAxisAngle(up,rotY);
-          // 混凝土看台阶梯主体 + 深色踏面层
-          mm.compose(new THREE.Vector3(x,y-h/2,z),qRot,new THREE.Vector3(1.65,h,arc));
+          // 混凝土看台阶梯主体（移除 0.05m 薄踏面重叠层并加入微米级奇偶高度错位，彻底消除看台远景 Z-fighting 黑线）
+          const yStep=y+((j+r)&1)*0.006;
+          mm.compose(new THREE.Vector3(x,yStep-h/2,z),qRot,new THREE.Vector3(1.65,h,arc));
           stepParts.push({color:stepColor,matrix:mm.clone()});
-          mm.compose(new THREE.Vector3(x,y+0.025,z),qRot,new THREE.Vector3(1.56,0.05,arc*0.99));
-          stepParts.push({color:treadColor,matrix:mm.clone()});
 
           // 每层第一排前缘：混凝土护栏挡墙 (Fascia Wall) + 顶部紫金压条
           if(r===0&&ti>=1){
@@ -286,38 +285,35 @@ function updUpperRibbon(t){
   for(const tx of upperRibbonTex)tx.offset.x=off;
 }
 function buildSuiteRing(){
-  /* 对照 Crypto.com Arena 实拍照片的标志性三层开放式豪华包厢墙 (Suite Levels A, B, C)：
-     注意 mat4At(x,y,z,p.rot,sx,sy,sz) 中 sx 为径向进深、sz 为切向弧宽！
-     内层(rx=28.8)为散发明亮琥珀暖光的包厢内壁与木饰吊顶，前沿(rx=27.2)为水平挑檐与半透明玻璃栏板，
-     在暗调看台背景中形成三道极其醒目的黄金暖光包厢带。 */
   const parts=[],glassParts=[],glowParts=[];
   const N=36,rx=28.0,rz=35.1;
   const levels=[8.95,11.05,13.15];
   for(let i=0;i<N;i++){
     const a=i/N*Math.PI*2;
     const p=bowlFacing(a,rx,rz);
-    const back=bowlFacing(a,rx+0.95,rz+0.95);
+    const rear=bowlFacing(a,rx+1.55,rz+1.55);
+    const glowBack=bowlFacing(a,rx+0.68,rz+0.68);
     const front=bowlFacing(a,rx-0.75,rz-0.75);
     const d=bowlFacing(a+Math.PI/N,rx,rz);
-    // 贯穿三层包厢的后方深色背墙与包厢间深色分隔柱（sx=径向进深，sz=切向宽度）
-    parts.push({color:0x121520,matrix:mat4At(back.x,11.6,back.z,p.rot,0.65,6.6,5.85)});
-    parts.push({color:0x0e111a,matrix:mat4At(d.x,11.6,d.z,d.rot,1.85,6.6,0.26)});
+    // 贯穿三层包厢的后方深色背墙（退至 rx+1.55，与 rx+0.68 暖光内壁拉开 0.87m 净距，彻底消除 Z-fighting 斜向黑条纹）
+    parts.push({color:0x121520,matrix:mat4At(rear.x,11.6,rear.z,p.rot,0.36,6.6,5.65)});
+    parts.push({color:0x0e111a,matrix:mat4At(d.x,11.6,d.z,d.rot,1.85,6.6,0.28)});
     for(let li=0;li<levels.length;li++){
       const ly=levels[li];
-      // 每层包厢水平挑檐地板与前缘紫金饰条（sx=1.75m 径向进深，sz=5.82m 切向连续无断缝）
-      parts.push({color:0x181426,matrix:mat4At(p.x,ly-0.22,p.z,p.rot,1.75,0.32,5.82)});
-      parts.push({color:0xfdb927,matrix:mat4At(front.x,ly-0.05,front.z,p.rot,0.14,0.06,5.80)});
-      // 包厢内部暖金琥珀色背墙与发光吊顶（未被遮挡，直接向场内透出实拍级的奢华暖光）
-      glowParts.push({color:0xffb84d,matrix:mat4At(back.x,ly+0.68,back.z,p.rot,0.22,1.18,5.32)});
-      glowParts.push({color:0xffd480,matrix:mat4At(p.x,ly+1.38,p.z,p.rot,1.45,0.12,5.36)});
-      // 包厢前缘半高透明反光玻璃栏板（高度0.56m，不遮挡上方暖光内腔）
-      glassParts.push({color:0x4a6080,matrix:mat4At(front.x,ly+0.28,front.z,p.rot,0.08,0.56,5.52)});
+      // 每层包厢水平挑檐地板与前缘紫金饰条
+      parts.push({color:0x181426,matrix:mat4At(p.x,ly-0.22,p.z,p.rot,1.75,0.32,5.62)});
+      parts.push({color:0xfdb927,matrix:mat4At(front.x,ly-0.05,front.z,p.rot,0.14,0.06,5.60)});
+      // 包厢内部暖金琥珀色背墙与发光吊顶（独立位于 rx+0.68，切向宽度收至 4.85m 避免弯角相邻重叠）
+      glowParts.push({color:0xe89b38,matrix:mat4At(glowBack.x,ly+0.58,glowBack.z,p.rot,0.26,1.12,4.85)});
+      glowParts.push({color:0xf5c46e,matrix:mat4At(p.x,ly+1.24,p.z,p.rot,1.28,0.14,4.85)});
+      // 包厢前缘半高透明反光玻璃栏板
+      glassParts.push({color:0x4a6080,matrix:mat4At(front.x,ly+0.28,front.z,p.rot,0.08,0.56,5.10)});
     }
     // 顶层包厢上沿封顶挑檐
-    parts.push({color:0x181426,matrix:mat4At(p.x,14.72,p.z,p.rot,1.85,0.36,5.86)});
+    parts.push({color:0x181426,matrix:mat4At(p.x,14.72,p.z,p.rot,1.85,0.36,5.66)});
   }
   bakeVoxelMesh(indoorRoot,parts,{materialKey:"suite",standard:true,material:{roughness:0.42,metalness:0.28,envMapIntensity:0.48}});
-  bakeVoxelMesh(indoorRoot,glowParts,{materialKey:"suiteGlow",material:{emissive:0xff9824,emissiveIntensity:0.68}});
+  bakeVoxelMesh(indoorRoot,glowParts,{materialKey:"suiteGlow",material:{emissive:0xff9824,emissiveIntensity:0.52}});
   const glassMesh=bakeVoxelMesh(indoorRoot,glassParts,{materialKey:"suiteGlass",standard:true,material:{roughness:0.10,metalness:0.35,envMapIntensity:0.95,transparent:true,opacity:0.48}});
   glassMesh.name="suiteGlass";
 }

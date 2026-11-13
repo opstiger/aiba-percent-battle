@@ -43,7 +43,7 @@ scene.background=new THREE.Color(0x05060c);
    雾色从近黑 0x05060c 改成深蓝灰:近黑会让远景"死黑",而真实场馆的远景是
    **偏冷、低对比**,不是变暗到没有。这一层才是背景分离的主力,DOF 只是辅助。 */
 scene.fog=new THREE.Fog(0x0c0e1a,22,96);
-const camera=new THREE.PerspectiveCamera(68,1,0.1,180);
+const camera=new THREE.PerspectiveCamera(68,1,0.28,160);
 scene.add(camera);
 const indoorRoot=new THREE.Group();indoorRoot.name="indoorRoot";
 const environmentRoot=new THREE.Group();environmentRoot.name="environmentRoot";
