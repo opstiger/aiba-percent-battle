@@ -1511,10 +1511,13 @@ function shotReadyLowerTarget(index){
     ?target:READY_LOWER_FALLBACK[index]||READY_LOWER_FALLBACK[0];
 }
 /* 待机呼吸的频率与幅度。1cm 量级 —— 方块画风下再大就成了喘气。 */
-const BREATH_RATE=1.25,BREATH_AMP=0;
-/* 投篮后的 ready bounce：保持稳定站姿，避免持球待机时人物与 FBX 皮套周期性抖动/晃动。 */
-const READY_BOUNCE_RATE=4.8,READY_BOUNCE_AMP=0,READY_KNEE_FLEX=0,READY_ANKLE_FLEX=0;
-const READY_FOOT_ROLL=0,LAND_FOOT_PITCH=.10;
+const BREATH_RATE=1.25,BREATH_AMP=.006;
+/* 持球热身:膝踝轻轻弹、重心左右缓移,加上上面的呼吸,站定时人不是一根柱子。
+   这几项全是 G.tNow 的正弦函数、不带任何积分状态,所以和帧率无关。
+   之前被关掉是误会 —— 那次"闪动"的根因是 spine-layer 的躯干弹簧(显式欧拉)在低帧率发散,已在 6894569 改成解析解。
+   别再把这里的频率拉回 4.8 以上:节拍越快,低帧率下越接近采样极限。 */
+const READY_BOUNCE_RATE=2.6,READY_BOUNCE_AMP=0,READY_KNEE_FLEX=.035,READY_ANKLE_FLEX=.03;
+const READY_FOOT_ROLL=.04,LAND_FOOT_PITCH=.10;
 /* 起跳离地后脚掌自然下垂的幅度(正号=脚尖朝下,与 RUN_TOE_OFF_PITCH 同向)。
    最高点踝关节本身是 -.18*jmp 的背屈,所以这里要先抵消掉再给出净下垂,
    .52 大致等于净 19° —— 站立参考帧不受影响,因为它整条乘 c.jmp。 */
@@ -1575,10 +1578,10 @@ function poseGuy(o,c,lk,landingImpact){
   const readyClock=isReadyPlayer&&Number.isFinite(G.tNow)?G.tNow:0;
   const readyWave=isReadyPlayer?Math.sin(readyClock*READY_BOUNCE_RATE):0;
   const readyPulse=readyWave>0?readyWave*readyWave:0;
-  const targetReadyZ=0;
+  const targetReadyZ=isReadyPlayer&&readyPulse?.16*Math.sin(readyClock*READY_BOUNCE_RATE+Math.PI*.5)*.014:0;
   o.g.rotation.z+=(targetReadyZ-o.g.rotation.z)*0.18;
   if(Math.abs(o.g.rotation.z)<1e-4&&targetReadyZ===0)o.g.rotation.z=0;
-  if(readyPulse&&READY_BOUNCE_AMP>0){
+  if(readyPulse&&(READY_BOUNCE_AMP>0||READY_KNEE_FLEX>0)){
     /* 一只脚稍多承重，另一只脚随 beat 轻轻卸力；幅度很小，观感是踝关节有弹性，
        不是原地踏步，也不产生水平位移。 */
     const weight=0.5+0.16*Math.sin(readyClock*READY_BOUNCE_RATE+Math.PI*.5);
@@ -1642,7 +1645,10 @@ function poseGuy(o,c,lk,landingImpact){
   if(breath){
     sh.rotation.x-=breath*1.5;gd.rotation.x-=breath*1.5;   // 肩胸随呼吸起伏
   }
-  return POSE_STAND_FOOT_Y-footY+readyPulse*READY_BOUNCE_AMP+breath;
+  const poseYOut=POSE_STAND_FOOT_Y-footY+readyPulse*READY_BOUNCE_AMP+breath;
+  /* 记下"站姿高度"和时间:写实皮套给对手算起跳高度用(驱动方会在 g.y 上再加 jump,差值就是离地高度) */
+  o.poseYRet=poseYOut;o.poseT=typeof G!=="undefined"&&G&&Number.isFinite(G.tNow)?G.tNow:0;
+  return poseYOut;
 }
 function shotStanceBlend(c,ready){
   return clamp(Math.max(ready?0.72:0,c.dip*.55+c.lift*.85+c.jmp*.35),0,1);
