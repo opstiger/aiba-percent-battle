@@ -77,8 +77,8 @@
       /* decay:玩家按下出手 —— 动画立即作废,身体从当前值快速回正 */
       R.clip=null;R.name=null;R.pending=null;R.idle.dur=0;
     }
-    /* 手里有球时手臂不动(球是挂在手上的),只留头 */
-    if(ballInHand)for(const k of ["sx","sz","se","gx","gz","ge"])tgt[k]=0;
+    /* 手里有球时头与手臂都归零回正,避免持球瞄准时身体/头部晃动 */
+    if(ballInHand)for(const k of CH)tgt[k]=0;
     const rate=mode==="decay"?16:(R.clip?11:5);
     const a=1-Math.exp(-rate*dt);
     let mag=0;

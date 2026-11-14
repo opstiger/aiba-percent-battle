@@ -460,7 +460,10 @@
       if(!state.fpRig||state.fpRig.parent!==sc)state.fpRig=sc.getObjectByName("fpSharedPoseRig")||null;
       const tp=visibleInScene(guy.g),fpOn=!tp&&!!state.fpRig&&visibleInScene(state.fpRig);
       if(!tp&&!fpOn){root.visible=false;return orig(sc,cam);}
-      const mirror=sc.scale&&sc.scale.y<0;   // 地板倒影那一遍沿用正常那一遍算好的骨骼
+      /* 地板倒影那一遍、斗屏转播那一遍,都沿用主画面算好的骨骼。
+         重定向里有按时间走的状态(速度估计、落地缓冲、平滑),同一帧多算一遍会让这些状态乱跳,
+         表现为球员每隔几帧抽一下、像几个动作来回切。 */
+      const mirror=(sc.scale&&sc.scale.y<0)||state.aux>0;
       const held=ballNow(),fpBall=fpBallNow();
       const shrunk=shrinkBalls(guy.g,held,fpOn?fpBall:null);
       if(!mirror)try{retarget();}catch(e){oops(e);}
@@ -486,5 +489,12 @@
       }
     };
   }
+  /* 斗屏的实时转播会在同一帧里多渲染一遍主场景:给那一遍打上标记 */
+  state.aux=0;
+  (function markAux(){
+    const f=window.updJumbotronBroadcast;
+    if(typeof f!=="function"||f.__tripoAux)return;
+    window.updJumbotronBroadcast=Object.assign(function(){state.aux++;try{return f.apply(this,arguments);}finally{state.aux--;}},{__tripoAux:1});
+  })();
   hookRenderer();
 })();

@@ -36,9 +36,12 @@
   function spring(){return {a:0,v:0};}
   /* 临界阻尼弹簧追目标：f 频率 Hz */
   function chase(s,target,f,dt){
-    const w=2*Math.PI*f;
-    const acc=w*w*(target-s.a)-2*w*s.v;
-    s.v+=acc*dt;s.a+=s.v*dt;
+    /* 用临界阻尼弹簧的解析解推进,任何帧率都稳定。
+       原来是显式欧拉(v+=acc*dt):阻尼项每步把速度乘 (1-2w·dt),帧间隔一超过 1/w 就变成 |系数|>1 ——
+       扭转(7Hz)低于约 44 帧、俯仰(5.5Hz)低于约 35 帧时,躯干每帧在正负限位之间来回甩,
+       看上去就是球员一直闪、像几个动作在切。手机帧率一掉就会触发。 */
+    const w=2*Math.PI*f,x=s.a-target,k=(s.v+w*x)*dt,e=Math.exp(-w*dt);
+    s.a=target+(x+k)*e;s.v=(s.v-k*w)*e;
   }
 
   function register(o){
