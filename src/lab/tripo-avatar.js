@@ -17,7 +17,11 @@
     star1:{file:"star1.glb",yaw:0},
     star15:{file:"star15.glb",yaw:0},
     /* star30:混元生成的 4.9 万面静态模型,先焊接重复顶点再减到 1.48 万面,Mixamo 绑骨(护齿是独立碎片,单独拿出来再并回) */
-    star30:{file:"star30.glb",yaw:0}
+    star30:{file:"star30.glb",yaw:0},
+    /* star3 / star30b:混元生成的 4.9 万面静态模型,焊接后减到 1.5 万面,Mixamo 绑骨,权重落到减面网格上;
+       跑动沿用 star30 的 24 帧原地版本(按世界旋转差重映射到各自骨架) */
+    star3:{file:"star3.glb",yaw:0},
+    star30b:{file:"star30b.glb",yaw:0}
   };
   const QS=new URLSearchParams(location.search),FORCE=QS.get("tripo")==="1";
   if(QS.get("tripo")==="0")return;

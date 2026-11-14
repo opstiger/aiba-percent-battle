@@ -138,7 +138,7 @@ for(const n in PRESETS){ const b=document.createElement('button'); b.textContent
 
 // ---- 载入模型 ----
 let root=null, helper=null, mesh=null;
-new THREE.GLTFLoader().load('star.glb', gltf=>{
+new THREE.GLTFLoader().load(new URLSearchParams(location.search).get('glb')||'star.glb', gltf=>{
   root = gltf.scene; scene.add(root);
   root.traverse(o=>{
     if(o.isBone){ const s=o.name.replace(/^mixamorig:?/,''); bones[s]=o; rest[s]=o.quaternion.clone(); }
