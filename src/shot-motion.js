@@ -450,7 +450,7 @@
       const fpView=typeof CAM!=="undefined"&&CAM.mode===0;
       const calm=!P.walking&&(c.dip||0)+(c.lift||0)+(c.jmp||0)+(c.over||0)<.02&&P.jump<.01&&
         !follow.active&&!(catchState&&catchState.active&&((catchState.progress||0)>.04||catchState.settling))&&!releaseFeetPhase&&!(G.pickupReach>.02)&&!G.charging;
-      global.AIBAReaction.apply(player,dt,fpView||P.walking?"off":(calm&&!G.canShoot?"on":"decay"),!!G.canShoot);
+      global.AIBAReaction.apply(player,dt,fpView||P.walking?"off":(calm?"on":"decay"),!!G.canShoot);
     }
     // 球挂在投篮手 handRig 上，伸肘与压腕期间连续随手，真正 release 后才隐藏/脱离。
     if(!ballAttached)poseBallPos(pBall.position,c,style);
