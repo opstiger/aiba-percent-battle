@@ -262,75 +262,163 @@
   }
   function stanchionLogoTex(){
     if(stanchionLogoTexCache)return stanchionLogoTexCache;
-    stanchionLogoTexCache=pixTex(128,384,(g,w,h)=>{
-      const gr=g.createLinearGradient(0,0,w,h);
-      gr.addColorStop(0,"#162238");gr.addColorStop(0.5,"#1e3050");gr.addColorStop(1,"#10192b");
-      g.fillStyle=gr;g.fillRect(0,0,w,h);
-      g.strokeStyle="#324d7a";g.lineWidth=5;g.strokeRect(6,6,w-12,h-12);
-      g.fillStyle="#ffd23f";g.fillRect(20,32,w-40,5);g.fillRect(20,h-37,w-40,5);
-      g.fillStyle="#ffd23f";g.font="bold 42px Orbitron, monospace";g.textAlign="center";g.textBaseline="middle";
-      g.fillText("aiBA",w/2,96);
-      g.fillStyle="#7ee7ff";g.font="bold 22px Orbitron, monospace";
-      g.fillText("ARENA",w/2,146);
-      g.fillText("PRO",w/2,178);
-      // 护垫横向压痕线
-      g.fillStyle="rgba(8,12,20,.48)";
-      for(const y of [224,276,328])g.fillRect(10,y,w-20,4);
+    stanchionLogoTexCache=pixTex(256,512,(g,w,h)=>{
+      g.clearRect(0,0,w,h);
+      const pad=18,bw=w-pad*2,bh=h-pad*2,r=38;
+      const rr=(x,y,rw,rh,rad)=>{
+        g.beginPath();
+        g.moveTo(x+rad,y);
+        g.lineTo(x+rw-rad,y);g.quadraticCurveTo(x+rw,y,x+rw,y+rad);
+        g.lineTo(x+rw,y+rh-rad);g.quadraticCurveTo(x+rw,y+rh,x+rw-rad,y+rh);
+        g.lineTo(x+rad,y+rh);g.quadraticCurveTo(x,y+rh,x,y+rh-rad);
+        g.lineTo(x,y+rad);g.quadraticCurveTo(x,y,x+rad,y);
+        g.closePath();
+      };
+      // 外层纯白圆角描边
+      g.fillStyle="#ffffff";
+      rr(pad,pad,bw,bh,r);
+      g.fill();
+      // 内层红蓝双色底（左蓝 #1d428a，右红 #c8102e）
+      const inPad=11,ix=pad+inPad,iy=pad+inPad,iw=bw-inPad*2,ih=bh-inPad*2,ir=Math.max(16,r-inPad);
+      g.save();
+      rr(ix,iy,iw,ih,ir);
+      g.clip();
+      g.fillStyle="#1d428a";
+      g.fillRect(ix,iy,iw*0.53,ih);
+      g.fillStyle="#c8102e";
+      g.fillRect(ix+iw*0.53,iy,iw*0.47,ih);
+      // 白色运球球员剪影（Logoman）
+      g.fillStyle="#ffffff";
+      // 头部
+      g.beginPath();
+      g.arc(ix+iw*0.57,iy+ih*0.16,iw*0.078,0,Math.PI*2);
+      g.fill();
+      // 躯干与左倾动态肩背、双腿剪影
+      g.beginPath();
+      g.moveTo(ix+iw*0.45,iy+ih*0.23);
+      g.quadraticCurveTo(ix+iw*0.67,iy+ih*0.22,ix+iw*0.75,iy+ih*0.37);
+      g.quadraticCurveTo(ix+iw*0.80,iy+ih*0.46,ix+iw*0.73,iy+ih*0.52);
+      g.quadraticCurveTo(ix+iw*0.64,iy+ih*0.44,ix+iw*0.59,iy+ih*0.50);
+      g.lineTo(ix+iw*0.71,iy+ih*0.77);
+      g.lineTo(ix+iw*0.60,iy+ih*0.81);
+      g.lineTo(ix+iw*0.50,iy+ih*0.58);
+      g.lineTo(ix+iw*0.36,iy+ih*0.88);
+      g.lineTo(ix+iw*0.25,iy+ih*0.84);
+      g.lineTo(ix+iw*0.41,iy+ih*0.51);
+      g.quadraticCurveTo(ix+iw*0.31,iy+ih*0.39,ix+iw*0.45,iy+ih*0.23);
+      g.closePath();
+      g.fill();
+      // 右侧运球篮球圆点
+      g.beginPath();
+      g.arc(ix+iw*0.75,iy+ih*0.57,iw*0.088,0,Math.PI*2);
+      g.fill();
+      // 左下角白色粗体 NBA 字样
+      g.fillStyle="#ffffff";
+      g.font="900 "+Math.round(ih*0.19)+"px Impact, Arial Black, sans-serif";
+      g.textAlign="left";
+      g.textBaseline="alphabetic";
+      g.fillText("NBA",ix+iw*0.08,iy+ih*0.93);
+      g.restore();
     },{smooth:true,mipmaps:true});
     return stanchionLogoTexCache;
   }
   function hoopHardware(parent,boardZ,baseZ,dir,frameMat){
     const g=new THREE.Group();g.name="detailHoopHardware";
-    const steel=stdMat(0x3b4554,0.34,0.68,0.60);
-    const darkSteel=stdMat(0x1f2530,0.42,0.52,0.45);
-    const chrome=stdMat(0xc4d0dc,0.18,0.88,0.80);
-    const pad=stdMat(0x1b2944,0.46,0.08,0.38);
-    const padDark=stdMat(0x121b2d,0.52,0.08,0.30);
+    // 对照 NBA Spalding Arena Renegade 实物黑灰哑光配色
+    const blackPad=stdMat(0x13151a,0.52,0.06,0.32);
+    const blackBase=stdMat(0x181b22,0.46,0.14,0.36);
+    const darkSteel=stdMat(0x1f242d,0.38,0.55,0.48);
+    const steel=stdMat(0x363f4e,0.32,0.68,0.58);
+    const chrome=stdMat(0xd6deea,0.18,0.88,0.82);
     const ledFrame=new THREE.MeshBasicMaterial({color:0xffaa2b});
-    const rear=boardZ-dir*.15;
-    // 1. 篮板背部中央紧凑型承力固定座（对照参考图去除篮板背后多余交叉杂杆与斜撑，保持透视纯净）
-    box(g,.44,.38,.16,0,3.48,rear,steel);
-    box(g,1.32,.05,.05,0,3.28,rear,steel);
-    box(g,1.32,.05,.05,0,3.74,rear,steel);
-    // 2. 篮板下沿 NBA 级加厚防撞软包护垫（带倒角与中央篮筐避让槽）
-    box(g,1.98,.10,.20,0,2.93,boardZ,pad);
-    box(g,1.92,.04,.21,0,2.87,boardZ,padDark);
+
+    // 1. 篮板下沿与两侧下包角：加厚哑光黑 U 型防撞软包护垫（严格复刻参考图底部黑边与左右圆角上翻护耳）
+    box(g,1.98,.11,.13,0,2.93,boardZ,blackPad);
+    box(g,1.94,.035,.14,0,2.87,boardZ,blackBase);
     for(const sx of [-1,1]){
-      box(g,.09,.42,.19,sx*.955,3.14,boardZ,pad);
+      box(g,.095,.44,.13,sx*.955,3.14,boardZ,blackPad);
+      prism(g,.095,.07,.13,sx*.955,3.395,boardZ,blackPad,0.65,0.85,0);
+      // 篮板玻璃内侧左上/右上角深灰金属 L 型加固角码（3D 实体层）
+      box(g,.16,.038,.06,sx*.82,3.97,boardZ-dir*.02,darkSteel);
+      box(g,.038,.14,.06,sx*.88,3.91,boardZ-dir*.02,darkSteel);
     }
-    // 篮板内沿一圈纤细的比赛计时灯带（橙黄 LED 导光条）
-    box(g,1.82,.018,.02,0,3.99,boardZ-dir*.05,ledFrame);
-    for(const sx of [-1,1])box(g,.018,.98,.02,sx*.90,3.50,boardZ-dir*.05,ledFrame);
-    // 3. 弹簧篮筐机械盒（Breakaway housing，紧贴篮板面铰链，不伸入篮圈）
-    box(g,.23,.15,.13,0,3.05,boardZ+dir*.105,frameMat);
-    // 4. 底座前倾式软包防撞护垫 + 配重箱折面装甲
-    prism(g,.78,1.68,.38,0,.92,baseZ+dir*.38,pad,0.86,0.55,-dir*.10);
-    prism(g,1.24,.46,1.48,0,.23,baseZ+dir*.15,darkSteel,0.92,0.90,0);
+    // 篮板内沿纤细计时灯带
+    box(g,1.80,.015,.018,0,3.99,boardZ-dir*.04,ledFrame);
+    for(const sx of [-1,1])box(g,.015,.96,.018,sx*.90,3.50,boardZ-dir*.04,ledFrame);
+
+    // 2. 篮板背部中央单中柱脊梁 + 斜向加强筋（彻底取消横跨玻璃左右翼的横杆，保证玻璃两侧通透纯净）
+    const spineZ=boardZ-dir*.11;
+    box(g,.32,.13,.10,0,3.04,boardZ-dir*.08,darkSteel);      // 篮筐后方承力底座块
+    box(g,.16,1.02,.11,0,3.50,spineZ,darkSteel);             // 中央垂直主脊柱（y=2.99..4.01）
+    beam(g,
+      new THREE.Vector3(-0.08,3.06,boardZ-dir*.09),
+      new THREE.Vector3(0.02,3.98,spineZ),
+      .12,.08,steel
+    );                                                       // 靶框后方标志性斜向支撑梁
+    beam(g,
+      new THREE.Vector3(0,3.52,boardZ-dir*.26),
+      new THREE.Vector3(0,3.98,spineZ),
+      .14,.09,darkSteel
+    );                                                       // 背部上端斜撑臂
+
+    // 3. 斜伸双层主大臂（从立柱顶部 y=1.88 斜向上 34° 伸至篮板底部中央 y=3.02，复刻 NBA 折叠悬臂结构）
+    beam(g,
+      new THREE.Vector3(0,1.84,baseZ+dir*.08),
+      new THREE.Vector3(0,3.02,boardZ-dir*.12),
+      .25,.20,darkSteel
+    );
+    // 主大臂下方的平行副拉杆（双连杆机构）
+    beam(g,
+      new THREE.Vector3(0,1.62,baseZ+dir*.14),
+      new THREE.Vector3(0,2.90,boardZ-dir*.16),
+      .14,.08,steel
+    );
+    // 篮板底部中央与大臂交汇处的水平托盘座
+    box(g,.28,.10,.34,0,2.98,boardZ-dir*.20,darkSteel);
+
+    // 4. 阶梯式哑光黑配重底座 + 梯形收窄立柱护垫（复刻参考图下半部分三段式黑色护垫与后延配重箱）
+    // 4a. 底部全宽橡胶防撞群边（y=0..0.06）
+    box(g,1.04,.06,1.76,0,.03,baseZ-dir*.18,blackPad);
+    // 4b. 前段主梯形底座箱（y=0.06..0.68，向上收窄）
+    prism(g,1.02,.62,.94,0,.37,baseZ+dir*.20,blackBase,0.78,0.82,-dir*.05);
+    // 4c. 后段阶梯斜顶配重延伸箱（y=0.06..0.58，向篮板反方向延伸并带斜切顶盖）
+    prism(g,.96,.52,.84,0,.32,baseZ-dir*.62,blackBase,0.84,0.86,dir*.10);
+    // 底座侧面竖向拼缝装饰条
     for(const sx of [-1,1]){
-      box(g,.04,1.52,.04,sx*.37,.90,baseZ+dir*.38,steel);
-      box(g,.08,.18,1.38,sx*.60,.12,baseZ+dir*.15,padDark);
+      box(g,.025,.56,.03,sx*.46,.32,baseZ-dir*.22,blackPad);
     }
-    // 6. 篮板正上方：24 秒进攻计时器塔（Shot Clock Tower）
-    const scZ=boardZ-dir*.24;
-    box(g,.09,.78,.09,0,3.84,scZ,darkSteel);                // 计时器立杆
-    box(g,.64,.58,.20,0,4.52,scZ,darkSteel);                // 计时器主机箱
-    prism(g,.70,.07,.26,0,4.84,scZ,steel,0.92,0.88,0);      // 顶部遮光檐
-    box(g,.66,.035,.22,0,4.89,scZ,ledFrame);                // 顶部蜂鸣红黄灯条
+    // 4d. 立柱正面三段式黑色防撞护垫（下段梯形收腰 y=0.68..1.14 + 中段垂直 NBA 标志柱面 y=1.14..1.88 + 上段斜切顶罩 y=1.88..2.04）
+    prism(g,.68,.46,.42,0,.91,baseZ+dir*.18,blackPad,0.68,0.86,-dir*.03);
+    box(g,.462,.74,.36,0,1.51,baseZ+dir*.15,blackPad);
+    prism(g,.462,.16,.36,0,1.96,baseZ+dir*.15,blackPad,0.82,0.72,-dir*.04);
+    // 4e. 护垫后方双侧深灰钢制立柱槽钢与铰接轴销（y=0.68..2.14）
+    for(const sx of [-1,1]){
+      box(g,.085,1.46,.22,sx*.15,1.41,baseZ-dir*.05,darkSteel);
+    }
+    box(g,.38,.12,.20,0,2.08,baseZ-dir*.04,darkSteel);
+    box(g,.42,.04,.04,0,1.84,baseZ+dir*.04,chrome);
+    box(g,.40,.035,.035,0,1.42,baseZ-dir*.14,chrome);
+
+    // 5. 篮板正上方：24 秒进攻计时器塔（Shot Clock Tower，由中央脊柱向上延伸）
+    const scZ=boardZ-dir*.14;
+    box(g,.14,.42,.11,0,4.18,scZ,darkSteel);                // 计时器底部支架底座
+    box(g,.64,.58,.20,0,4.62,scZ,darkSteel);                // 计时器主机箱
+    prism(g,.70,.07,.26,0,4.94,scZ,steel,0.92,0.88,0);      // 顶部遮光檐
+    box(g,.66,.035,.22,0,4.99,scZ,ledFrame);                // 顶部蜂鸣红黄灯条
     batch(g);
 
-    // 7. 独立贴图面片（24秒双面 LED 屏 + 支架正面品牌软垫铭牌）
+    // 6. 独立贴图面片（24秒双面 LED 屏 + 立柱正面官方 NBA Logoman 垂直徽标）
     const scMat=new THREE.MeshBasicMaterial({map:shotClockTex(),color:0xd8e0ea});
     for(const f of [1,-1]){
       const scr=new THREE.Mesh(new THREE.PlaneGeometry(.56,.50),scMat);
-      scr.position.set(0,4.52,scZ+f*.104);
+      scr.position.set(0,4.62,scZ+f*.104);
       if(f<0)scr.rotation.y=Math.PI;
       g.add(scr);
     }
-    const logoMat=new THREE.MeshBasicMaterial({map:stanchionLogoTex(),color:0x9aa8bc});
-    const padFace=new THREE.Mesh(new THREE.PlaneGeometry(.46,1.32),logoMat);
-    padFace.position.set(0,.96,baseZ+dir*.525);
+    const logoMat=new THREE.MeshBasicMaterial({map:stanchionLogoTex(),transparent:true,color:0xf2f6fc});
+    const padFace=new THREE.Mesh(new THREE.PlaneGeometry(.22,.44),logoMat);
+    padFace.position.set(0,1.50,baseZ+dir*.334);
     padFace.rotation.y=dir>0?0:Math.PI;
-    padFace.rotation.x=-dir*0.118;
     g.add(padFace);
 
     parent.add(g);return g;

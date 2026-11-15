@@ -44,12 +44,18 @@
     const ring=new THREE.Mesh(new THREE.TorusGeometry(RIM.R,RIM.tube,8,32),mat);
     ring.rotation.x=Math.PI/2;ring.position.copy(center);ring.name="rimRing";
     ring.castShadow=true;parent.add(ring);
-    // 连接件：从圈后沿（靠近篮板一侧）伸到铰链（篮板面），绝不伸入篮圈内部
-    const s=Math.sign(center.z)||-dir,back=center.z-s*RIM.R,len=Math.abs(back),conn=new THREE.Mesh(new THREE.BoxGeometry(.12,.055,len),mat);
-    conn.position.set(center.x,center.y-.005,back/2);conn.name="rimConnector";parent.add(conn);
-    // 连接件下方的斜撑片（真实篮筐有一块三角加强板，同样严格位于篮板与圈后沿之间）
-    const gusset=new THREE.Mesh(new THREE.BoxGeometry(.045,.08,len*.68),mat);
-    gusset.position.set(center.x,center.y-.055,back*.42);gusset.rotation.x=-s*.35;parent.add(gusset);
+    // 连接件：NBA L型下沉式弹簧篮筐底座（从圈后沿伸到篮板面，带两侧三角加强耳板，绝不伸入篮圈内部）
+    const s=Math.sign(center.z)||-dir,back=center.z-s*RIM.R,len=Math.abs(back);
+    const conn=new THREE.Mesh(new THREE.BoxGeometry(.16,.044,len),mat);
+    conn.position.set(center.x,center.y-.006,back/2);conn.name="rimConnector";parent.add(conn);
+    const mountPlate=new THREE.Mesh(new THREE.BoxGeometry(.18,.13,.032),mat);
+    mountPlate.position.set(center.x,center.y-.048,s*.016);parent.add(mountPlate);
+    const botPlate=new THREE.Mesh(new THREE.BoxGeometry(.18,.026,len*.86),mat);
+    botPlate.position.set(center.x,center.y-.102,back*.43);parent.add(botPlate);
+    for(const sx of [-1,1]){
+      const gusset=new THREE.Mesh(new THREE.BoxGeometry(.024,.082,len*.78),mat);
+      gusset.position.set(center.x+sx*.074,center.y-.054,back*.42);gusset.rotation.x=-s*.32;parent.add(gusset);
+    }
     // 12 个挂网钩：圈管下方的小环，网就挂在这里
     const hookGeo=new THREE.BoxGeometry(.022,.035,.022);
     const hooks=[];

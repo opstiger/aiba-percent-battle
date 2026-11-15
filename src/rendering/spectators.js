@@ -75,6 +75,67 @@ function makeNearCourtPerson(parent,cube,cfg,mats){
     phase:cfg.phase,amp:cfg.amp||1,team:cfg.x>0?1:0,responseStart:-100,responseDuration:0,responseSign:0});
 }
 const VIP_ARM_MAT=new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:true});
+
+let _cachedSpectatorSitMesh=null;
+let _spectatorSitLoading=false;
+const _pendingVIPUpgrades=[];
+
+function ensureGLTFLoader(cb){
+  if(window.THREE&&window.THREE.GLTFLoader)return cb();
+  const s=document.createElement("script");
+  s.src="vendor/GLTFLoader.r128.js";
+  s.onload=cb;
+  document.head.appendChild(s);
+}
+
+function loadSpectatorSitModel(){
+  if(_cachedSpectatorSitMesh||_spectatorSitLoading)return;
+  _spectatorSitLoading=true;
+  ensureGLTFLoader(()=>{
+    new THREE.GLTFLoader().load("assets/models/spectator_sit.glb",gltf=>{
+      let foundMesh=null;
+      gltf.scene.traverse(child=>{
+        if(child.isMesh&&!foundMesh)foundMesh=child;
+      });
+      if(!foundMesh){_spectatorSitLoading=false;return;}
+      foundMesh.geometry.computeVertexNormals();
+      _cachedSpectatorSitMesh=foundMesh;
+      _spectatorSitLoading=false;
+      while(_pendingVIPUpgrades.length>0){
+        const item=_pendingVIPUpgrades.shift();
+        applyModelToVIP(item.person,item.cfg);
+      }
+    },undefined,err=>{
+      console.warn("Failed to load spectator_sit.glb:",err);
+      _spectatorSitLoading=false;
+    });
+  });
+}
+
+function applyModelToVIP(person,cfg){
+  if(!_cachedSpectatorSitMesh||!person.g)return;
+  if(person.body)person.body.visible=false;
+  if(person.arms&&!person.prop&&!person.phone){
+    person.arms[0].visible=false;
+    person.arms[1].visible=false;
+  }
+  const m=_cachedSpectatorSitMesh.clone();
+  m.name="realSpectatorMesh";
+  m.material=_cachedSpectatorSitMesh.material.clone();
+  if(cfg.outfit){
+    m.material.color=new THREE.Color(cfg.outfit);
+  }
+  m.rotation.y=Math.PI;
+  m.position.set(0,0,0);
+
+  const idx=cfg.idx||(person.phase?Math.floor(person.phase*10):0);
+  const fat=0.94+((idx*7)%5)*0.04;
+  const height=0.95+((idx*11)%5)*0.035;
+  m.scale.set(fat,height,fat*0.98);
+
+  person.g.add(m);
+  person.realMesh=m;
+}
 function makeCourtsideVIP(parent,cube,cfg){
   const g=new THREE.Group();
   const s=cfg.scale||1;
@@ -195,10 +256,17 @@ function makeCourtsideVIP(parent,cube,cfg){
   const excitement=cfg.excitement!=null?cfg.excitement:(pose==="chill"?0.22:(pose==="hyper"?1.28:(pose==="intense"?0.95:0.55)));
   g.position.set(cfg.x,baseY,cfg.z);g.rotation.y=cfg.rot+yawOff;g.scale.setScalar(s);
   parent.add(g);
-  nearCourtCrowd.people.push({g,body,shirtVertCount:0,arms:[armL,armR],phone,sign:null,prop,poms:[null,null],
+  const person={g,body,shirtVertCount:0,arms:[armL,armR],phone,sign:null,prop,poms:[null,null],
     kind:role==="fashion"?"filmer":(role==="coach"?"coach":"vip"),vip:true,seated:true,role,pose,excitement,basePitch,yawOff,
     base:V3(cfg.x,baseY,cfg.z),baseY,baseRot:cfg.rot,axis:V3(0,0,0),move:0,
-    phase:cfg.phase,amp:cfg.amp||1,team:cfg.x>0?1:0,responseStart:-100,responseDuration:0,responseSign:0});
+    phase:cfg.phase,amp:cfg.amp||1,team:cfg.x>0?1:0,responseStart:-100,responseDuration:0,responseSign:0};
+  nearCourtCrowd.people.push(person);
+  if(_cachedSpectatorSitMesh){
+    applyModelToVIP(person,cfg);
+  }else{
+    _pendingVIPUpgrades.push({person,cfg});
+    loadSpectatorSitModel();
+  }
 }
 function makeArenaStaff(parent,cube,cfg){
   const g=new THREE.Group();
@@ -531,7 +599,7 @@ function buildCourtsideVIPs(root,cube){
         if(idx%17===0)continue; // 偶留零星未入座空位更真实
         const prof=vipProfiles[idx%vipProfiles.length];
         const yawOff=prof.pose==="social"?((idx%2?1:-1)*0.24):((idx%5-2)*0.045);
-        makeCourtsideVIP(root,cube,{x:cx,y:row.y,z:cz,rot,yawOff,phase:idx*0.77,amp:0.82+(idx%4)*0.11,...prof});
+        makeCourtsideVIP(root,cube,{idx,x:cx,y:row.y,z:cz,rot,yawOff,phase:idx*0.77,amp:0.82+(idx%4)*0.11,...prof});
       }
     }
   }
@@ -542,12 +610,12 @@ function buildCourtsideVIPs(root,cube){
       idx++;
       if(idx%15===0)continue;
       const prof=vipProfiles[idx%vipProfiles.length];
-      makeCourtsideVIP(root,cube,{x:side*x,y:0.16,z:baseVipZ,rot:Math.PI,yawOff:(idx%5-2)*0.05,phase:idx*0.83,amp:0.85+(idx%3)*0.12,...prof});
+      makeCourtsideVIP(root,cube,{idx,x:side*x,y:0.16,z:baseVipZ,rot:Math.PI,yawOff:(idx%5-2)*0.05,phase:idx*0.83,amp:0.85+(idx%3)*0.12,...prof});
     }
   }
   // 技术台后方 3 位记录员
   for(const dz of [-1.5,0,1.5]){
-    makeCourtsideVIP(root,cube,{x:-10.42,y:0,z:scZ+dz,rot:-Math.PI/2,role:"official",pose:"intense",excitement:0.35,
+    makeCourtsideVIP(root,cube,{idx:990+dz,x:-10.42,y:0,z:scZ+dz,rot:-Math.PI/2,role:"official",pose:"intense",excitement:0.35,
       outfit:0x182032,accent:0xfdb927,pants:0x121620,skin:0xedb48a,hair:0x1c1816,shoe:0x14161c,scale:0.90,phase:dz+2.0,amp:0.75});
   }
   // 场边走动与执勤人员：服务员、安保、保洁擦地员、过道走动嘉宾
@@ -758,6 +826,7 @@ function updNearCourtCrowd(t,dt){
         p.arms[1].rotation.set(0.65+0.72*ec,0,0.18-clap);
       }
       if(p.body)p.body.rotation.x=(p.basePitch||0)+0.05*ec-0.04*et;
+      if(p.realMesh)p.realMesh.rotation.x=(p.basePitch||0)+0.05*ec-0.04*et;
       return;
     }
     p.g.position.y=Math.max(0,wave)*(.012+.19*Math.max(0,react))*p.amp;

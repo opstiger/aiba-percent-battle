@@ -2027,6 +2027,7 @@ function startPass(targetPos,face){
   }
   const from=pickup||handFrom||V3(passer.g.position.x,1.25,passer.g.position.z);
   if(!pickup){
+    if(window.AIBAPasserAvatar&&AIBAPasserAvatar.playThrow)AIBAPasserAvatar.playThrow();
     passer.g.rotation.y=faceTo(passer.g.position,hasTarget?target:P.pos);
     passerBall.visible=false;
   }
@@ -2059,6 +2060,7 @@ function startPass(targetPos,face){
 }
 function updPass(dt){
   updPasserIdle();
+  if(window.AIBAPasserAvatar&&AIBAPasserAvatar.update)AIBAPasserAvatar.update(dt);
   if(!passing)return;
   passing.t+=dt;const k=Math.min(1,passing.t/passing.dur);
   const p=passing;
