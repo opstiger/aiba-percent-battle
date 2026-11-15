@@ -216,7 +216,7 @@
     char:()=>wantChar(),
     ball:()=>typeof pBall!=="undefined"?pBall:null,
     holding:(guy,b)=>!!(b&&b.visible&&b.parent&&b.parent.name==="ballGrip"),
-    air:()=>{try{return typeof P!=="undefined"&&P?Number(P.jump)||0:0;}catch(e){return 0;}},
+    air:()=>{try{const g=typeof player!=="undefined"?player:null,lift=g&&g.pregameLift>0?g.pregameLift:0;return Math.max(typeof P!=="undefined"&&P?Number(P.jump)||0:0,lift);}catch(e){return 0;}},
     pass:()=>{try{if(typeof passing!=="undefined"&&passing&&passing.mesh){const k=G&&G.passCatch?Number(G.passCatch.progress)||0:0;return {mesh:passing.mesh,k};}}catch(e){}return null;},
   };
   const OPP_FORCE=QS.get("oppchar");

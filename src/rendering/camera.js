@@ -30,7 +30,9 @@ function releaseCameraFov(owner){
   if(owner!=null)cameraFovStack.delete(String(owner));
   applyCameraFovStack();return true;
 }
-const CAM={mode:0,names:CAM_BASE_NAMES.concat(["自定义视角 1","自定义视角 2"])};
+/* 机位 5:转播过肩。排在自定义视角(3、4)之后编号,这样已保存的自定义机位编号不变 */
+const CAM_SHOULDER=5;
+const CAM={mode:0,names:CAM_BASE_NAMES.concat(["自定义视角 1","自定义视角 2","转播过肩"])};
 function cameraInPlay(){
   return G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||
     G.state==="rushintro"||G.state==="rushbetween"||G.state==="pregame"||G.state==="lastshot"||
@@ -74,12 +76,13 @@ function activeCustomCameraView(mode){
   return customCameraSlots[i];
 }
 function availableCameraModes(){
-  const modes=[0,1,2];
+  const modes=[0,1,2,CAM_SHOULDER];
   customCameraSlots.forEach((v,i)=>{if(v||cameraEditor&&cameraEditor.slot===i)modes.push(3+i);});
   return modes;
 }
 function cameraModeLabel(mode){
   const i=customCameraSlotIndex(mode);
+  if(mode===CAM_SHOULDER)return CAM.names[CAM_SHOULDER];
   return i>=0?"自定义视角 "+(i+1):(CAM_BASE_NAMES[mode]||CAM_BASE_NAMES[1]);
 }
 function setCameraIcon(){
@@ -313,6 +316,37 @@ function autoFrameCam(rig,pPos,pJump,faceDir,opts){
     rig.look.copy(_afCenter);
   }
 }
+/* 转播过肩机位:摄像师站在球员侧后方,越过肩膀把人和篮筐框在一起。
+   两个特点:1) 跟人很慢——球员换点时镜头是"摇过去"而不是"跳过去";
+            2) 站定时也不静止——像肩扛摄像机一样缓慢地横移、起伏、推拉(三个互不成倍数的慢周期,不会看出循环)。
+   球在空中时视线略微跟着球抬一点。 */
+const SHOULDER_CAM={t:0,side:1,sideK:1,lift:0};
+function updateShoulderCamera(dt){
+  const S=SHOULDER_CAM;S.t+=dt;
+  /* 站在哪一侧:球员在场地右半边时摄像师在他右后方(画面里人在右、篮筐在左),反之亦然;过中线附近不来回跳 */
+  if(P.pos.x>.8)S.side=1;else if(P.pos.x<-.8)S.side=-1;
+  S.sideK+=(S.side-S.sideK)*(1-Math.exp(-1.1*dt));
+  const dir=_shBack.set(HOOP.x-P.pos.x,0,HOOP.z-P.pos.z);const dist=Math.max(.5,dir.length());dir.multiplyScalar(1/dist);
+  const rx=-dir.z,rz=dir.x;                          // 球员的右手方向(面朝篮筐)
+  const far=clamp((dist-6)/9,0,1);
+  /* 机位:身后 2.3~2.9 米、侧移 .8 米、比头顶略高 —— 肩膀和后脑在画面一角,篮筐在画面中间 */
+  const back=2.3+.6*far,side=.82*S.sideK,h=1.98+.25*far+P.jump*.3;
+  /* 缓慢漂移:横移、起伏、推拉,三个互不成倍数的慢周期,站定时也像肩扛摄像机一样在呼吸 */
+  const t=S.t,sway=Math.sin(t*.31)*.22+Math.sin(t*.173+1.3)*.1,bob=Math.sin(t*.23+.7)*.07+Math.sin(t*.127)*.035,dolly=Math.sin(t*.151+2.1)*.25;
+  camTarget.pos.set(P.pos.x-dir.x*(back+dolly)+rx*(side+sway),h+bob,P.pos.z-dir.z*(back+dolly)+rz*(side+sway));
+  /* 视线:落在球员和篮筐之间偏篮筐的位置,两者都在画面里 */
+  const k=.62;
+  let lift=0;
+  if(typeof balls!=="undefined"&&balls.length){
+    const fb=balls[balls.length-1];
+    if(fb&&fb.mesh&&(fb.phase==="fly"||(fb.phase==="path"&&fb.t<fb.tf)))lift=clamp((fb.mesh.position.y-HOOP.y)*.25,0,.8);
+  }
+  S.lift+=(lift-S.lift)*(1-Math.exp(-3*dt));
+  camTarget.look.set(P.pos.x+(HOOP.x-P.pos.x)*k-rx*sway*.2,1.55+(HOOP.y-1.55)*.55+S.lift,P.pos.z+(HOOP.z-P.pos.z)*k-rz*sway*.2);
+  /* 跟得很慢:换点时镜头是摇过去的,不是跳过去的 */
+  dampRig(dt,G.moving||P.walking?2.2:1.6);
+}
+const _shBack=V3(0,0,1);
 let fpLookY=null;
 const _fpBall=V3(0,0,0);
 // 举球到顶时相机相对眼睛下压的幅度;0.46 让相机落到球心下方约 0.2,刚好仰视球看到手背。
@@ -374,6 +408,8 @@ function updPlayCam(dt){
       camTarget.look.set(P.pos.x+d.x*2.45,1.66+P.jump*0.5,P.pos.z+d.z*2.45);
       dampRig(dt,6);
     }
+  }else if(CAM.mode===CAM_SHOULDER){
+    updateShoulderCamera(dt);
   }else if(CAM.mode>=3&&CAM.mode<3+CUSTOM_CAMERA_COUNT&&activeCustomCameraView(CAM.mode)){
     updateCustomCamera(dt);
   }else{

@@ -283,7 +283,8 @@
       /* 用游戏时钟:慢动作、暂停、回放时过渡和相位跟着游戏走,不跟墙上时间走 */
       let now=performance.now();try{if(typeof G!=="undefined"&&G&&Number.isFinite(G.tNow))now=G.tNow*1000;}catch(e){}
       const dt=Math.min(.1,Math.max(0,(now-(state.tA||now))/1000));state.tA=now;
-      const moving=movingNow(guy,dt),holding=holdingNow(ball),air=airNow();
+      /* 腾空时不算跑动:热身扣篮起跳那一段人在空中还在往前飘,要是继续当成跑步,跑步权重会把离地高度压回 0 */
+      const air=airNow(),moving=air<.05&&movingNow(guy,dt),holding=holdingNow(ball);
       const ease=(cur,to,tau)=>cur+(to-cur)*Math.min(1,dt/tau);
       state.runW=state.run?ease(state.runW,moving?1:0,.14):0;
       state.holdW=ease(state.holdW,holding?1:0,.15);

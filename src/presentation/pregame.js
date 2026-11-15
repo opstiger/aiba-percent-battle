@@ -250,19 +250,21 @@ function pregameBuildActors(opts){
 }
 function pregameBuildShots(opts){
   const shots=[],actors=PREGAME.actors;
-  const wanted=opts.mode==="battle"?5.8:(opts.mode==="rackrush"?5.0:5.2);
+  /* 时长翻倍(原来 5 秒出头,一两个动作就结束,显得匆忙);右下角有"跳过"按钮 */
+  const wanted=opts.mode==="battle"?11.6:(opts.mode==="rackrush"?10.0:10.4);
   let t=0,i=0,lastAction="";
   while(t<wanted){
     const actor=actors[i%actors.length]||actors[0];
     let action;
     if(i===0)action="shoot";
     else if(i===1)action=pregamePick(["dunk","dunk","chalk"]);
+    else if(i===3)action="dance";          // 时间够了:保证每场至少一段舞
     else action=pregamePick(PREGAME_ACTIONS);
-    if(action===lastAction)action=pregamePick(PREGAME_ACTIONS);
+    for(let n=0;n<6&&action===lastAction;n++)action=pregamePick(PREGAME_ACTIONS);
     if(action==="huddle"&&actors.length<2)action="pump";
     if(action==="dance"&&!(window.AIBADance&&AIBADance.ready&&AIBADance.ids.length))action="pump";
     if(action==="dunk"&&opts.mode==="contest"&&Math.random()<0.15)action="shoot";
-    let dur=action==="dunk"?rnd(1.55,1.85):rnd(1.15,1.65);const cam=pregamePick(PREGAME_CAMS);
+    let dur=action==="dunk"?rnd(2.3,2.6):rnd(1.15,1.65);const cam=pregamePick(PREGAME_CAMS);
     const seg={start:t,dur,actor,action,cam,side:Math.random()<0.5?-1:1,seed:rnd(0,Math.PI*2),group:action==="huddle"};
     if(action==="dance"){
       const clip=AIBADance.pick(pregameSkinned(actor.guy));
@@ -295,7 +297,7 @@ function pregameActionBase(actor,action,u){
   }
   if(action==="dunk"||action==="hang"){
     const rimSpot=V3(action==="hang"?0:(actor.role==="opponent"?0.16:-0.16),0,HOOP.z+(action==="hang"?0.34:0.52));
-    const approachEnd=action==="hang"?.34:.44;
+    const approachEnd=action==="hang"?.34:PREGAME_DUNK_TIMING.contact;
     base.lerp(rimSpot,ease01(clamp(u/approachEnd,0,1)));
   }
   return pregameClampPos(base);
@@ -312,9 +314,11 @@ function pregameIdle(actor,t){
    动作因果链：起跳持球 -> 球从篮圈上方压入网 -> 投篮手抓住篮圈 -> 身体摆一下
    再松手落地。所有时间点都放在同一条 segment 时间轴上，便于截图回归和以后
    在 T台/游戏之间继续微调。 */
+/* 时间轴(占整段的比例):先在地面助跑到离篮筐约 1.6 米(0→.40),再起跳(.40→.56),
+   手到篮圈(.56)→ 球压进网 → 挂一下 → 落地。以前从三分线外一起步就离地,等于飞了七米。 */
 const PREGAME_DUNK_TIMING=Object.freeze({
-  takeoffStart:.06,contact:.42,ballRelease:.48,ballEntry:.53,ballThrough:.59,
-  ballExit:.69,hangEnd:.77,landEnd:.98
+  takeoffStart:.40,contact:.56,ballRelease:.60,ballEntry:.64,ballThrough:.69,
+  ballExit:.77,hangEnd:.80,landEnd:.97
 });
 function pregameDunkAir(u){
   const t=PREGAME_DUNK_TIMING;
@@ -397,6 +401,17 @@ function pregameAnimate(actor,action,u,seg){
     guy.elbows[1].rotation.x=-0.3-0.3*reach;
     guy.legs[0].rotation.x=-0.12-0.72*air;guy.legs[1].rotation.x=0.1+0.3*air;
     guy.knees[0].rotation.x=0.18+0.95*air;guy.knees[1].rotation.x=0.18+0.5*air;
+    /* 助跑:离地之前两腿按跑过的距离交替迈步,身体前倾,球夹在持球手腰侧,另一只手摆臂 */
+    const runK=1-smoothRange(timing.takeoffStart-.05,timing.takeoffStart+.03,u);
+    if(runK>0.001){
+      const ph=base.distanceTo(actor.base)*3.3,sw=Math.sin(ph);
+      guy.legs[0].rotation.x+=runK*(-0.2+sw*0.85);guy.legs[1].rotation.x+=runK*(-0.2-sw*0.85);
+      guy.knees[0].rotation.x+=runK*(0.35+Math.max(0,-sw)*0.9);guy.knees[1].rotation.x+=runK*(0.35+Math.max(0,sw)*0.9);
+      guy.arms[0].rotation.x+=runK*(-0.5);guy.elbows[0].rotation.x+=runK*(-0.75);
+      guy.arms[1].rotation.x+=runK*(sw*0.7);guy.elbows[1].rotation.x+=runK*(-0.6);
+      guy.g.rotation.x=0.17*runK;
+      guy.g.position.y+=runK*Math.abs(Math.cos(ph))*0.045;
+    }
     if(ball)ball.material=matBall;
     seg._pregameDunkPoseWeight=0;seg._pregameDunkPoseBall=null;
     const phase=pregameDunkPhase(u);
@@ -491,7 +506,16 @@ function pregameSyncBallAfterPose(actor,action,u,seg){
   if(u<timing.ballRelease){
     /* Air Jordan pose 的 ballLocal 只作为“手掌相对球心”的校准偏移；球的父节点
        仍然是 ballGrip，所以过渡中的屈肘、抬臂、起跳都会把球一起带上去。 */
-    pregameHoldBallAtPose(guy,ball,seg._pregameDunkPoseBall,seg._pregameDunkPoseWeight||0);
+    /* 球跟着持球手走:抬臂过程中从挂点滑到手掌上方,到篮圈时球就在手里(以前球留在胸口,出手那一帧瞬移到篮筐上) */
+    if(pregameHoldBall(guy,ball)){
+      const grip=pregameBallGrip(guy),hand=guy.handRoots&&guy.handRoots[0];
+      const w=smoothRange(timing.takeoffStart-.06,timing.contact-.05,u);
+      if(grip&&hand&&w>0){
+        guy.g.updateMatrixWorld(true);
+        const hw=hand.getWorldPosition(V3());hw.y+=0.15;hw.z-=0.05;
+        ball.position.lerp(grip.worldToLocal(hw),w);
+      }
+    }
     seg._pregameDunkBallPhase="held";
     return;
   }
@@ -558,6 +582,20 @@ function pregameUpdateCamera(seg,u,dt){
   rig.pos.lerp(dest,Math.min(1,dt*5.8));
   rig.look.lerp(look,Math.min(1,dt*7.5));
 }
+/* 跳过按钮:第二次看同一段演示的人不该被按住。直接走正常收场(finishPreGameShow),灯光秀会跟着进收场段 */
+let pregameSkipEl=null;
+function pregameSkipButton(show){
+  if(typeof document==="undefined")return;
+  if(show&&!pregameSkipEl){
+    const b=pregameSkipEl=document.createElement("button");
+    b.id="pregameSkip";b.type="button";b.className="btn sm";b.textContent="跳过 ≫";
+    b.style.cssText="position:fixed;right:calc(14px + env(safe-area-inset-right,0px));bottom:calc(22px + env(safe-area-inset-bottom,0px));z-index:60;pointer-events:auto;opacity:.86;margin:0";
+    const go=e=>{e.preventDefault();e.stopPropagation();if(PREGAME.on)finishPreGameShow();};
+    b.addEventListener("pointerdown",go);b.addEventListener("click",go);
+    document.body.appendChild(b);
+  }
+  if(pregameSkipEl)pregameSkipEl.style.display=show?"block":"none";
+}
 function startPreGameShow(opts,done){
   opts=opts||{};
   PREGAME.prevState=G.state;PREGAME.cb=done;PREGAME.t=0;PREGAME.idx=0;PREGAME.on=true;
@@ -572,6 +610,7 @@ function startPreGameShow(opts,done){
   applyCamMode();
   player.g.visible=true;passer.g.visible=true;PREGAME.actors.forEach(a=>{a.guy.g.visible=true;if(a.guy.active!==undefined)a.guy.active=true;});
   if(PREGAME.shots[0]){PREGAME.shots[0]._justStarted=true;pregameCaption(PREGAME.shots[0]);}
+  pregameSkipButton(true);
 }
 function pregameReadyCameraTarget(){
   const shot=curShot();
@@ -590,7 +629,7 @@ function finishPreGameShow(){
   PREGAME.snaps.forEach(pregameRestoreGuy);
   PREGAME.actors.forEach(a=>{a.guy.pregameLift=0;a.guy.pregameDance=null;});
   PREGAME.on=false;PREGAME.t=0;PREGAME.idx=0;PREGAME.shots=[];PREGAME.actors=[];PREGAME.snaps=[];PREGAME.cb=null;PREGAME.poseCache.clear();hidePregameChalk();
-  $("vsBanner").style.display="none";
+  $("vsBanner").style.display="none";pregameSkipButton(false);
   P.jump=0;P.eyeDip=0;P.walking=false;G.state=prev;G.moving=false;G.glideCam=false;
   const ready=pregameReadyCameraTarget();
   glideTo(ready.pos,ready.look,0.75,()=>{if(cb)cb();});

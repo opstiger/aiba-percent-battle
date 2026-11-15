@@ -41,7 +41,8 @@
   const guyNow=()=>typeof player!=="undefined"?player:null;
   const ballNow=()=>typeof pBall!=="undefined"?pBall:null;
   const holdingNow=b=>!!(b&&b.visible&&b.parent&&b.parent.name==="ballGrip");
-  const airNow=()=>{try{return typeof P!=="undefined"&&P?Number(P.jump)||0:0;}catch(e){return 0;}};
+  /* 热身演示直接抬 g.y 做起跳/扣篮,P.jump 不动:离地高度记在 guy.pregameLift 上(不读它的话人会留在地板上够不到篮筐) */
+  const airNow=()=>{try{const g=guyNow(),lift=g&&g.pregameLift>0?g.pregameLift:0;return Math.max(typeof P!=="undefined"&&P?Number(P.jump)||0:0,lift);}catch(e){return 0;}};
   const passNow=()=>{try{if(typeof passing!=="undefined"&&passing&&passing.mesh){const k=G&&G.passCatch?Number(G.passCatch.progress)||0:0;return {mesh:passing.mesh,k};}}catch(e){}return null;};
 
   /* ---------- 3. 站姿骨架（真实尺寸 = 设计尺寸 × 球星身高系数 h） ---------- */

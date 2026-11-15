@@ -58,7 +58,7 @@
   const FK=1.5;                                                // 画布实际像素 = 逻辑尺寸 × FK
   const FW=544,FH=512;                                         // 15.24m × 14.325m,约 35.7 像素/米;画布上方 = 篮筐一侧
   const PX=FW/COURT.width,HOOP_PY=(COURT.nearHoopZ-COURT.nearBaseline)*PX,CXF=FW/2;
-  let floor=null,fg=null,ftex=null,floorDirty=false;
+  let floor=null,floorFar=null,fg=null,ftex=null,floorDirty=false;
   function makeFloor(){
     const cv=document.createElement("canvas");cv.width=Math.round(FW*FK);cv.height=Math.round(FH*FK);fg=cv.getContext("2d");
     ftex=new THREE.CanvasTexture(cv);ftex.encoding=THREE.sRGBEncoding;ftex.generateMipmaps=false;ftex.minFilter=THREE.LinearFilter;
@@ -68,6 +68,78 @@
     floor.rotation.x=-Math.PI/2;floor.position.set(0,.05,COURT.nearBaseline+len/2);
     floor.name="motionShowFloor";floor.visible=false;floor.renderOrder=20;
     indoorRoot.add(floor);
+    /* 另一半场:同一张画布转 180° 铺过去(从对面看台看是正的)。只在登场 / 关键球这种"全场秀"里亮,
+       平时的命中涟漪只留在进攻半场,不然每进一球远端也闪,太吵 */
+    floorFar=new THREE.Mesh(floor.geometry,floor.material);
+    floorFar.rotation.x=-Math.PI/2;floorFar.rotation.z=Math.PI;floorFar.position.set(0,.05,COURT.midZ+len/2);
+    floorFar.name="motionShowFloorFar";floorFar.visible=false;floorFar.renderOrder=20;
+    indoorRoot.add(floorFar);
+  }
+
+  /* ---------- 全馆光束:十束从顶棚打下来的摇头灯(加色半透明圆锥),登场时扫过整个球场和看台 ---------- */
+  const beams=[];let beamGeo=null;
+  function makeBeams(){
+    beamGeo=new THREE.CylinderGeometry(.1,1,1,18,4,true);beamGeo.translate(0,-.5,0);          // 顶点在原点,朝 -Y 张开,长度 1
+    const pos=beamGeo.attributes.position,col=new Float32Array(pos.count*3);
+    for(let i=0;i<pos.count;i++){const k=Math.pow(1+pos.getY(i),1.5)*.85;col[i*3]=col[i*3+1]=col[i*3+2]=k;}   // 越靠近灯头越亮,落地处淡掉
+    beamGeo.setAttribute("color",new THREE.BufferAttribute(col,3));
+    const N=10,cz=COURT.midZ;
+    for(let i=0;i<N;i++){
+      const a=i/N*TAU+.31,mat=new THREE.MeshBasicMaterial({vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,opacity:0,
+        depthWrite:false,toneMapped:false,side:THREE.DoubleSide,fog:false});
+      const m=new THREE.Mesh(beamGeo,mat);m.name="motionShowBeam";m.visible=false;m.frustumCulled=false;m.renderOrder=6;
+      m.position.set(Math.cos(a)*8.5,16.5,cz+Math.sin(a)*15);
+      indoorRoot.add(m);
+      beams.push({m,mat,a,ph:i*2.399,sp:.55+((i*7)%5)*.09,white:i%3===1});
+    }
+  }
+  const _bd=new THREE.Vector3(),_bu=new THREE.Vector3(0,-1,0),_ba=new THREE.Vector3();
+  /* k:整体亮度 0..1;gather:0=各扫各的,1=全部聚到表演者身上 */
+  function setBeams(k,gather){
+    const cz=COURT.midZ;
+    for(const B of beams){
+      if(k<.01){B.m.visible=false;continue;}
+      const t=S.t*B.sp+B.ph,R=7+13*(.5+.5*Math.sin(t*.63+B.ph));                          // 落点在球场和看台之间来回
+      _ba.set(Math.cos(B.a+Math.sin(t)*1.5)*R,R>15?3+(R-15)*.9:0,cz+Math.sin(B.a+Math.sin(t)*1.5)*R*1.45);
+      if(gather>0&&S.sp)_ba.lerp(_bd.set(S.sp.x,1,S.sp.z),gather);
+      _bd.copy(_ba).sub(B.m.position);const L=_bd.length();_bd.multiplyScalar(1/L);
+      B.m.quaternion.setFromUnitVectors(_bu,_bd);
+      const w=(1.1+L*.07)*(1-.45*gather);B.m.scale.set(w,L,w);
+      B.mat.opacity=k*(B.white?.2:.3)*(1-.72*gather);             // 聚到人身上时十束叠在一起,单束要压暗,不然把表演者洗白
+      if(B.white)B.mat.color.setRGB(1,1,1);else B.mat.color.copy(C.acc);
+      B.m.visible=true;
+    }
+  }
+
+  /* ---------- 看台星海:黑场时观众举起的手机灯,一圈一圈跟着追光亮起来 ---------- */
+  let stars=null,starAng=null,starPh=null;
+  function makeStars(){
+    try{
+      if(typeof crowd==="undefined"||!crowd.groups||!crowd.groups.length)return;
+      const pts=[];let n=0;
+      for(const g of crowd.groups)for(const s of g.seats){if((n++)%7===0&&Number.isFinite(s.x)&&Number.isFinite(s.z))pts.push(s);}
+      if(!pts.length)return;
+      const M=Math.min(pts.length,1100),pos=new Float32Array(M*3),col=new Float32Array(M*3);starAng=new Float32Array(M);starPh=new Float32Array(M);
+      for(let i=0;i<M;i++){const s=pts[Math.floor(i*pts.length/M)];pos[i*3]=s.x;pos[i*3+1]=(s.y||0)+1.05;pos[i*3+2]=s.z;
+        starAng[i]=Math.atan2(s.z-COURT.midZ,s.x);starPh[i]=(i*12.9898)%TAU;}
+      const geo=new THREE.BufferGeometry();geo.setAttribute("position",new THREE.BufferAttribute(pos,3));geo.setAttribute("color",new THREE.BufferAttribute(col,3));
+      stars=new THREE.Points(geo,new THREE.PointsMaterial({size:.5,sizeAttenuation:true,vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,
+        depthWrite:false,toneMapped:false,fog:false}));
+      stars.name="motionShowStars";stars.visible=false;stars.frustumCulled=false;stars.renderOrder=4;
+      indoorRoot.add(stars);
+    }catch(e){stars=null;}
+  }
+  function setStars(k){
+    if(!stars){return;}
+    if(k<.01){stars.visible=false;return;}
+    const col=stars.geometry.attributes.color,arr=col.array,n=starAng.length,sweep=S.t*1.1;
+    for(let i=0;i<n;i++){
+      const tw=Math.pow(.5+.5*Math.sin(S.t*(2.2+(i%5)*.5)+starPh[i]),3);
+      const wv=.35+.65*Math.pow(.5+.5*Math.cos(starAng[i]-sweep),2);                       // 一道亮带绕着看台转
+      const v=k*tw*wv,wh=(i%4===0)?1:0;
+      arr[i*3]=v*(wh?1:.55+.45*C.acc.r);arr[i*3+1]=v*(wh?.95:.55+.45*C.acc.g);arr[i*3+2]=v*(wh?.85:.55+.45*C.acc.b);
+    }
+    col.needsUpdate=true;stars.visible=true;
   }
 
   /* ---------- 追光:一盏真聚光灯(一直在场景里、平时强度 0,所以不会触发着色器重编译) ---------- */
@@ -99,6 +171,8 @@
     makeRing(27.15,34.25,14.82,5.76,.48,36,RING_LAG[3]);
     makeFloor();
     makeSpot();
+    makeBeams();
+    makeStars();
   }
   const active=()=>ON&&indoorRoot.visible!==false&&(!indoorRoot.parent||indoorRoot.parent.visible!==false);
 
@@ -307,6 +381,7 @@
     }
     g.globalAlpha=1;
     floor.visible=any;if(any)ftex.needsUpdate=true;
+    if(floorFar)floorFar.visible=any&&(S.ent>=0||S.burst>=0);
   }
   /* 追光:黑场期间一束柔和的队色白光罩着当前表演者,随演示的镜头换人;收场段跟着亮灯一起淡出 */
   const _tg=new THREE.Vector3();
@@ -328,7 +403,7 @@
     if(!S.built){if(!active())return;build();syncStar();}
     const dt=clamp(t-S.t,0,.1);S.t=t;
     const live=active();
-    if(!live){for(const R of rings)R.mesh.visible=false;floor.visible=false;if(S.dim!==1&&S.base!=null){S.dim=1;renderer.toneMappingExposure=S.base;S.wrote=false;}S.ent=-1;S.burst=-1;S.pulses.length=0;S.ripples.length=0;if(spot)spot.intensity=0;return;}
+    if(!live){for(const R of rings)R.mesh.visible=false;floor.visible=false;if(floorFar)floorFar.visible=false;setBeams(0,0);setStars(0);if(S.dim!==1&&S.base!=null){S.dim=1;renderer.toneMappingExposure=S.base;S.wrote=false;}S.ent=-1;S.burst=-1;S.pulses.length=0;S.ripples.length=0;if(spot)spot.intensity=0;return;}
     for(const p of S.pulses)p.t+=dt;
     for(const p of S.ripples)p.t+=dt;
     while(S.pulses.length&&S.pulses[0].t>RING_PULSE+RING_LAG[3]+.3)S.pulses.shift();
@@ -362,10 +437,17 @@
     else if(S.wrote){renderer.toneMappingExposure=S.base;S.wrote=false;}
     setRings();
     updSpot(dt);
+    /* 全馆配合:光束 + 看台星海只在黑场的登场秀里出现(关键球爆亮时光束也甩一下) */
+    {let bk=0,gather=0,sk=0;
+      if(S.ent>=0){const e=S.ent,fade=sm((e-.35)/.6)*(1-sm((e-(S.entDur-.95))/.7));
+        bk=fade;sk=fade;
+        gather=sm((e-.8)/.3)*(1-sm((e-2.1)/.9));}                                          // 号码砸下的那一拍所有光束收到表演者身上,然后散开去扫全场
+      if(S.burst>=0){const u=S.burst/BURST;if(u>.13)bk=Math.max(bk,.8*Math.pow(1-(u-.13)/.87,1.6));}
+      setBeams(bk,gather);setStars(sk);}
     /* 地板画布只在有内容时重画,最多 30 帧/秒 */
     const need=S.ent>=0||S.ripples.length||S.streakT>=0||S.burst>=0;
     if(need){if(t-S.lastDraw>=1/31||S.ent>=0&&t-S.lastDraw>=1/61){S.lastDraw=t;drawFloor();}}
-    else if(floor.visible){floor.visible=false;}
+    else if(floor.visible){floor.visible=false;if(floorFar)floorFar.visible=false;}
   }
 
   /* ---------- 挂接:球馆每帧更新 + 进球/失手结算 ---------- */
