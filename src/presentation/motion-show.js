@@ -123,8 +123,8 @@
   function makeBeams(){
     beamGeo=new THREE.CylinderGeometry(.12,.92,1,20,4,true);beamGeo.translate(0,-.5,0);          // 顶点在原点,朝 -Y 张开,长度 1
     const pos=beamGeo.attributes.position,col=new Float32Array(pos.count*3);
-    /* 保持光柱一直到地面都有足够亮度(0.38..0.95),这样在中低机位画面里十束聚光灯清晰可见 */
-    for(let i=0;i<pos.count;i++){const k=.38+.58*Math.pow(clamp(1+pos.getY(i),0,1),1.15);col[i*3]=col[i*3+1]=col[i*3+2]=k;}
+    /* 光柱顶部清晰、向地面柔和衰减(0.16..0.62),避免多束体积光在低机位叠加过曝 */
+    for(let i=0;i<pos.count;i++){const k=.16+.46*Math.pow(clamp(1+pos.getY(i),0,1),1.3);col[i*3]=col[i*3+1]=col[i*3+2]=k;}
     beamGeo.setAttribute("color",new THREE.BufferAttribute(col,3));
     const N=10,cz=-3.2;
     for(let i=0;i<N;i++){
@@ -170,7 +170,8 @@
       B.m.quaternion.setFromUnitVectors(_bu,_bd);
       const w=(.78+fullL*.045)*(1-.32*gather)*(1-.45*retract);
       B.m.scale.set(w,L,w);
-      B.mat.opacity=clamp(k*(B.white?.34:.46)*(1+.22*gather)*(1-retract),0,.85);
+      /* 十束加色光锥向同一焦点收拢(gather→1)时自动压低单束不透明度,防止十倍叠加把主角烧成纯白过曝 */
+      B.mat.opacity=clamp(k*(B.white?.15:.23)*(1-.42*gather)*(1-retract),0,.32);
       if(spec&&spec.kind==="super10"){
         if(B.idx%3===0){B.mat.color.setHex(0xffd740);B.css="#ffd740";}
         else if(B.idx%3===1){B.mat.color.setHex(0x00f0ff);B.css="#00f0ff";}
@@ -204,7 +205,7 @@
     const dGeo=new THREE.BufferGeometry();
     dGeo.setAttribute("position",new THREE.BufferAttribute(dPos,3));
     dGeo.setAttribute("color",new THREE.BufferAttribute(dCol,3));
-    dryIcePoints=new THREE.Points(dGeo,new THREE.PointsMaterial({size:.55,sizeAttenuation:true,vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,opacity:0,depthWrite:false,toneMapped:false,fog:false}));
+    dryIcePoints=new THREE.Points(dGeo,new THREE.PointsMaterial({size:.48,sizeAttenuation:true,vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,opacity:0,depthWrite:false,toneMapped:false,fog:false}));
     dryIcePoints.name="motionShowDryIce";dryIcePoints.visible=false;dryIcePoints.frustumCulled=false;dryIcePoints.renderOrder=7;
     indoorRoot.add(dryIcePoints);
 
@@ -219,7 +220,7 @@
     const pGeo=new THREE.BufferGeometry();
     pGeo.setAttribute("position",new THREE.BufferAttribute(pPos,3));
     pGeo.setAttribute("color",new THREE.BufferAttribute(pCol,3));
-    pyroPoints=new THREE.Points(pGeo,new THREE.PointsMaterial({size:.24,sizeAttenuation:true,vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,opacity:.95,depthWrite:false,toneMapped:false,fog:false}));
+    pyroPoints=new THREE.Points(pGeo,new THREE.PointsMaterial({size:.19,sizeAttenuation:true,vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,opacity:.62,depthWrite:false,toneMapped:false,fog:false}));
     pyroPoints.name="motionShowPyro";pyroPoints.visible=false;pyroPoints.frustumCulled=false;pyroPoints.renderOrder=8;
     indoorRoot.add(pyroPoints);
   }
@@ -286,7 +287,7 @@
         if(d.age<d.life){
           anyD=true;
           const u=d.age/d.life;
-          maxAlpha=Math.max(maxAlpha,Math.sin(u*Math.PI)*.42);
+          maxAlpha=Math.max(maxAlpha,Math.sin(u*Math.PI)*.22);
           d.x+=d.vx*dt;d.y+=d.vy*dt;d.z+=d.vz*dt;
           d.vy*=(1-1.8*dt);d.vx*=(1-.9*dt);d.vz*=(1-.9*dt);
           pos[i*3]=d.x;pos[i*3+1]=d.y;pos[i*3+2]=d.z;
@@ -384,25 +385,25 @@
       const isSuper=kind==="super10"||!!(info&&(info.super||info.val===10));
       const isDeep=!isSuper&&(kind==="deep5"||!!(info&&(info.deep||info.val===5)));
       if(isSuper){
-        /* 10 分超远球:全场特级灯光秀(十束聚光灯 + 四层全彩金流灯带 + 全场地板 JACKPOT 动效 + 烟花干冰齐射) */
+        /* 10 分超远球:全场特级灯光秀(十束聚光灯 + 四层全彩金流灯带 + 全场地板 JACKPOT 动效 + 烟花干冰齐射,不叠加过曝白闪) */
         S.special={kind:"super10",t:0,dur:2.85,title:"10PT SUPER JACKPOT",sub:"LOGO ULTRA RANGE · +10 PTS"};
-        S.burst=0;
+        S.burst=-1;
         S.pulses.length=0;
-        S.pulses.push({t:0,big:true,mode:"super10"},{t:-.28,big:true,mode:"super10"},{t:-.56,big:true,mode:"super10"});
-        S.ripples.push({t:0,mode:"super10"},{t:-.18,mode:"super10"},{t:-.36,mode:"super10"});
+        S.pulses.push({t:0,big:true,mode:"super10"},{t:-.36,big:false,mode:"super10"});
+        S.ripples.push({t:0,mode:"super10"},{t:-.22,mode:"super10"});
         S.lastRing=S.t;
-        triggerClimaxCelebration(1.3,"super10");
+        triggerClimaxCelebration(1.0,"super10");
         return true;
       }
       if(isDeep){
         /* 5 分彩球点:专属炫彩电光灯光秀(十束聚光灯扫射 + 双重电青脉冲灯带 + 地板 5PT DEEP 投影 + 烟花干冰) */
         S.special={kind:"deep5",t:0,dur:1.95,title:"5PT DEEP RANGE",sub:"DEEP MONEY SPOT · +5 PTS"};
-        S.burst=0.12;
+        S.burst=-1;
         S.pulses.length=0;
-        S.pulses.push({t:0,big:true,mode:"deep5"},{t:-.24,big:true,mode:"deep5"});
-        S.ripples.push({t:0,mode:"deep5"},{t:-.16,mode:"deep5"});
+        S.pulses.push({t:0,big:true,mode:"deep5"});
+        S.ripples.push({t:0,mode:"deep5"},{t:-.18,mode:"deep5"});
         S.lastRing=S.t;
-        triggerClimaxCelebration(0.92,"deep5");
+        triggerClimaxCelebration(0.76,"deep5");
         return true;
       }
       S.ripples.push({t:0});if(S.ripples.length>4)S.ripples.shift();        // 地板涟漪:每球都有
@@ -440,44 +441,45 @@
       for(let i=0;i<R.SEG;i++){
         const d=R.ang[i];let I=0,W=0,cMode=0;
         /* 连中热度:篮筐后方一段持续发亮,越热越宽越亮 */
-        if(S.heat>.01)I+=S.heat*.55*Math.exp(-Math.pow(d/(.5+S.heat*.9),2));
+        if(S.heat>.01)I+=S.heat*.44*Math.exp(-Math.pow(d/(.5+S.heat*.9),2));
         /* 命中光波:从篮筐后方向两侧扫开 */
         for(const p of S.pulses){const u=(p.t-R.lag)/RING_PULSE;if(u<=0||u>=1)continue;
-          const front=(1-Math.pow(1-u,1.6))*Math.PI*1.04,amp=(p.big?1.55:1.15)*sm(u*6)*Math.pow(1-u,1.2);
+          const front=(1-Math.pow(1-u,1.6))*Math.PI*1.04,amp=(p.big?.92:.72)*sm(u*6)*Math.pow(1-u,1.2);
           I+=amp*Math.exp(-Math.pow((d-front)/.5,2));                                   // 光波头:宽而柔
-          if(d<front)I+=amp*.36*Math.exp(-(front-d)/.95);                               // 身后拖一条慢慢暗下去的尾迹
+          if(d<front)I+=amp*.28*Math.exp(-(front-d)/.95);                               // 身后拖一条慢慢暗下去的尾迹
           if(p.mode==="super10")cMode=2;else if(p.mode==="deep5"&&cMode<1)cMode=1;
         }
-        /* 5分 / 10分 专属灯带流光狂欢 */
+        /* 5分 / 10分 专属灯带流光狂欢(控制高光饱和度,避免加色冲白) */
         if(spec){
           const su=clamp(spec.t/spec.dur,0,1),sk=Math.sin(su*Math.PI);
           if(spec.kind==="super10"){
             const wave=.5+.5*Math.sin(i/R.SEG*TAU*3-S.t*9.5+R.lag*2);
-            I+=1.65*sk*(.45+.55*wave);
-            W+=.85*sk*Math.pow(wave,3);
+            I+=.95*sk*(.45+.55*wave);
+            W+=.18*sk*Math.pow(wave,3);
             cMode=2;
           }else if(spec.kind==="deep5"){
             const wave=.5+.5*Math.cos(i/R.SEG*TAU*2-S.t*7.2+R.lag*1.6);
-            I+=1.35*sk*(.4+.6*wave);
-            W+=.55*sk*Math.pow(wave,2);
+            I+=.82*sk*(.4+.6*wave);
+            W+=.14*sk*Math.pow(wave,2);
             if(cMode<1)cMode=1;
           }
         }
-        /* 关键球:一黑(由曝光负责)再全场爆亮,带白 */
-        if(b>=0){const u=b/BURST;if(u>.13){const k=Math.pow(1-(u-.13)/.87,2.2);I+=1.5*k;W+=.9*k*k;}}
+        /* 关键球:灯带流光脉冲(严格限制白光分量 W,防止灯带变成刺眼白条) */
+        if(b>=0&&!spec){const u=b/BURST;if(u>.13){const k=Math.pow(1-(u-.13)/.87,2.2);I+=.88*k;W+=.20*k*k;}}
         /* 登场:先全灭,追光绕场,高潮收回时全场齐闪流光,最后柔和收掉 */
         if(e>=0){
           const left=S.entDur-e;
           if(e>.6&&left>.2){
             const a0=e*2.6,dd=Math.abs(((i/R.SEG*TAU-a0)%TAU+TAU)%TAU-Math.PI);
-            I+=.95*Math.exp(-Math.pow((Math.PI-dd)/.48,2))*sm(left/.55);
+            I+=.75*Math.exp(-Math.pow((Math.PI-dd)/.48,2))*sm(left/.55);
           }
-          if(e>1.0){const k=Math.pow(clamp(1-(e-1.0)/.9,0,1),2);I+=1.3*k;W+=.7*k*k;}
+          if(e>1.0){const k=Math.pow(clamp(1-(e-1.0)/.9,0,1),2);I+=.82*k;W+=.18*k*k;}
           if(left<=1.35&&left>0){
             const ck=Math.sin(clamp((1.35-left)/1.35,0,1)*Math.PI);
-            I+=1.45*ck;W+=.85*ck*ck;
+            I+=.88*ck;W+=.22*ck*ck;
           }
         }
+        I=Math.min(I,1.02);W=Math.min(W,0.22);
         let cr=C.acc.r,cg=C.acc.g,cb=C.acc.b;
         if(cMode===2){
           const h=((i/R.SEG)+S.t*.65)%1;
@@ -639,16 +641,16 @@
       }
       /* 场地线动态勾勒 */
       traceLines(g,outExpo((e-.2)/.95),fadeAlpha*(e<1.6?1:.58),C.accCss);
-      /* 十束聚光灯在地板上的实时光斑(让玩家低头看球场也能直接看到十个聚光灯的运动与收拢!) */
+      /* 十束聚光灯在地板上的实时光斑(用柔和队色光晕代替纯白中心,防止十束收拢时地板中心过曝发白) */
       for(const B of beams){
         if(!B.active)continue;
-        const bx=CXF+B.hitX*M,by=(B.hitZ-COURT.nearBaseline)*M,br=(1.15-.35*retractK)*M;
+        const bx=CXF+B.hitX*M,by=(B.hitZ-COURT.nearBaseline)*M,br=(1.10-.35*retractK)*M;
         if(by<-br||by>FH+br)continue;
         const bgr=g.createRadialGradient(bx,by,0,bx,by,br);
-        bgr.addColorStop(0,"#ffffff");
-        bgr.addColorStop(.38,B.css+"aa");
+        bgr.addColorStop(0,B.css+"99");
+        bgr.addColorStop(.45,B.css+"33");
         bgr.addColorStop(1,"rgba(0,0,0,0)");
-        g.globalAlpha=clamp(fadeAlpha*.62,0,1);
+        g.globalAlpha=clamp(fadeAlpha*.28*(1-.5*retractK),0,.32);
         g.fillStyle=bgr;g.beginPath();g.arc(bx,by,br,0,TAU);g.fill();
       }
       g.save();g.translate(CXF,HOOP_PY);g.rotate(S.phi);
@@ -702,73 +704,72 @@
       /* 阶段 4 (最后 1.35s): 亮灯收回瞬间的径向聚能光环与柔和闪光扩散 */
       if(retractK>0){
         const waveR=(.6+retractK*9.5)*M,waveA=Math.sin(retractK*Math.PI);
-        g.globalAlpha=waveA*.85;g.strokeStyle="#ffffff";g.lineWidth=(.18*(1-retractK)+.04)*M;
+        g.globalAlpha=waveA*.38;g.strokeStyle="#ffffff";g.lineWidth=(.14*(1-retractK)+.03)*M;
         g.beginPath();g.arc(0,3.8*M,waveR,0,TAU);g.stroke();
-        g.globalAlpha=waveA*.65;g.strokeStyle=C.accCss;g.lineWidth=.12*M;
+        g.globalAlpha=waveA*.42;g.strokeStyle=C.accCss;g.lineWidth=.10*M;
         g.beginPath();g.arc(0,3.8*M,waveR*.78,0,TAU);g.stroke();
       }
       g.restore();
-      if(S.sp&&S.spK>.02){const sx=CXF+S.sp.x*PX,sy=(S.sp.z-COURT.nearBaseline)*PX,rr=1.9*PX,gr=g.createRadialGradient(sx,sy,0,sx,sy,rr);
-        gr.addColorStop(0,"rgba(255,255,255,.55)");gr.addColorStop(.55,C.accCss+"66");gr.addColorStop(1,"rgba(0,0,0,0)");
-        g.globalAlpha=S.spK*.85*fadeAlpha;g.fillStyle=gr;g.fillRect(sx-rr,sy-rr,rr*2,rr*2);g.globalAlpha=1;}
+      if(S.sp&&S.spK>.02){const sx=CXF+S.sp.x*PX,sy=(S.sp.z-COURT.nearBaseline)*PX,rr=1.8*PX,gr=g.createRadialGradient(sx,sy,0,sx,sy,rr);
+        gr.addColorStop(0,"rgba(255,255,255,.22)");gr.addColorStop(.55,C.accCss+"44");gr.addColorStop(1,"rgba(0,0,0,0)");
+        g.globalAlpha=S.spK*.38*fadeAlpha;g.fillStyle=gr;g.fillRect(sx-rr,sy-rr,rr*2,rr*2);g.globalAlpha=1;}
     }else{
-      /* 5分 / 10分 专属夸张地板灯光投影秀 */
+      /* 5分 / 10分 专属地板灯光投影秀(控制高光透明度,清晰炫丽但不过曝) */
       if(spec){
         any=true;
         const u=clamp(spec.t/spec.dur,0,1),env=Math.sin(u*Math.PI);
         const is10=spec.kind==="super10";
         const colMain=is10?"#ffd740":"#00f0ff",colSub=is10?"#00f0ff":C.accCss;
-        traceLines(g,1,env*(is10?.95:.75),colMain);
+        traceLines(g,1,env*(is10?.55:.45),colMain);
         /* 十束聚光灯在地板上的高能扫射光斑 */
         for(const B of beams){
           if(!B.active)continue;
-          const bx=CXF+B.hitX*M,by=(B.hitZ-COURT.nearBaseline)*M,br=1.15*M;
+          const bx=CXF+B.hitX*M,by=(B.hitZ-COURT.nearBaseline)*M,br=1.08*M;
           const bgr=g.createRadialGradient(bx,by,0,bx,by,br);
-          bgr.addColorStop(0,"#ffffff");bgr.addColorStop(.45,B.css+"aa");bgr.addColorStop(1,"rgba(0,0,0,0)");
-          g.globalAlpha=env*.65;g.fillStyle=bgr;g.beginPath();g.arc(bx,by,br,0,TAU);g.fill();
+          bgr.addColorStop(0,B.css+"99");bgr.addColorStop(.48,B.css+"33");bgr.addColorStop(1,"rgba(0,0,0,0)");
+          g.globalAlpha=env*.26;g.fillStyle=bgr;g.beginPath();g.arc(bx,by,br,0,TAU);g.fill();
         }
         g.save();g.translate(CXF,HOOP_PY);g.rotate(S.phi);
         const numRings=is10?5:3;
         for(let i=0;i<numRings;i++){
           const ru=clamp((u*1.35-i*.14),0,1);if(ru<=0||ru>=1)continue;
           const rr=outExpo(ru)*(is10?11.5:8.8)*M;
-          g.globalAlpha=(1-ru)*env*.9;
+          g.globalAlpha=(1-ru)*env*.52;
           g.strokeStyle=i%2===0?colMain:colSub;
-          g.lineWidth=(.16*(1-ru)+.04)*M;
+          g.lineWidth=(.14*(1-ru)+.035)*M;
           g.beginPath();g.arc(0,3.8*M,rr,0,TAU);g.stroke();
         }
         const scalePop=1+.35*(1-outExpo(clamp(u*3.2,0,1)));
         g.translate(0,4.4*M);g.scale(scalePop,scalePop*1.42);
-        g.globalAlpha=env;
+        g.globalAlpha=env*.82;
         text(g,is10?"+10":"+5",0,-.55*M,is10?1.85*M:1.45*M,{stroke:4,color:colMain});
         text(g,is10?"+10":"+5",0,-.55*M,is10?1.85*M:1.45*M,{color:"#ffffff"});
         text(g,spec.title,0,.48*M,.52*M,{color:colMain});
         text(g,spec.sub,0,.92*M,.24*M,{plain:true,color:"#ffffff"});
         g.restore();
       }
-      /* 命中涟漪:以篮筐正下方为圆心 */
+      /* 命中涟漪:以篮筐正下方为圆心(柔和脉冲,不刺眼) */
       for(const p of S.ripples){const u=p.t/PULSE;if(u<=0||u>=1)continue;any=true;
         const r=outExpo(u)*9.2*M;
         const rCol=p.mode==="super10"?"#ffd740":(p.mode==="deep5"?"#00f0ff":C.accCss);
-        g.globalAlpha=.82*Math.pow(1-u,1.4);g.strokeStyle=rCol;g.lineWidth=(.05+.22*(1-u))*M;
+        g.globalAlpha=.48*Math.pow(1-u,1.4);g.strokeStyle=rCol;g.lineWidth=(.045+.18*(1-u))*M;
         g.beginPath();g.arc(CXF,HOOP_PY,r,0,TAU);g.stroke();
-        g.globalAlpha=.9*Math.pow(1-u,1.5);g.strokeStyle="#fff";g.lineWidth=.045*M;g.beginPath();g.arc(CXF,HOOP_PY,r+.16*M,0,TAU);g.stroke();
-        g.globalAlpha=.45*Math.pow(1-u,2);g.strokeStyle=rCol;g.lineWidth=.06*M;g.beginPath();g.arc(CXF,HOOP_PY,r*.72,0,TAU);g.stroke();}
+        g.globalAlpha=.32*Math.pow(1-u,1.6);g.strokeStyle="#fff";g.lineWidth=.038*M;g.beginPath();g.arc(CXF,HOOP_PY,r+.16*M,0,TAU);g.stroke();
+        g.globalAlpha=.26*Math.pow(1-u,2);g.strokeStyle=rCol;g.lineWidth=.05*M;g.beginPath();g.arc(CXF,HOOP_PY,r*.72,0,TAU);g.stroke();}
       /* 连中:禁区里闪一下 ×N */
       if(S.streakT>=0&&S.streakT<1.2){any=true;
-        const u=S.streakT/1.2,s=1+.45*(1-outExpo(u*3)),a=1-sm((u-.6)/.4),str=String(S.streak),hN=2.1*M;
+        const u=S.streakT/1.2,s=1+.45*(1-outExpo(u*3)),a=(1-sm((u-.6)/.4))*.82,str=String(S.streak),hN=2.1*M;
         g.save();g.translate(CXF,HOOP_PY);g.rotate(S.phi);g.translate(0,3.3*M);g.scale(s,s*1.5);
-        g.globalAlpha=a*.6;digits(g,str,hN*1.1,1,"#fff","stroke",1.6);
+        g.globalAlpha=a*.5;digits(g,str,hN*1.1,1,"#fff","stroke",1.6);
         g.globalAlpha=a;digits(g,str,hN,clamp(u*4,0,1),C.accCss,"fill");
         /* 乘号 */
         const xo=-(str.length*hN*.64+(str.length-1)*hN*.17)/2-.5*M;
         g.globalAlpha=a;g.strokeStyle="#fff";g.lineWidth=.16*M;g.lineCap="round";g.beginPath();
         g.moveTo(xo-.3*M,-.3*M);g.lineTo(xo+.3*M,.3*M);g.moveTo(xo+.3*M,-.3*M);g.lineTo(xo-.3*M,.3*M);g.stroke();
         g.restore();}
-      /* 关键球:场地线整组亮一下 + 地板柔和闪光 */
+      /* 关键球:场地线整组亮一下(去掉原先整场铺满纯白/队色 fillRect 造成的地板大面积过曝) */
       if(S.burst>=0&&!spec){const u=S.burst/BURST;if(u>.13){any=true;const k=Math.pow(1-(u-.13)/.87,2.4);
-        g.globalAlpha=.28*k;g.fillStyle=C.accCss;g.fillRect(0,0,FW,FH);g.globalAlpha=.26*k*k;g.fillStyle="#fff";g.fillRect(0,0,FW,FH);
-        traceLines(g,1,Math.min(1,k*1.6));}}
+        traceLines(g,1,Math.min(.58,k*.85));}}
     }
     g.globalAlpha=1;
     floor.visible=any;if(any)ftex.needsUpdate=true;
@@ -789,7 +790,8 @@
     if(S.spK<.003){spot.intensity=0;return;}
     spot.color.setRGB(1,1,1).lerp(C.acc,.28);
     spot.position.set(S.sp.x+.9,11,S.sp.z+1.6);spotTarget.position.set(S.sp.x,1.0+S.sp.y*.8,S.sp.z);spotTarget.updateMatrixWorld(true);
-    spot.intensity=7.5*S.spK;
+    /* 控制聚光灯强度(原为 7.5 导致球衣与脚下地板严重过曝发白),2.6 既凸显主角层次又不过曝 */
+    spot.intensity=2.6*S.spK;
   }
   function update(t){
     if(!S.built){if(!active())return;build();syncStar();}
@@ -825,30 +827,30 @@
       /* 亮灯收回前 1.15s:触发烟花 + 干冰气柱 + 啦啦队欢呼 + 观众音浪 + 收光回弹 */
       if(!S.climaxFired&&S.ent>=S.entDur-1.15){
         S.climaxFired=true;
-        triggerClimaxCelebration(1.1,"climax");
+        triggerClimaxCelebration(0.88,"climax");
       }
       if(S.ent>S.entDur)S.ent=-1;
     }
     updAtmosphereFX(dt);
     S.heat+=(S.heatT-S.heat)*(1-Math.exp(-(S.heatT>S.heat?3:1.6)*dt));
-    /* 场灯曝光:从黑到亮采用丝滑过渡 + 亮灯收回瞬间微过曝回弹(1.14 → 1.0),告别生硬跳变 */
+    /* 场灯曝光:严格抑制高光过曝(上限 ≤ 1.04);5分/10分/关键球略微压暗环境底光(0.86..0.92)以衬托彩灯与光束层次,绝不拉高全屏曝光冲白 */
     let dim=1;
     if(typeof G!=="undefined"&&G.charging)dim=.93;
     if(S.ent>=0){
       const e=S.ent,left=S.entDur-e;
       const darkIn=sm(e/.65);
       const rec=sm((1.25-left)/1.15);
-      const bloom=Math.sin(rec*Math.PI)*.18;
-      dim=1-.68*darkIn*(1-rec)+bloom;
+      const bloom=Math.sin(rec*Math.PI)*.04;
+      dim=1-.58*darkIn*(1-rec)+bloom;
     }
     if(S.special){
       const su=clamp(S.special.t/S.special.dur,0,1);
-      if(S.special.kind==="super10")dim=su<.12?.42:1+.24*Math.sin(su*Math.PI);
-      else if(S.special.kind==="deep5")dim=1+.16*Math.sin(su*Math.PI);
+      if(S.special.kind==="super10")dim=su<.14?.76:1-.10*Math.sin(su*Math.PI);
+      else if(S.special.kind==="deep5")dim=1-.08*Math.sin(su*Math.PI);
     }else if(S.burst>=0){
-      const u=S.burst/BURST;dim=u<.13?.38:1+.16*Math.pow(1-(u-.13)/.87,2);
+      const u=S.burst/BURST;dim=u<.13?.68:1+.03*Math.pow(1-(u-.13)/.87,2);
     }
-    const rate=S.burst>=0?24:(S.ent>=0?14:8);
+    const rate=S.burst>=0?20:(S.ent>=0?14:8);
     S.dim+=(dim-S.dim)*(1-Math.exp(-rate*dt));
     if(Math.abs(S.dim-1)<.002&&dim===1)S.dim=1;
     /* 曝光:不压暗时不写,并把当前值记成基准(别的系统改了曝光也不会被这里盖回去) */
@@ -863,20 +865,20 @@
         const e=S.ent,left=S.entDur-e;
         const inB=sm((e-.15)/.45);
         retract=sm((.85-left)/.75);
-        bk=inB*(1-retract*.95);
-        sk=inB*(1-sm((1.15-left)/.95));
+        bk=inB*(1-retract*.95)*.82;
+        sk=inB*(1-sm((1.15-left)/.95))*.78;
         const g1=sm((e-.7)/.35)*(1-sm((e-1.9)/.65));
         const gEnd=sm((1.35-left)/.55);
         gather=Math.max(g1*.75,gEnd);
       }
       if(S.special){
         const su=clamp(S.special.t/S.special.dur,0,1),sEnv=Math.sin(su*Math.PI);
-        bk=Math.max(bk,S.special.kind==="super10"?.95*sEnv:.82*sEnv);
+        bk=Math.max(bk,S.special.kind==="super10"?.68*sEnv:.56*sEnv);
         gather=Math.max(gather,sm((su-.62)/.32));
         retract=Math.max(retract,sm((su-.78)/.22));
-        if(S.special.kind==="super10")sk=Math.max(sk,.92*sEnv);
+        if(S.special.kind==="super10")sk=Math.max(sk,.75*sEnv);
       }
-      if(S.burst>=0&&!S.special){const u=S.burst/BURST;if(u>.13)bk=Math.max(bk,.75*Math.pow(1-(u-.13)/.87,1.6));}
+      if(S.burst>=0&&!S.special){const u=S.burst/BURST;if(u>.13)bk=Math.max(bk,.48*Math.pow(1-(u-.13)/.87,1.6));}
       setBeams(bk,gather,retract);setStars(sk);}
     /* 地板画布重绘:平时空闲 0 重绘 0 上传;特效期移动端自适应 30fps 并避开重负载帧,桌面端 60fps */
     const need=S.ent>=0||S.special!=null||S.ripples.length||S.streakT>=0||S.burst>=0;

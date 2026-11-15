@@ -23,10 +23,11 @@
       D.ids=Object.keys(D.clips);D.ready=true;D.loading=false;
     }).catch(e=>{D.failed=true;D.loading=false;D.error=String(e);});
   }
-  /* 选一段:写实皮套什么都能跳;方块人只能选 vox_ok 的(霹雳定格有手撑地、身体横躺,方块人立不起来) */
-  function pick(skinned){
-    const ids=D.ids.filter(id=>skinned?true:D.clips[id].vox_ok);
+  /* 选一段:写实皮套什么都能跳;方块人只能选 vox_ok 的(霹雳定格有手撑地、身体横躺,方块人立不起来);支持传入 avoid 避免连续重样 */
+  function pick(skinned,avoid){
+    let ids=D.ids.filter(id=>skinned?true:D.clips[id].vox_ok);
     if(!ids.length)return null;
+    if(avoid&&ids.length>1)ids=ids.filter(id=>id!==avoid);
     return ids[(Math.random()*ids.length)|0];
   }
   const Q0=new Float32Array(4),Q1=new Float32Array(4);
@@ -83,5 +84,5 @@
   }
   D.load=load;D.pick=pick;D.sample=sample;D.applyVox=applyVox;
   global.AIBADance=D;
-  if(D.enabled)setTimeout(load,1500);
+  if(D.enabled)load();
 })(window);

@@ -474,13 +474,14 @@
       root.updateMatrixWorld(true);
 
       /* 手里的球挪到这副手上,AIBA 出手从这里读;第一人称的显示球用同一个世界坐标 */
-      state.ballWorld=null;
+      state.ballWorld=null;state.ballLocal=null;
       if(ballK){ballK.y+=off;state.ballWorld=_ballWorld.copy(ballK).applyMatrix4(root.matrix);}
       if(ball&&grip&&ball.parent===grip){
         const w=state.ballWorld?TV().copy(state.ballWorld):wpos(R.L.hand);
         state.ballShift=_ballShift.copy(w).sub(TV().setFromMatrixPosition(grip.matrixWorld));
         if(cfg.player&&window.AIBAKobe)AIBAKobe.ballShift=state.ballShift;   // 回放 / 传球读这个字段把球对到画面上的手
-        ball.position.copy(w.applyMatrix4(_m.copy(grip.matrixWorld).invert()));state.ballMoved=true;
+        state.ballLocal=(state._ballLocal||(state._ballLocal=new T.Vector3())).copy(w).applyMatrix4(_m.copy(grip.matrixWorld).invert());
+        state.ballMoved=true;
       }
     }
 
@@ -554,6 +555,10 @@
         root.visible=true;state.mesh.visible=tp;state.fp.visible=fpOn;
         if(tp)hideTree(guy.g,held,null);
         _movedN=0;
+        if(held&&held.parent&&held.parent.name==="ballGrip"&&state.ballLocal){
+          const o=_movedN*3;_movedM[_movedN++]=held;_movedV[o]=held.position.x;_movedV[o+1]=held.position.y;_movedV[o+2]=held.position.z;
+          held.position.copy(state.ballLocal);
+        }
         if(fpOn){
           hideTree(state.fpRig,fpBall,null);
           /* 第一人称的显示球挂在方块手的 ballGrip 上,挪到这副手的掌心 */
