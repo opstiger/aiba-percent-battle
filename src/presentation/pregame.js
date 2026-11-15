@@ -21,12 +21,17 @@ function setPregameDunkStyle(style){
   return pregameDunkStyle;
 }
 function getPregameDunkStyle(){return PREGAME.dunkStyle;}
-const PREGAME_ACTIONS=["shoot","stretch","dunk","chalk","hang","finger","huddle","wave","pump"];
+/* 挂框定格(双手挂框)和双手扣篮都去掉了:动作很怪。扣篮改单手,并且出场更频繁(dunk 占两份) */
+const PREGAME_ACTIONS=["shoot","stretch","dunk","dunk","dance","dance","chalk","finger","huddle","wave","pump"];
 const PREGAME_CAMS=["orbit","push","low","overhead","freeze","follow","pan","pull"];
 const pregamePick=a=>a[(Math.random()*a.length)|0];
+/* 这个球员现在是不是写实蒙皮(是的话能跳完整舞蹈,包括霹雳定格;方块人只跳 vox_ok 的) */
+function pregameSkinned(guy){
+  try{return [window.AIBATripo].concat(window.AIBATripoRivals||[]).some(s=>s&&s.ready&&s.player===guy&&s.root);}catch(e){return false;}
+}
 const PREGAME_LABELS={
   shoot:"投篮热身",stretch:"拉伸热身",dunk:"Air Jordan 扣篮",chalk:"撒镁粉",hang:"挂框定格",
-  finger:"对镜头摇手指",huddle:"拥抱打气",wave:"向镜头致意",pump:"赛前加油"
+  finger:"对镜头摇手指",huddle:"拥抱打气",wave:"向镜头致意",pump:"赛前加油",dance:"热身舞蹈"
 };
 function pregameBallFor(guy){
   if(guy===player)return pBall;
@@ -251,14 +256,21 @@ function pregameBuildShots(opts){
     const actor=actors[i%actors.length]||actors[0];
     let action;
     if(i===0)action="shoot";
-    else if(i===1)action=pregamePick(["chalk","hang","dunk"]);
+    else if(i===1)action=pregamePick(["dunk","dunk","chalk"]);
     else action=pregamePick(PREGAME_ACTIONS);
     if(action===lastAction)action=pregamePick(PREGAME_ACTIONS);
     if(action==="huddle"&&actors.length<2)action="pump";
-    if((action==="dunk"||action==="hang")&&opts.mode==="contest"&&Math.random()<0.45)action="shoot";
-    const dur=rnd(1.15,1.65),cam=pregamePick(PREGAME_CAMS);
-    shots.push({start:t,dur,actor,action,cam,side:Math.random()<0.5?-1:1,seed:rnd(0,Math.PI*2),group:action==="huddle"});
-    t+=dur;i++;lastAction=action;
+    if(action==="dance"&&!(window.AIBADance&&AIBADance.ready&&AIBADance.ids.length))action="pump";
+    if(action==="dunk"&&opts.mode==="contest"&&Math.random()<0.15)action="shoot";
+    let dur=action==="dunk"?rnd(1.55,1.85):rnd(1.15,1.65);const cam=pregamePick(PREGAME_CAMS);
+    const seg={start:t,dur,actor,action,cam,side:Math.random()<0.5?-1:1,seed:rnd(0,Math.PI*2),group:action==="huddle"};
+    if(action==="dance"){
+      const clip=AIBADance.pick(pregameSkinned(actor.guy));
+      if(clip){seg.clip=clip;seg.dur=dur=rnd(2.1,2.9);seg.danceStart=rnd(0,Math.max(0,AIBADance.clips[clip].dur-seg.dur-.2));}
+      else seg.action="pump";
+    }
+    shots.push(seg);
+    t+=seg.dur;i++;lastAction=seg.action;
   }
   return shots;
 }
@@ -270,7 +282,7 @@ function pregameCaption(seg){
 }
 function pregamePlace(actor,pos,face){
   const guy=actor.guy;
-  guy.g.visible=true;guy.g.position.set(pos.x,0,pos.z);guy.g.rotation.set(0,face,0);
+  guy.g.visible=true;guy.g.position.set(pos.x,0,pos.z);guy.g.rotation.order="XYZ";guy.g.rotation.set(0,face,0);
 }
 function pregameActionBase(actor,action,u){
   const base=actor.base.clone();
@@ -371,33 +383,30 @@ function pregameAnimate(actor,action,u,seg){
     guy.elbows.forEach(e=>e.rotation.x=-0.18);
     guy.legs.forEach(l=>l.rotation.x=-0.15);guy.knees.forEach(k=>k.rotation.x=0.44);
   }else if(action==="dunk"){
+    /* 单手扣篮:持球手(arms[0])把球举到篮圈,另一只手向外张开保持平衡,前腿提膝、后腿微屈。
+       以前是双手一起举过头 + Air Jordan 静态姿势,看着像举手投降 */
     const timing=PREGAME_DUNK_TIMING,air=pregameDunkAir(u);
     const gripRise=Math.max(0.98,HOOP.y-2.01+0.015);
     guy.g.position.y=0.08+air*gripRise;
     const reach=u<timing.contact
       ?smoothRange(timing.takeoffStart,timing.contact,u)
       :u<timing.hangEnd?1:1-smoothRange(timing.hangEnd,timing.landEnd,u);
-    guy.arms.forEach(a=>a.rotation.x=-0.42-2.38*reach);
-    guy.elbows.forEach(e=>e.rotation.x=-0.3-0.48*reach);
-    guy.legs[0].rotation.x=-0.12-0.3*air;guy.legs[1].rotation.x=0.1+0.24*air;
-    guy.knees.forEach(k=>k.rotation.x=0.18+0.54*air);
-    const useAirJordan=PREGAME.dunkStyle===PREGAME_DUNK_STYLE_AIR_JORDAN&&
-      typeof applyTstageDunkPose==="function";
-    const airJordanWeight=useAirJordan
-      ?smoothRange(.12,.29,u)*(1-smoothRange(timing.hangEnd,timing.landEnd-.06,u)):0;
-    const airJordanApplied=useAirJordan&&applyTstageDunkPose(guy,airJordanWeight);
+    guy.arms[0].rotation.x=-0.42-2.62*reach;guy.arms[0].rotation.z=-0.06*reach;
+    guy.elbows[0].rotation.x=-0.3-0.12*reach;
+    guy.arms[1].rotation.x=-0.42-0.35*reach;guy.arms[1].rotation.z=0.12+0.95*reach;
+    guy.elbows[1].rotation.x=-0.3-0.3*reach;
+    guy.legs[0].rotation.x=-0.12-0.72*air;guy.legs[1].rotation.x=0.1+0.3*air;
+    guy.knees[0].rotation.x=0.18+0.95*air;guy.knees[1].rotation.x=0.18+0.5*air;
     if(ball)ball.material=matBall;
-    seg._pregameDunkPoseWeight=airJordanWeight;
-    seg._pregameDunkPoseBall=airJordanApplied&&typeof tstageDunkBallLocal==="function"
-      ?tstageDunkBallLocal("dunk_air_jordan"):null;
+    seg._pregameDunkPoseWeight=0;seg._pregameDunkPoseBall=null;
     const phase=pregameDunkPhase(u);
     seg._pregameDunkPhase=phase;
     if(guy.g){
-      guy.g.userData.pregameDunkStyle=airJordanApplied?PREGAME_DUNK_STYLE_AIR_JORDAN:PREGAME_DUNK_STYLE_LEGACY;
-      guy.g.userData.pregameDunkPoseWeight=airJordanWeight;
+      guy.g.userData.pregameDunkStyle="one-hand";
+      guy.g.userData.pregameDunkPoseWeight=0;
       guy.g.userData.pregameDunkPhase=phase;
     }
-    if(u>=timing.contact&&u<timing.hangEnd)pregamePinDunkHand(guy,u,airJordanWeight,false);
+    if(u>=timing.contact&&u<timing.hangEnd)pregamePinDunkHand(guy,u,0,false);
   }else if(action==="hang"){
     const hangRise=smoothRange(.1,.32,u),hangRelease=smoothRange(.48,.7,u);
     const hang=hangRise*(1-hangRelease),gripRise=Math.max(0.98,HOOP.y-2.01+0.015);
@@ -407,6 +416,15 @@ function pregameAnimate(actor,action,u,seg){
     guy.elbows.forEach(e=>e.rotation.x=-0.3-0.48*reach);
     guy.legs[0].rotation.x=-0.12-0.3*hang;guy.legs[1].rotation.x=0.1+0.24*hang;
     guy.knees.forEach(k=>k.rotation.x=0.18+0.54*hang);
+  }else if(action==="dance"){
+    /* 热身舞蹈:写实皮套走骨骼(guy.pregameDance),方块人走关节参数;出入场各 12% 平滑混合 */
+    const smp=window.AIBADance&&seg.clip?AIBADance.sample(seg.clip,seg.danceStart+u*seg.dur):null;
+    if(smp){
+      const w=smoothRange(0,.12,u)*(1-smoothRange(.88,1,u));
+      const skinned=pregameSkinned(guy),clipInfo=AIBADance.clips[seg.clip];
+      if(!skinned&&clipInfo.vox_ok)AIBADance.applyVox(guy,smp.vox,w);   // 写实皮套走骨骼,方块人才走关节参数
+      if(skinned)guy.pregameDance={q:smp.q,hy:smp.hy,w};
+    }
   }else if(action==="chalk"){
     const toss=smoothRange(.42,.72,u),rub=Math.sin(t*16)*(1-toss);
     guy.arms[0].rotation.x=-0.9-toss*1.65+rub*0.08;guy.arms[1].rotation.x=-0.9-toss*1.65-rub*0.08;
@@ -570,6 +588,7 @@ function pregameReadyCameraTarget(){
 function finishPreGameShow(){
   const cb=PREGAME.cb,prev=PREGAME.prevState;
   PREGAME.snaps.forEach(pregameRestoreGuy);
+  PREGAME.actors.forEach(a=>{a.guy.pregameLift=0;a.guy.pregameDance=null;});
   PREGAME.on=false;PREGAME.t=0;PREGAME.idx=0;PREGAME.shots=[];PREGAME.actors=[];PREGAME.snaps=[];PREGAME.cb=null;PREGAME.poseCache.clear();hidePregameChalk();
   $("vsBanner").style.display="none";
   P.jump=0;P.eyeDip=0;P.walking=false;G.state=prev;G.moving=false;G.glideCam=false;
@@ -587,9 +606,12 @@ function updPreGameShow(dt){
   const u=clamp((PREGAME.t-seg.start)/seg.dur,0,1);
   hidePregameChalk();
   PREGAME.actors.forEach(a=>{
+    a.guy.pregameDance=null;
     if(seg.group||a===seg.actor)pregameAnimate(a,seg.action,u,seg);
     else pregameIdle(a,PREGAME.t);
     pregameSmoothPose(a.guy,dt);
+    /* 写实蒙皮皮套靠这个字段知道人在空中(P.jump 在热身里不动) */
+    a.guy.pregameLift=Math.max(0,a.guy.g.position.y-.06);
     if(seg.group||a===seg.actor)pregameSyncBallAfterPose(a,seg.action,u,seg);
   });
   pregameUpdateCamera(seg,u,dt);

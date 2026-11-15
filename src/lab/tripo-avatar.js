@@ -32,12 +32,16 @@
   const SELF=document.currentScript&&document.currentScript.src||location.href;
   const urlOf=id=>new URL("../../assets/models/"+MODELS[id].file,SELF).href;
   const URL_LOADER=new URL("../../vendor/GLTFLoader.r128.js",SELF).href;
+  /* 热身舞蹈(presentation/dance.js)的 22 根主骨骼,顺序和 dances.json 的 q 一致(父在前) */
+  const DANCE_BONES=["Hips","Spine","Spine1","Spine2","Neck","Head","LeftShoulder","LeftArm","LeftForeArm","LeftHand","RightShoulder","RightArm","RightForeArm","RightHand","LeftUpLeg","LeftLeg","LeftFoot","LeftToeBase","RightUpLeg","RightLeg","RightFoot","RightToeBase"];
   const HEIGHT=1.84;                 // 游戏单位。AIBA 方块人约 1.8
   const BALL_R=.16,BALL_VIS=.78;     // 游戏球半径 0.16 偏大;手里的球只在画面上缩到 0.78(和切面皮套一致),不碰物理
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   const V=(x,y,z)=>new T.Vector3(x,y,z);
   const sceneNow=()=>typeof scene!=="undefined"?scene:null;
   const holdingNow=b=>!!(b&&b.visible&&b.parent&&b.parent.name==="ballGrip");
+  /* 热身演示(presentation/pregame.js)直接抬 g.y 做起跳/扣篮,P.jump 不动:它把这一帧的离地高度记在 guy.pregameLift 上 */
+  const pregameLift=g=>{try{return g&&g.pregameLift>0?g.pregameLift:0;}catch(e){return 0;}};
   const ALL=[];   // 所有实例(玩家 + 对手),斗屏转播那一遍要给每个都打标记
 
   /* 一个实例 = 一个球员的皮套。role:"player" 读玩家自己(球 pBall、起跳 P.jump、第一人称),
@@ -56,11 +60,13 @@
     const fpBallNow=role==="player"?()=>typeof handBall!=="undefined"?handBall:null:()=>null;
     /* 起跳高度:玩家有 P.jump;对手没有,但 poseGuy 每帧记下了"站姿高度"和时间,驱动方再往 g.y 上加的就是起跳 */
     const airNow=role==="player"
-      ?()=>{try{return typeof P!=="undefined"&&P?Number(P.jump)||0:0;}catch(e){return 0;}}
-      :()=>{try{const g=rivalGuy();if(!g||!g.g||g.poseYRet==null||!(Math.abs((G.tNow||0)-(g.poseT||0))<.12))return 0;return Math.max(0,g.g.position.y-g.poseYRet);}catch(e){return 0;}};
+      ?()=>{try{const g=typeof player!=="undefined"?player:null;return Math.max(typeof P!=="undefined"&&P?Number(P.jump)||0:0,pregameLift(g));}catch(e){return 0;}}
+      :()=>{try{const g=rivalGuy();const pl=pregameLift(g);if(pl>0)return pl;if(!g||!g.g||g.poseYRet==null||!(Math.abs((G.tNow||0)-(g.poseT||0))<.12))return 0;return Math.max(0,g.g.position.y-g.poseYRet);}catch(e){return 0;}};
     const movingNow=role==="player"
-      ?guy=>{try{return !!(guy.walking||guy.running||(typeof P!=="undefined"&&P&&P.walking)||(typeof G!=="undefined"&&G&&G.moving));}catch(e){return false;}}
-      :(guy,dt)=>{try{if(state.prevX==null||!(dt>0))return false;const p=guy.g.position;return Math.hypot(p.x-state.prevX,p.z-state.prevZ)/dt>.5;}catch(e){return false;}};
+      ?(guy,dt)=>{try{return !!(guy.walking||guy.running||(typeof P!=="undefined"&&P&&P.walking)||(typeof G!=="undefined"&&G&&G.moving))||slidingNow(guy,dt);}catch(e){return false;}}
+      :(guy,dt)=>slidingNow(guy,dt);
+    /* 热身演示里人物是被"滑"到位置上的(助跑、走向篮筐),不走游戏的走位链:按位移速度判断该不该跑 */
+    const slidingNow=(guy,dt)=>{try{if(state.prevX==null||!(dt>0))return false;const p=guy.g.position;return Math.hypot(p.x-state.prevX,p.z-state.prevZ)/dt>(role==="player"?.9:.5);}catch(e){return false;}};
     const catchNow=role==="player"?()=>{try{return !!(G.passCatch&&G.passCatch.active)||Number(G.pickupReach)>0;}catch(e){return false;}}:()=>false;
     const passNow=role==="player"?()=>{try{if(typeof passing!=="undefined"&&passing&&passing.mesh){const k=G&&G.passCatch?Number(G.passCatch.progress)||0:0;return {mesh:passing.mesh,k};}}catch(e){}return null;}:()=>null;
     /* ---------- 1. 加载(第一次需要时才取) ---------- */
@@ -244,7 +250,25 @@
       return true;
     }
 
-    /* ---------- 5. 每次渲染前:重定向 ---------- */
+    /* 热身舞蹈:每根主骨骼 = 舞蹈的世界旋转增量 × 这副骨架自己的静止世界朝向(和跑动重映射同一个思路),
+     按 w 和当前姿势(正常重定向算出来的)混合,出入场平滑。髋部的上下起伏按这副骨架的髋高换算。 */
+  const _dq=new T.Quaternion(),_dc=new T.Quaternion();
+  function applyDance(dn){
+    const w=clamp(dn.w==null?1:dn.w,0,1);if(w<=0||!dn.q)return;
+    for(let i=0;i<DANCE_BONES.length;i++){
+      const n=DANCE_BONES[i];if(!B[n])continue;
+      _dq.set(dn.q[i*4],dn.q[i*4+1],dn.q[i*4+2],dn.q[i*4+3]).multiply(restW[n]);
+      if(w<1){B[n].getWorldQuaternion(_dc);_dc.slerp(_dq,w);setW(B[n],_dc);}
+      else setW(B[n],_dq);
+    }
+    if(B.Hips&&dn.hy){
+      B.Hips.parent.getWorldQuaternion(_pq);_v.set(0,dn.hy*restPos.Hips.y*w,0).applyQuaternion(_pq.invert());
+      B.Hips.position.add(_v);
+    }
+    root.updateMatrixWorld(true);
+  }
+
+  /* ---------- 5. 每次渲染前:重定向 ---------- */
     const _gInv=new T.Matrix4(),_rm=new T.Matrix4(),_rp=new T.Vector3(),_rs=new T.Vector3(),_gp=new T.Vector3(),_gq=new T.Quaternion(),_gs=new T.Vector3();
     const I0=new T.Quaternion(),Xax=V(1,0,0);
     function retarget(){
@@ -387,7 +411,10 @@
       /* 跑动:换成模型自带的 run 动画 */
       if(rw>.001){applyRun(state.phase,rw,state.armHold);}
 
-      /* 摆到 AIBA 球员的位置上。跑动时不要 AIBA 那套身体起伏和侧倾(动画里自带),只取水平位置和朝向 */
+      /* 热身舞蹈:整身骨骼换成舞蹈的姿势(脚的落地、位置、朝向仍走下面这套) */
+    if(guy.pregameDance&&guy.pregameDance.q)applyDance(guy.pregameDance);
+
+    /* 摆到 AIBA 球员的位置上。跑动时不要 AIBA 那套身体起伏和侧倾(动画里自带),只取水平位置和朝向 */
       const fw=Zf().applyQuaternion(_gq),yawQ=new T.Quaternion().setFromAxisAngle(V(0,1,0),Math.atan2(fw.x,fw.z));
       const rq=_gq.clone().slerp(yawQ,rw),rpos=_gp.clone();rpos.y*=1-rw;
       /* 贴地:鞋底最低点对齐地板;腾空时跟 AIBA 的鞋底高度走,但不低于地板 */

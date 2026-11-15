@@ -1368,7 +1368,7 @@ for(const token of ["guy.arms.forEach(a=>a.rotation.set(-.03,0,0));",
   "guy.elbows.forEach(e=>e.rotation.set(-Math.PI/36,0,0));",
   "hand.rotation.set(0,index===0?-Math.PI*.5:Math.PI*.5,0)"])
   if(!presentationPregame.includes(token))fail("pregame neutral arm pose missing "+token);
-for(const token of ["function pregameSmoothPose","pregameSmoothPose(a.guy,dt)","const PREGAME_DUNK_TIMING=","function pregameDunkAir","function pregameDunkPhase","function pregamePinDunkHand","const airJordanWeight=","applyTstageDunkPose(guy,airJordanWeight)","pregameDunk","PREGAME.poseCache.clear()"])
+for(const token of ["function pregameSmoothPose","pregameSmoothPose(a.guy,dt)","const PREGAME_DUNK_TIMING=","function pregameDunkAir","function pregameDunkPhase","function pregamePinDunkHand","guy.arms[0].rotation.x=-0.42-2.62*reach","guy.g.userData.pregameDunkStyle=\"one-hand\"","guy.pregameLift=","action===\"dance\"","pregameDunk","PREGAME.poseCache.clear()"])
   if(!presentationPregame.includes(token))fail("pregame fluidity fix missing "+token);
 for(const token of ["function pregameBallGrip","function pregameHoldBall","function pregameHoldBallAtPose","function pregameReleaseBall","function pregameSyncBallAfterPose","ball.parent!==grip","ballThrough","pregameDunkBallPhase","setNetPulse","let face=actor.face","headYaw"])
   if(!presentationPregame.includes(token))fail("pregame ball/camera sync missing "+token);
