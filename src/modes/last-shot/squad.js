@@ -118,13 +118,19 @@ function foeKit(allyJersey){
      实测换 8 个传奇角色，队友一直停在第一次那个色。 */
   function dressSquad(cfg){
     if(!squad)return;
-    const allyJersey=playerKit(cfg);
-    const foeJersey=foeKit(allyJersey);
+    const fixed=!!cfg.fixedTeamColors;
+    const allyJersey=fixed?cfg.team.ally.jersey:playerKit(cfg);
+    const allyShorts=fixed&&cfg.team.ally.shorts!=null?cfg.team.ally.shorts:shade(allyJersey,-0.45);
+    const foeJersey=fixed?cfg.team.foe.jersey:foeKit(allyJersey);
+    const foeShorts=fixed&&cfg.team.foe.shorts!=null?cfg.team.foe.shorts:shade(foeJersey,-0.45);
+    const nums=cfg.teamNumbers||{};
     IDS.forEach(id=>{
       const actor=squad.actors[id];if(!actor)return;
       const ally=actor.ally;
-      const jersey=ally?(id==="ally0"?shade(allyJersey,-0.28):allyJersey):foeJersey;
-      chars.dressGuy(actor.guy,jersey,shade(jersey,-0.45),"");
+      const jersey=ally?(id==="ally0"&&!fixed?shade(allyJersey,-0.28):allyJersey):foeJersey;
+      const shorts=ally?allyShorts:foeShorts;
+      const num=nums[id]||"";
+      chars.dressGuy(actor.guy,jersey,shorts,num);
       if(global.equipActorShoes)global.equipActorShoes(actor.guy,"last-shot-"+id,jersey);
     });
   }
@@ -995,7 +1001,16 @@ function foeKit(allyJersey){
     return best;
   }
 
-  function handler(){return squad?squad.actors.ally0:null;}
+  function handler(){
+    if(!squad)return null;
+    const ch=squad.cfg&&squad.cfg.choreography;
+    if(ch){
+      for(const id of ALLY_IDS){
+        if(ch[id]&&ch[id].role==="handler"&&squad.actors[id])return squad.actors[id];
+      }
+    }
+    return squad.actors.ally0;
+  }
   function setHandlerBall(visible){
     const a=handler();if(a)a.ball.visible=!!visible;
   }

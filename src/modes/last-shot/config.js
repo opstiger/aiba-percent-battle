@@ -164,7 +164,143 @@
     }
   };
 
-  const CHALLENGES=[LAST_SHOT_98,GAME_SEVEN,CORNER_BURIED];
+  /* 第四关（特别剧情）: 麦迪时刻 · 2004年12月9日 火箭 vs 马刺 最后 35 秒 13 分。
+     完整 4 个出手回合：3 记三分 + 1 次 3+1 = 13 分；每次出手交由玩家掌控，
+     防守犯规、对手罚球与关键抢断由剧情演绎。 */
+  const TMAC_STAGES=[
+    {
+      idx:0,
+      title:"第 1 球 · 35.0s 弧顶干拔三分",
+      clockStart:35.0,
+      liveDur:3.0,
+      passAt:3.0,
+      shotSpot:RACKS[2],
+      shotSpotName:"弧顶三分",
+      playerCut:{from:V3(-1.8,0,1.4),arriveT:2.3},
+      foulType:"none",
+      commentary:"还剩 35 秒落后 8 分！#11 姚明弧顶挡拆，#1 麦迪接球干拔三分！",
+      interlude:{
+        type:"foe_ft",
+        dur:4.2,
+        clockEnd:28.8,
+        awayPts:2,
+        tag:"T-MAC 35s · 防守剧情",
+        speaker:"#23 德文·布朗 罚球",
+        line:"火箭立刻战术犯规！马刺 #23 德文·布朗两罚全中，分差回到 7 分（71:78）"
+      }
+    },
+    {
+      idx:1,
+      title:"第 2 球 · 24.3s 传奇 3+1！",
+      clockStart:24.3,
+      liveDur:3.1,
+      passAt:3.1,
+      shotSpot:RACKS[3],
+      shotSpotName:"右侧 45°",
+      playerCut:{from:V3(1.1,0,-1.5),arriveT:2.2},
+      foulType:"andOne",
+      commentary:"24.3 秒！#1 麦迪借 #11 姚明掩护绕到右侧 45°，迎着 #21 邓肯强投！",
+      interlude:{
+        type:"foe_ft",
+        dur:4.2,
+        clockEnd:16.2,
+        awayPts:2,
+        tag:"T-MAC 35s · 防守剧情",
+        speaker:"#21 蒂姆·邓肯 罚球",
+        line:"3+1 追到只差 3 分！火箭再度犯规，#21 邓肯两罚全中稳住局势（75:80）"
+      }
+    },
+    {
+      idx:2,
+      title:"第 3 球 · 11.2s 迎射鲍文三分",
+      clockStart:11.2,
+      liveDur:2.9,
+      passAt:2.9,
+      shotSpot:RACKS[1],
+      shotSpotName:"左侧 45°",
+      playerCut:{from:V3(-1.2,0,-0.4),arriveT:2.1},
+      foulType:"none",
+      commentary:"11.2 秒落后 5 分！#3 苏拉推进分球左侧 45°，#1 麦迪迎着 #12 鲍文出手！",
+      interlude:{
+        type:"steal",
+        dur:4.6,
+        clockEnd:4.5,
+        awayPts:0,
+        tag:"T-MAC 35s · 抢断名场面！",
+        speaker:"#1 麦迪 抢断 #23 德文·布朗",
+        line:"马刺发球失误！#23 德文·布朗滑倒丢球，#1 麦迪中场完成致命抢断！还剩 4.5 秒！"
+      }
+    },
+    {
+      idx:3,
+      title:"第 4 球 · 1.7s 抢断反绝杀三分！",
+      clockStart:4.5,
+      liveDur:2.3,
+      passAt:2.3,
+      shotSpot:RACKS[1],
+      shotSpotName:"左侧 45° 绝杀点",
+      playerCut:{from:V3(-1.0,0,2.5),arriveT:1.7},
+      foulType:"none",
+      commentary:"抢断一条龙推进！最后 4.5 秒落后 2 分，左侧 45° 绝杀三分就在你手里！",
+      interlude:{
+        type:"buzzer_win",
+        dur:3.4,
+        clockEnd:0.0,
+        awayPts:0,
+        tag:"81 : 80 · 感动上帝的 35 秒",
+        speaker:"休斯顿火箭 81 : 80 圣安东尼奥马刺",
+        line:"#9 帕克超远压哨偏出！35 秒 13 分（3 记三分 + 1 次 3+1），麦迪时刻完美复刻！"
+      }
+    }
+  ];
+
+  const TMAC_35S={
+    challengeId:"ls-tmac-35s",
+    title:"TMAC 35 SECONDS",
+    subtitle:"麦迪时刻 · 35 秒 13 分完整剧情",
+    storyType:"miracle",
+    multiStage:true,
+    stages:TMAC_STAGES,
+    scoreHome:68,scoreAway:76,
+    homeName:"休斯顿火箭",awayName:"圣安东尼奥马刺",
+    gameClock:35.0,
+    liveDur:3.0,passAt:3.0,
+    shotSpot:RACKS[2],
+    shotSpotName:"弧顶 / 45° 三分",
+    playerCut:{from:V3(-1.8,0,1.4),arriveT:2.3},
+    playerNum:1,
+    fixedTeamColors:true,
+    star:{name:"#1 麦迪",jersey:0xf4f6fa,shorts:0xc8102e},
+    teamNumbers:{
+      ally0:"11",ally1:"3",ally2:"4",ally3:"5",
+      foe0:"12",foe1:"23",foe2:"21",foe3:"9",foe4:"20"
+    },
+    introText:[
+      "2004年12月9日 · 丰田中心 · 第四节最后 35.0 秒",
+      "火箭 68 : 76 落后 8 分 —— 你将化身 #1 麦迪，队友 #11 姚明、#3 苏拉、#4 韦斯利",
+      "完成 3 记三分 + 1 次 3+1（共 13 分），防守犯规与关键抢断由剧情演绎"
+    ],
+    timeoutDialogue:"范甘迪教练: 每次防守立刻犯规，进攻全交给你——#1 麦迪，去投进那些三分！",
+    teammateDialogue:"#11 姚明: 我在弧顶帮你挂掩护挡住 #12 鲍文，球到手里别犹豫！",
+    commentary:"还剩 35 秒落后 8 分！#11 姚明弧顶掩护，#1 麦迪接球就投！",
+    commentaryEvent:"lastshot_commentary_g7",
+    crowdMood:"home",
+    practiceEnabled:true,
+    team:{ally:{jersey:0xf4f6fa,shorts:0xc8102e},foe:{jersey:0x1b1e24,shorts:0x111318}},
+    choreography:{
+      ally0:{role:"big",height:1.18,path:[wp(0,-0.4,-4.4),wp(1.0,-0.7,-2.2),wp(2.0,-0.9,-1.4),wp(3.0,-0.6,-3.8)]},
+      ally1:{role:"handler",height:1.00,path:[wp(0,0.4,3.4),wp(0.9,1.2,1.8),wp(1.9,2.2,0.2),wp(3.0,2.8,-0.8)]},
+      ally2:{role:"spacer",height:.96,path:[wp(0,-5.8,-3.6),wp(1.2,-6.5,-5.2),wp(2.2,-5.8,-6.0),wp(3.0,-6.4,-5.0)]},
+      ally3:{role:"spacer",height:1.07,path:[wp(0,5.2,-3.0),wp(1.2,6.0,-4.8),wp(2.2,5.4,-5.8),wp(3.0,6.2,-4.6)]},
+      foe0:{role:"onBall",height:1.02,marks:"you",path:[wp(0,-2.6,-0.2),wp(1.2,-2.2,-1.1),wp(2.2,-1.6,-1.6),wp(3.0,-1.1,-1.8),wp(4.8,-0.6,-1.6)]},
+      foe1:{role:"onHandler",height:1.00,marks:"ally1",path:[wp(0,0.5,2.3),wp(0.9,1.1,0.8),wp(1.9,2.0,-0.7),wp(3.0,2.5,-1.7)]},
+      foe2:{role:"help",height:1.13,marks:"ally0",help:true,path:[wp(0,0.2,-5.6),wp(1.1,-0.1,-3.4),wp(2.1,0.1,-2.5),wp(3.0,0.3,-4.8)]},
+      foe3:{role:"wing",height:.94,marks:"ally2",path:[wp(0,-4.9,-2.7),wp(1.2,-5.6,-4.4),wp(2.2,-5.0,-5.2),wp(3.0,-5.5,-4.2)]},
+      foe4:{role:"rim",height:1.01,marks:"ally3",path:[wp(0,4.3,-2.2),wp(1.2,5.1,-4.0),wp(2.2,4.5,-5.0),wp(3.0,5.2,-3.9)]}
+    }
+  };
+
+  const CHALLENGES=[LAST_SHOT_98,GAME_SEVEN,CORNER_BURIED,TMAC_35S];
 
   /* 每日挑战按 UTC 日期轮转:全球同一天拿到同一关,避免时区导致的关卡不一致。
      MVP 只有一关,取模后恒定;加关后自动开始轮换。 */

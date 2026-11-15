@@ -90,8 +90,9 @@
       <div style="display:flex;gap:6px;flex-wrap:wrap">${list.map(c=>{
         const on=c.challengeId===cfg.challengeId;
         const isToday=c.challengeId===today.challengeId;
+        const label=c.challengeId==="ls-tmac-35s"?"🔥 麦迪35秒13分":c.title;
         return `<button class="btn sm" style="flex:1;min-width:92px;${on?"border-color:#ffd23f;color:#ffd23f":""}"
-          onclick="AIBALastShot.pickStory('${c.challengeId}')">${c.title}${isToday?" ·今日":""}</button>`;
+          onclick="AIBALastShot.pickStory('${c.challengeId}')">${label}${isToday?" ·今日":""}</button>`;
       }).join("")}</div></div>`;
   }
 

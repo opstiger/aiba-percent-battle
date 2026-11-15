@@ -24,8 +24,14 @@
     on:false,t:0,phase:"idle",cfg:null,practice:false,
     passed:false,released:false,resolved:false,pass:null,
     lookYaw:0,timedOut:false,shotMade:false,callStyle:"both_target",
-    introT:0,introDur:14.0,introBall:null,introCut:-1,reactionT:0,reactionStarted:false
+    introT:0,introDur:14.0,introBall:null,introCut:-1,reactionT:0,reactionStarted:false,
+    stageIdx:0,tmacHome:0,tmacAway:0,interlude:null,interludeT:0,interludeBall:null,interludeAwayDone:false
   };
+
+  function isMultiStage(){return !!(LS.cfg&&LS.cfg.multiStage&&Array.isArray(LS.cfg.stages));}
+  function currentStage(){return isMultiStage()?(LS.cfg.stages[LS.stageIdx]||null):null;}
+  function stageClock(){const st=currentStage();return st?st.clockStart:(LS.cfg?LS.cfg.gameClock:7.0);}
+  function stagePassAt(){const st=currentStage();return st?st.passAt:(LS.cfg?LS.cfg.passAt:4.6);}
 
   function state(){return LS;}
 
@@ -77,6 +83,10 @@
       scene.remove(LS.introBall);
       LS.introBall=null;
     }
+    if(LS.interludeBall){
+      scene.remove(LS.interludeBall);
+      LS.interludeBall=null;
+    }
     if(passer&&passer.g)passer.g.visible=false;
   }
 
@@ -101,7 +111,8 @@
        出手弧线要读 G.myStar。缺任何一个都会在球落地那一刻抛异常。 */
     G.posted=[];G.opponents=[];
     if(!G.myStar)G.myStar=LEGENDS[0];
-    if(G.myNum==null)G.myNum=23;
+    if(cfg.playerNum!=null)G.myNum=cfg.playerNum;
+    else if(G.myNum==null)G.myNum=23;
     G.running=false;G.buzzed=false;G.canShoot=false;G.charging=false;G.power=0;
     G.moving=false;G.glideCam=false;G.blindToasted=false;
     G.passCatch=null;
@@ -119,7 +130,9 @@
       cutFrom:null,cutDur:0,introT:0,introDur:14.0,introBall:null,introCut:-1,
       reactionT:0,reactionStarted:false,reactionDuration:0,finishMade:false,finishReason:"shot",
       celeb:null,madeAt:null,buzzAt:null,boardStarted:false,buzzed:false,foul:null,foulCallT:0,
-      board:null,ftReady:false,ftBall:null,ftWait:0,ftIntro:0});
+      board:null,ftReady:false,ftBall:null,ftWait:0,ftIntro:0,
+      stageIdx:0,tmacHome:cfg.scoreHome||0,tmacAway:cfg.scoreAway||0,
+      interlude:null,interludeT:0,interludeBall:null,interludeAwayDone:false});
   }
 
   function ensureIntroOverlay(){
@@ -638,19 +651,23 @@
     /* 极小概率吹犯规：贴防越紧越容易打手。球进了算 3+1，没进就是三罚。
        球落定后先保留现场判罚反应，再由玩家逐次完成罚球。 */
     const foulDist=squadApi.defenderDistance?squadApi.defenderDistance(P.pos):99;
-    if(foulDist<=FOUL_RANGE&&aibaRoll()<FOUL_CHANCE){   // 犯规是结果判定,要能复现
+    const st=currentStage();
+    const forceAndOne=!!(st&&st.foulType==="andOne");
+    const noRandomFoul=!!(st&&st.foulType==="none");
+    const willMakeShot=b.outcome==="swish"||b.outcome==="rattle"||b.outcome==="bank";
+    if(forceAndOne&&willMakeShot){
+      LS.foul={andOne:true,shots:1,made:0,taken:0};
+      if(typeof playAudioEvent==="function")playAudioEvent("lastshot_foul_whistle");
+      else if(whistle)whistle();
+      crowdSwell&&crowdSwell(.28,1.2);
+      toast("🙌 #23 德文·布朗打手犯规 · 3+1！","#7CFC6B");
+      return true;
+    }
+    if(!noRandomFoul&&!forceAndOne)if(foulDist<=FOUL_RANGE&&aibaRoll()<FOUL_CHANCE){   // 犯规是结果判定,要能复现
       /* 罚球必须由你自己投，不能拿概率算掉——那是这一攻最关键的几下。
          这里只记账，等球落定后进入罚球阶段。 */
-      const willMake=b.outcome==="swish"||b.outcome==="rattle"||b.outcome==="bank";
+      const willMake=willMakeShot;
       LS.foul={andOne:willMake,shots:willMake?1:3,made:0,taken:0};
-      /* 实测抓到过一次未捕获异常:TypeError: whistle is not a function,
-         直接弹出错误面板("请把这段发给开发者")、这一攻就废了。犯规只有 1/3 概率,
-         又正好落在绝杀这一球上,是最不该崩的时刻。
-         根因没能确定:audio.js(135 行)早于 legacy-adapter(159)和本模块(170)加载,
-         事后查 ctx.whistle 一直是 function,也没有任何地方重新赋值;
-         预览页反复被切到后台导致无法稳定复现。
-         这里按同一行 crowdSwell 已有的写法加守卫 —— 哨音是氛围音,
-         没有它最多少一声,不该让整局挂掉。 */
       if(typeof playAudioEvent==="function")playAudioEvent("lastshot_foul_whistle");
       else if(whistle)whistle();
       crowdSwell&&crowdSwell(.28,1.2);
@@ -716,8 +733,178 @@
     return false;
   }
 
+  function startTmacInterlude(){
+    const st=currentStage();
+    if(!st||!st.interlude)return false;
+    const il=st.interlude;
+    LS.phase="interlude";
+    LS.interlude=il;
+    LS.interludeT=0;
+    LS.interludeAwayDone=false;
+    LS.celeb=null;setCelebrateView(false);
+    G.canShoot=false;G.charging=false;
+    if(!LS.interludeBall){
+      LS.interludeBall=new THREE.Mesh(ballGeo,matBall);
+      scene.add(LS.interludeBall);
+    }
+    LS.interludeBall.visible=true;
+    setIntroOverlay(il.tag,"#d90429",`Q4 00:${il.clockEnd.toFixed(1)} · 剧情演绎`,il.speaker,il.line,"#ffd23f",true);
+    if(il.type==="steal"){
+      if(typeof whistle==="function")whistle();
+      if(typeof broadcastSting==="function")broadcastSting("danger");
+    }
+    return true;
+  }
+
+  function updateTmacInterlude(dt){
+    const il=LS.interlude;if(!il)return;
+    LS.interludeT+=dt;
+    const u=clamp(LS.interludeT/Math.max(0.1,il.dur),0,1);
+    const sq=squadApi.squad,actors=sq&&sq.actors?sq.actors:null;
+    const ball=LS.interludeBall;
+    if(il.awayPts&&!LS.interludeAwayDone&&u>=0.62){
+      LS.interludeAwayDone=true;
+      LS.tmacAway+=il.awayPts;
+      updScoreHUD(LS.tmacHome,LS.tmacAway);
+      if(global.updateCenterScoreboard){
+        global.updateCenterScoreboard({
+          title:LS.cfg.title,
+          score:`${LS.tmacHome} : ${LS.tmacAway}`,
+          clock:`Q4  00:${il.clockEnd.toFixed(1)}`,
+          subColor:"#ff8d7a"
+        });
+      }
+      if(typeof sBeep==="function")sBeep(660,0.12);
+      toast(`马刺罚球 +${il.awayPts} (${LS.tmacHome}:${LS.tmacAway})`,"#ff8d7a");
+    }
+    if(il.type==="buzzer_win"&&!LS.interludeAwayDone&&u>=0.68){
+      LS.interludeAwayDone=true;
+      if(typeof sBuzz==="function")sBuzz();
+      if(typeof cheerSound==="function")cheerSound(true);
+      crowdSwell&&crowdSwell(1.0,5.0);
+    }
+    if(actors&&ball){
+      if(il.type==="foe_ft"){
+        const shooter=actors.foe1||actors.foe2;
+        if(shooter){
+          shooter.pos.set(0,0,HOOP.z+4.6);
+          shooter.face=faceTo(shooter.pos,HOOP);
+          shooter.guy.g.position.set(shooter.pos.x,0,shooter.pos.z);
+          shooter.guy.g.rotation.y=shooter.face;
+        }
+        const arc=u<0.35?0:clamp((u-0.35)/0.32,0,1);
+        const start=V3(0,2.1,HOOP.z+4.4);
+        const end=V3(HOOP.x,HOOP.y-0.1,HOOP.z);
+        ball.position.lerpVectors(start,end,arc);
+        ball.position.y+=Math.sin(arc*Math.PI)*1.2;
+      }else if(il.type==="steal"){
+        // #23 德文·布朗滑倒丢球，#1 麦迪抢断推进
+        const brown=actors.foe1,wes=actors.ally2;
+        if(brown){
+          const bx=-0.8+u*1.2,bz=2.8-u*0.8;
+          brown.pos.set(bx,0,bz);
+          brown.guy.g.position.set(bx,u>0.38&&u<0.75?-0.12:0,bz);
+          brown.guy.g.rotation.x=u>0.38?0.42:0;
+        }
+        if(wes){
+          wes.pos.set(0.9-u*0.5,0,2.2);
+          wes.guy.g.position.set(wes.pos.x,0,wes.pos.z);
+        }
+        const stealK=clamp((u-0.38)/0.62,0,1);
+        const loose=V3(-0.6,0.22,2.6);
+        const wing=V3(-3.6,1.15,-0.5);
+        ball.position.lerpVectors(loose,wing,stealK);
+        if(stealK>0)ball.position.y=0.22+Math.abs(Math.sin(stealK*Math.PI*3))*0.65;
+      }else if(il.type==="buzzer_win"){
+        const parker=actors.foe3;
+        if(parker){
+          parker.pos.set(1.6,0,2.4);
+          parker.guy.g.position.set(1.6,u<0.35?Math.sin(u/0.35*Math.PI)*0.45:0,2.4);
+          parker.guy.g.rotation.y=faceTo(parker.pos,HOOP);
+        }
+        const heaveK=clamp((u-0.18)/0.52,0,1);
+        const start=V3(1.6,2.2,2.4),rimMiss=V3(HOOP.x+0.42,HOOP.y+0.25,HOOP.z+0.28);
+        ball.position.lerpVectors(start,rimMiss,heaveK);
+        ball.position.y+=Math.sin(heaveK*Math.PI)*2.2;
+      }
+    }
+    if(LS.interludeT>=il.dur){
+      if(ball)ball.visible=false;
+      cleanupIntroProps();
+      if(il.type==="buzzer_win"){
+        finish(true,"shot");
+      }else{
+        startNextTmacStage();
+      }
+    }
+  }
+
+  function startNextTmacStage(){
+    LS.stageIdx++;
+    const st=currentStage();
+    if(!st){finish(true,"shot");return;}
+    LS.phase="live";LS.t=0;
+    LS.passed=false;LS.released=false;LS.timedOut=false;LS.shooting=false;
+    LS.shotMade=false;LS.foul=null;LS.foulCallT=0;LS.board=null;LS.boardStarted=false;
+    LS.reactionStarted=false;LS.reactionT=0;LS.madeAt=null;LS.buzzAt=null;
+    LS.holdT=0;LS.contestTriggered=false;LS.contested=false;LS.blocked=false;LS._beat=null;
+    balls.slice().forEach(b=>{scene.remove(b.mesh);scene.remove(b.blob);});balls.length=0;
+    LS.cfg.shotSpot=st.shotSpot;
+    LS.cfg.shotSpotName=st.shotSpotName;
+    LS.cfg.liveDur=st.liveDur;
+    LS.cfg.passAt=st.passAt;
+    LS.cfg.gameClock=st.clockStart;
+    LS.cfg.playerCut=st.playerCut;
+    G.seq=[{rack:3,ball:0,val:3,money:false,deep:null,p:st.shotSpot.p,lastShot:true}];
+    G.shotIdx=0;G.shots=[];G.canShoot=false;G.charging=false;G.power=0;G.running=true;
+    LS.spot=st.shotSpot.p.clone();
+    if(st.playerCut){
+      LS.cutFrom=st.playerCut.from.clone();
+      LS.cutDur=st.playerCut.arriveT||2.0;
+      P.pos.copy(LS.cutFrom);P.walking=true;
+    }else{
+      LS.cutFrom=LS.spot.clone();LS.cutDur=0;P.pos.copy(LS.spot);P.walking=false;
+    }
+    squadApi.place(0);
+    squadApi.setHandlerBall(true);
+    const handler=squadApi.handler();
+    P.face=faceTo(P.pos,handler?handler.pos:HOOP);
+    LS.lookYaw=P.face;
+    if(player&&player.g){
+      player.g.visible=(CAM.mode!==0);
+      player.g.position.set(P.pos.x,0,P.pos.z);
+      player.g.rotation.y=P.face;
+      player.g.updateMatrixWorld(true);
+    }
+    ctx.setCamSnap(true);
+    updScoreHUD(LS.tmacHome,LS.tmacAway);
+    updClock(st.clockStart);
+    if(global.updateCenterScoreboard){
+      global.updateCenterScoreboard({
+        title:LS.cfg.title,
+        score:`${LS.tmacHome} : ${LS.tmacAway}`,
+        clock:`Q4  00:${st.clockStart.toFixed(1)}`,
+        subColor:"#ffd23f"
+      });
+    }
+    if(typeof whistle==="function")whistle();
+    toast(`🔥 ${st.title}`,"#ffd23f");
+  }
+
   function startResultReaction(made,reason,seconds){
     if(LS.reactionStarted)return false;
+    if(isMultiStage()){
+      const st=currentStage();
+      const stageMade=st&&st.foulType==="andOne"
+        ?!!(LS.foul&&LS.foul.andOne&&LS.foul.made>=1)
+        :!!LS.shotMade;
+      if(stageMade&&st){
+        LS.tmacHome+=possessionPoints();
+        updScoreHUD(LS.tmacHome,LS.tmacAway);
+        if(startTmacInterlude())return true;
+      }
+      made=false;
+    }
     LS.phase="reaction";LS.reactionT=0;LS.reactionStarted=true;
     LS.reactionDuration=seconds||RESULT_REACTION_SECONDS;
     LS.finishMade=!!made;LS.finishReason=reason||"shot";
@@ -844,7 +1031,9 @@
         const made=!!LS.ftBall.made;
         if(made){
           f.made++;
-          updScoreHUD(LS.cfg.scoreHome+possessionPoints(),LS.cfg.scoreAway);
+          const hBase=isMultiStage()?LS.tmacHome:LS.cfg.scoreHome;
+          const aBase=isMultiStage()?LS.tmacAway:LS.cfg.scoreAway;
+          updScoreHUD(hBase+possessionPoints(),aBase);
         }
         f.taken++;LS.ftBall=null;LS.ftWait=0;
         toast(made?"罚球命中":"罚球偏出",made?"#7CFC6B":"#ff8d7a");
@@ -916,6 +1105,9 @@
       return;
     }
 
+    // 剧情演绎阶段（麦迪时刻防守犯规/对手罚球/关键抢断/压哨绝杀）
+    if(LS.phase==="interlude"){updateTmacInterlude(dt);return;}
+
     // 犯规判罚先留在现场，让球员和观众完成反应，再走向罚球线。
     if(LS.phase==="foulcall"){updateFoulCall(dt);return;}
     // 罚球阶段：比赛钟停表，只跑罚球流程
@@ -952,14 +1144,16 @@
       if(activeBall&&activeBall.made){
         if(!LS.shotMade){
           LS.shotMade=true;
-          const newHome=cfg.scoreHome+possessionPoints();
-          updScoreHUD(newHome,cfg.scoreAway);
+          const hBase=isMultiStage()?LS.tmacHome:cfg.scoreHome;
+          const aBase=isMultiStage()?LS.tmacAway:cfg.scoreAway;
+          const newHome=hBase+possessionPoints();
+          updScoreHUD(newHome,aBase);
           if(global.updateCenterScoreboard){
-            const diff=cfg.scoreAway-newHome;
+            const diff=aBase-newHome;
             global.updateCenterScoreboard({
               title:cfg.title||"THE LAST SHOT",
-              score:`${newHome} : ${cfg.scoreAway}`,
-              clock:`Q4  00:00.0`,
+              score:`${newHome} : ${aBase}`,
+              clock:isMultiStage()?`Q4  00:${Math.max(0,clock).toFixed(1)}`:`Q4  00:00.0`,
               subColor:diff<=0?"#7CFC6B":"#ffd23f"
             });
           }
@@ -1367,6 +1561,22 @@
     rig.pos.set(eye.x-dir.x*0.85,eye.y+(typeof FP_RISE==="number"?FP_RISE:0.05),eye.z-dir.z*0.85);
     rig.look.copy(target);
 
+    if(LS.phase==="interlude"&&LS.interlude){
+      const il=LS.interlude,u=clamp(LS.interludeT/Math.max(0.1,il.dur),0,1);
+      if(il.type==="foe_ft"){
+        rig.pos.set(-3.4+u*0.8,2.25,-2.6);
+        rig.look.set(0,2.35,HOOP.z+1.8);
+      }else if(il.type==="steal"){
+        rig.pos.set(-3.8+u*1.2,2.65,4.6-u*2.4);
+        rig.look.set(-1.2,1.15,2.0-u*1.5);
+      }else{
+        rig.pos.set(3.2-u*1.0,2.85,1.2-u*2.8);
+        rig.look.set(HOOP.x,HOOP.y,HOOP.z+1.0);
+      }
+      if(typeof hands!=="undefined"&&hands)hands.visible=false;
+      return true;
+    }
+
     if(LS.phase==="intro"){
       const t=LS.introT;
       const cz=typeof COURT!=="undefined"&&COURT.midZ!=null?COURT.midZ:4.745;
@@ -1454,7 +1664,10 @@
     const made=LS.shotMade||(G.shots.length?!!G.shots[G.shots.length-1].made:(G.score>0));
     return made?SHOT_PTS:0;
   }
-  function shotSucceeded(){return possessionPoints()>=pointsToWin();}
+  function shotSucceeded(){
+    if(isMultiStage())return LS.stageIdx>=3&&LS.tmacHome>LS.tmacAway;
+    return possessionPoints()>=pointsToWin();
+  }
   /* 刚好追平 = 进加时，既不是赢也不是普通打铁，结果页要分开说 */
   function isOvertime(){const p=possessionPoints();return p>0&&p===pointsToWin()-1;}
   function finish(made,reason){
