@@ -1959,7 +1959,12 @@ function posePasserHold(guy,ball,t,phase){
 function updPasserIdle(){
   const t=G.tNow;
   if(typeof passer!=="undefined"&&passer&&passer.g.visible&&typeof passerBall!=="undefined"&&passerBall){
-    if(mountPasserBall(passer,passerBall)&&passerBall.visible)posePasserHold(passer,passerBall,t,0);
+    const av=window.AIBAPasserAvatar;
+    if(av&&av.state&&av.state.ready){
+      if(passerBall.parent!==passer.g)passer.g.add(passerBall);
+    }else if(mountPasserBall(passer,passerBall)&&passerBall.visible){
+      posePasserHold(passer,passerBall,t,0);
+    }
   }
   if(typeof oppPasser!=="undefined"&&oppPasser&&oppPasser.g&&oppPasser.g.visible&&typeof oppPasserBall!=="undefined"&&oppPasserBall){
     if(mountPasserBall(oppPasser,oppPasserBall)&&oppPasserBall.visible)posePasserHold(oppPasser,oppPasserBall,t,2.1);
@@ -2021,23 +2026,28 @@ function startPass(targetPos,face){
   /* 球从**手**上飞出去,不是从身体中心。passerBall 现在挂在 ballGrip 上,
      它的世界坐标就是手里那颗球的位置 —— 起点用它,传球才接得上持球姿势。 */
   let handFrom=null;
-  if(!pickup&&passerBall&&passerBall.parent){
+  const av=window.AIBAPasserAvatar;
+  if(!pickup){
+    passer.g.rotation.y=faceTo(passer.g.position,hasTarget?target:P.pos);
     passer.g.updateMatrixWorld(true);
-    handFrom=passerBall.getWorldPosition(new THREE.Vector3());
+    if(av&&av.getBallWorldPos)handFrom=av.getBallWorldPos(new THREE.Vector3());
+    if(!handFrom&&passerBall&&passerBall.parent)handFrom=passerBall.getWorldPosition(new THREE.Vector3());
   }
   const from=pickup||handFrom||V3(passer.g.position.x,1.25,passer.g.position.z);
+  let releaseDelay=0;
   if(!pickup){
-    if(window.AIBAPasserAvatar&&AIBAPasserAvatar.playThrow)AIBAPasserAvatar.playThrow();
-    passer.g.rotation.y=faceTo(passer.g.position,hasTarget?target:P.pos);
-    passerBall.visible=false;
+    if(av&&av.playThrow)av.playThrow();
+    releaseDelay=(av&&av.getReleaseDelay)?av.getReleaseDelay():0;
+    passerBall.visible=releaseDelay>0;
   }
   /* 取球要给足时间才读得出"转身伸手触球—双手抓球端回—余球滚落"三拍因果。 */
   const dur=pickup?.64:passFlightSeconds(from.distanceTo(catchP));
   const mesh=new THREE.Mesh(ballGeo,shotMat(s));
   mesh.position.copy(from);
-  mesh.visible=!pickup; // 球架取球在手真正碰到球(k>=HOLD)之前,原球稳稳留在球架上,飞行网格先隐藏
+  mesh.visible=!pickup&&releaseDelay<=0; // 3D传球员蓄力推球期间、或球架取球触球前，飞行网格先隐藏
   scene.add(mesh);
   passing={mesh,from,to:catchP,t:0,dur,pickup:!!pickup,kb:0,side:pickSide,
+    releaseDelay,released:pickup||releaseDelay<=0,
     rack:pickup?pickup.rackIndex:null,ballIndex:pickup?pickup.ballIndex:null,nextIndex:pickup?pickup.nextIndex:null,
     rackTaken:false,rackRolled:false};
   G.passCatch={active:true,progress:0,target:catchP.clone()};
@@ -2054,17 +2064,21 @@ function startPass(targetPos,face){
       passer.arms.forEach(a=>{a.rotation.x=sh;});
       passer.elbows.forEach(e=>{e.rotation.x=el;});
     });
-    blipBus(sfxBus||master,300,0.06,"sine",0.07,200);
-    noiseBus(sfxBus||master,0.055,0.035,900,4600);
+    if(releaseDelay<=0){
+      blipBus(sfxBus||master,300,0.06,"sine",0.07,200);
+      noiseBus(sfxBus||master,0.055,0.035,900,4600);
+    }
   }
 }
 function updPass(dt){
   updPasserIdle();
   if(window.AIBAPasserAvatar&&AIBAPasserAvatar.update)AIBAPasserAvatar.update(dt);
   if(!passing)return;
-  passing.t+=dt;const k=Math.min(1,passing.t/passing.dur);
+  passing.t+=dt;
   const p=passing;
+  let k=0;
   if(p.pickup){
+    k=Math.min(1,passing.t/passing.dur);
     /* 取球物理因果链(严格先后顺序):
          1) 0 ~ HOLD(.46):  球员先转身并把双手伸向球架底球。此阶段手还没拿到球,
                             底球与上方 4 颗球 100% 静止在球架原格位上,绝不提前飞出或下滑!
@@ -2098,6 +2112,30 @@ function updPass(dt){
     G.pickupTurn=p.side*0.56*turn;
     G.pickupReach=turn;
   }else{
+    const delay=p.releaseDelay||0;
+    if(!p.released){
+      if(p.t<delay){
+        // 3D 传球员正在蓄力推球：球仍紧握在双手之间，飞行球保持隐藏，接球手势等待出手
+        passerBall.visible=true;
+        p.mesh.visible=false;
+        if(G.passCatch){G.passCatch.active=false;G.passCatch.progress=0;}
+        return;
+      }
+      p.released=true;
+      const av=window.AIBAPasserAvatar;
+      if(av&&av.getBallWorldPos){
+        const relPos=av.getBallWorldPos(new THREE.Vector3());
+        if(relPos)p.from.copy(relPos);
+      }
+      if(av&&av.markReleased)av.markReleased();
+      p.dur=passFlightSeconds(p.from.distanceTo(p.to));
+      passerBall.visible=false;
+      p.mesh.position.copy(p.from);
+      p.mesh.visible=true;
+      blipBus(sfxBus||master,300,0.06,"sine",0.07,200);
+      noiseBus(sfxBus||master,0.055,0.035,900,4600);
+    }
+    k=Math.min(1,(p.t-delay)/Math.max(0.05,p.dur));
     p.kb=k;
     p.mesh.position.lerpVectors(p.from,p.to,k);
     p.mesh.position.y+=Math.sin(k*Math.PI)*0.65;

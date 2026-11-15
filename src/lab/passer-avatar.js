@@ -12,6 +12,10 @@
   const MODEL_URL = "assets/models/passer_qingzi.glb";
   const LOADER_URL = "vendor/GLTFLoader.r128.js";
 
+  const THROW_START_TIME = 0.20;
+  const THROW_RELEASE_TIME = 0.914;
+  const THROW_TIME_SCALE = 2.0;
+
   const state = {
     loading: false,
     ready: false,
@@ -22,14 +26,18 @@
     rHand: null,
     lHand: null,
     isThrowing: false,
+    released: false,
     throwTime: 0,
     throwDuration: 0,
+    releaseDelay: (THROW_RELEASE_TIME - THROW_START_TIME) / THROW_TIME_SCALE,
     attachedGuy: null
   };
 
   const _vR = new THREE.Vector3();
   const _vL = new THREE.Vector3();
   const _vMid = new THREE.Vector3();
+  const _vFwd = new THREE.Vector3();
+  const _qWorld = new THREE.Quaternion();
 
   function ensureLoader(cb){
     if(global.THREE && global.THREE.GLTFLoader) return cb();
@@ -61,8 +69,14 @@
           }
         });
 
-        const rHand = gltf.scene.getObjectByName("mixamorig:RightHand");
-        const lHand = gltf.scene.getObjectByName("mixamorig:LeftHand");
+        let rHand = gltf.scene.getObjectByName("mixamorigRightHand") || gltf.scene.getObjectByName("mixamorig:RightHand");
+        let lHand = gltf.scene.getObjectByName("mixamorigLeftHand") || gltf.scene.getObjectByName("mixamorig:LeftHand");
+        if(!rHand || !lHand){
+          gltf.scene.traverse(c=>{
+            if(!rHand && /RightHand$/.test(c.name)) rHand = c;
+            if(!lHand && /LeftHand$/.test(c.name)) lHand = c;
+          });
+        }
 
         let mixer = null;
         let throwAction = null;
@@ -72,8 +86,8 @@
           throwAction = mixer.clipAction(gltf.animations[0]);
           throwAction.loop = THREE.LoopOnce;
           throwAction.clampWhenFinished = true;
-          throwAction.timeScale = 1.6;
-          dur = gltf.animations[0].duration / 1.6;
+          throwAction.timeScale = THROW_TIME_SCALE;
+          dur = Math.max(0.2, (gltf.animations[0].duration - THROW_START_TIME) / THROW_TIME_SCALE);
           // 初始停在第 1 帧持球预备姿态
           throwAction.play();
           mixer.update(0.033);
@@ -131,13 +145,41 @@
     }
   }
 
+  function getBallWorldPos(out){
+    if(!state.ready || !state.root || !state.rHand || !state.lHand) return null;
+    state.root.updateMatrixWorld(true);
+    state.rHand.getWorldPosition(_vR);
+    state.lHand.getWorldPosition(_vL);
+    const target = out || new THREE.Vector3();
+    target.addVectors(_vR, _vL).multiplyScalar(0.5);
+    state.root.getWorldQuaternion(_qWorld);
+    _vFwd.set(0, 0.02, 0.07).applyQuaternion(_qWorld);
+    target.add(_vFwd);
+    return target;
+  }
+
   function playThrow(){
     if(!state.ready || !state.throwAction) return;
     state.isThrowing = true;
+    state.released = false;
     state.throwTime = 0;
     state.throwAction.reset();
+    state.throwAction.time = THROW_START_TIME;
+    state.throwAction.timeScale = THROW_TIME_SCALE;
     state.throwAction.paused = false;
     state.throwAction.play();
+    if(state.mixer){
+      state.mixer.update(0);
+      if(state.root) state.root.updateMatrixWorld(true);
+    }
+  }
+
+  function markReleased(){
+    state.released = true;
+  }
+
+  function getReleaseDelay(){
+    return state.ready && state.throwAction ? state.releaseDelay : 0;
   }
 
   function update(dt){
@@ -156,6 +198,7 @@
         state.mixer.update(dt);
         if(state.throwTime >= state.throwDuration){
           state.isThrowing = false;
+          state.released = false;
           state.throwAction.time = 0.033;
           state.mixer.update(0);
           state.throwAction.paused = true;
@@ -167,23 +210,23 @@
       }
     }
 
-    // 手部持球点对齐
+    // 手部持球点对齐（待机及推球蓄力出手前，球始终紧贴双手掌心）
     const ball = typeof passerBall !== "undefined" ? passerBall : null;
-    if(ball && ball.visible && !state.isThrowing){
-      if(state.rHand && state.lHand && ball.parent){
-        state.rHand.getWorldPosition(_vR);
-        state.lHand.getWorldPosition(_vL);
-        _vMid.addVectors(_vR, _vL).multiplyScalar(0.5);
-        _vMid.y -= 0.02;
-        _vMid.z += 0.05;
+    if(ball && (!state.isThrowing || !state.released)){
+      if(state.rHand && state.lHand && ball.parent && getBallWorldPos(_vMid)){
+        ball.parent.updateMatrixWorld(true);
         ball.parent.worldToLocal(_vMid);
         ball.position.copy(_vMid);
+        ball.updateMatrixWorld(true);
       }
     }
   }
 
   const api = Object.freeze({
     playThrow,
+    markReleased,
+    getReleaseDelay,
+    getBallWorldPos,
     update,
     get state(){ return state; }
   });
