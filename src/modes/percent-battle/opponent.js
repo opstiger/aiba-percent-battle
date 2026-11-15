@@ -4,7 +4,7 @@
   const runtime=global.AIBA&&global.AIBA.runtime,ctx=runtime&&runtime.service("legacy"),motion=runtime&&runtime.service("rendering:motion"),battle=global.AIBABattle;
   if(!ctx||!battle)throw new Error("Percent Battle opponent requires battle state");
   const {
-    G,BATTLE_TARGET,BATTLE_SPOTS,OPP_SPOT_EMPTY_WAIT,COURT,HOOP,P,V3,clamp,faceTo,rivals,
+    G,BATTLE_TARGET,BATTLE_SPOTS,BATTLE_DEEP_RELOAD,OPP_SPOT_EMPTY_WAIT,COURT,HOOP,P,V3,clamp,faceTo,rivals,
     matGold,matDeep,matBall,shotProfileFor,DIFFS,aiProb,rnd,shotFlightTime,ballGeo,scene,blobGeo,blobMat,
     balls,oppPasser,oppPasserBall,triggerStreetCrowdReaction,bloomOnScore,beginFinalAudioWindow,broadcastSting,toast,boo,gameDjSay,
     sBounce,sSwish,battleScoreCallout,updJumbo,checkBattleOvertake,ease01,shotCurves,SHOT_STANCE_YAW,shotStanceBlend,tuneGuideHandPose,
@@ -116,13 +116,14 @@
   function oppSpotQuota(index){
     const spot=BATTLE_SPOTS[index];
     if(spot.super)return 1;
-    if(spot.deep!=null)return 2;
+    /* 彩球 5 分点和我方同规则:一次只给一球,投完这个点要等 BATTLE_DEEP_RELOAD 秒才恢复 */
+    if(spot.deep!=null)return 1;
     return 5;
   }
   function oppSpotCooldown(index){
     const spot=BATTLE_SPOTS[index];
     if(spot.super)return 7.2;
-    if(spot.deep!=null)return 3.4;
+    if(spot.deep!=null)return BATTLE_DEEP_RELOAD||10;
     return 2.1;
   }
   function oppSpotReady(index){return !OPP.coolUntil||G.tNow>=(OPP.coolUntil[index]||0);}
@@ -251,6 +252,9 @@
     else if(battle.battleNoteNormalScore)battle.battleNoteNormalScore();
     const previousMe=G.score,previousOpponent=G.battleOppScore;
     G.battleOppScore+=ball.val;triggerStreetCrowdReaction("oppMake",ball.val);bloomOnScore(ball.val);
+    if((ball.super||ball.deep||ball.val===10||ball.val===5)&&global.AIBAShow&&typeof global.AIBAShow.fire==="function"){
+      try{global.AIBAShow.fire("make",{val:ball.val,deep:!!(ball.deep||ball.val===5),super:!!(ball.super||ball.val===10),opp:true});}catch(e){}
+    }
     const ending=G.battleOppScore>=BATTLE_TARGET;if(ending)beginFinalAudioWindow();
     if(!ending&&ball.super){broadcastSting("danger");toast(OPP.o.n+" 命中中场10分!","#ff8d7a");boo(1.1);gameDjSay("对手中场超远命中!","special",2.2);}
     else if(!ending&&ball.deep){broadcastSting("danger");toast(OPP.o.n+" 命中彩球5分!","#72dfff");}

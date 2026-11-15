@@ -895,7 +895,7 @@
       P.walking=(cutP<0.95);
     }else{
       P.walking=false;
-      LS.settle=LS.pass?1-clamp(LS.pass.t/Math.max(1e-3,LS.pass.dur),0,1):1;
+      LS.settle=(inHand||LS.shooting||LS.passed)?0:(LS.pass?1-clamp(LS.pass.t/Math.max(1e-3,LS.pass.dur),0,1):1);
       const sway=Math.sin(LS.footT*1.15)*0.12*LS.settle;
       const drift=Math.sin(LS.footT*0.74+1.7)*0.06*LS.settle;
       const side=V3(Math.cos(LS.lookYaw),0,-Math.sin(LS.lookYaw));
@@ -905,9 +905,13 @@
     // 第三人称模型必须朝着你实际在看的方向，否则两个视角是两个人
     P.face=LS.lookYaw;
     if(player&&player.g){
-      player.g.position.set(P.pos.x,LS.shooting?player.g.position.y:0,P.pos.z);
-      player.g.rotation.y=P.face;
-      player.g.quaternion.setFromEuler(player.g.rotation);
+      if(inHand||LS.shooting){
+        player.g.position.x=P.pos.x;
+        player.g.position.z=P.pos.z;
+      }else{
+        player.g.position.set(P.pos.x,0,P.pos.z);
+        player.g.rotation.y=P.face;
+      }
       player.g.updateMatrixWorld(true);
     }
 

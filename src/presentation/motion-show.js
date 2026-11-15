@@ -16,20 +16,60 @@
   const TAU=Math.PI*2,HOOP_A=-Math.PI/2;                      // bowlPt 里篮筐后方(z 最小)对应的角度
   const FONT='"Avenir Next Condensed","HelveticaNeue-CondensedBlack","Arial Narrow","PingFang SC",Impact,sans-serif';
 
-  /* ---------- 配色:每个球星两个颜色 + 黑白 ---------- */
-  const C={acc:new THREE.Color(0xfdb927),sec:new THREE.Color(0x552583),accCss:"#fdb927",secCss:"#552583",num:"8",name:"AIBA"};
+  /* ---------- 配色与双人信息:主战球员 + 对手球员 ---------- */
+  const C={
+    acc:new THREE.Color(0xfdb927),sec:new THREE.Color(0x552583),accCss:"#fdb927",secCss:"#552583",
+    num:"8",name:"AIBA",title:"全明星射手",spec:"标准出手",arc:"标准弧线",sweet:"100%",rating:95,bars:[.85,.82,.88],
+    hasOpp:false,oppAcc:new THREE.Color(0x00e5ff),oppSec:new THREE.Color(0x1d428a),oppAccCss:"#00e5ff",oppSecCss:"#1d428a",
+    oppNum:"1",oppName:"RIVAL",oppTitle:"全明星挑战者",oppSpec:"极速出手",oppArc:"高弧快射",oppSweet:"100%",oppRating:94,oppBars:[.84,.80,.86]
+  };
   const sat=c=>{const h={};c.getHSL(h);return h.s*(1-Math.abs(h.l*2-1));};
+  function boostColor(colA,colB){
+    const a=new THREE.Color(colA!=null?colA:0xfdb927),b=new THREE.Color(colB!=null?colB:0x552583);
+    const [acc,sec]=sat(a)>=sat(b)?[a,b]:[b,a];
+    const h={};acc.getHSL(h);
+    if(h.l<.58||h.s<.7)acc.setHSL(h.h,Math.max(h.s,.82),Math.max(h.l,.62));
+    return {acc,sec,accCss:"#"+acc.getHexString(),secCss:"#"+sec.getHexString()};
+  }
+  function extractStarMeta(s,fallbackNum,fallbackName){
+    const prof=(typeof shotProfileFor==="function"&&s)?shotProfileFor(s):((global.AIBA_CONFIG&&global.AIBA_CONFIG.shotProfileFor&&s)?global.AIBA_CONFIG.shotProfileFor(s):{label:"标准出手",arcLabel:"标准弧线",speed:1,arc:1,window:1});
+    const num=String(s&&s.num!=null?s.num:fallbackNum);
+    const name=String(s&&s.n?s.n:fallbackName).replace(/^\s*\d+\s*号\s*[·•]\s*/,"").toUpperCase();
+    const title=String(s&&s.t?s.t:"全明星射手 · 招牌三分");
+    const rating=Math.max(80,Math.min(99,Number(s&&s.r)||92));
+    const sp=clamp(((prof.speed||1)-.76)*1.85,.28,.96);
+    const ar=clamp(((prof.arc||1)-.84)*2.4,.28,.96);
+    const wn=clamp((prof.window||1)*.78,.28,.96);
+    return {
+      num,name,title,rating,
+      spec:String(prof.label||"标准出手"),
+      arc:String(prof.arcLabel||"标准弧线"),
+      sweet:Math.round((prof.window||1)*100)+"%",
+      bars:[sp,ar,wn]
+    };
+  }
   function syncStar(){
     const s=(typeof G!=="undefined"&&G.myStar)||null;
-    const key=s?(s.id||s.n)+":"+(s.col||[]).join(","):"-";
+    const opp=(typeof G!=="undefined"&&(G.battleOpp||G.finalist||(G.opponents&&G.opponents[0])))||(typeof PREGAME!=="undefined"&&PREGAME.actors&&PREGAME.actors[1]&&PREGAME.actors[1].star)||null;
+    const key=(s?(s.id||s.n)+":"+(s.col||[]).join(","):"-")+"|"+(opp?(opp.id||opp.n)+":"+(opp.col||[]).join(","):"-");
     if(key===C.key)return;C.key=key;
-    const a=new THREE.Color(s&&s.col?s.col[0]:0xfdb927),b=new THREE.Color(s&&s.col?s.col[1]:0x552583);
-    /* 更鲜艳的那个当主色(白色球衣的球星,主色取队色而不是白) */
-    const [acc,sec]=sat(a)>=sat(b)?[a,b]:[b,a];
-    const h={};acc.getHSL(h);if(h.l<.58||h.s<.7)acc.setHSL(h.h,Math.max(h.s,.78),Math.max(h.l,.6));          // 太暗的队色在黑场里发不出光,提到可发光的亮度
-    C.acc.copy(acc);C.sec.copy(sec);C.accCss="#"+acc.getHexString();C.secCss="#"+sec.getHexString();
-    C.num=String(s&&s.num!=null?s.num:"");
-    C.name=String(s&&s.n?s.n:"AIBA").replace(/^\s*\d+\s*号\s*[·•]\s*/,"").toUpperCase();
+    const c1=boostColor(s&&s.col?s.col[0]:0xfdb927,s&&s.col?s.col[1]:0x552583);
+    C.acc.copy(c1.acc);C.sec.copy(c1.sec);C.accCss=c1.accCss;C.secCss=c1.secCss;
+    const m1=extractStarMeta(s,"8","AIBA");
+    C.num=m1.num;C.name=m1.name;C.title=m1.title;C.rating=m1.rating;C.spec=m1.spec;C.arc=m1.arc;C.sweet=m1.sweet;C.bars=m1.bars;
+    if(opp){
+      C.hasOpp=true;
+      const c2=boostColor(opp.col?opp.col[0]:0x00e5ff,opp.col?opp.col[1]:0x1d428a);
+      /* 如果双方主色太接近,把对手主色往青/品红方向偏移,保证同场灯光对比鲜明 */
+      if(Math.abs(c2.acc.r-c1.acc.r)+Math.abs(c2.acc.g-c1.acc.g)+Math.abs(c2.acc.b-c1.acc.b)<0.42){
+        const h={};c2.acc.getHSL(h);c2.acc.setHSL((h.h+0.42)%1,0.9,0.64);c2.accCss="#"+c2.acc.getHexString();
+      }
+      C.oppAcc.copy(c2.acc);C.oppSec.copy(c2.sec);C.oppAccCss=c2.accCss;C.oppSecCss=c2.secCss;
+      const m2=extractStarMeta(opp,"1","CHALLENGER");
+      C.oppNum=m2.num;C.oppName=m2.name;C.oppTitle=m2.title;C.oppRating=m2.rating;C.oppSpec=m2.spec;C.oppArc=m2.arc;C.oppSweet=m2.sweet;C.oppBars=m2.bars;
+    }else{
+      C.hasOpp=false;
+    }
   }
 
   /* ---------- 灯带:四圈,各一个合并网格,顶点色驱动 ---------- */
@@ -76,39 +116,189 @@
     indoorRoot.add(floorFar);
   }
 
-  /* ---------- 全馆光束:十束从顶棚打下来的摇头灯(加色半透明圆锥),登场时扫过整个球场和看台 ---------- */
+  /* ---------- 全馆光束:十束从顶棚打下来的摇头聚光灯(加色半透明圆锥 + 地板光斑),围绕半场与两名球员扫动 ---------- */
   const beams=[];let beamGeo=null;
   function makeBeams(){
-    beamGeo=new THREE.CylinderGeometry(.1,1,1,18,4,true);beamGeo.translate(0,-.5,0);          // 顶点在原点,朝 -Y 张开,长度 1
+    beamGeo=new THREE.CylinderGeometry(.12,.92,1,20,4,true);beamGeo.translate(0,-.5,0);          // 顶点在原点,朝 -Y 张开,长度 1
     const pos=beamGeo.attributes.position,col=new Float32Array(pos.count*3);
-    for(let i=0;i<pos.count;i++){const k=Math.pow(1+pos.getY(i),1.5)*.85;col[i*3]=col[i*3+1]=col[i*3+2]=k;}   // 越靠近灯头越亮,落地处淡掉
+    /* 保持光柱一直到地面都有足够亮度(0.38..0.95),这样在中低机位画面里十束聚光灯清晰可见 */
+    for(let i=0;i<pos.count;i++){const k=.38+.58*Math.pow(clamp(1+pos.getY(i),0,1),1.15);col[i*3]=col[i*3+1]=col[i*3+2]=k;}
     beamGeo.setAttribute("color",new THREE.BufferAttribute(col,3));
-    const N=10,cz=COURT.midZ;
+    const N=10,cz=-3.2;
     for(let i=0;i<N;i++){
       const a=i/N*TAU+.31,mat=new THREE.MeshBasicMaterial({vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,opacity:0,
         depthWrite:false,toneMapped:false,side:THREE.DoubleSide,fog:false});
       const m=new THREE.Mesh(beamGeo,mat);m.name="motionShowBeam";m.visible=false;m.frustumCulled=false;m.renderOrder=6;
-      m.position.set(Math.cos(a)*8.5,16.5,cz+Math.sin(a)*15);
+      /* 挂在主半场上空(x: ±6.5m, y: 13.8m, z: -3.2±5.8m),确保始终在热身与比赛镜头视野内 */
+      m.position.set(Math.cos(a)*6.5,13.8,cz+Math.sin(a)*5.8);
       indoorRoot.add(m);
-      beams.push({m,mat,a,ph:i*2.399,sp:.55+((i*7)%5)*.09,white:i%3===1});
+      beams.push({m,mat,a,idx:i,ph:i*2.399,sp:.72+((i*7)%5)*.11,white:i%4===1,opp:i%2===1,hitX:0,hitZ:-3,active:false,css:"#ffffff"});
     }
   }
   const _bd=new THREE.Vector3(),_bu=new THREE.Vector3(0,-1,0),_ba=new THREE.Vector3();
-  /* k:整体亮度 0..1;gather:0=各扫各的,1=全部聚到表演者身上 */
-  function setBeams(k,gather){
-    const cz=COURT.midZ;
+  /* k:整体亮度 0..1;gather:0=各扫各的,1=全部聚到表演者身上;retract:0..1 亮灯瞬间向上快速收回顶棚 */
+  function setBeams(k,gather,retract){
+    retract=clamp(retract||0,0,1);
+    const cz=-2.6;
+    const spec=S.special;
     for(const B of beams){
-      if(k<.01){B.m.visible=false;continue;}
-      const t=S.t*B.sp+B.ph,R=7+13*(.5+.5*Math.sin(t*.63+B.ph));                          // 落点在球场和看台之间来回
-      _ba.set(Math.cos(B.a+Math.sin(t)*1.5)*R,R>15?3+(R-15)*.9:0,cz+Math.sin(B.a+Math.sin(t)*1.5)*R*1.45);
-      if(gather>0&&S.sp)_ba.lerp(_bd.set(S.sp.x,1,S.sp.z),gather);
-      _bd.copy(_ba).sub(B.m.position);const L=_bd.length();_bd.multiplyScalar(1/L);
+      if(k<.01||retract>=.995){B.m.visible=false;B.active=false;continue;}
+      const speedMul=spec?(spec.kind==="super10"?2.2:1.65):1;
+      const t=S.t*B.sp*speedMul+B.ph;
+      const R=2.2+4.4*(.5+.5*Math.sin(t*.78+B.ph));
+      const ang=B.a+Math.sin(t*.92)*1.15;
+      _ba.set(Math.cos(ang)*R,0,clamp(cz+Math.sin(ang)*R*.95,COURT.nearBaseline+.8,COURT.midZ-.5));
+      if(gather>0){
+        const tx=S.sp?S.sp.x:0,tz=S.sp?S.sp.z:-1.2;
+        const spread=(1-gather)*1.35;
+        _ba.lerp(_bd.set(tx+Math.cos(B.a)*spread,.35*gather,tz+Math.sin(B.a)*spread),gather);
+      }
+      B.hitX=_ba.x;B.hitZ=_ba.z;B.active=retract<.75;
+      _bd.copy(_ba).sub(B.m.position);
+      const fullL=_bd.length();_bd.multiplyScalar(1/Math.max(1e-4,fullL));
+      /* 亮灯收回动作:retract 0→1 时光束从地面猛然往上抽回顶棚灯架 */
+      const L=fullL*(1-.92*retract*retract);
       B.m.quaternion.setFromUnitVectors(_bu,_bd);
-      const w=(1.1+L*.07)*(1-.45*gather);B.m.scale.set(w,L,w);
-      B.mat.opacity=k*(B.white?.2:.3)*(1-.72*gather);             // 聚到人身上时十束叠在一起,单束要压暗,不然把表演者洗白
-      if(B.white)B.mat.color.setRGB(1,1,1);else B.mat.color.copy(C.acc);
+      const w=(.78+fullL*.045)*(1-.32*gather)*(1-.45*retract);
+      B.m.scale.set(w,L,w);
+      B.mat.opacity=clamp(k*(B.white?.34:.46)*(1+.22*gather)*(1-retract),0,.85);
+      if(spec&&spec.kind==="super10"){
+        if(B.idx%3===0){B.mat.color.setHex(0xffd740);B.css="#ffd740";}
+        else if(B.idx%3===1){B.mat.color.setHex(0x00f0ff);B.css="#00f0ff";}
+        else{B.mat.color.setHex(0xff45b8);B.css="#ff45b8";}
+      }else if(spec&&spec.kind==="deep5"){
+        if(B.idx%2===0){B.mat.color.setHex(0x00eaff);B.css="#00eaff";}
+        else{B.mat.color.copy(C.acc);B.css=C.accCss;}
+      }else if(B.white){
+        B.mat.color.setRGB(1,1,1);B.css="#ffffff";
+      }else if(B.opp&&C.hasOpp){
+        B.mat.color.copy(C.oppAcc);B.css=C.oppAccCss;
+      }else{
+        B.mat.color.copy(C.acc);B.css=C.accCss;
+      }
       B.m.visible=true;
     }
+  }
+
+  /* ---------- 烟花(Pyro)与干冰气柱(Dry Ice):从黑到亮的仪式高潮 + 5分/10分进球狂欢 ---------- */
+  let pyroPoints=null,pyroData=null,dryIcePoints=null,dryIceData=null;
+  function makeAtmosphereFX(){
+    /* 1. 干冰气柱粒子:沿底线与边线喷涌的冷雾 */
+    const DN=120,dPos=new Float32Array(DN*3),dCol=new Float32Array(DN*3);
+    dryIceData=[];
+    const vents=[[-5.2,-8.9],[-2.6,-8.9],[2.6,-8.9],[5.2,-8.9],[-6.8,-5.2],[6.8,-5.2],[-6.8,-1.5],[6.8,-1.5]];
+    for(let i=0;i<DN;i++){
+      const v=vents[i%vents.length];
+      dryIceData.push({x:v[0],y:0,z:v[1],vx:0,vy:0,vz:0,age:99,life:1.8,vent:v});
+      dCol[i*3]=.82;dCol[i*3+1]=.93;dCol[i*3+2]=1.0;
+    }
+    const dGeo=new THREE.BufferGeometry();
+    dGeo.setAttribute("position",new THREE.BufferAttribute(dPos,3));
+    dGeo.setAttribute("color",new THREE.BufferAttribute(dCol,3));
+    dryIcePoints=new THREE.Points(dGeo,new THREE.PointsMaterial({size:.55,sizeAttenuation:true,vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,opacity:0,depthWrite:false,toneMapped:false,fog:false}));
+    dryIcePoints.name="motionShowDryIce";dryIcePoints.visible=false;dryIcePoints.frustumCulled=false;dryIcePoints.renderOrder=7;
+    indoorRoot.add(dryIcePoints);
+
+    /* 2. 赛场烟花冷焰火粒子:篮架两侧与半场四角冲天金银花火 */
+    const PN=160,pPos=new Float32Array(PN*3),pCol=new Float32Array(PN*3);
+    pyroData=[];
+    const canons=[[-3.4,-8.4],[-1.6,-8.4],[1.6,-8.4],[3.4,-8.4],[-5.8,-3.5],[5.8,-3.5]];
+    for(let i=0;i<PN;i++){
+      const c=canons[i%canons.length];
+      pyroData.push({x:c[0],y:0,z:c[1],vx:0,vy:0,vz:0,age:99,life:1.4,canon:c,gold:i%3!==0});
+    }
+    const pGeo=new THREE.BufferGeometry();
+    pGeo.setAttribute("position",new THREE.BufferAttribute(pPos,3));
+    pGeo.setAttribute("color",new THREE.BufferAttribute(pCol,3));
+    pyroPoints=new THREE.Points(pGeo,new THREE.PointsMaterial({size:.24,sizeAttenuation:true,vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,opacity:.95,depthWrite:false,toneMapped:false,fog:false}));
+    pyroPoints.name="motionShowPyro";pyroPoints.visible=false;pyroPoints.frustumCulled=false;pyroPoints.renderOrder=8;
+    indoorRoot.add(pyroPoints);
+  }
+  function triggerAtmosphereBurst(power,mode){
+    if(!pyroData||!dryIceData)return;
+    const pCol=pyroPoints.geometry.attributes.color.array;
+    for(let i=0;i<pyroData.length;i++){
+      const p=pyroData[i],c=p.canon;
+      p.x=c[0]+(Math.random()-.5)*.28;p.y=.1;p.z=c[1]+(Math.random()-.5)*.28;
+      const spread=(.6+Math.random()*1.4)*power;
+      const ang=Math.random()*TAU;
+      p.vx=Math.cos(ang)*spread;
+      p.vy=(5.2+Math.random()*5.6)*power;
+      p.vz=Math.sin(ang)*spread+.6;
+      p.age=-Math.random()*.28;
+      p.life=.95+Math.random()*.85;
+      if(mode==="deep5"){
+        pCol[i*3]=i%2?0.1:1;pCol[i*3+1]=i%2?0.95:1;pCol[i*3+2]=1;
+      }else{
+        pCol[i*3]=1;pCol[i*3+1]=p.gold?.84:.96;pCol[i*3+2]=p.gold?.28:.88;
+      }
+    }
+    pyroPoints.geometry.attributes.color.needsUpdate=true;
+    pyroPoints.visible=true;
+    for(let i=0;i<dryIceData.length;i++){
+      const d=dryIceData[i],v=d.vent;
+      d.x=v[0]+(Math.random()-.5)*.45;d.y=.08;d.z=v[1]+(Math.random()-.5)*.45;
+      const inwardX=-Math.sign(v[0]||1)*(.8+Math.random()*1.5)*power;
+      const inwardZ=(v[1]<-7?1.6:.4)*(0.7+Math.random())*power;
+      d.vx=inwardX+(Math.random()-.5)*.7;
+      d.vy=(.95+Math.random()*1.65)*power;
+      d.vz=inwardZ+(Math.random()-.5)*.7;
+      d.age=-Math.random()*.35;
+      d.life=1.25+Math.random()*1.05;
+    }
+    dryIcePoints.visible=true;
+  }
+  function updAtmosphereFX(dt){
+    if(pyroPoints&&pyroPoints.visible){
+      const pos=pyroPoints.geometry.attributes.position.array;
+      let anyP=false;
+      for(let i=0;i<pyroData.length;i++){
+        const p=pyroData[i];p.age+=dt;
+        if(p.age<0){pos[i*3]=p.x;pos[i*3+1]=-10;pos[i*3+2]=p.z;anyP=true;continue;}
+        if(p.age<p.life){
+          anyP=true;
+          p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;
+          p.vy-=9.2*dt;p.vx*=(1-1.2*dt);p.vz*=(1-1.2*dt);
+          if(p.y<.04){p.y=.04;p.vy*=-.28;}
+          pos[i*3]=p.x;pos[i*3+1]=p.y;pos[i*3+2]=p.z;
+        }else{
+          pos[i*3+1]=-10;
+        }
+      }
+      pyroPoints.geometry.attributes.position.needsUpdate=true;
+      if(!anyP)pyroPoints.visible=false;
+    }
+    if(dryIcePoints&&dryIcePoints.visible){
+      const pos=dryIcePoints.geometry.attributes.position.array;
+      let anyD=false,maxAlpha=0;
+      for(let i=0;i<dryIceData.length;i++){
+        const d=dryIceData[i];d.age+=dt;
+        if(d.age<0){pos[i*3]=d.x;pos[i*3+1]=-10;pos[i*3+2]=d.z;anyD=true;continue;}
+        if(d.age<d.life){
+          anyD=true;
+          const u=d.age/d.life;
+          maxAlpha=Math.max(maxAlpha,Math.sin(u*Math.PI)*.42);
+          d.x+=d.vx*dt;d.y+=d.vy*dt;d.z+=d.vz*dt;
+          d.vy*=(1-1.8*dt);d.vx*=(1-.9*dt);d.vz*=(1-.9*dt);
+          pos[i*3]=d.x;pos[i*3+1]=d.y;pos[i*3+2]=d.z;
+        }else{
+          pos[i*3+1]=-10;
+        }
+      }
+      dryIcePoints.material.opacity=maxAlpha;
+      dryIcePoints.geometry.attributes.position.needsUpdate=true;
+      if(!anyD)dryIcePoints.visible=false;
+    }
+  }
+  function triggerClimaxCelebration(power,mode){
+    triggerAtmosphereBurst(power||1,mode||"climax");
+    try{
+      if(typeof G!=="undefined")G.cheer=Math.max(G.cheer||0,1.25);
+      if(typeof triggerStreetCrowdReaction==="function")triggerStreetCrowdReaction("streak",3);
+      if(typeof crowdSwell==="function")crowdSwell(.26,2.1);
+      if(typeof broadcastSting==="function")broadcastSting("score");
+      if(typeof sSwish==="function"&&mode==="climax")sSwish();
+    }catch(e){}
   }
 
   /* ---------- 看台星海:黑场时观众举起的手机灯,一圈一圈跟着追光亮起来 ---------- */
@@ -161,8 +351,8 @@
   }
 
   /* ---------- 状态 ---------- */
-  const S={entDur:4.6,wasPre:false,ripples:[],lastRing:-99,sp:null,spK:0,t:0,heat:0,heatT:0,pulses:[],burst:-1,ent:-1,dim:1,base:null,streak:0,streakT:-1,lastDraw:0,built:false,wasPlay:false,lastEnt:-99,wrote:false,wroteK:1};
-  const ENT_DUR=4.6,PULSE=.75,RING_PULSE=2.6,RING_LAG=[0,.5,1.0,1.5],BURST=2.2,PLAY={round:1,tiebreak:1,battle:1,rackrush:1,lastshot:1};
+  const S={entDur:4.6,wasPre:false,climaxFired:false,dryIceWarmFired:false,special:null,ripples:[],lastRing:-99,sp:null,spK:0,t:0,heat:0,heatT:0,pulses:[],burst:-1,ent:-1,dim:1,base:null,streak:0,streakT:-1,lastDraw:0,built:false,wasPlay:false,lastEnt:-99,wrote:false,wroteK:1};
+  const ENT_DUR=4.6,PULSE=.85,RING_PULSE=2.4,RING_LAG=[0,.42,.84,1.26],BURST=2.2,PLAY={round:1,tiebreak:1,battle:1,rackrush:1,lastshot:1};
   function build(){
     if(S.built)return;S.built=true;
     makeRing(11.8,19.2,.52,3.84,.54,28,RING_LAG[0]);
@@ -173,6 +363,7 @@
     makeSpot();
     makeBeams();
     makeStars();
+    makeAtmosphereFX();
   }
   const active=()=>ON&&indoorRoot.visible!==false&&(!indoorRoot.parent||indoorRoot.parent.visible!==false);
 
@@ -180,8 +371,32 @@
   function fire(kind,info){
     if(!ON)return false;
     syncStar();
-    if(kind==="make"){
-      S.ripples.push({t:0});if(S.ripples.length>3)S.ripples.shift();        // 地板涟漪:每球都有
+    if(kind==="make"||kind==="deep5"||kind==="super10"){
+      const isSuper=kind==="super10"||!!(info&&(info.super||info.val===10));
+      const isDeep=!isSuper&&(kind==="deep5"||!!(info&&(info.deep||info.val===5)));
+      if(isSuper){
+        /* 10 分超远球:全场特级灯光秀(十束聚光灯 + 四层全彩金流灯带 + 全场地板 JACKPOT 动效 + 烟花干冰齐射) */
+        S.special={kind:"super10",t:0,dur:2.85,title:"10PT SUPER JACKPOT",sub:"LOGO ULTRA RANGE · +10 PTS"};
+        S.burst=0;
+        S.pulses.length=0;
+        S.pulses.push({t:0,big:true,mode:"super10"},{t:-.28,big:true,mode:"super10"},{t:-.56,big:true,mode:"super10"});
+        S.ripples.push({t:0,mode:"super10"},{t:-.18,mode:"super10"},{t:-.36,mode:"super10"});
+        S.lastRing=S.t;
+        triggerClimaxCelebration(1.3,"super10");
+        return true;
+      }
+      if(isDeep){
+        /* 5 分彩球点:专属炫彩电光灯光秀(十束聚光灯扫射 + 双重电青脉冲灯带 + 地板 5PT DEEP 投影 + 烟花干冰) */
+        S.special={kind:"deep5",t:0,dur:1.95,title:"5PT DEEP RANGE",sub:"DEEP MONEY SPOT · +5 PTS"};
+        S.burst=0.12;
+        S.pulses.length=0;
+        S.pulses.push({t:0,big:true,mode:"deep5"},{t:-.24,big:true,mode:"deep5"});
+        S.ripples.push({t:0,mode:"deep5"},{t:-.16,mode:"deep5"});
+        S.lastRing=S.t;
+        triggerClimaxCelebration(0.92,"deep5");
+        return true;
+      }
+      S.ripples.push({t:0});if(S.ripples.length>4)S.ripples.shift();        // 地板涟漪:每球都有
       const n=(info&&info.streak)||0;
       /* 灯带光波慢、层次多,所以不能密:距上一次至少 3 秒;连中 3/6/9… 球(或关键球)才在更短间隔里再来一次 */
       const gap=S.t-S.lastRing,mile=n>=3&&n%3===0;
@@ -191,7 +406,10 @@
       if(info&&info.clutch)S.burst=0;
     }else if(kind==="miss"){S.heatT=0;}
     else if(kind==="clutch"){S.burst=0;S.pulses.length=0;S.pulses.push({t:0,big:true});S.lastRing=S.t;S.ripples.push({t:0});}
-    else if(kind==="entrance"){S.ent=0;S.lastEnt=S.t;S.pulses.length=0;S.ripples.length=0;S.burst=-1;S.entDur=Math.max(4.6,(info&&info.dur)||4.6);}
+    else if(kind==="entrance"){
+      S.ent=0;S.lastEnt=S.t;S.climaxFired=false;S.dryIceWarmFired=false;
+      S.pulses.length=0;S.ripples.length=0;S.burst=-1;S.entDur=Math.max(4.6,(info&&info.dur)||4.6);
+    }
     else return false;
     return true;
   }
@@ -199,28 +417,60 @@
   /* ---------- 每帧 ---------- */
   function setRings(){
     let any=false;
-    const e=S.ent,b=S.burst;
+    const e=S.ent,b=S.burst,spec=S.special;
     for(const R of rings){
       let on=false;
       for(let i=0;i<R.SEG;i++){
-        const d=R.ang[i];let I=0,W=0;
+        const d=R.ang[i];let I=0,W=0,cMode=0;
         /* 连中热度:篮筐后方一段持续发亮,越热越宽越亮 */
         if(S.heat>.01)I+=S.heat*.55*Math.exp(-Math.pow(d/(.5+S.heat*.9),2));
         /* 命中光波:从篮筐后方向两侧扫开 */
         for(const p of S.pulses){const u=(p.t-R.lag)/RING_PULSE;if(u<=0||u>=1)continue;
-          const front=(1-Math.pow(1-u,1.6))*Math.PI*1.04,amp=(p.big?1.45:1.15)*sm(u*6)*Math.pow(1-u,1.25);
+          const front=(1-Math.pow(1-u,1.6))*Math.PI*1.04,amp=(p.big?1.55:1.15)*sm(u*6)*Math.pow(1-u,1.2);
           I+=amp*Math.exp(-Math.pow((d-front)/.5,2));                                   // 光波头:宽而柔
-          if(d<front)I+=amp*.34*Math.exp(-(front-d)/.95);}                              // 身后拖一条慢慢暗下去的尾迹
+          if(d<front)I+=amp*.36*Math.exp(-(front-d)/.95);                               // 身后拖一条慢慢暗下去的尾迹
+          if(p.mode==="super10")cMode=2;else if(p.mode==="deep5"&&cMode<1)cMode=1;
+        }
+        /* 5分 / 10分 专属灯带流光狂欢 */
+        if(spec){
+          const su=clamp(spec.t/spec.dur,0,1),sk=Math.sin(su*Math.PI);
+          if(spec.kind==="super10"){
+            const wave=.5+.5*Math.sin(i/R.SEG*TAU*3-S.t*9.5+R.lag*2);
+            I+=1.65*sk*(.45+.55*wave);
+            W+=.85*sk*Math.pow(wave,3);
+            cMode=2;
+          }else if(spec.kind==="deep5"){
+            const wave=.5+.5*Math.cos(i/R.SEG*TAU*2-S.t*7.2+R.lag*1.6);
+            I+=1.35*sk*(.4+.6*wave);
+            W+=.55*sk*Math.pow(wave,2);
+            if(cMode<1)cMode=1;
+          }
+        }
         /* 关键球:一黑(由曝光负责)再全场爆亮,带白 */
         if(b>=0){const u=b/BURST;if(u>.13){const k=Math.pow(1-(u-.13)/.87,2.2);I+=1.5*k;W+=.9*k*k;}}
-        /* 登场:先全灭,追光绕场,号码砸下时齐闪,最后收掉 */
+        /* 登场:先全灭,追光绕场,高潮收回时全场齐闪流光,最后柔和收掉 */
         if(e>=0){
-          if(e>.9&&e<(S.entDur-.85)+.15){const a0=(e-.9)*2.4,dd=Math.abs(((i/R.SEG*TAU-a0)%TAU+TAU)%TAU-Math.PI);
-            I+=.9*Math.exp(-Math.pow((Math.PI-dd)/.45,2))*sm(((S.entDur-.85)+.15-e)/.5);}
+          const left=S.entDur-e;
+          if(e>.6&&left>.2){
+            const a0=e*2.6,dd=Math.abs(((i/R.SEG*TAU-a0)%TAU+TAU)%TAU-Math.PI);
+            I+=.95*Math.exp(-Math.pow((Math.PI-dd)/.48,2))*sm(left/.55);
+          }
           if(e>1.0){const k=Math.pow(clamp(1-(e-1.0)/.9,0,1),2);I+=1.3*k;W+=.7*k*k;}
-          if(e>2.0&&e<(S.entDur-.85)+.45)I+=.22*sm((e-2)/.4)*sm(((S.entDur-.85)+.45-e)/.5);
+          if(left<=1.35&&left>0){
+            const ck=Math.sin(clamp((1.35-left)/1.35,0,1)*Math.PI);
+            I+=1.45*ck;W+=.85*ck*ck;
+          }
         }
-        const r=C.acc.r*I+W,g=C.acc.g*I+W,bl=C.acc.b*I+W,o=i*18;
+        let cr=C.acc.r,cg=C.acc.g,cb=C.acc.b;
+        if(cMode===2){
+          const h=((i/R.SEG)+S.t*.65)%1;
+          cr=h<.5?1:.2;cg=h<.5?.82:.95;cb=h<.5?.18:1;
+        }else if(cMode===1){
+          cr=.08;cg=.92;cb=1;
+        }else if(e>=0&&C.hasOpp&&(i%2===1)){
+          cr=C.oppAcc.r;cg=C.oppAcc.g;cb=C.oppAcc.b;
+        }
+        const r=cr*I+W,g=cg*I+W,bl=cb*I+W,o=i*18;
         for(let k=0;k<6;k++){R.col[o+k*3]=r;R.col[o+k*3+1]=g;R.col[o+k*3+2]=bl;}
         if(I+W>.004)on=true;
       }
@@ -245,11 +495,12 @@
   function segPath(g,name,w,h){
     const k=h*.1,gp=h*.014,hw=w/2-k,L=w-2*k-2*gp,Lv=h/2-k-2*gp;
     const H=(cy)=>{g.moveTo(-L/2,cy);g.lineTo(-L/2+k,cy-k);g.lineTo(L/2-k,cy-k);g.lineTo(L/2,cy);g.lineTo(L/2-k,cy+k);g.lineTo(-L/2+k,cy+k);g.closePath();};
-    const Vv=(cx,cy)=>{g.moveTo(cx,cy-Lv/2);g.lineTo(cx+k,cy-Lv/2+k);g.lineTo(cx+k,cy+Lv/2-k);g.lineTo(cx,cy+Lv/2);g.lineTo(cx-k,cy+Lv/2-k);g.lineTo(cx-k,cy-Lv/2+k);g.closePath();};
+    const Vv=(cx,cy)=>{g.moveTo(cx,cy-Lv/2);g.lineTo(cx+k,cy-Lv/2+k);lineTo(g,cx+k,cy+Lv/2-k);g.lineTo(cx,cy+Lv/2);g.lineTo(cx-k,cy+Lv/2-k);g.lineTo(cx-k,cy-Lv/2+k);g.closePath();};
     const q=(h/2-k)/2;
     if(name==="a")H(-h/2+k);else if(name==="g")H(0);else if(name==="d")H(h/2-k);
     else if(name==="f")Vv(-hw,-q);else if(name==="b")Vv(hw,-q);else if(name==="e")Vv(-hw,q);else if(name==="c")Vv(hw,q);
   }
+  function lineTo(g,x,y){g.lineTo(x,y);}
   /* prog:0→1 逐段点亮;mode: fill | stroke */
   function digits(g,str,h,prog,color,mode,lw){
     const w=h*.64,gap=h*.17,n=str.length,total=n*w+(n-1)*gap;
@@ -280,11 +531,11 @@
       arc(1.25,Math.PI,0,20,0)                                                                 // 合理冲撞区
     ];
   })();
-  function traceLines(g,pr,alpha){
+  function traceLines(g,pr,alpha,strokeCol){
     if(pr<=0||alpha<=0)return;
     g.save();g.translate(CXF,HOOP_PY);g.lineJoin="round";g.lineCap="round";
-    for(const pass of [[7,.16],[2.2,.95]]){
-      g.lineWidth=pass[0];g.globalAlpha=alpha*pass[1];g.strokeStyle=pass[0]>3?C.accCss:"#fff";
+    for(const pass of [[7,.2],[2.2,.95]]){
+      g.lineWidth=pass[0];g.globalAlpha=alpha*pass[1];g.strokeStyle=pass[0]>3?(strokeCol||C.accCss):"#fff";
       for(let li=0;li<LINES.length;li++){
         const P=LINES[li],lp=clamp(pr*1.25-li*.08,0,1),n=Math.max(2,Math.round(lp*(P.length-1))+1);
         if(lp<=0)continue;
@@ -300,69 +551,192 @@
     const dx=cam.position.x,dz=cam.position.z-COURT.nearHoopZ;
     return clamp(Math.atan2(-dx,Math.max(.5,dz)),-1.05,1.05);
   }
+  /* 绘制单人或双人 Motion Graph 信息卡(投射在地板上) */
+  function drawMotionCard(g,M,meta,xCenter,yCenter,scaleX,prog,alpha){
+    if(alpha<=.01||prog<=.01)return;
+    const k=outExpo(prog);
+    g.save();
+    g.translate(xCenter,yCenter);
+    g.scale(scaleX*(.86+.14*k),(.86+.14*k)*1.38);
+    g.globalAlpha=alpha;
+    const bw=3.2*M,bh=2.85*M;
+    /* 半透明科技感底板 + 斜切边框 */
+    g.fillStyle="rgba(6,10,22,0.72)";
+    g.strokeStyle=meta.css;
+    g.lineWidth=.065*M;
+    g.beginPath();
+    g.moveTo(-bw/2+.22*M,-bh/2);
+    g.lineTo(bw/2,-bh/2);
+    g.lineTo(bw/2-.22*M,bh/2);
+    g.lineTo(-bw/2,bh/2);
+    g.closePath();
+    g.fill();
+    g.stroke();
+    /* 顶部色带标签:角色定位 / 综合评分 */
+    g.fillStyle=meta.css;
+    g.fillRect(-bw/2+.18*M,-bh/2+.12*M,(bw-.36*M)*k,.34*M);
+    text(g,"OVR "+meta.rating+" · "+meta.spec,0,-bh/2+.29*M,.21*M,{plain:true,color:"#050811"});
+    /* 号码 + 球员姓名 */
+    if(meta.num){
+      g.save();
+      g.translate(-bw*.29,-.25*M);
+      digits(g,meta.num,1.05*M,clamp(prog*1.3,0,1),meta.css,"fill");
+      g.restore();
+    }
+    text(g,meta.name,bw*.11,-.42*M,.34*M,{color:"#ffffff"});
+    text(g,meta.arc+" · 甜区 "+meta.sweet,bw*.11,-.04*M,.185*M,{plain:true,color:meta.css});
+    /* 三条动态特长能量柱(Motion Graph Bars: 出手速度 / 弹道弧线 / 甜区窗口) */
+    const labels=["RELEASE","ARC","SWEET"];
+    for(let i=0;i<3;i++){
+      const by=.34*M+i*.32*M,barW=(bw-.75*M),fillW=barW*clamp((meta.bars[i]||.8)*outExpo(clamp((prog-.12*i)/.7,0,1)),0,1);
+      g.fillStyle="rgba(255,255,255,0.68)";
+      g.font="800 "+Math.round(.15*M)+"px "+FONT;g.textAlign="left";g.textBaseline="middle";
+      g.fillText(labels[i],-bw/2+.22*M,by);
+      const bx=-bw/2+.98*M,bRestW=bw-1.22*M;
+      g.fillStyle="rgba(255,255,255,0.14)";
+      g.fillRect(bx,by-.07*M,bRestW,.14*M);
+      g.fillStyle=meta.css;
+      g.fillRect(bx,by-.07*M,bRestW*clamp((meta.bars[i]||.8)*k,0,1),.14*M);
+    }
+    g.restore();
+  }
   function drawFloor(){
-    const g=fg,e=S.ent;let any=false;
+    const g=fg,e=S.ent,spec=S.special;let any=false;
     g.setTransform(FK,0,0,FK,0,0);g.globalAlpha=1;g.globalCompositeOperation="source-over";g.clearRect(0,0,FW,FH);
     const tgt=camAngle();
-    if(S.phi==null||e<0&&S.streakT<0)S.phi=tgt;else S.phi+=(tgt-S.phi)*.06;
+    if(S.phi==null||e<0&&S.streakT<0&&!spec)S.phi=tgt;else S.phi+=(tgt-S.phi)*.08;
     const M=PX;
     if(e>=0){
       any=true;
-      const inK=sm(e/.5),outK=sm((e-(S.entDur-.85))/.75);
-      const cut=FH*(1-outK);                                   // 收场:整块画面朝篮筐方向擦掉
-      g.save();g.beginPath();g.rect(0,0,FW,cut);g.clip();
-      g.fillStyle="rgba(3,4,9,"+(.93*inK).toFixed(3)+")";g.fillRect(0,0,FW,FH);
-      /* 场地线自己画出来,号码落定后退成背景 */
-      traceLines(g,outExpo((e-.3)/1.0),e<1.5?1:1-.62*sm((e-1.5)/.5));
+      const left=S.entDur-e;
+      const inK=sm(e/.55);
+      /* 收场丝滑过渡:不用硬切矩形 clip(避免一条条黑带跳变),改用径向能量收缩 + 丝滑透明度渐变 */
+      const retractK=sm((1.35-left)/1.15);
+      const fadeAlpha=inK*(1-sm((1.15-left)/.95));
+      if(fadeAlpha>.01){
+        const bgGrad=g.createRadialGradient(CXF,HOOP_PY+4.2*M,.5*M,CXF,HOOP_PY+4.2*M,10.5*M);
+        bgGrad.addColorStop(0,"rgba(4,7,16,"+(0.82*fadeAlpha).toFixed(3)+")");
+        bgGrad.addColorStop(.72,"rgba(3,5,12,"+(0.68*fadeAlpha).toFixed(3)+")");
+        bgGrad.addColorStop(1,"rgba(3,5,12,0)");
+        g.fillStyle=bgGrad;g.fillRect(0,0,FW,FH);
+      }
+      /* 场地线动态勾勒 */
+      traceLines(g,outExpo((e-.2)/.95),fadeAlpha*(e<1.6?1:.58),C.accCss);
+      /* 十束聚光灯在地板上的实时光斑(让玩家低头看球场也能直接看到十个聚光灯的运动与收拢!) */
+      for(const B of beams){
+        if(!B.active)continue;
+        const bx=CXF+B.hitX*M,by=(B.hitZ-COURT.nearBaseline)*M,br=(1.15-.35*retractK)*M;
+        if(by<-br||by>FH+br)continue;
+        const bgr=g.createRadialGradient(bx,by,0,bx,by,br);
+        bgr.addColorStop(0,"#ffffff");
+        bgr.addColorStop(.38,B.css+"aa");
+        bgr.addColorStop(1,"rgba(0,0,0,0)");
+        g.globalAlpha=clamp(fadeAlpha*.62,0,1);
+        g.fillStyle=bgr;g.beginPath();g.arc(bx,by,br,0,TAU);g.fill();
+      }
       g.save();g.translate(CXF,HOOP_PY);g.rotate(S.phi);
-      /* 回声弧:三分线向外一圈圈扩散,和比赛里命中的涟漪是同一种语言(不随镜头转) */
-      if(e>.9){
-        g.save();g.rotate(-S.phi);g.lineWidth=.08*M;g.strokeStyle=C.accCss;
-        for(let i=0;i<5;i++){const ph=((e-.9)*.42+i/5)%1,r=(7.24+ph*7.5)*M;
-          g.globalAlpha=.85*sm(ph*5)*(1-ph)*sm((e-.9)/.4)*(1-sm((e-((S.entDur-.85)-.25))/.5));
-          g.beginPath();g.arc(0,0,r,.12,Math.PI-.12);g.stroke();}
-        g.restore();
-      }
-      /* 速度条:号码砸下的那一秒从身后横向掠过 */
-      if(e>.95&&e<2.3){
-        for(let i=0;i<6;i++){
-          const u=clamp((e-.95-i*.07)/.75,0,1);if(u<=0||u>=1)continue;
-          const yy=(1.9+i*.82)*M,wd=(5+i*.7)*M,x=(i%2?1:-1)*(11*M-outExpo(u)*22*M)-wd/2,th=(.2-.02*i)*M;
-          g.globalAlpha=.85*Math.sin(u*Math.PI);g.fillStyle=i%3===1?"#fff":C.accCss;
-          g.beginPath();g.moveTo(x,yy);g.lineTo(x+wd,yy);g.lineTo(x+wd-th*.8,yy+th);g.lineTo(x-th*.8,yy+th);g.closePath();g.fill();
+      /* 动态科技圆环(Motion Graph HUD Ring) */
+      if(e>.4&&fadeAlpha>.02){
+        const rHud=(3.6-.9*retractK)*M;
+        g.save();g.translate(0,4.35*M);g.scale(1,1.35);
+        g.strokeStyle=C.accCss;g.lineWidth=.05*M;g.globalAlpha=fadeAlpha*.55;
+        g.beginPath();g.arc(0,0,rHud,e*1.4,e*1.4+Math.PI*1.35);g.stroke();
+        if(C.hasOpp){
+          g.strokeStyle=C.oppAccCss;
+          g.beginPath();g.arc(0,0,rHud*.86,-e*1.6,-e*1.6+Math.PI*1.25);g.stroke();
         }
-      }
-      /* 号码:逐段点亮,放大砸下,落定后带两层错位描边;纵向拉长 1.5 倍,抵消镜头的透视压缩 */
-      if(e>1.0&&C.num){
-        const u=(e-1.0)/.5,s=1+.9*(1-outExpo(u)),hN=(C.num.length>1?2.7:3.1)*M;
-        g.save();g.translate(0,4.55*M);g.scale(s,s*1.5);
-        const set=sm((e-1.5)/.5);
-        g.globalAlpha=.5*set;digits(g,C.num,hN*(1+.16*set),1,C.accCss,"stroke",2);
-        g.globalAlpha=.85*set;digits(g,C.num,hN*(1+.08*set),1,"#fff","stroke",1.6);
-        g.globalAlpha=1;digits(g,C.num,hN,clamp(u*1.15,0,1),C.accCss,"fill");
         g.restore();
       }
-      /* 名字:像球衣背面一样压在号码上方,从中心向两侧擦入 */
-      if(e>1.9){
-        const k=outExpo((e-1.9)/.6),ny=1.3*M,half=5*M*k;
-        g.save();g.beginPath();g.rect(-half,ny-1.1*M,half*2,2.2*M);g.clip();
-        g.globalAlpha=1;g.translate(0,ny);g.scale(1,1.5);spaced(g,C.name,0,0,.92*M,.36*M,"#fff");
+      /* 阶段 1 (0..3.4s): 主战球员大号数字 + 姓名 + 特长 Motion Graph */
+      const p1SoloEnd=C.hasOpp?Math.min(3.4,S.entDur*.36):S.entDur-1.15;
+      if(e>.65&&e<p1SoloEnd+.45){
+        const a1=sm((e-.65)/.35)*(1-sm((e-p1SoloEnd)/.42))*fadeAlpha;
+        const u=clamp((e-.65)/.55,0,1),s=1+.65*(1-outExpo(u)),hN=(C.num.length>1?2.3:2.6)*M;
+        g.save();g.translate(0,3.25*M);g.scale(s,s*1.45);
+        g.globalAlpha=.85*a1;digits(g,C.num||"8",hN*1.08,1,"#fff","stroke",1.6);
+        g.globalAlpha=a1;digits(g,C.num||"8",hN,clamp(u*1.2,0,1),C.accCss,"fill");
         g.restore();
+        drawMotionCard(g,M,{num:C.num,name:C.name,title:C.title,spec:C.spec,arc:C.arc,sweet:C.sweet,rating:C.rating,bars:C.bars,css:C.accCss},0,6.05*M,1.08,clamp((e-.95)/.75,0,1),a1);
+      }
+      /* 阶段 2 (3.4s..6.4s): 对手球员大号数字 + 姓名 + 特长 Motion Graph */
+      const p2SoloEnd=Math.min(6.4,S.entDur*.66);
+      if(C.hasOpp&&e>p1SoloEnd&&e<p2SoloEnd+.45){
+        const a2=sm((e-p1SoloEnd)/.35)*(1-sm((e-p2SoloEnd)/.42))*fadeAlpha;
+        const u=clamp((e-p1SoloEnd)/.55,0,1),s=1+.65*(1-outExpo(u)),hN=(C.oppNum.length>1?2.3:2.6)*M;
+        g.save();g.translate(0,3.25*M);g.scale(s,s*1.45);
+        g.globalAlpha=.85*a2;digits(g,C.oppNum||"1",hN*1.08,1,"#fff","stroke",1.6);
+        g.globalAlpha=a2;digits(g,C.oppNum||"1",hN,clamp(u*1.2,0,1),C.oppAccCss,"fill");
+        g.restore();
+        drawMotionCard(g,M,{num:C.oppNum,name:C.oppName,title:C.oppTitle,spec:C.oppSpec,arc:C.oppArc,sweet:C.oppSweet,rating:C.oppRating,bars:C.oppBars,css:C.oppAccCss},0,6.05*M,1.08,clamp((e-p1SoloEnd-.25)/.75,0,1),a2);
+      }
+      /* 阶段 3 (6.4s..收场): 双人同屏 VS 对决特长面板 + 收场向中心聚拢收回 */
+      if(C.hasOpp&&e>p2SoloEnd-.1){
+        const vsIn=sm((e-p2SoloEnd)/.45)*fadeAlpha;
+        const collapse=1-.78*retractK;
+        const dx=2.15*M*collapse;
+        drawMotionCard(g,M,{num:C.num,name:C.name,title:C.title,spec:C.spec,arc:C.arc,sweet:C.sweet,rating:C.rating,bars:C.bars,css:C.accCss},-dx,4.65*M,.82*collapse,clamp((e-p2SoloEnd)/.65,0,1),vsIn);
+        drawMotionCard(g,M,{num:C.oppNum,name:C.oppName,title:C.oppTitle,spec:C.oppSpec,arc:C.oppArc,sweet:C.oppSweet,rating:C.oppRating,bars:C.oppBars,css:C.oppAccCss},dx,4.65*M,.82*collapse,clamp((e-p2SoloEnd-.12)/.65,0,1),vsIn);
+        g.save();g.translate(0,4.65*M);g.scale(collapse*(1+.18*Math.sin(e*8)),collapse*1.4);
+        g.globalAlpha=vsIn;
+        text(g,"VS",0,0,.62*M,{stroke:3,color:C.accCss});
+        text(g,"VS",0,0,.62*M,{color:"#ffffff"});
+        g.restore();
+      }
+      /* 阶段 4 (最后 1.35s): 亮灯收回瞬间的径向聚能光环与柔和闪光扩散 */
+      if(retractK>0){
+        const waveR=(.6+retractK*9.5)*M,waveA=Math.sin(retractK*Math.PI);
+        g.globalAlpha=waveA*.85;g.strokeStyle="#ffffff";g.lineWidth=(.18*(1-retractK)+.04)*M;
+        g.beginPath();g.arc(0,3.8*M,waveR,0,TAU);g.stroke();
+        g.globalAlpha=waveA*.65;g.strokeStyle=C.accCss;g.lineWidth=.12*M;
+        g.beginPath();g.arc(0,3.8*M,waveR*.78,0,TAU);g.stroke();
       }
       g.restore();
       if(S.sp&&S.spK>.02){const sx=CXF+S.sp.x*PX,sy=(S.sp.z-COURT.nearBaseline)*PX,rr=1.9*PX,gr=g.createRadialGradient(sx,sy,0,sx,sy,rr);
         gr.addColorStop(0,"rgba(255,255,255,.55)");gr.addColorStop(.55,C.accCss+"66");gr.addColorStop(1,"rgba(0,0,0,0)");
-        g.globalAlpha=S.spK*.9;g.fillStyle=gr;g.fillRect(sx-rr,sy-rr,rr*2,rr*2);g.globalAlpha=1;}
-      g.restore();
-      if(outK>0&&outK<1){g.globalAlpha=.9;g.fillStyle=C.accCss;g.fillRect(0,cut-2,FW,3);}      // 擦除边缘的一条亮线
+        g.globalAlpha=S.spK*.85*fadeAlpha;g.fillStyle=gr;g.fillRect(sx-rr,sy-rr,rr*2,rr*2);g.globalAlpha=1;}
     }else{
+      /* 5分 / 10分 专属夸张地板灯光投影秀 */
+      if(spec){
+        any=true;
+        const u=clamp(spec.t/spec.dur,0,1),env=Math.sin(u*Math.PI);
+        const is10=spec.kind==="super10";
+        const colMain=is10?"#ffd740":"#00f0ff",colSub=is10?"#00f0ff":C.accCss;
+        traceLines(g,1,env*(is10?.95:.75),colMain);
+        /* 十束聚光灯在地板上的高能扫射光斑 */
+        for(const B of beams){
+          if(!B.active)continue;
+          const bx=CXF+B.hitX*M,by=(B.hitZ-COURT.nearBaseline)*M,br=1.15*M;
+          const bgr=g.createRadialGradient(bx,by,0,bx,by,br);
+          bgr.addColorStop(0,"#ffffff");bgr.addColorStop(.45,B.css+"aa");bgr.addColorStop(1,"rgba(0,0,0,0)");
+          g.globalAlpha=env*.65;g.fillStyle=bgr;g.beginPath();g.arc(bx,by,br,0,TAU);g.fill();
+        }
+        g.save();g.translate(CXF,HOOP_PY);g.rotate(S.phi);
+        const numRings=is10?5:3;
+        for(let i=0;i<numRings;i++){
+          const ru=clamp((u*1.35-i*.14),0,1);if(ru<=0||ru>=1)continue;
+          const rr=outExpo(ru)*(is10?11.5:8.8)*M;
+          g.globalAlpha=(1-ru)*env*.9;
+          g.strokeStyle=i%2===0?colMain:colSub;
+          g.lineWidth=(.16*(1-ru)+.04)*M;
+          g.beginPath();g.arc(0,3.8*M,rr,0,TAU);g.stroke();
+        }
+        const scalePop=1+.35*(1-outExpo(clamp(u*3.2,0,1)));
+        g.translate(0,4.4*M);g.scale(scalePop,scalePop*1.42);
+        g.globalAlpha=env;
+        text(g,is10?"+10":"+5",0,-.55*M,is10?1.85*M:1.45*M,{stroke:4,color:colMain});
+        text(g,is10?"+10":"+5",0,-.55*M,is10?1.85*M:1.45*M,{color:"#ffffff"});
+        text(g,spec.title,0,.48*M,.52*M,{color:colMain});
+        text(g,spec.sub,0,.92*M,.24*M,{plain:true,color:"#ffffff"});
+        g.restore();
+      }
       /* 命中涟漪:以篮筐正下方为圆心 */
       for(const p of S.ripples){const u=p.t/PULSE;if(u<=0||u>=1)continue;any=true;
         const r=outExpo(u)*9.2*M;
-        g.globalAlpha=.8*Math.pow(1-u,1.4);g.strokeStyle=C.accCss;g.lineWidth=(.05+.2*(1-u))*M;
+        const rCol=p.mode==="super10"?"#ffd740":(p.mode==="deep5"?"#00f0ff":C.accCss);
+        g.globalAlpha=.82*Math.pow(1-u,1.4);g.strokeStyle=rCol;g.lineWidth=(.05+.22*(1-u))*M;
         g.beginPath();g.arc(CXF,HOOP_PY,r,0,TAU);g.stroke();
         g.globalAlpha=.9*Math.pow(1-u,1.5);g.strokeStyle="#fff";g.lineWidth=.045*M;g.beginPath();g.arc(CXF,HOOP_PY,r+.16*M,0,TAU);g.stroke();
-        g.globalAlpha=.45*Math.pow(1-u,2);g.strokeStyle=C.accCss;g.lineWidth=.06*M;g.beginPath();g.arc(CXF,HOOP_PY,r*.72,0,TAU);g.stroke();}
+        g.globalAlpha=.45*Math.pow(1-u,2);g.strokeStyle=rCol;g.lineWidth=.06*M;g.beginPath();g.arc(CXF,HOOP_PY,r*.72,0,TAU);g.stroke();}
       /* 连中:禁区里闪一下 ×N */
       if(S.streakT>=0&&S.streakT<1.2){any=true;
         const u=S.streakT/1.2,s=1+.45*(1-outExpo(u*3)),a=1-sm((u-.6)/.4),str=String(S.streak),hN=2.1*M;
@@ -374,14 +748,15 @@
         g.globalAlpha=a;g.strokeStyle="#fff";g.lineWidth=.16*M;g.lineCap="round";g.beginPath();
         g.moveTo(xo-.3*M,-.3*M);g.lineTo(xo+.3*M,.3*M);g.moveTo(xo+.3*M,-.3*M);g.lineTo(xo-.3*M,.3*M);g.stroke();
         g.restore();}
-      /* 关键球:场地线整组亮一下 + 地板闪 */
-      if(S.burst>=0){const u=S.burst/BURST;if(u>.13){any=true;const k=Math.pow(1-(u-.13)/.87,2.4);
-        g.globalAlpha=.38*k;g.fillStyle=C.accCss;g.fillRect(0,0,FW,FH);g.globalAlpha=.4*k*k;g.fillStyle="#fff";g.fillRect(0,0,FW,FH);
+      /* 关键球:场地线整组亮一下 + 地板柔和闪光 */
+      if(S.burst>=0&&!spec){const u=S.burst/BURST;if(u>.13){any=true;const k=Math.pow(1-(u-.13)/.87,2.4);
+        g.globalAlpha=.28*k;g.fillStyle=C.accCss;g.fillRect(0,0,FW,FH);g.globalAlpha=.26*k*k;g.fillStyle="#fff";g.fillRect(0,0,FW,FH);
         traceLines(g,1,Math.min(1,k*1.6));}}
     }
     g.globalAlpha=1;
     floor.visible=any;if(any)ftex.needsUpdate=true;
-    if(floorFar)floorFar.visible=any&&(S.ent>=0||S.burst>=0);
+    /* 远端半场只在 10分球 或 关键球爆闪时同步亮起,避免赛前文字在远端反向镜像造成一条条黑带错觉 */
+    if(floorFar)floorFar.visible=any&&(S.burst>=0||!!(spec&&spec.kind==="super10"));
   }
   /* 追光:黑场期间一束柔和的队色白光罩着当前表演者,随演示的镜头换人;收场段跟着亮灯一起淡出 */
   const _tg=new THREE.Vector3();
@@ -389,7 +764,7 @@
     if(!spot)return;
     const e=S.ent,focus=spotFocus();
     let k=0;
-    if(e>=0&&focus)k=sm(e/.5)*(1-sm((e-(S.entDur-.85))/.7));
+    if(e>=0&&focus)k=sm(e/.5)*(1-sm((e-(S.entDur-1.05))/.85));
     S.spK+=(k-S.spK)*(1-Math.exp(-10*dt));
     if(focus){
       if(!S.sp)S.sp=new THREE.Vector3().copy(focus);else S.sp.lerp(focus,1-Math.exp(-7*dt));
@@ -403,32 +778,59 @@
     if(!S.built){if(!active())return;build();syncStar();}
     const dt=clamp(t-S.t,0,.1);S.t=t;
     const live=active();
-    if(!live){for(const R of rings)R.mesh.visible=false;floor.visible=false;if(floorFar)floorFar.visible=false;setBeams(0,0);setStars(0);if(S.dim!==1&&S.base!=null){S.dim=1;renderer.toneMappingExposure=S.base;S.wrote=false;}S.ent=-1;S.burst=-1;S.pulses.length=0;S.ripples.length=0;if(spot)spot.intensity=0;return;}
+    if(!live){for(const R of rings)R.mesh.visible=false;floor.visible=false;if(floorFar)floorFar.visible=false;setBeams(0,0,0);setStars(0);if(pyroPoints)pyroPoints.visible=false;if(dryIcePoints)dryIcePoints.visible=false;if(S.dim!==1&&S.base!=null){S.dim=1;renderer.toneMappingExposure=S.base;S.wrote=false;}S.ent=-1;S.burst=-1;S.special=null;S.pulses.length=0;S.ripples.length=0;if(spot)spot.intensity=0;return;}
     for(const p of S.pulses)p.t+=dt;
     for(const p of S.ripples)p.t+=dt;
     while(S.pulses.length&&S.pulses[0].t>RING_PULSE+RING_LAG[3]+.3)S.pulses.shift();
     while(S.ripples.length&&S.ripples[0].t>PULSE+.3)S.ripples.shift();
     if(S.burst>=0){S.burst+=dt;if(S.burst>BURST)S.burst=-1;}
     if(S.streakT>=0){S.streakT+=dt;if(S.streakT>1.1)S.streakT=-1;}
-    /* 登场挂在赛前介绍(热身演示)上:一进演示就黑场 + 追光,演示结束前亮灯,倒计时开始时场馆已经全亮。
-       演示被跳过/提前结束就直接进收场段,不留黑场到倒计时里 */
+    if(S.special){S.special.t+=dt;if(S.special.t>S.special.dur)S.special=null;}
+    /* 登场挂在赛前介绍(热身演示)上:一进演示就黑场 + 追光,演示结束前丝滑亮灯 + 烟花干冰啦啦队齐鸣 */
     if(typeof G!=="undefined"){
       const pre=G.state==="pregame";
       if(pre&&!S.wasPre&&t-S.lastEnt>6){
-        syncStar();S.ent=0;S.lastEnt=t;S.pulses.length=0;S.ripples.length=0;
-        S.entDur=Math.max(4.6,(typeof PREGAME!=="undefined"&&PREGAME.dur?PREGAME.dur:5.2)-.3);
+        syncStar();S.ent=0;S.lastEnt=t;S.climaxFired=false;S.dryIceWarmFired=false;
+        S.pulses.length=0;S.ripples.length=0;
+        S.entDur=Math.max(4.6,(typeof PREGAME!=="undefined"&&PREGAME.dur?PREGAME.dur:5.2)-.2);
       }
-      if(S.ent>=0&&!pre&&S.ent<S.entDur-.85)S.ent=S.entDur-.85;
+      if(S.ent>=0&&!pre&&S.ent<S.entDur-1.25)S.ent=S.entDur-1.25;
       S.wasPre=pre;
     }
-    if(S.ent>=0){S.ent+=dt;if(S.ent>S.entDur)S.ent=-1;}
+    if(S.ent>=0){
+      S.ent+=dt;
+      /* 开场 0.5s 先喷一波柔和干冰烘托气氛 */
+      if(!S.dryIceWarmFired&&S.ent>.45){
+        S.dryIceWarmFired=true;
+        triggerAtmosphereBurst(.55,"warm");
+      }
+      /* 亮灯收回前 1.15s:触发烟花 + 干冰气柱 + 啦啦队欢呼 + 观众音浪 + 收光回弹 */
+      if(!S.climaxFired&&S.ent>=S.entDur-1.15){
+        S.climaxFired=true;
+        triggerClimaxCelebration(1.1,"climax");
+      }
+      if(S.ent>S.entDur)S.ent=-1;
+    }
+    updAtmosphereFX(dt);
     S.heat+=(S.heatT-S.heat)*(1-Math.exp(-(S.heatT>S.heat?3:1.6)*dt));
-    /* 场灯:登场压到很暗;关键球先一黑再回弹;蓄力时略微压暗,视线收向篮筐 */
+    /* 场灯曝光:从黑到亮采用丝滑过渡 + 亮灯收回瞬间微过曝回弹(1.14 → 1.0),告别生硬跳变 */
     let dim=1;
     if(typeof G!=="undefined"&&G.charging)dim=.93;
-    if(S.ent>=0){const e=S.ent;dim=1-.72*sm(e/.45)*(1-sm((e-(S.entDur-.8))/.7));}
-    if(S.burst>=0){const u=S.burst/BURST;dim=u<.13?.3:1+.16*Math.pow(1-(u-.13)/.87,2);}
-    const rate=S.burst>=0?40:(S.ent>=0?30:7);
+    if(S.ent>=0){
+      const e=S.ent,left=S.entDur-e;
+      const darkIn=sm(e/.65);
+      const rec=sm((1.25-left)/1.15);
+      const bloom=Math.sin(rec*Math.PI)*.18;
+      dim=1-.68*darkIn*(1-rec)+bloom;
+    }
+    if(S.special){
+      const su=clamp(S.special.t/S.special.dur,0,1);
+      if(S.special.kind==="super10")dim=su<.12?.42:1+.24*Math.sin(su*Math.PI);
+      else if(S.special.kind==="deep5")dim=1+.16*Math.sin(su*Math.PI);
+    }else if(S.burst>=0){
+      const u=S.burst/BURST;dim=u<.13?.38:1+.16*Math.pow(1-(u-.13)/.87,2);
+    }
+    const rate=S.burst>=0?24:(S.ent>=0?14:8);
     S.dim+=(dim-S.dim)*(1-Math.exp(-rate*dt));
     if(Math.abs(S.dim-1)<.002&&dim===1)S.dim=1;
     /* 曝光:不压暗时不写,并把当前值记成基准(别的系统改了曝光也不会被这里盖回去) */
@@ -437,16 +839,30 @@
     else if(S.wrote){renderer.toneMappingExposure=S.base;S.wrote=false;}
     setRings();
     updSpot(dt);
-    /* 全馆配合:光束 + 看台星海只在黑场的登场秀里出现(关键球爆亮时光束也甩一下) */
-    {let bk=0,gather=0,sk=0;
-      if(S.ent>=0){const e=S.ent,fade=sm((e-.35)/.6)*(1-sm((e-(S.entDur-.95))/.7));
-        bk=fade;sk=fade;
-        gather=sm((e-.8)/.3)*(1-sm((e-2.1)/.9));}                                          // 号码砸下的那一拍所有光束收到表演者身上,然后散开去扫全场
-      if(S.burst>=0){const u=S.burst/BURST;if(u>.13)bk=Math.max(bk,.8*Math.pow(1-(u-.13)/.87,1.6));}
-      setBeams(bk,gather);setStars(sk);}
-    /* 地板画布只在有内容时重画,最多 30 帧/秒 */
-    const need=S.ent>=0||S.ripples.length||S.streakT>=0||S.burst>=0;
-    if(need){if(t-S.lastDraw>=1/31||S.ent>=0&&t-S.lastDraw>=1/61){S.lastDraw=t;drawFloor();}}
+    /* 全馆配合:十束聚光灯 + 看台星海在登场秀、5分球、10分球、关键球中协同联动 */
+    {let bk=0,gather=0,retract=0,sk=0;
+      if(S.ent>=0){
+        const e=S.ent,left=S.entDur-e;
+        const inB=sm((e-.15)/.45);
+        retract=sm((.85-left)/.75);
+        bk=inB*(1-retract*.95);
+        sk=inB*(1-sm((1.15-left)/.95));
+        const g1=sm((e-.7)/.35)*(1-sm((e-1.9)/.65));
+        const gEnd=sm((1.35-left)/.55);
+        gather=Math.max(g1*.75,gEnd);
+      }
+      if(S.special){
+        const su=clamp(S.special.t/S.special.dur,0,1),sEnv=Math.sin(su*Math.PI);
+        bk=Math.max(bk,S.special.kind==="super10"?.95*sEnv:.82*sEnv);
+        gather=Math.max(gather,sm((su-.62)/.32));
+        retract=Math.max(retract,sm((su-.78)/.22));
+        if(S.special.kind==="super10")sk=Math.max(sk,.92*sEnv);
+      }
+      if(S.burst>=0&&!S.special){const u=S.burst/BURST;if(u>.13)bk=Math.max(bk,.75*Math.pow(1-(u-.13)/.87,1.6));}
+      setBeams(bk,gather,retract);setStars(sk);}
+    /* 地板画布重绘:登场和特种灯光秀期间 60fps 丝滑刷新 */
+    const need=S.ent>=0||S.special!=null||S.ripples.length||S.streakT>=0||S.burst>=0;
+    if(need){if(t-S.lastDraw>=1/31||(S.ent>=0||S.special!=null)&&t-S.lastDraw>=1/61){S.lastDraw=t;drawFloor();}}
     else if(floor.visible){floor.visible=false;if(floorFar)floorFar.visible=false;}
   }
 
@@ -457,11 +873,11 @@
     const mb=global.madeBall,xb=global.missBall;
     if(typeof mb==="function")global.madeBall=function(b){const r=mb.apply(this,arguments);
       try{if(b&&!b.opp&&!b.silent){const n=(typeof G!=="undefined"&&G.streak)||0;
-        fire("make",{streak:n,clutch:!!(b.bonus||(b.money&&n>=3)||(n>=5&&n%5===0)||(typeof G!=="undefined"&&G.mode==="lastshot"))});}}catch(e){}
+        fire("make",{streak:n,val:b.val,deep:!!(b.deep||b.val===5),super:!!(b.super||b.val===10),clutch:!!(b.bonus||(b.money&&n>=3)||(n>=5&&n%5===0)||(typeof G!=="undefined"&&G.mode==="lastshot"))});}}catch(e){}
       return r;};
     if(typeof xb==="function")global.missBall=function(){const r=xb.apply(this,arguments);try{fire("miss");}catch(e){}return r;};
   }
   global.AIBAShow=Object.freeze({fire,entrance:()=>fire("entrance"),update,canvas:()=>fg&&fg.canvas,
-    state:()=>({on:ON,built:S.built,ent:S.ent,entDur:S.entDur,spot:+S.spK.toFixed(3),ripples:S.ripples.length,burst:S.burst,heat:+S.heat.toFixed(3),pulses:S.pulses.length,dim:+S.dim.toFixed(3),
+    state:()=>({on:ON,built:S.built,ent:S.ent,entDur:S.entDur,spot:+S.spK.toFixed(3),ripples:S.ripples.length,burst:S.burst,special:S.special&&S.special.kind||null,heat:+S.heat.toFixed(3),pulses:S.pulses.length,dim:+S.dim.toFixed(3),
       floor:!!(floor&&floor.visible),rings:rings.map(r=>r.mesh.visible),star:C.key,num:C.num,name:C.name,acc:C.accCss,err:S.err||null})});
 })(window);

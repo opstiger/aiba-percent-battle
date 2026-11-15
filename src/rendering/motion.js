@@ -1579,6 +1579,7 @@ function poseGuy(o,c,lk,landingImpact){
   const readyWave=isReadyPlayer?Math.sin(readyClock*READY_BOUNCE_RATE):0;
   const readyPulse=readyWave>0?readyWave*readyWave:0;
   const targetReadyZ=isReadyPlayer&&readyPulse?.16*Math.sin(readyClock*READY_BOUNCE_RATE+Math.PI*.5)*.014:0;
+  if(!Number.isFinite(o.g.rotation.z)||Math.abs(o.g.rotation.z)>0.15)o.g.rotation.z=0;
   o.g.rotation.z+=(targetReadyZ-o.g.rotation.z)*0.18;
   if(Math.abs(o.g.rotation.z)<1e-4&&targetReadyZ===0)o.g.rotation.z=0;
   if(readyPulse&&(READY_BOUNCE_AMP>0||READY_KNEE_FLEX>0)){

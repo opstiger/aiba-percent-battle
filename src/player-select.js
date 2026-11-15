@@ -10,11 +10,13 @@
     return String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
   function starKey(star){return star&&(star.id||star.n)||"";}
+  const TRIPO_STAR_IDS={star8:1,star1:1,star15:1,star30:1,star3:1,star30b:1,cat1:1,husky:1};
+  function isTripoStar(star){return !!(star&&TRIPO_STAR_IDS[starKey(star)]);}
   function allStars(list){
     const custom=global.AIBACustomizer&&typeof global.AIBACustomizer.listStars==="function"?global.AIBACustomizer.listStars():[];
-    if(Array.isArray(list)&&list.length)return [...list,...custom.filter(star=>!list.some(item=>starKey(item)===starKey(star)))];
-    const cfg=global.AIBA_CONFIG||{},assets=global.AIBA_ASSETS||{};
-    return [...(cfg.CLASSIC_LEGENDS||[]),...(assets.coverStars||[]),...custom];
+    const base=(Array.isArray(list)&&list.length)?[...list,...custom.filter(star=>!list.some(item=>starKey(item)===starKey(star)))]:[...((global.AIBA_CONFIG||{}).CLASSIC_LEGENDS||[]),...((global.AIBA_ASSETS||{}).coverStars||[]),...custom];
+    const tripo=base.filter(isTripoStar),rest=base.filter(s=>!isTripoStar(s));
+    return [...tripo,...rest];
   }
   function profileFor(star){
     const cfg=global.AIBA_CONFIG||{};
@@ -151,8 +153,7 @@
     setMode(mode);
     const stars=allStars(list),current=selectedId(),star=findStar(stars,current);
     const p=star?profileFor(star):null;
-    const gear=global.AIBAGear?global.AIBAGear.activeSummary():"";
-    const desc=(star?(p.label||"标准出手")+" · "+(p.arcLabel||"标准弧线"):"每局从球星池随机抽选")+(gear?" · "+gear:"");
+    const desc=star?(p.label||"标准出手")+" · "+(p.arcLabel||"标准弧线"):"每局从球星池随机抽选";
     return `<button class="playerSelectDock" type="button" onclick="showAIBAPlayerSelect()" aria-label="选择球员">
       <span class="playerSelectBadge">${star?("#"+esc(star.num)):"RND"}</span>
       <span class="playerSelectInfo"><small>PLAYER LOCKER</small><b>${star?esc(star.n):RANDOM_LABEL}</b><em>${esc(desc)}</em></span>
@@ -166,12 +167,15 @@
     if(typeof global.showPanel!=="function")return;
     const gearSection=global.AIBAGear?global.AIBAGear.sectionMarkup(findStar(stars,current)):"";
     const motionSection=global.AIBAMotion?global.AIBAMotion.toggleMarkup():"";
+    const nonCustom=stars.filter(star=>starKey(star)!=="custom-player");
+    const tripoCards=nonCustom.filter(isTripoStar).map(star=>choiceButton(star,current)).join("");
+    const classicCards=nonCustom.filter(star=>!isTripoStar(star)).map(star=>choiceButton(star,current)).join("");
     global.showPanel(`<div class="playerLocker">
-      <div class="lockerHead"><small>PLAYER LOCKER</small><h1>赛前更衣室</h1><p>横划挑选阵容，当前球员与装备会在试衣镜中实时呈现。</p></div>
+      <div class="lockerHead"><small>PLAYER LOCKER</small><h1>赛前更衣室</h1><p>横划挑选阵容，当前球员会在 3D 舞台中实时展示全新动作。</p></div>
       ${stageMarkup(current)}
       <div class="lockerWorkbench">
-        <div class="lockerDeck" aria-label="横向选择球员">${global.AIBACustomizer?global.AIBACustomizer.cardMarkup(current):""}${randomCard(current)}${stars.filter(star=>starKey(star)!=="custom-player").map(star=>choiceButton(star,current)).join("")}</div>
-        ${gearSection}
+        <div class="lockerDeck" aria-label="横向选择球员">${tripoCards}${randomCard(current)}${global.AIBACustomizer?global.AIBACustomizer.cardMarkup(current):""}${classicCards}</div>
+        <div class="lockerGearHidden" style="display:none" hidden>${gearSection}</div>
         ${motionSection}
       </div>
       <div class="lockerActions">
@@ -181,7 +185,7 @@
     </div>`);
     const box=document.getElementById("ovBox");
     if(box)box.classList.add("playerLockerBox");
-    setTimeout(()=>{scrollCardIntoView(current);hydrateAvatars();},0);
+    setTimeout(()=>{if(current)scrollCardIntoView(current);hydrateAvatars();},0);
   }
   function preview(id){
     pendingId=id||"";

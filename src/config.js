@@ -40,6 +40,15 @@
   });
 
   const CLASSIC_LEGENDS=Object.freeze([
+    /* 写实模型角色排在最前面:画面上的身体由 src/lab/tripo-avatar.js 换成 GLB 蒙皮骨骼模型 */
+    {id:"star8",n:"8 号 · 全明星",t:"写实模型 · 蒙皮骨骼",r:95,col:[0xf4f4f0,0x24348f],num:8,skin:0x8a5a3a,hair:0x15110f,hairStyle:"cornrows",beard:0x15110f,beardStyle:"stubble",shoe:0xf4f4ef,headband:false,wrist:0xf4f4f0,sleeve:null,shortsColor:0xf4f4f0},
+    {id:"star1",n:"1 号 · 太阳",t:"写实模型 · 蒙皮骨骼",r:95,col:[0x1d1160,0xe56020],num:1,skin:0x7a4b32,hair:0x15110f,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xf4f4ef,headband:false,wrist:0xf4f4f0,sleeve:null,shortsColor:0x1d1160},
+    {id:"star15",n:"15 号 · 猛龙",t:"写实模型 · 蒙皮骨骼",r:95,col:[0x4b2a85,0xce1141],num:15,skin:0x8a5a3a,hair:0xd04a6a,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xe86fd0,headband:false,wrist:0x111111,sleeve:0x111111,shortsColor:0x4b2a85},
+    {id:"star30",n:"30 号 · 勇士",t:"写实模型 · 蒙皮骨骼",r:95,col:[0xf4f4f0,0x1d428a],num:30,skin:0xa87851,hair:0xd04a6a,hairStyle:"short",beard:0x15110f,beardStyle:"stubble",shoe:0xf4f4ef,headband:false,wrist:0x1d428a,sleeve:0xf4f4f0,shortsColor:0xf4f4f0},
+    {id:"star3",n:"3 号 · 雷霆",t:"写实模型 · 蒙皮骨骼",r:95,col:[0x17171b,0xc8102e],num:3,skin:0x7a4b32,hair:0x15110f,hairStyle:"buzz",beard:0x15110f,beardStyle:"stubble",shoe:0xc8102e,headband:true,wrist:0xf4f4f0,sleeve:0x15110f,shortsColor:0x17171b},
+    {id:"star30b",n:"30 号 · 勇士(粉发)",t:"写实模型 · 蒙皮骨骼",r:95,col:[0xf4f4f0,0x1d428a],num:30,skin:0xa87851,hair:0xd04a6a,hairStyle:"short",beard:0x15110f,beardStyle:"stubble",shoe:0xf4f4ef,headband:false,wrist:0x1d428a,sleeve:0xf4f4f0,shortsColor:0xf4f4f0},
+    {id:"cat1",n:"1 号 · 猫吉祥物",t:"写实模型 · 蒙皮骨骼",r:95,col:[0x4b2a85,0xce1141],num:1,skin:0x8a8fb0,hair:0x4b4f78,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xf4f4f0,headband:false,wrist:null,sleeve:null,shortsColor:0xf4f4f0},
+    {id:"husky",n:"5 号 · 哈士奇(凯尔特人)",t:"写实模型 · 蒙皮骨骼",r:95,col:[0x007a33,0xf4f4f0],num:5,skin:0x8a8d90,hair:0x3a3d40,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xf4f4f0,headband:false,wrist:null,sleeve:null,shortsColor:0x007a33},
     {id:"nova24",n:"N-24 夜航者",t:"VOXEL PRO 原型 · 双层战衣",r:94,col:[0x11151c,0xf4c542],accent:0x6ff3ff,num:24,
      skin:0x8d5524,shoe:0xf0f2ed,headband:false,wrist:0xf4c542,sleeve:0x0a0d12,hair:0x101010,hairStyle:"cornrows",beard:false,
      visualProfile:"voxel-pro-01",body:{h:1.02,w:.98}},
@@ -60,22 +69,6 @@
     {id:"miller",n:"雷吉·米勒",t:"五届全明星 · 关键三分",r:88,col:[0xfdbb30,0x002d62],num:31,skin:0xac7b58,hair:0x211a15,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xeeeeea,headband:false,wrist:null,sleeve:null,shortsColor:0xfdbb30},
     {id:"lillard",n:"达米安·利拉德",t:"八届全明星 · 超远三分",r:90,col:[0xe03a3e,0x111111],num:0,skin:0x986744,hair:0x1c1713,hairStyle:"buzz",beard:0x1c1713,beardStyle:"goatee",shoe:0xeeeeea,headband:false,wrist:null,sleeve:0x111111,shortsColor:0xe03a3e},
     {id:"korver",n:"凯尔·科沃尔",t:"全明星射手 · 接球投篮",r:86,col:[0xc8102e,0x26282a],num:26,skin:0xe8c3a3,hair:0x65492e,hairStyle:"sidepart",beard:false,beardStyle:"none",shoe:0xeeeeea,headband:false,wrist:null,sleeve:null,shortsColor:0xc8102e},
-    /* 写实模型试验角色:画面上的身体由 src/lab/tripo-avatar.js 换成 assets/3d model/star8.glb(Tripo 生成+绑骨)。
-       这条记录里的外观字段只用于选人卡片和被隐藏的方块骨架,不和其他球星共用任何皮套。 */
-    {id:"star8",n:"8 号 · 全明星",t:"写实模型试验 · 蒙皮骨骼",r:95,col:[0xf4f4f0,0x24348f],num:8,skin:0x8a5a3a,hair:0x15110f,hairStyle:"cornrows",beard:0x15110f,beardStyle:"stubble",shoe:0xf4f4ef,headband:false,wrist:0xf4f4f0,sleeve:null,shortsColor:0xf4f4f0},
-    /* 第二个写实模型角色:同样由 src/lab/tripo-avatar.js 换皮,用 assets/models/star1.glb(Mixamo 绑骨)。外观字段只用于选人卡片。 */
-    {id:"star1",n:"1 号 · 太阳",t:"写实模型试验 · 蒙皮骨骼",r:95,col:[0x1d1160,0xe56020],num:1,skin:0x7a4b32,hair:0x15110f,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xf4f4ef,headband:false,wrist:0xf4f4f0,sleeve:null,shortsColor:0x1d1160},
-    /* 第三个写实模型角色:assets/models/star15.glb(Tripo 生成 + Mixamo 绑骨)。 */
-    {id:"star15",n:"15 号 · 猛龙",t:"写实模型试验 · 蒙皮骨骼",r:95,col:[0x4b2a85,0xce1141],num:15,skin:0x8a5a3a,hair:0xd04a6a,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xe86fd0,headband:false,wrist:0x111111,sleeve:0x111111,shortsColor:0x4b2a85},
-    /* 第四个写实模型角色:assets/models/star30.glb(混元生成 + Mixamo 绑骨)。 */
-    {id:"star30",n:"30 号 · 勇士",t:"写实模型试验 · 蒙皮骨骼",r:95,col:[0xf4f4f0,0x1d428a],num:30,skin:0xa87851,hair:0xd04a6a,hairStyle:"short",beard:0x15110f,beardStyle:"stubble",shoe:0xf4f4ef,headband:false,wrist:0x1d428a,sleeve:0xf4f4f0,shortsColor:0xf4f4f0},
-    /* 第五、第六个写实模型角色:assets/models/star3.glb / star30b.glb(混元生成 + Mixamo 绑骨)。 */
-    {id:"star3",n:"3 号 · 雷霆",t:"写实模型试验 · 蒙皮骨骼",r:95,col:[0x17171b,0xc8102e],num:3,skin:0x7a4b32,hair:0x15110f,hairStyle:"buzz",beard:0x15110f,beardStyle:"stubble",shoe:0xc8102e,headband:true,wrist:0xf4f4f0,sleeve:0x15110f,shortsColor:0x17171b},
-    {id:"star30b",n:"30 号 · 勇士(粉发)",t:"写实模型试验 · 蒙皮骨骼",r:95,col:[0xf4f4f0,0x1d428a],num:30,skin:0xa87851,hair:0xd04a6a,hairStyle:"short",beard:0x15110f,beardStyle:"stubble",shoe:0xf4f4ef,headband:false,wrist:0x1d428a,sleeve:0xf4f4f0,shortsColor:0xf4f4f0},
-    /* 第七个写实模型角色:assets/models/cat1.glb(混元生成的猫吉祥物 + Mixamo 绑骨,握拳手只有食指一条指骨链)。 */
-    {id:"cat1",n:"1 号 · 猫吉祥物",t:"写实模型试验 · 蒙皮骨骼",r:95,col:[0x4b2a85,0xce1141],num:1,skin:0x8a8fb0,hair:0x4b4f78,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xf4f4f0,headband:false,wrist:null,sleeve:null,shortsColor:0xf4f4f0},
-    /* 第八个写实模型角色:assets/models/husky.glb(哈士奇 · 凯尔特人,混元生成 + Mixamo 绑骨)。 */
-    {id:"husky",n:"5 号 · 哈士奇(凯尔特人)",t:"写实模型试验 · 蒙皮骨骼",r:95,col:[0x007a33,0xf4f4f0],num:5,skin:0x8a8d90,hair:0x3a3d40,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xf4f4f0,headband:false,wrist:null,sleeve:null,shortsColor:0x007a33},
     {id:"stojakovic",n:"佩贾·斯托贾科维奇",t:"两届三分大赛冠军",r:87,col:[0x5a2d81,0x8a8d8f],num:16,skin:0xd5ae8b,hair:0x35271e,hairStyle:"short",beard:0x35271e,beardStyle:"stubble",shoe:0x111111,headband:false,wrist:null,sleeve:null,shortsColor:0x5a2d81},
     {id:"ionescu",n:"萨布丽娜·约内斯库",t:"WNBA全明星 · 三分大赛纪录",r:91,col:[0x6eceb2,0x101820],num:20,sex:"f",hairStyle:"ponytail",hair:0x463020,skin:0xe5bc9c,beard:false,beardStyle:"none",shoe:0xd8eee5,headband:false,wrist:null,sleeve:null,shortsColor:0x6eceb2},
     {id:"taurasi",n:"戴安娜·陶乐西",t:"三届WNBA总冠军 · 历史得分王",r:92,col:[0x2b1a4e,0xe56020],num:3,sex:"f",hairStyle:"bun",hair:0x29201b,skin:0xdbb28e,beard:false,beardStyle:"none",shoe:0xeeeeea,headband:false,wrist:null,sleeve:null,shortsColor:0x2b1a4e},

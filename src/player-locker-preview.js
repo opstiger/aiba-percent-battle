@@ -4,6 +4,195 @@
   const cache=new Map();
   const W=300,H=330;
   let liveView=null,detachObserver=null,renderTicket=0,focusTicket=0;
+  const SELF_URL=(document.currentScript&&document.currentScript.src)||global.location.href;
+  const TRIPO_MODELS=Object.freeze({
+    star8:{file:"star8.glb",yaw:-Math.PI/2},
+    star1:{file:"star1.glb",yaw:0},
+    star15:{file:"star15.glb",yaw:0},
+    star30:{file:"star30.glb",yaw:0},
+    star3:{file:"star3.glb",yaw:0},
+    star30b:{file:"star30b.glb",yaw:0},
+    cat1:{file:"cat1.glb",yaw:0},
+    husky:{file:"husky.glb",yaw:0}
+  });
+  const DANCE_BONES=["Hips","Spine","Spine1","Spine2","Neck","Head","LeftShoulder","LeftArm","LeftForeArm","LeftHand","RightShoulder","RightArm","RightForeArm","RightHand","LeftUpLeg","LeftLeg","LeftFoot","LeftToeBase","RightUpLeg","RightLeg","RightFoot","RightToeBase"];
+  const tripoRigCache=new Map();
+  const tripoLoading=new Map();
+  let gltfLoaderLoading=false,gltfLoaderCallbacks=[];
+
+  function ensureGLTFLoader(cb){
+    if(global.THREE&&global.THREE.GLTFLoader){cb();return;}
+    gltfLoaderCallbacks.push(cb);
+    if(gltfLoaderLoading)return;
+    gltfLoaderLoading=true;
+    const s=document.createElement("script");
+    s.src=new URL("../vendor/GLTFLoader.r128.js",SELF_URL).href;
+    s.onload=()=>{
+      gltfLoaderLoading=false;
+      const list=gltfLoaderCallbacks.splice(0);
+      list.forEach(fn=>{try{fn();}catch(e){}});
+    };
+    s.onerror=()=>{gltfLoaderLoading=false;gltfLoaderCallbacks.length=0;};
+    document.head.appendChild(s);
+  }
+
+  function buildTripoRig(gltf,id){
+    const T=global.THREE,spec=TRIPO_MODELS[id];
+    const root=new T.Group();root.name="lockerTripoAvatar";root.__keepCached=true;
+    const M=new T.Group();M.rotation.y=spec.yaw||0;root.add(M);M.add(gltf.scene);
+    const B={},restL={},restP={},restW={},restPos={};
+    let mesh=null;
+    gltf.scene.traverse(o=>{
+      o.frustumCulled=false;
+      if(o.isSkinnedMesh&&!mesh)mesh=o;
+      if(o.isBone)B[o.name.replace(/^mixamorig:?/,"")]=o;
+    });
+    if(!mesh||!B.Hips)throw new Error("Missing SkinnedMesh or Hips in "+spec.file);
+    root.updateMatrixWorld(true);
+    const skinBox=()=>{
+      const bx=new T.Box3(),v=new T.Vector3(),pos=mesh.geometry.attributes.position;
+      mesh.updateMatrixWorld(true);
+      for(let i=0;i<pos.count;i++){mesh.boneTransform(i,v);v.applyMatrix4(mesh.matrixWorld);bx.expandByPoint(v);}
+      return bx;
+    };
+    let box=skinBox();
+    const s=1.84/Math.max(0.1,box.max.y-box.min.y);
+    M.scale.setScalar(s);root.updateMatrixWorld(true);box=skinBox();
+    const hp=B.Hips.getWorldPosition(new T.Vector3());
+    M.position.set(-hp.x,-box.min.y-0.052,-hp.z);
+    root.updateMatrixWorld(true);
+    for(const n in B){
+      restL[n]=B[n].quaternion.clone();
+      restP[n]=B[n].position.clone();
+      restW[n]=B[n].getWorldQuaternion(new T.Quaternion());
+      restPos[n]=B[n].getWorldPosition(new T.Vector3());
+    }
+    let run=null;
+    const clip=gltf.animations&&gltf.animations[0];
+    if(clip){
+      const rot={};let hips=null,t0=Infinity,t1=-Infinity;
+      for(const tr of clip.tracks){
+        const dot=tr.name.lastIndexOf("."),bn=tr.name.slice(0,dot).replace(/^mixamorig:?/,""),prop=tr.name.slice(dot+1);
+        if(!B[bn])continue;
+        if(prop==="quaternion"){rot[bn]=tr;t0=Math.min(t0,tr.times[0]);t1=Math.max(t1,tr.times[tr.times.length-1]);}
+        else if(prop==="position"&&bn==="Hips")hips=tr;
+      }
+      if(t1>t0)run={rot,hips,t0,span:t1-t0};
+    }
+    return {id,root,M,B,restL,restP,restW,restPos,basePos:M.position.clone(),run};
+  }
+
+  function resetTripoRig(rig){
+    if(!rig)return;
+    for(const n in rig.B)rig.B[n].quaternion.copy(rig.restL[n]);
+    if(rig.B.Hips&&rig.restP.Hips)rig.B.Hips.position.copy(rig.restP.Hips);
+    rig.M.position.copy(rig.basePos);
+    rig.root.position.set(0,0,0);
+    rig.root.rotation.set(0,-0.16,0);
+  }
+
+  function poseTripoRig(rig,time,id,featured){
+    if(!rig||!global.THREE)return;
+    const T=global.THREE;
+    resetTripoRig(rig);
+    const D=global.AIBADance;
+    if(D&&typeof D.load==="function"&&!D.ready&&!D.loading)D.load();
+    const seed=Array.from(String(id||"star8")).reduce((a,c)=>a+c.charCodeAt(0),0);
+    if(D&&D.ready&&Array.isArray(D.ids)&&D.ids.length){
+      const clipIdx=Math.floor((time*0.24)+seed)%D.ids.length;
+      const clipId=D.ids[clipIdx];
+      const clip=D.clips&&D.clips[clipId];
+      if(clip){
+        const dur=Math.max(0.5,(clip.n-1)/(clip.fps||15));
+        const localT=featured?Math.min(dur*0.45,1.2):((time*0.92)%dur);
+        const dn=D.sample(clipId,localT);
+        if(dn&&dn.q){
+          const w=featured?0.92:1;
+          const dq=new T.Quaternion(),dc=new T.Quaternion(),pq=new T.Quaternion(),v=new T.Vector3();
+          for(let i=0;i<DANCE_BONES.length;i++){
+            const n=DANCE_BONES[i],bone=rig.B[n];if(!bone)continue;
+            dq.set(dn.q[i*4],dn.q[i*4+1],dn.q[i*4+2],dn.q[i*4+3]).multiply(rig.restW[n]);
+            if(w<1){bone.getWorldQuaternion(dc);dc.slerp(dq,w);}else dc.copy(dq);
+            bone.parent.getWorldQuaternion(pq);
+            bone.quaternion.copy(pq.invert()).multiply(dc);
+            bone.updateMatrixWorld(true);
+          }
+          if(rig.B.Hips&&dn.hy){
+            rig.B.Hips.parent.getWorldQuaternion(pq);
+            v.set(0,dn.hy*(rig.restPos.Hips?rig.restPos.Hips.y:0.95)*w,0).applyQuaternion(pq.invert());
+            rig.B.Hips.position.add(v);
+          }
+          rig.root.updateMatrixWorld(true);
+          return;
+        }
+      }
+    }
+    if(rig.run){
+      const run=rig.run,phase=((time*0.65)+(seed*0.13))%1,t=run.t0+phase*run.span;
+      const sq=[0,0,0,1],cq=new T.Quaternion();
+      const w=featured?0.55:0.42;
+      for(const bn in run.rot){
+        const tr=run.rot[bn],tm=tr.times,n=tm.length;let i=0;while(i<n-2&&tm[i+1]<=t)i++;
+        const a=clamp01((t-tm[i])/Math.max(1e-6,tm[i+1]-tm[i]));
+        T.Quaternion.slerpFlat(sq,0,tr.values,i*4,tr.values,(i+1)*4,a);
+        rig.B[bn].quaternion.slerp(cq.fromArray(sq),w);
+      }
+      rig.root.rotation.y=-0.18+Math.sin(time*1.2)*0.08;
+      rig.root.updateMatrixWorld(true);
+    }
+  }
+
+  function refreshTripoSlots(id){
+    for(const k of [...cache.keys()]){
+      if(k.indexOf(id+":")===0)cache.delete(k);
+    }
+    if(typeof document==="undefined")return;
+    const cards=[...document.querySelectorAll(`[data-locker-avatar="${id}"]`)].filter(el=>!el.closest(".lockerStageVisual"));
+    if(cards.length){
+      const ctx=buildScene();
+      cards.forEach(slot=>{
+        try{
+          const card=slot.closest(".lockerCard");
+          const url=renderStar(ctx,id,!!(card&&card.classList.contains("selected")));
+          if(url){slot.innerHTML=`<img alt="" src="${url}">`;slot.classList.add("ready");}
+        }catch(e){}
+      });
+      disposeScene(ctx);
+    }
+    if(liveView&&liveView.starId===id&&liveView.slot&&liveView.slot.isConnected){
+      const rig=tripoRigCache.get(id);
+      if(rig){
+        liveView.tripoRig=rig;
+        liveView.guy.g.visible=false;
+        if(rig.root.parent!==liveView.ctx.rig)liveView.ctx.rig.add(rig.root);
+        rig.root.visible=true;
+        poseTripoRig(rig,(performance.now()-liveView.motionEpoch)/1000,id,false);
+        drawLive(liveView);
+      }
+    }
+  }
+
+  function ensureTripoRig(id,cb){
+    if(!TRIPO_MODELS[id])return;
+    if(tripoRigCache.has(id)){if(cb)cb(tripoRigCache.get(id));return;}
+    if(tripoLoading.has(id)){if(cb)tripoLoading.get(id).push(cb);return;}
+    const list=cb?[cb]:[];
+    tripoLoading.set(id,list);
+    ensureGLTFLoader(()=>{
+      const url=new URL("../assets/models/"+TRIPO_MODELS[id].file,SELF_URL).href;
+      new global.THREE.GLTFLoader().load(url,gltf=>{
+        try{
+          const rig=buildTripoRig(gltf,id);
+          tripoRigCache.set(id,rig);
+          tripoLoading.delete(id);
+          list.forEach(fn=>{try{fn(rig);}catch(e){}});
+          refreshTripoSlots(id);
+        }catch(e){
+          tripoLoading.delete(id);
+        }
+      },undefined,()=>{tripoLoading.delete(id);});
+    });
+  }
   const LOCKER_ACTIONS=Object.freeze({
     wave:{duration:4000},
     shadowShot:{duration:4300},
@@ -176,8 +365,29 @@
       guy.ankles[0].rotation.x-=.03*k;guy.ankles[1].rotation.x-=.03*k;
     }
   }
+  function applyVoxDancePose(guy,time,id,weight){
+    const D=global.AIBADance;
+    if(D&&typeof D.load==="function"&&!D.ready&&!D.loading)D.load();
+    if(!D||!D.ready||!Array.isArray(D.ids)||!D.ids.length||typeof D.applyVox!=="function")return false;
+    const voxIds=D.ids.filter(k=>D.clips[k]&&D.clips[k].vox_ok);
+    const pool=voxIds.length?voxIds:D.ids;
+    const seed=Array.from(String(id||"random")).reduce((n,c)=>n+c.charCodeAt(0),0);
+    const clipId=pool[Math.floor((time*0.22)+seed)%pool.length];
+    const clip=D.clips[clipId];if(!clip)return false;
+    const dur=Math.max(0.5,(clip.n-1)/(clip.fps||15));
+    const dn=D.sample(clipId,(time*0.9)%dur);
+    if(!dn||!dn.vox)return false;
+    guy.g.rotation.set(0,-0.18,0);
+    guy.g.position.set(0,-0.06,0);
+    if(D.applyVox(guy,dn.vox,weight==null?1:weight)){
+      guy.g.position.y-=0.06;
+      return true;
+    }
+    return false;
+  }
   function featuredPose(guy,id){
     idlePose(guy,.7);
+    if(applyVoxDancePose(guy,1.15,id,0.88))return;
     const side=Array.from(id||"random").reduce((n,c)=>n+c.charCodeAt(0),0)%2;
     wavePose(guy,.52,side);
   }
@@ -197,19 +407,40 @@
   }
   function updateLiveMotion(view,now){
     const motionTime=(now-view.motionEpoch)/1000;
+    if(view.tripoRig){
+      poseTripoRig(view.tripoRig,view.reducedMotion?0.6:motionTime,view.starId,view.reducedMotion);
+      if(view.reducedMotion){view.slot.dataset.lockerAction="idle";return;}
+      if(!view.action&&now>=view.nextActionAt)beginLockerAction(view,now);
+      if(!view.action){view.slot.dataset.lockerAction="idle";return;}
+      const progress=clamp01((now-view.action.startedAt)/view.action.duration);
+      view.slot.dataset.lockerAction=view.action.name;
+      if(progress>=1){
+        view.action=null;
+        view.nextActionAt=now+600+Math.random()*600;
+        view.slot.dataset.lockerAction="idle";
+      }
+      return;
+    }
     idlePose(view.guy,motionTime);
     if(view.reducedMotion){view.slot.dataset.lockerAction="idle";return;}
     if(!view.action&&now>=view.nextActionAt)beginLockerAction(view,now);
-    if(!view.action){view.slot.dataset.lockerAction="idle";return;}
+    if(!view.action){
+      applyVoxDancePose(view.guy,motionTime,view.starId,0.85);
+      view.slot.dataset.lockerAction="idle";
+      return;
+    }
     const progress=clamp01((now-view.action.startedAt)/view.action.duration);
     view.slot.dataset.lockerAction=view.action.name;
-    if(view.action.name==="wave")wavePose(view.guy,progress,view.action.side);
-    else if(view.action.name==="shadowShot")shadowShotPose(view.guy,progress);
-    else if(view.action.name==="jersey")jerseyPose(view.guy,progress);
-    else if(view.action.name==="headband")headbandPose(view.guy,progress);
+    const env=actionEnvelope(progress,.14,.16);
+    if(!applyVoxDancePose(view.guy,motionTime,view.starId,0.35+0.65*env)){
+      if(view.action.name==="wave")wavePose(view.guy,progress,view.action.side);
+      else if(view.action.name==="shadowShot")shadowShotPose(view.guy,progress);
+      else if(view.action.name==="jersey")jerseyPose(view.guy,progress);
+      else if(view.action.name==="headband")headbandPose(view.guy,progress);
+    }
     if(progress>=1){
       view.action=null;
-      view.nextActionAt=now+1800+Math.random()*1800;
+      view.nextActionAt=now+600+Math.random()*600;
       view.slot.dataset.lockerAction="idle";
     }
   }
@@ -227,6 +458,7 @@
   function clearGroup(group){
     while(group.children.length){
       const child=group.children.pop();
+      if(child.__keepCached)continue;
       if(child.__shoePreviewGuy&&global.AIBABasketballShoes)global.AIBABasketballShoes.clear(child.__shoePreviewGuy);
       child.traverse&&child.traverse(obj=>{
         if(obj.geometry&&obj.geometry.dispose)obj.geometry.dispose();
@@ -268,6 +500,24 @@
     const star=findStar(id);
     const key=(id||"__random")+":"+(star&&star.updatedAt||0)+(featured?":pose":":stand");
     if(cache.has(key))return cache.get(key);
+    if(id&&TRIPO_MODELS[id]){
+      const rig=tripoRigCache.get(id);
+      if(!rig){
+        ensureTripoRig(id);
+        return "";
+      }
+      const prevParent=rig.root.parent;
+      poseTripoRig(rig,featured?1.25:0.55,id,true);
+      rig.root.visible=true;
+      ctx.rig.add(rig.root);
+      ctx.renderer.render(ctx.scene,ctx.camera);
+      const url=ctx.canvas.toDataURL("image/png");
+      ctx.rig.remove(rig.root);
+      if(prevParent)prevParent.add(rig.root);
+      cache.set(key,url);
+      while(cache.size>96)cache.delete(cache.keys().next().value);
+      return url;
+    }
     const guy=global.voxelGuy();
     guy.g.__shoePreviewGuy=guy;
     dressPreview(guy,star,false);
@@ -349,11 +599,25 @@
   }
   function mountLive(slot,id){
     destroyLive();
+    if(global.AIBADance&&typeof global.AIBADance.load==="function")global.AIBADance.load();
     const width=Math.max(140,Math.round(slot.clientWidth||210));
     const height=Math.max(160,Math.round(slot.clientHeight||220));
     const ctx=buildScene(width,height,false),guy=global.voxelGuy(),star=findStar(id);
+    const isTripo=!!(id&&TRIPO_MODELS[id]);
+    let tripoRig=isTripo?(tripoRigCache.get(id)||null):null;
     guy.g.__shoePreviewGuy=guy;
     dressPreview(guy,star,true);idlePose(guy);ctx.rig.add(guy.g);
+    if(isTripo){
+      /* 非方块人的新角色直接展示 3D 模型,绝不展示方块人代替样式 */
+      guy.g.visible=false;
+      if(tripoRig){
+        poseTripoRig(tripoRig,0,id,false);
+        tripoRig.root.visible=true;
+        ctx.rig.add(tripoRig.root);
+      }else{
+        ensureTripoRig(id);
+      }
+    }
     const canvas=ctx.canvas,translate=global.AIBAI18N&&global.AIBAI18N.t;
     canvas.className="lockerOrbitCanvas";
     canvas.tabIndex=0;
@@ -365,8 +629,8 @@
     const body=star&&global.AIBA_CONFIG&&global.AIBA_CONFIG.bodyProfileFor?global.AIBA_CONFIG.bodyProfileFor(star):{h:1,w:1};
     const lookY=.94*(Number(body&&body.h)||1);
     const now=performance.now();
-    const view={slot,ctx,guy,yaw:0,pitch:0,zoom:1,focusPart:"full",userPosed:false,bodyH:Number(body&&body.h)||1,fullLookY:lookY,baseAzimuth:Math.atan2(.18,4.25),baseElevation:Math.asin((1.07-.94)/4.25),lookAt:new THREE.Vector3(0,lookY,0),cleanup:[],resizeObserver:null,
-      motionEpoch:now,lastMotionFrame:0,motionRaf:0,reducedMotion:!!(global.matchMedia&&global.matchMedia("(prefers-reduced-motion: reduce)").matches),action:null,actionBag:[],lastAction:"",nextActionAt:now+1200+Math.random()*900};
+    const view={slot,ctx,guy,starId:id||"",tripoRig,yaw:0,pitch:0,zoom:1,focusPart:"full",userPosed:false,bodyH:Number(body&&body.h)||1,fullLookY:lookY,baseAzimuth:Math.atan2(.18,4.25),baseElevation:Math.asin((1.07-.94)/4.25),lookAt:new THREE.Vector3(0,lookY,0),cleanup:[],resizeObserver:null,
+      motionEpoch:now,lastMotionFrame:0,motionRaf:0,reducedMotion:!!(global.matchMedia&&global.matchMedia("(prefers-reduced-motion: reduce)").matches),action:null,actionBag:[],lastAction:"",nextActionAt:now+350+Math.random()*350};
     liveView=view;
     let mouseDragging=false,lastMouseX=0,lastMouseY=0,pinchDistance=0,pinchZoom=1,lastTouchX=0,lastTouchY=0;
     const touchDistance=touches=>touches.length<2?0:Math.hypot(touches[0].clientX-touches[1].clientX,touches[0].clientY-touches[1].clientY);

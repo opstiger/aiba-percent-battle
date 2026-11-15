@@ -224,19 +224,24 @@ function pregameClampPos(v){
   return v;
 }
 function pregameSideBase(heroPos,side){
-  const x=heroPos.x+(heroPos.x>0?-2.8:2.8)*(side||1);
-  const z=heroPos.z+1.15;
+  const x=heroPos.x+(heroPos.x>0?-1.85:1.85)*(side||1);
+  const z=heroPos.z+0.25;
   return pregameClampPos(V3(x,0,z));
 }
 function pregameBuildActors(opts){
   const heroName=G.myStar&&G.myStar.n?G.myStar.n:"YOU";
-  const actors=[{guy:player,name:heroName,role:"hero",base:P.pos.clone(),face:P.face}];
+  const actors=[{guy:player,name:heroName,role:"hero",star:G.myStar||null,base:P.pos.clone(),face:P.face}];
   let other=null;
-  if(opts.mode==="battle"&&G.battleOpp&&rivals[0]){
-    other={guy:rivals[0],name:G.battleOpp.n||"对手",role:"opponent"};
+  const oppStar=opts.mode==="battle"?G.battleOpp:(G.stage==="final"?G.finalist:(G.opponents&&G.opponents[0]));
+  if(oppStar&&rivals&&rivals[0]){
+    rivals[0].o=oppStar;
+    rivals[0].active=true;
+    other={guy:rivals[0],name:oppStar.n||"对手",role:"opponent",star:oppStar};
+  }else if(opts.mode==="battle"&&G.battleOpp&&rivals[0]){
+    other={guy:rivals[0],name:G.battleOpp.n||"对手",role:"opponent",star:G.battleOpp};
   }else{
     const rv=rivals.find(x=>x.active);
-    if(rv&&rv!==actors[0].guy)other={guy:rv,name:rv.o&&rv.o.n?rv.o.n:"挑战者",role:"opponent"};
+    if(rv&&rv!==actors[0].guy)other={guy:rv,name:rv.o&&rv.o.n?rv.o.n:"挑战者",role:"opponent",star:rv.o||null};
     else if(passer)other={guy:passer,name:"训练搭档",role:"teammate"};
   }
   if(other){
@@ -257,18 +262,23 @@ function pregameBuildShots(opts){
     const actor=actors[i%actors.length]||actors[0];
     let action;
     if(i===0)action="shoot";
-    else if(i===1)action=pregamePick(["dunk","dunk","chalk"]);
+    else if(i===1)action=pregamePick(["dunk","dunk","shoot"]);
+    else if(i===2&&actors.length>1)action="dance";
     else if(i===3)action="dance";          // 时间够了:保证每场至少一段舞
     else action=pregamePick(PREGAME_ACTIONS);
     for(let n=0;n<6&&action===lastAction;n++)action=pregamePick(PREGAME_ACTIONS);
     if(action==="huddle"&&actors.length<2)action="pump";
     if(action==="dance"&&!(window.AIBADance&&AIBADance.ready&&AIBADance.ids.length))action="pump";
     if(action==="dunk"&&opts.mode==="contest"&&Math.random()<0.15)action="shoot";
-    let dur=action==="dunk"?rnd(2.3,2.6):rnd(1.15,1.65);const cam=pregamePick(PREGAME_CAMS);
-    const seg={start:t,dur,actor,action,cam,side:Math.random()<0.5?-1:1,seed:rnd(0,Math.PI*2),group:action==="huddle"};
+    let dur=action==="dunk"?rnd(2.2,2.5):rnd(1.25,1.65);
+    const camPool=action==="dunk"?["follow","orbit","low"]:PREGAME_CAMS;
+    const cam=pregamePick(camPool);
+    const isEnding=(t+dur>=wanted-0.8)&&actors.length>1;
+    if(isEnding&&action!=="dunk"&&action!=="shoot")action="huddle";
+    const seg={start:t,dur,actor,action,cam:isEnding?"pull":cam,side:Math.random()<0.5?-1:1,seed:rnd(-0.85,0.85),group:action==="huddle"||isEnding};
     if(action==="dance"){
       const clip=AIBADance.pick(pregameSkinned(actor.guy));
-      if(clip){seg.clip=clip;seg.dur=dur=rnd(2.1,2.9);seg.danceStart=rnd(0,Math.max(0,AIBADance.clips[clip].dur-seg.dur-.2));}
+      if(clip){seg.clip=clip;seg.dur=dur=rnd(2.1,2.7);seg.danceStart=rnd(0,Math.max(0,AIBADance.clips[clip].dur-seg.dur-.2));}
       else seg.action="pump";
     }
     shots.push(seg);
@@ -547,37 +557,63 @@ function pregameSyncBallAfterPose(actor,action,u,seg){
   if(guy.g)guy.g.userData.pregameDunkBallPhase=seg._pregameDunkBallPhase;
 }
 function pregameFocus(seg){
-  const out=V3(0,0,0),list=seg.group?PREGAME.actors:[seg.actor];
-  list.forEach(a=>out.add(a.guy.g.position));out.multiplyScalar(1/Math.max(1,list.length));
-  if(seg.action==="dunk"||seg.action==="hang"){
-    out.x=(out.x+HOOP.x)*0.5;out.z=(out.z+HOOP.z)*0.5;out.y=2.18;
-  }else out.y=1.18;
+  const actor=seg.actor||PREGAME.actors[0];
+  const heroPos=actor&&actor.guy&&actor.guy.g?actor.guy.g.position:V3(0,0,0);
+  const out=heroPos.clone();
+  const isDunk=seg.action==="dunk"||seg.action==="hang";
+  if(!isDunk&&PREGAME.actors.length>1){
+    const other=PREGAME.actors.find(a=>a!==actor);
+    if(other&&other.guy&&other.guy.g){
+      const mixW=seg.group?0.5:0.26;
+      out.x=out.x*(1-mixW)+other.guy.g.position.x*mixW;
+      out.z=out.z*(1-mixW)+other.guy.g.position.z*mixW;
+    }
+  }
+  const lift=Math.max(0,heroPos.y||0);
+  if(isDunk){
+    const rimBlend=clamp(lift/1.1,0,1)*0.28;
+    out.x=out.x*(1-rimBlend)+HOOP.x*rimBlend;
+    out.z=out.z*(1-rimBlend)+HOOP.z*rimBlend;
+    out.y=1.18+lift*0.85;
+  }else{
+    out.y=1.12+lift*0.75;
+  }
   return out;
 }
 function pregameUpdateCamera(seg,u,dt){
-  const focus=pregameFocus(seg),actor=seg.actor,guy=actor.guy;
+  const focus=pregameFocus(seg),actor=seg.actor||PREGAME.actors[0],guy=actor.guy;
   const face=guy.g.rotation.y||faceTo(actor.base,HOOP);
+  /* 镜头始终放在球员正面偏侧(朝向球员与球场中心/聚光灯),绝不跑到篮架背后拍空场 */
   const f=V3(Math.sin(face),0,Math.cos(face)),side=V3(f.z,0,-f.x).multiplyScalar(seg.side||1);
-  const dest=V3(),look=focus.clone();look.y+=seg.action==="dunk"||seg.action==="hang"?0.45:0.18;
-  if(seg.cam==="orbit"){
-    const a=seg.seed+u*1.35,r=2.65+Math.sin(u*Math.PI)*0.45;
-    dest.set(focus.x+Math.sin(a)*r,1.35+u*0.55,focus.z+Math.cos(a)*r);
+  const front=f.clone().multiplyScalar(-1); // 从篮筐往球员看的方向(正对球员正面)
+  const dest=V3(),look=focus.clone();
+  const isDunk=seg.action==="dunk"||seg.action==="hang";
+  look.y+=isDunk?0.16:0.08;
+  if(seg.group&&PREGAME.actors.length>1){
+    dest.copy(focus).addScaledVector(front,3.85+u*0.65).addScaledVector(side,0.65*(1-u*0.5)).setY(1.48+u*0.38);
+  }else if(isDunk){
+    dest.copy(focus).addScaledVector(front,2.65+Math.sin(u*Math.PI)*0.35).addScaledVector(side,1.35).setY(1.28+Math.min(0.65,(guy.g.position.y||0)*0.45));
+  }else if(seg.cam==="orbit"){
+    const a=(seg.seed||0)*0.45+(u-0.5)*1.1,r=3.15+Math.sin(u*Math.PI)*0.35;
+    dest.copy(focus).addScaledVector(front,Math.cos(a)*r).addScaledVector(side,Math.sin(a)*r).setY(1.32+u*0.36);
   }else if(seg.cam==="push"){
-    dest.copy(focus).addScaledVector(f,3.7-u*1.55).addScaledVector(side,0.85).setY(1.05+u*0.82);
+    dest.copy(focus).addScaledVector(front,3.75-u*1.05).addScaledVector(side,0.82).setY(1.18+u*0.42);
   }else if(seg.cam==="low"){
-    dest.copy(focus).addScaledVector(f,2.35).addScaledVector(side,0.9+u*0.3).setY(0.62+u*0.28);
+    dest.copy(focus).addScaledVector(front,2.85).addScaledVector(side,0.92+u*0.25).setY(0.78+u*0.28);
   }else if(seg.cam==="overhead"){
-    dest.copy(focus).addScaledVector(f,1.35).addScaledVector(side,1.65).setY(4.35-u*0.5);
-    look.y=1.05;
+    dest.copy(focus).addScaledVector(front,3.45).addScaledVector(side,1.15).setY(2.85-u*0.45);
+    look.y=0.92;
   }else if(seg.cam==="follow"){
-    dest.copy(focus).addScaledVector(f,2.35+Math.sin(u*Math.PI)*0.55).addScaledVector(side,0.75).setY(1.45);
+    dest.copy(focus).addScaledVector(front,2.95+Math.sin(u*Math.PI)*0.4).addScaledVector(side,0.95).setY(1.38);
   }else if(seg.cam==="pan"){
-    dest.copy(focus).addScaledVector(f,2.45).addScaledVector(side,-1.55+u*3.1).setY(1.28);
+    dest.copy(focus).addScaledVector(front,3.15).addScaledVector(side,-1.25+u*2.5).setY(1.28);
   }else if(seg.cam==="pull"){
-    dest.copy(focus).addScaledVector(f,1.75+u*2.05).addScaledVector(side,0.75).setY(1.25+u*0.45);
+    dest.copy(focus).addScaledVector(front,2.65+u*1.65).addScaledVector(side,0.75).setY(1.25+u*0.48);
   }else{
-    dest.copy(focus).addScaledVector(f,2.15).addScaledVector(side,1.05).setY(1.22+Math.sin(u*Math.PI)*0.12);
+    dest.copy(focus).addScaledVector(front,2.95).addScaledVector(side,1.02).setY(1.26+Math.sin(u*Math.PI)*0.12);
   }
+  dest.x=clamp(dest.x,-COURT.halfWidth+0.8,COURT.halfWidth-0.8);
+  dest.z=clamp(dest.z,HOOP.z+1.15,COURT.playMaxZ+2.6);
   if(PREGAME.t<0.08||seg._justStarted){rig.pos.copy(dest);rig.look.copy(look);seg._justStarted=false;return;}
   rig.pos.lerp(dest,Math.min(1,dt*5.8));
   rig.look.lerp(look,Math.min(1,dt*7.5));
