@@ -24,7 +24,7 @@
     on:false,t:0,phase:"idle",cfg:null,practice:false,
     passed:false,released:false,resolved:false,pass:null,
     lookYaw:0,timedOut:false,shotMade:false,callStyle:"both_target",
-    introT:0,introDur:1.8,reactionT:0,reactionStarted:false
+    introT:0,introDur:14.0,introBall:null,introCut:-1,reactionT:0,reactionStarted:false
   };
 
   function state(){return LS;}
@@ -70,12 +70,23 @@
     if(el.className!==cls)el.className=cls;
   }
 
+  function cleanupIntroProps(){
+    const ov=document.getElementById("lsIntroOverlay");
+    if(ov)ov.remove();
+    if(LS.introBall){
+      scene.remove(LS.introBall);
+      LS.introBall=null;
+    }
+    if(passer&&passer.g)passer.g.visible=false;
+  }
+
   function hideLastShotHud(){
     const scoreBox=$("hudRound");if(scoreBox)scoreBox.classList.remove("lsScore");
     const hud=$("hud");
     if(hud){hud.dataset.mode="";hud.style.display="none";}
     const skipBtn=document.getElementById("lsSkipBtn");
     if(skipBtn)skipBtn.remove();
+    cleanupIntroProps();
   }
 
   /* ---------------- 进场 ---------------- */
@@ -101,13 +112,350 @@
     rivals.forEach(rv=>{rv.active=false;rv.g.visible=false;});
     if(player._celeb)stopCelebrate(player);
     const CALL_STYLES=["both_target","both_clap","single_wave"];
+    cleanupIntroProps();
     Object.assign(LS,{on:true,t:0,phase:"intro",cfg,practice:!!practice,
       passed:false,released:false,resolved:false,pass:null,lookYaw:0,timedOut:false,shooting:false,
       shotMade:false,callStyle:CALL_STYLES[(Math.random()*CALL_STYLES.length)|0],
-      cutFrom:null,cutDur:0,introT:0,introDur:1.8,
+      cutFrom:null,cutDur:0,introT:0,introDur:14.0,introBall:null,introCut:-1,
       reactionT:0,reactionStarted:false,reactionDuration:0,finishMade:false,finishReason:"shot",
       celeb:null,madeAt:null,buzzAt:null,boardStarted:false,buzzed:false,foul:null,foulCallT:0,
       board:null,ftReady:false,ftBall:null,ftWait:0,ftIntro:0});
+  }
+
+  function ensureIntroOverlay(){
+    let ov=document.getElementById("lsIntroOverlay");
+    if(ov)return ov;
+    ov=document.createElement("div");
+    ov.id="lsIntroOverlay";
+    ov.style.cssText="position:fixed;left:0;right:0;bottom:24px;z-index:99990;display:flex;flex-direction:column;align-items:center;pointer-events:none;font-family:system-ui,-apple-system,sans-serif;padding:0 16px;";
+    ov.innerHTML=`
+      <div id="lsIntroCard" style="max-width:680px;width:100%;background:linear-gradient(135deg,rgba(12,16,28,0.92),rgba(24,30,48,0.88));border:1px solid rgba(255,210,63,0.55);border-left:5px solid #ffd23f;border-radius:12px;padding:12px 18px;box-shadow:0 10px 32px rgba(0,0,0,0.65);backdrop-filter:blur(6px);transition:transform 0.2s ease,border-color 0.2s ease;">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;margin-bottom:5px;">
+          <span id="lsIntroTag" style="display:inline-block;background:#ff3b30;color:#fff;font-size:11px;font-weight:800;letter-spacing:0.08em;padding:2px 8px;border-radius:4px;text-transform:uppercase;">HIGHLIGHT REPLAY</span>
+          <span id="lsIntroClock" style="color:#ffd23f;font-size:12px;font-weight:700;font-variant-numeric:tabular-nums;">Q4 · 关键回合混剪</span>
+        </div>
+        <div id="lsIntroSpeaker" style="color:#9ec5ff;font-size:12px;font-weight:700;margin-bottom:3px;display:none;"></div>
+        <div id="lsIntroLine" style="color:#ffffff;font-size:16px;font-weight:800;line-height:1.45;text-shadow:0 2px 8px rgba(0,0,0,0.8);"></div>
+      </div>`;
+    document.body.appendChild(ov);
+    return ov;
+  }
+
+  function setIntroOverlay(tag,tagBg,clockTxt,speaker,line,accentColor,emph){
+    ensureIntroOverlay();
+    const card=document.getElementById("lsIntroCard");
+    const tagEl=document.getElementById("lsIntroTag");
+    const clockEl=document.getElementById("lsIntroClock");
+    const spkEl=document.getElementById("lsIntroSpeaker");
+    const lineEl=document.getElementById("lsIntroLine");
+    if(tagEl){tagEl.textContent=tag;tagEl.style.background=tagBg||"#ff3b30";}
+    if(clockEl)clockEl.textContent=clockTxt||"";
+    if(spkEl){
+      if(speaker){spkEl.style.display="block";spkEl.textContent=speaker;}
+      else spkEl.style.display="none";
+    }
+    if(lineEl){
+      lineEl.textContent=line||"";
+      lineEl.style.color=emph?"#ffd23f":"#ffffff";
+      lineEl.style.fontSize=emph?"19px":"15px";
+    }
+    if(card){
+      card.style.borderLeftColor=accentColor||"#ffd23f";
+      card.style.transform=emph?"scale(1.03)":"scale(1)";
+    }
+  }
+
+  function poseCoachGuy(guy,t,mode){
+    if(!guy||!guy.g)return;
+    if(guy.ballGrips)guy.ballGrips.forEach(bg=>bg&&bg.children&&bg.children.forEach(c=>{c.visible=false;}));
+    const w=Math.sin(t*6.5);
+    if(guy.legs){guy.legs[0].rotation.set(0,0,0);guy.legs[1].rotation.set(0,0,0);}
+    if(guy.knees){guy.knees[0].rotation.x=0.14;guy.knees[1].rotation.x=0.14;}
+    if(guy.torso){guy.torso.rotation.x=mode==="point"?0.12:0.06;guy.torso.rotation.y=w*0.08;}
+    if(guy.arms&&guy.elbows){
+      if(mode==="point"){
+        // 直指镜头（我们）：“投进那该死的三分！”
+        guy.arms[0].rotation.set(-1.48+w*0.05,0,0.08);
+        guy.elbows[0].rotation.set(-0.18,0,0);
+        guy.arms[1].rotation.set(-1.12-w*0.06,0,-0.25);
+        guy.elbows[1].rotation.set(-0.85,0,0);
+      }else{
+        // 比划战术板手势
+        guy.arms[0].rotation.set(-1.25+w*0.28,0,0.22);
+        guy.elbows[0].rotation.set(-0.72+w*0.2,0,0);
+        guy.arms[1].rotation.set(-1.05-w*0.24,0,-0.22);
+        guy.elbows[1].rotation.set(-0.88-w*0.18,0,0);
+      }
+      if(squadApi.guardArms)squadApi.guardArms(guy);
+    }
+    guy.g.updateMatrixWorld(true);
+  }
+
+  function updateIntroScene(dt){
+    const cfg=LS.cfg;if(!cfg)return;
+    const t=LS.introT;
+    const sq=squadApi.squad;
+    const actors=sq&&sq.actors?sq.actors:null;
+    if(!LS.introBall){
+      LS.introBall=new THREE.Mesh(ballGeo,matBall);
+      scene.add(LS.introBall);
+    }
+    const ball=LS.introBall;
+
+    // 阶段切镜音效与事件触发
+    const cutIdx=t<1.5?0:(t<3.0?1:(t<4.5?2:(t<8.0?3:(t<9.8?4:(t<11.2?5:(t<13.0?6:7))))));
+    if(cutIdx!==LS.introCut){
+      LS.introCut=cutIdx;
+      if(cutIdx===0||cutIdx===1){
+        if(typeof sBounce==="function")sBounce();
+      }else if(cutIdx===2){
+        if(typeof whistle==="function")whistle();
+        if(typeof broadcastSting==="function")broadcastSting("danger");
+      }else if(cutIdx===3){
+        // 恢复实时比分显示
+        updScoreHUD(cfg.scoreHome,cfg.scoreAway);
+        if(global.updateCenterScoreboard){
+          const diff=cfg.scoreAway-cfg.scoreHome;
+          global.updateCenterScoreboard({
+            title:cfg.title||"THE LAST SHOT",
+            score:`${cfg.scoreHome} : ${cfg.scoreAway}`,
+            clock:`Q4  00:0${cfg.gameClock.toFixed(1)}`,
+            subColor:diff>0?"#ff8d7a":"#ffd23f"
+          });
+        }
+      }else if(cutIdx===6){
+        if(typeof crowdSwell==="function")crowdSwell(0.75,2.2);
+        if(typeof sBeep==="function")sBeep(880,0.14);
+      }
+    }
+
+    if(t<4.5){
+      /* ========= 第一幕 (0.0s - 4.5s): 比赛精彩混剪 · 双方攻防回放 ========= */
+      if(passer&&passer.g)passer.g.visible=false;
+      squadApi.setHandlerBall(false);
+      if(t<1.5){
+        // 镜头 1 (0.0 - 1.5s): 我方核心突破急停跳投命中精彩回放
+        const u=clamp(t/1.5,0,1);
+        const prevHome=Math.max(0,cfg.scoreHome-2),prevAway=Math.max(0,cfg.scoreAway-2);
+        setIntroOverlay(
+          "HIGHLIGHT · 比赛混剪 1/3","#e63946",
+          `Q4 00:38.4 · ${cfg.homeName} ${u>0.78?cfg.scoreHome:prevHome} : ${prevAway} ${cfg.awayName}`,
+          `${cfg.homeName} · 关键追分回合`,
+          `我方核心持球强突撕裂防线，迎着扑防果断拔起跳投得手！`,
+          "#4dabf7",false
+        );
+        if(actors){
+          const a0=actors.ally0,d0=actors.def0,a1=actors.ally1,d1=actors.def1;
+          if(a0){
+            a0.pos.set(-2.6+u*1.4,0,3.8-u*1.7);
+            a0.face=faceTo(a0.pos,HOOP);
+            const jumpY=u>0.35&&u<0.82?Math.sin((u-0.35)/0.47*Math.PI)*0.55:0;
+            a0.guy.g.position.set(a0.pos.x,jumpY,a0.pos.z);
+            a0.guy.g.rotation.y=a0.face;
+            if(a0.guy.arms){
+              const shootK=u>0.32?1:0;
+              a0.guy.arms[0].rotation.set(shootK?-2.35:-0.8,0,0.1);
+              a0.guy.arms[1].rotation.set(shootK?-2.25:-0.6,0,-0.1);
+            }
+            a0.guy.g.updateMatrixWorld(true);
+          }
+          if(d0){
+            d0.pos.set(-1.8+u*1.1,0,2.7-u*1.3);
+            d0.face=faceTo(d0.pos,a0?a0.pos:HOOP);
+            const blkY=u>0.42&&u<0.86?Math.sin((u-0.42)/0.44*Math.PI)*0.42:0;
+            d0.guy.g.position.set(d0.pos.x,blkY,d0.pos.z);
+            d0.guy.g.rotation.y=d0.face;
+            if(d0.guy.arms){d0.guy.arms[0].rotation.set(-2.5,0,0.12);d0.guy.arms[1].rotation.set(-2.4,0,-0.12);}
+            d0.guy.g.updateMatrixWorld(true);
+          }
+          if(a1){a1.guy.g.position.set(3.8-u*0.6,0,2.5);a1.guy.g.rotation.y=faceTo(a1.guy.g.position,HOOP);}
+          if(d1){d1.guy.g.position.set(2.9-u*0.5,0,2.0);d1.guy.g.rotation.y=faceTo(d1.guy.g.position,HOOP);}
+        }
+        ball.visible=true;
+        if(u<0.42){
+          const k=u/0.42;
+          ball.position.set(-2.4+k*0.6,1.1+Math.abs(Math.sin(k*Math.PI*2))*0.35,3.6-k*0.8);
+        }else{
+          const k=clamp((u-0.42)/0.46,0,1);
+          const sx=-1.8,sz=2.8;
+          ball.position.set(sx+(HOOP.x-sx)*k,2.35+(HOOP.y-2.35)*k+Math.sin(k*Math.PI)*1.55,sz+(HOOP.z-sz)*k);
+          if(u>0.88)ball.position.y=HOOP.y-(u-0.88)*3.8;
+        }
+      }else if(t<3.0){
+        // 镜头 2 (1.5 - 3.0s): 对手王牌强硬反击得分，再次将我们逼入绝境
+        const u=clamp((t-1.5)/1.5,0,1);
+        setIntroOverlay(
+          "HIGHLIGHT · 比赛混剪 2/3","#ff6b35",
+          `Q4 00:16.2 · ${cfg.homeName} ${cfg.scoreHome} : ${u>0.78?cfg.scoreAway:Math.max(0,cfg.scoreAway-2)} ${cfg.awayName}`,
+          `${cfg.awayName} · 王牌强硬回应`,
+          `对手头号球星顶着双人封盖后仰命中，将比分改写为 ${cfg.scoreHome} : ${cfg.scoreAway}！`,
+          "#ff6b35",false
+        );
+        if(actors){
+          const d0=actors.def0,a0=actors.ally0,a1=actors.ally1;
+          if(d0){
+            d0.pos.set(2.8-u*0.9,0,3.5-u*1.2);
+            d0.face=faceTo(d0.pos,HOOP);
+            const jumpY=u>0.36&&u<0.84?Math.sin((u-0.36)/0.48*Math.PI)*0.58:0;
+            d0.guy.g.position.set(d0.pos.x,jumpY,d0.pos.z);
+            d0.guy.g.rotation.y=d0.face;
+            if(d0.guy.arms){
+              d0.guy.arms[0].rotation.set(u>0.34?-2.45:-0.9,0,0.1);
+              d0.guy.arms[1].rotation.set(u>0.34?-2.35:-0.7,0,-0.1);
+            }
+            d0.guy.g.updateMatrixWorld(true);
+          }
+          if(a0){
+            a0.pos.set(2.0-u*0.7,0,2.5-u*0.9);
+            a0.face=faceTo(a0.pos,d0?d0.pos:HOOP);
+            const blkY=u>0.42&&u<0.86?Math.sin((u-0.42)/0.44*Math.PI)*0.44:0;
+            a0.guy.g.position.set(a0.pos.x,blkY,a0.pos.z);
+            a0.guy.g.rotation.y=a0.face;
+            if(a0.guy.arms){a0.guy.arms[0].rotation.set(-2.5,0,0.14);a0.guy.arms[1].rotation.set(-2.4,0,-0.14);}
+            a0.guy.g.updateMatrixWorld(true);
+          }
+          if(a1){
+            a1.guy.g.position.set(1.2-u*0.3,0,2.8-u*0.7);
+            a1.guy.g.rotation.y=faceTo(a1.guy.g.position,d0?d0.pos:HOOP);
+          }
+        }
+        ball.visible=true;
+        if(u<0.42){
+          const k=u/0.42;
+          ball.position.set(2.6-k*0.4,1.1+Math.abs(Math.sin(k*Math.PI*2))*0.35,3.3-k*0.6);
+        }else{
+          const k=clamp((u-0.42)/0.46,0,1);
+          const sx=2.1,sz=2.5;
+          ball.position.set(sx+(HOOP.x-sx)*k,2.4+(HOOP.y-2.4)*k+Math.sin(k*Math.PI)*1.65,sz+(HOOP.z-sz)*k);
+          if(u>0.88)ball.position.y=HOOP.y-(u-0.88)*3.8;
+        }
+      }else{
+        // 镜头 3 (3.0 - 4.5s): 全场紧逼攻防博弈 & 主教练果断叫停比赛
+        const u=clamp((t-3.0)/1.5,0,1);
+        squadApi.place(u*0.9);
+        squadApi.setHandlerBall(true);
+        ball.visible=false;
+        setIntroOverlay(
+          "TIMEOUT · 比赛混剪 3/3","#ffd23f",
+          `Q4 00:0${cfg.gameClock.toFixed(1)} · 暂停哨响`,
+          `现场切入 · 白热化全场紧逼`,
+          `双方陷入窒息肉搏，比赛仅剩 ${cfg.gameClock.toFixed(1)} 秒，主教练果断请求最后一次暂停！`,
+          "#ffd23f",false
+        );
+      }
+      return;
+    }
+
+    if(t<8.0){
+      /* ========= 第二幕 (4.5s - 8.0s): 切入球场当前情况 + 比分转播大屏停留 ========= */
+      ball.visible=false;
+      if(passer&&passer.g)passer.g.visible=false;
+      squadApi.place(0);
+      squadApi.setHandlerBall(true);
+      const diff=cfg.scoreAway-cfg.scoreHome;
+      const diffTxt=diff>0?`落后 ${diff} 分`:(diff===0?"双方战平":"领先");
+      setIntroOverlay(
+        "LIVE BROADCAST · 赛况转播","#ff3b30",
+        `${cfg.homeName} ${cfg.scoreHome} : ${cfg.scoreAway} ${cfg.awayName} · Q4 00:0${cfg.gameClock.toFixed(1)}`,
+        `${cfg.title} · ${cfg.subtitle}（${diffTxt}）`,
+        cfg.story||`比赛还剩最后 ${cfg.gameClock.toFixed(1)} 秒，全场两万名观众屏住呼吸，等待决胜一攻！`,
+        "#ff3b30",false
+      );
+      return;
+    }
+
+    if(t<13.0){
+      /* ========= 第三幕 (8.0s - 13.0s): 教练席战术布置 + “投进那该死的三分！” ========= */
+      ball.visible=false;
+      squadApi.setHandlerBall(false);
+      // 边线教练席区域坐标 (x ≈ -5.8, z ≈ 2.2)
+      const coachPos=V3(-6.20,0,2.20);
+      const playerHuddlePos=V3(-4.55,0,2.20);
+      if(passer&&passer.g){
+        passer.g.visible=true;
+        passer.g.position.copy(coachPos);
+        passer.g.rotation.y=faceTo(coachPos,playerHuddlePos);
+        poseCoachGuy(passer,t,t>=11.2?"point":"board");
+      }
+      if(actors){
+        const huddleSlots=[
+          {id:"ally0",x:-5.92,z:1.52},
+          {id:"ally1",x:-5.92,z:2.88},
+          {id:"ally2",x:-5.52,z:0.95},
+          {id:"ally3",x:-5.52,z:3.45}
+        ];
+        huddleSlots.forEach((s,idx)=>{
+          const a=actors[s.id];if(!a)return;
+          a.pos.set(s.x,0,s.z);
+          const lookTarget=t>=9.8?playerHuddlePos:coachPos;
+          a.face=faceTo(a.pos,lookTarget);
+          a.guy.g.position.set(s.x,0,s.z);
+          a.guy.g.rotation.y=a.face;
+          if(idx===0&&t>=9.8){
+            poseCoachGuy(a.guy,t+0.8,t>=11.2?"point":"board");
+          }else if(a.guy.arms&&a.guy.elbows){
+            a.guy.arms[0].rotation.set(-0.35,0,0.12);
+            a.guy.elbows[0].rotation.set(-0.45,0,0);
+            a.guy.arms[1].rotation.set(-0.35,0,-0.12);
+            a.guy.elbows[1].rotation.set(-0.45,0,0);
+            if(squadApi.guardArms)squadApi.guardArms(a.guy);
+            a.guy.g.updateMatrixWorld(true);
+          }
+        });
+      }
+      if(player&&player.g){
+        player.g.visible=false;
+      }
+      if(t<9.8){
+        setIntroOverlay(
+          "COACH HUDDLE · 教练席战术布置","#2b8a3e",
+          `暂停时间 · 剩余 ${cfg.gameClock.toFixed(1)} 秒`,
+          "主教练 · 战术板布置",
+          `“${cfg.timeoutDialogue||"听着！对方一定会疯抢包夹持球人，弱侧外线会出现唯一一次空位机会！"}”`,
+          "#51cf66",false
+        );
+      }else if(t<11.2){
+        setIntroOverlay(
+          "COACH HUDDLE · 核心球员沟通","#1971c2",
+          `暂停时间 · 剩余 ${cfg.gameClock.toFixed(1)} 秒`,
+          "球队核心 · 决胜配合",
+          `“${cfg.teammateDialogue||"只要他们包夹过来，我第一时间把球分给你，千万别犹豫！"}”`,
+          "#4dabf7",false
+        );
+      }else{
+        setIntroOverlay(
+          "FINAL ORDER · 决胜死命令","#d90429",
+          `全员登场 · 决战最后 ${cfg.gameClock.toFixed(1)} 秒`,
+          "主教练 & 球队核心（直视着你）",
+          "“别管那些复杂的战术了——跑出空位，接球，投进那该死的三分！！”",
+          "#ffd23f",true
+        );
+      }
+      return;
+    }
+
+    /* ========= 第四幕 (13.0s - 14.0s): 走出教练席登场落位 · 决胜时刻开始 ========= */
+    ball.visible=false;
+    if(passer&&passer.g)passer.g.visible=false;
+    squadApi.place(0);
+    squadApi.setHandlerBall(true);
+    P.pos.copy(LS.cutFrom||LS.spot);
+    const handler=squadApi.handler();
+    P.face=faceTo(P.pos,handler?handler.pos:HOOP);
+    LS.lookYaw=P.face;
+    if(player&&player.g){
+      player.g.visible=(CAM.mode!==0);
+      player.g.position.set(P.pos.x,0,P.pos.z);
+      player.g.rotation.y=P.face;
+      player.g.updateMatrixWorld(true);
+    }
+    setIntroOverlay(
+      "CLUTCH TIME · 决胜时刻","#ffd23f",
+      `Q4 00:0${cfg.gameClock.toFixed(1)} · 准备接球出手`,
+      "全员落位 · 裁判准备鸣哨",
+      "牢记使命：盯紧持球核心，接球果断投进那记绝杀三分！",
+      "#ffd23f",true
+    );
   }
 
   function finishIntro(){
@@ -116,6 +464,19 @@
     LS.t=0;
     const skipBtn=document.getElementById("lsSkipBtn");
     if(skipBtn)skipBtn.remove();
+    cleanupIntroProps();
+    squadApi.place(0);
+    squadApi.setHandlerBall(true);
+    P.pos.copy(LS.cutFrom||LS.spot);
+    const handler=squadApi.handler();
+    P.face=faceTo(P.pos,handler?handler.pos:HOOP);
+    LS.lookYaw=P.face;
+    if(player&&player.g){
+      player.g.visible=(CAM.mode!==0);
+      player.g.position.set(P.pos.x,0,P.pos.z);
+      player.g.rotation.y=P.face;
+      player.g.updateMatrixWorld(true);
+    }
     if(typeof whistle==="function")whistle();
     if(typeof sGo==="function")sGo();
     toast("看球 · 球会分到你手上","#ffd23f");
@@ -197,6 +558,7 @@
     skipBtn.style.cssText="position:fixed;top:18px;right:18px;z-index:99999;background:rgba(20,25,35,0.85);color:#ffd23f;border:1px solid rgba(255,210,63,0.6);border-radius:16px;padding:4px 12px;font-size:12px;font-weight:700;cursor:pointer;backdrop-filter:blur(4px);box-shadow:0 2px 10px rgba(0,0,0,0.5);";
     skipBtn.onclick=skipIntro;
     document.body.appendChild(skipBtn);
+    updateIntroScene(0);
 
     if(cfg.crowdMood==="away"&&typeof boo==="function")boo();
     if(cfg.commentaryEvent==="lastshot_commentary_finals")playAudioEvent("lastshot_commentary_finals");
@@ -537,12 +899,18 @@
 
   /* ---------------- 帧更新 ---------------- */
   function updateLastShot(dt){
-    if(!LS.on||G.state!=="lastshot")return;
+    if(!LS.on)return;
+    if(G.state!=="lastshot"){
+      hideLastShotHud();
+      LS.on=false;
+      return;
+    }
     const cfg=LS.cfg;
 
-    // 开局大屏特写与运镜阶段
+    // 开局混剪、比分特写、教练席战术布置与运镜阶段
     if(LS.phase==="intro"){
       LS.introT+=dt;
+      updateIntroScene(dt);
       updClock(cfg.gameClock);
       if(LS.introT>=LS.introDur)finishIntro();
       return;
@@ -1000,16 +1368,72 @@
     rig.look.copy(target);
 
     if(LS.phase==="intro"){
+      const t=LS.introT;
       const cz=typeof COURT!=="undefined"&&COURT.midZ!=null?COURT.midZ:4.745;
-      const boardCam=V3(0,11.6,cz-7.6);
-      const boardLook=V3(0,12.6,cz);
-      const k=clamp(LS.introT/Math.max(1e-3,LS.introDur),0,1);
-      // 前 0.4 秒定格特写转播大屏，后 1.4 秒平滑俯冲落到第一人称视角
-      const p=clamp((k-0.22)/(1-0.22),0,1);
-      const ease=p*p*(3-2*p);
-      rig.pos.lerpVectors(boardCam,rig.pos.clone(),ease);
-      rig.look.lerpVectors(boardLook,target,ease);
-      if(typeof hands!=="undefined"&&hands)hands.visible=(ease>0.85);
+      const sq=squadApi.squad,actors=sq&&sq.actors?sq.actors:null;
+      const fpPos=rig.pos.clone();
+      const fpLook=target.clone();
+      if(t<1.5){
+        // 混剪镜头 1: 低机位动态跟拍我方突破跳投
+        const u=clamp(t/1.5,0,1);
+        const a0=actors&&actors.ally0;
+        rig.pos.set(-5.2+u*1.8,1.55+u*0.45,5.2-u*1.6);
+        rig.look.set(a0?a0.pos.x:-1.5,1.45+u*0.8,a0?a0.pos.z:2.2);
+        if(u>0.55)rig.look.lerp(V3(HOOP.x,HOOP.y,HOOP.z),(u-0.55)/0.45);
+      }else if(t<3.0){
+        // 混剪镜头 2: 侧翼转播机位跟拍对手王牌强投得分
+        const u=clamp((t-1.5)/1.5,0,1);
+        const d0=actors&&actors.def0;
+        rig.pos.set(5.4-u*1.4,1.75+u*0.35,4.8-u*1.5);
+        rig.look.set(d0?d0.pos.x:1.8,1.5+u*0.8,d0?d0.pos.z:2.4);
+        if(u>0.55)rig.look.lerp(V3(HOOP.x,HOOP.y,HOOP.z),(u-0.55)/0.45);
+      }else if(t<4.5){
+        // 混剪镜头 3: 中场摇臂跟拍双方紧逼对抗与暂停哨响
+        const u=clamp((t-3.0)/1.5,0,1);
+        rig.pos.set(-3.2+u*2.4,3.2-u*0.6,7.8-u*1.4);
+        rig.look.set(handler.pos.x*0.7,1.35,handler.pos.z*0.8);
+      }else if(t<5.4){
+        // 第二幕 A (4.5 - 5.4s): 切入球场当前情况全景摇镜并抬升至中央大屏
+        const u=clamp((t-4.5)/0.9,0,1);
+        const ease=u*u*(3-2*u);
+        const courtCam=V3(0,4.8,cz+6.8);
+        const courtLook=V3(0,1.6,2.2);
+        const boardCam=V3(0,11.6,cz-7.6);
+        const boardLook=V3(0,12.6,cz);
+        rig.pos.lerpVectors(courtCam,boardCam,ease);
+        rig.look.lerpVectors(courtLook,boardLook,ease);
+      }else if(t<8.0){
+        // 第二幕 B (5.4 - 8.0s): 比分转播大屏停留特写 (停留 2.6 秒读清比分与局势)
+        const u=clamp((t-5.4)/2.6,0,1);
+        rig.pos.set(Math.sin(u*Math.PI)*0.35,11.6,cz-7.6+u*0.35);
+        rig.look.set(0,12.6,cz);
+      }else if(t<9.8){
+        // 第三幕 A (8.0 - 9.8s): 教练席战术布置 — 镜头对准边线主教练与围拢球员
+        const u=clamp((t-8.0)/1.8,0,1);
+        rig.pos.set(-4.35-u*0.18,1.62,2.45-u*0.25);
+        rig.look.set(-6.15,1.48,2.20);
+      }else if(t<11.2){
+        // 第三幕 B (9.8 - 11.2s): 镜头微移对准核心队友与主教练同框讲解
+        const u=clamp((t-9.8)/1.4,0,1);
+        rig.pos.set(-4.45,1.60,2.20-u*0.18);
+        rig.look.set(-6.00,1.48,1.82);
+      }else if(t<13.0){
+        // 第三幕 C (11.2 - 13.0s): 推镜近景特写！教练与核心直视镜头：“投进那该死的三分！！”
+        const u=clamp((t-11.2)/1.8,0,1);
+        const ease=u*u*(3-2*u);
+        rig.pos.set(-4.48-ease*0.32,1.58,2.08-ease*0.08);
+        rig.look.set(-6.05,1.50,1.90);
+      }else{
+        // 第四幕 (13.0 - 14.0s): 从教练席平滑切入玩家第一人称决胜视角
+        const u=clamp((t-13.0)/1.0,0,1);
+        const ease=u*u*(3-2*u);
+        const benchExitCam=V3(-4.5,2.2,2.2);
+        const benchExitLook=V3(0,1.5,2.2);
+        rig.pos.lerpVectors(benchExitCam,fpPos,ease);
+        rig.look.lerpVectors(benchExitLook,fpLook,ease);
+      }
+      if(typeof hands!=="undefined"&&hands)hands.visible=(t>=13.85);
+      return true;
     }
     return true;
   }

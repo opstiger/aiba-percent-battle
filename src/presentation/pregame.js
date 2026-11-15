@@ -47,8 +47,9 @@ const PREGAME_DANCE_LABELS={
 };
 function ensurePregameDanceClip(seg,actor,avoidClip){
   if(!seg||!(window.AIBADance&&AIBADance.ready&&AIBADance.ids&&AIBADance.ids.length))return false;
+  const avoidList=Array.isArray(avoidClip)?avoidClip.slice():(avoidClip?[avoidClip]:[]);
   if(!seg.clip){
-    const clip=AIBADance.pick(pregameSkinned(actor&&actor.guy,actor),avoidClip);
+    const clip=AIBADance.pick(pregameSkinned(actor&&actor.guy,actor),avoidList);
     if(clip){
       seg.clip=clip;
       const c=AIBADance.clips[clip];
@@ -57,7 +58,8 @@ function ensurePregameDanceClip(seg,actor,avoidClip){
   }
   if(seg.group&&PREGAME.actors.length>1&&!seg.clip2){
     const other=PREGAME.actors.find(a=>a!==actor)||PREGAME.actors[1];
-    const clip2=AIBADance.pick(pregameSkinned(other&&other.guy,other),seg.clip);
+    const avoid2=[seg.clip].concat(avoidList).filter(Boolean);
+    const clip2=AIBADance.pick(pregameSkinned(other&&other.guy,other),avoid2);
     if(clip2){
       seg.clip2=clip2;
       const c2=AIBADance.clips[clip2];
@@ -325,7 +327,7 @@ function pregameBuildShots(opts){
     {actor:showcaseActor,action:showcaseAction,cam:"lowHeroArc",dur:showcaseAction==="dance"?rnd(2.15,2.35):rnd(1.95,2.15),side:1,group:false},
     {actor:hero,action:"dance",cam:"finaleDualCrane",dur:rnd(2.20,2.40),side:-1,group:actors.length>1}
   ];
-  let t=0,lastClip=null;
+  let t=0;const usedClips=[];
   for(let i=0;i<plan.length;i++){
     const item=plan[i],actor=item.actor||hero;
     const seg={
@@ -333,8 +335,9 @@ function pregameBuildShots(opts){
       side:item.side,seed:rnd(-0.75,0.75),group:!!item.group,speedRamp:true
     };
     if(seg.action==="dance"){
-      ensurePregameDanceClip(seg,actor,lastClip);
-      if(seg.clip)lastClip=seg.clip;
+      ensurePregameDanceClip(seg,actor,usedClips);
+      if(seg.clip&&usedClips.indexOf(seg.clip)<0)usedClips.push(seg.clip);
+      if(seg.clip2&&usedClips.indexOf(seg.clip2)<0)usedClips.push(seg.clip2);
     }
     shots.push(seg);
     t+=seg.dur;
@@ -375,12 +378,17 @@ function pregameActionBase(actor,action,u,seg){
   }
   return pregameClampPos(base);
 }
-function pregameIdle(actor,t){
+function pregameIdle(actor,t,seg){
   const guy=actor.guy,ball=pregameBallFor(guy);
   pregamePlace(actor,actor.base,actor.face);pregameNeutral(guy);
   if(ball)ball.visible=false;
   if(window.AIBADance&&AIBADance.ready&&AIBADance.ids&&AIBADance.ids.length){
-    if(!actor._idleClip)actor._idleClip=AIBADance.pick(pregameSkinned(guy,actor));
+    const other=PREGAME.actors.find(a=>a!==actor);
+    const activeClip=seg&&seg.clip;
+    const avoid=[activeClip,seg&&seg.clip2,other&&other._idleClip].filter(Boolean);
+    if(!actor._idleClip||avoid.indexOf(actor._idleClip)>=0){
+      actor._idleClip=AIBADance.pick(pregameSkinned(guy,actor),avoid);
+    }
     const smp=actor._idleClip?AIBADance.sample(actor._idleClip,t+(actor.role==="hero"?0:1.7)):null;
     if(smp){
       const hasRig=pregameHasSkinnedRig(guy),clipInfo=AIBADance.clips[actor._idleClip];
@@ -519,7 +527,10 @@ function pregameAnimate(actor,action,u,seg){
     guy.knees.forEach(k=>k.rotation.x=0.18+0.54*hang);
   }else if(action==="dance"){
     /* 热身舞蹈:写实皮套走骨骼(guy.pregameDance),方块人走关节参数;出入场各 10% 平滑混合 */
-    ensurePregameDanceClip(seg,actor);
+    const usedSoFar=PREGAME.shots.filter(s=>s!==seg&&(s.clip||s.clip2)).reduce((arr,s)=>{
+      if(s.clip)arr.push(s.clip);if(s.clip2)arr.push(s.clip2);return arr;
+    },[]);
+    ensurePregameDanceClip(seg,actor,usedSoFar);
     const isSecond=seg.group&&actor!==seg.actor&&seg.clip2;
     const clipId=isSecond?seg.clip2:seg.clip;
     const dStart=isSecond?(seg.danceStart2||0):(seg.danceStart||0);
@@ -820,10 +831,10 @@ function updPreGameShow(dt){
   PREGAME.actors.forEach(a=>{
     a.guy.pregameDance=null;
     if(seg.group||a===seg.actor)pregameAnimate(a,seg.action,u,seg);
-    else pregameIdle(a,PREGAME.t);
+    else pregameIdle(a,PREGAME.t,seg);
     pregameSmoothPose(a.guy,dt);
-    /* 写实蒙皮皮套靠这个字段知道人在空中(P.jump 在热身里不动) */
-    a.guy.pregameLift=Math.max(0,a.guy.g.position.y-.06);
+    /* 写实蒙皮皮套靠这个字段知道人在空中(P.jump 在热身里不动);跳舞时接地由骨骼包络自行控制,不叠加虚假腾空 */
+    a.guy.pregameLift=a.guy.pregameDance?0:Math.max(0,a.guy.g.position.y-.06);
     if(seg.group||a===seg.actor)pregameSyncBallAfterPose(a,seg.action,u,seg);
   });
   pregameUpdateCamera(seg,rawU,u,dt);

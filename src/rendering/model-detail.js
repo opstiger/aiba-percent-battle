@@ -301,9 +301,8 @@
     // 篮板内沿一圈纤细的比赛计时灯带（橙黄 LED 导光条）
     box(g,1.82,.018,.02,0,3.99,boardZ-dir*.05,ledFrame);
     for(const sx of [-1,1])box(g,.018,.98,.02,sx*.90,3.50,boardZ-dir*.05,ledFrame);
-    // 3. 弹簧篮筐机械盒（Breakaway housing）
-    box(g,.23,.155,.16,0,3.05,boardZ+dir*.12,frameMat);
-    box(g,.18,.06,.14,0,3.01,boardZ+dir*.23,chrome);
+    // 3. 弹簧篮筐机械盒（Breakaway housing，紧贴篮板面铰链，不伸入篮圈）
+    box(g,.23,.15,.13,0,3.05,boardZ+dir*.105,frameMat);
     // 4. 底座前倾式软包防撞护垫 + 配重箱折面装甲
     prism(g,.78,1.68,.38,0,.92,baseZ+dir*.38,pad,0.86,0.55,-dir*.10);
     prism(g,1.24,.46,1.48,0,.23,baseZ+dir*.15,darkSteel,0.92,0.90,0);

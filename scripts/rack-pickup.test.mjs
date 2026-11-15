@@ -31,6 +31,7 @@ for(const base of [import.meta.url,"/opt/homebrew/lib/node_modules/"].concat(
   for(const pkg of ["playwright","playwright-core"]){
     let m;try{m=createRequire(base)(pkg);}catch(e){continue;}
     try{BROWSER=await m.chromium.launch({args:["--mute-audio","--disable-background-timer-throttling","--disable-renderer-backgrounding"]});break;}catch(e){}
+    try{BROWSER=await m.chromium.launch({channel:"chrome",args:["--mute-audio","--disable-background-timer-throttling","--disable-renderer-backgrounding"]});break;}catch(e){}
   }
   if(BROWSER)break;
 }

@@ -23,11 +23,19 @@
       D.ids=Object.keys(D.clips);D.ready=true;D.loading=false;
     }).catch(e=>{D.failed=true;D.loading=false;D.error=String(e);});
   }
-  /* 选一段:写实皮套什么都能跳;方块人只能选 vox_ok 的(霹雳定格有手撑地、身体横躺,方块人立不起来);支持传入 avoid 避免连续重样 */
+  /* 选一段:写实皮套什么都能跳;方块人只能选 vox_ok 的(霹雳定格有手撑地、身体横躺,方块人立不起来);支持传入单个或数组 avoid 避免同场/连续重样 */
   function pick(skinned,avoid){
     let ids=D.ids.filter(id=>skinned?true:D.clips[id].vox_ok);
     if(!ids.length)return null;
-    if(avoid&&ids.length>1)ids=ids.filter(id=>id!==avoid);
+    const avoidList=Array.isArray(avoid)?avoid.filter(Boolean):(avoid?[avoid]:[]);
+    if(avoidList.length&&ids.length>1){
+      const filtered=ids.filter(id=>avoidList.indexOf(id)<0);
+      if(filtered.length)ids=filtered;
+      else if(avoidList[0]&&ids.length>1){
+        const f1=ids.filter(id=>id!==avoidList[0]);
+        if(f1.length)ids=f1;
+      }
+    }
     return ids[(Math.random()*ids.length)|0];
   }
   const Q0=new Float32Array(4),Q1=new Float32Array(4);
@@ -74,11 +82,22 @@
     arm(0,6);arm(1,9);
     const leg=(i,o)=>{guy.legs[i].rotation.set(mix(guy.legs[i].rotation.x,v[o]),0,mix(guy.legs[i].rotation.z,v[o+1]));guy.knees[i].rotation.set(mix(guy.knees[i].rotation.x,v[o+2]),0,0);guy.ankles[i].rotation.set(mix(guy.ankles[i].rotation.x,v[o+3]),0,0);};
     leg(0,12);leg(1,16);
-    /* 贴地:最低的那只脚落到地板;两腿都伸直时就是站姿高度 */
-    if(typeof poseFootBottomY==="function"&&typeof POSE_STAND_FOOT_Y!=="undefined"){
+    /* 贴地:包含身体俯仰/侧倾(v[1],v[2])与腿部外展(z)后的真实世界坐标最低点对齐地板 y=0,杜绝弯腰/劈叉穿地 */
+    g.position.y=0;
+    g.updateMatrixWorld(true);
+    let minY=Infinity;
+    const chk=(n,r)=>{if(!n||!n.getWorldPosition)return;n.getWorldPosition(_pv);if(_pv.y-r<minY)minY=_pv.y-r;};
+    if(guy.shoes)guy.shoes.forEach(s=>chk(s,.045));
+    if(guy.footRoots)guy.footRoots.forEach(f=>chk(f,.055));
+    if(guy.ankles)guy.ankles.forEach(a=>chk(a,.06));
+    if(guy.knees)guy.knees.forEach(k=>chk(k,.06));
+    if(guy.handRoots)guy.handRoots.forEach(h=>chk(h,.05));
+    if(guy.elbows)guy.elbows.forEach(e=>chk(e,.06));
+    if(guy.headRoot)chk(guy.headRoot,.16);
+    if(Number.isFinite(minY))g.position.y=Math.max(0,-minY);
+    else if(typeof poseFootBottomY==="function"&&typeof POSE_STAND_FOOT_Y!=="undefined"){
       const fy=i=>poseFootBottomY(guy.legs[i].rotation.x,guy.knees[i].rotation.x,guy.ankles[i].rotation.x);
-      const low=Math.min(fy(0),fy(1));
-      g.position.y=Math.max(0,POSE_STAND_FOOT_Y-low);
+      g.position.y=Math.max(0,POSE_STAND_FOOT_Y-Math.min(fy(0),fy(1)));
     }
     return true;
   }

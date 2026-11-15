@@ -1677,21 +1677,32 @@ function applyRackReachPose(o,reach,side){
   const k=clamp(Number(reach)||0,0,1);
   if(!o||!o.arms||!o.elbows||k<=0.001)return false;
   const s=side<0?-1:1;
-  /* 球架球心约 0.86m、肩高约 1.36m、水平约 0.5m ⇒ 手要往前下方约 45°。
-     IDLE_ARM_X 是垂手,负值把手臂前抬,所以这里减。 */
-  const fwd=-1.05*k;
+  /* 球架低位槽球心约 y=0.86m、前方 0.33m、侧向 0.56m。配合身体转向球架 ~32°(pickupTurn=0.56)与前倾,
+     两只手都必须朝球架同侧(+X 为 s=+1)外展/横跨合拢到球架低位球两侧:
+     在 Three.js 右手系下,arms[0] 与 arms[1] 的正 rotation.z 都把前臂/手推向 +X(球员左侧),
+     并且必须显式归零 poseCatchHands 四元数留下的 rotation.y,双手才能真正伸到球架上的球心位置。 */
   for(let i=0;i<2;i++){
     const arm=o.arms[i],el=o.elbows[i];
     if(!arm||!el)continue;
-    arm.rotation.x=mixN(arm.rotation.x,IDLE_ARM_X+fwd,k);
-    /* 两只手都朝球架那一侧外展:近侧展得多、远侧要跨过身体,所以给不同的量,
-       双手才会合拢在同一颗球上,而不是各伸各的。 */
-    const out=(i===0?.34:.20)*s*(i===0?1:-1);
-    arm.rotation.z=mixN(arm.rotation.z,out*k,k);
-    el.rotation.x=mixN(el.rotation.x,-0.28*k,k);
+    const isNear=(s>0&&i===1)||(s<0&&i===0);
+    const targetArmX=IDLE_ARM_X+(isNear?-0.88:-0.96);
+    const targetArmZ=(isNear?0.18:0.54)*s;
+    const targetElX=isNear?-0.18:-0.22;
+    arm.rotation.set(
+      mixN(arm.rotation.x,targetArmX,k),
+      mixN(arm.rotation.y,0,k),
+      mixN(arm.rotation.z,targetArmZ,k)
+    );
+    el.rotation.set(
+      mixN(el.rotation.x,targetElX,k),
+      mixN(el.rotation.y,0,k),
+      mixN(el.rotation.z,0,k)
+    );
   }
-  if(o.g)o.g.rotation.x+=0.10*k;                 // 上身跟着够过去一点
-  if(o.g)o.g.userData.rackReach=k;
+  if(o.g){
+    o.g.rotation.x+=0.15*k;                 // 上身俯身够向球架低位槽
+    o.g.userData.rackReach=k;
+  }
   return true;
 }
 function poseCatchHands(o,state,dt){
@@ -1976,7 +1987,16 @@ function rackPickupSource(shot){
   if(next<0){props.refillRackBalls(shot.rack);}
   const idx=Number.isFinite(shot.ball)&&shot.ball>=0&&balls[shot.ball]&&balls[shot.ball].visible
     ?shot.ball:Math.max(0,props.getRackBalls().regular[shot.rack].findIndex(m=>m&&m.visible));
-  return props.takeRackBall(shot.rack,idx,null,true);
+  /* ⚠ 物理先后因果:开始转身伸手时,球还在球架上,绝不提前摘除或飞向球员!
+     这里只读取低位槽那颗球的世界坐标与索引,等 updPass 里双手真正触碰到球(k >= HOLD)时再调用 takeRackBall 摘球。 */
+  const m=balls[idx];
+  const pos=new THREE.Vector3();
+  if(m)pos.copy(m.position);
+  else if(props.rackSlotWorld)props.rackSlotWorld(shot.rack,4,pos);
+  pos.rackIndex=shot.rack;
+  pos.ballIndex=idx;
+  pos.nextIndex=idx+1;
+  return pos;
 }
 function startPass(targetPos,face){
   const s=curShot();if(!s||G.buzzed)return;
@@ -2010,13 +2030,17 @@ function startPass(targetPos,face){
     passer.g.rotation.y=faceTo(passer.g.position,hasTarget?target:P.pos);
     passerBall.visible=false;
   }
-  /* 取球要给足时间才读得出"转身—伸手—端起来"三拍。0.2 秒只够球闪一下,
-     那正是上一版看起来像"球自己飞过来"的原因。 */
-  const dur=pickup?.62:passFlightSeconds(from.distanceTo(catchP));
+  /* 取球要给足时间才读得出"转身伸手触球—双手抓球端回—余球滚落"三拍因果。 */
+  const dur=pickup?.64:passFlightSeconds(from.distanceTo(catchP));
   const mesh=new THREE.Mesh(ballGeo,shotMat(s));
-  mesh.position.copy(from);scene.add(mesh);
-  passing={mesh,from,to:catchP,t:0,dur,pickup:!!pickup,side:pickSide,rack:pickup?pickup.rackIndex:null,nextIndex:pickup?pickup.nextIndex:null,rackRolled:false};
+  mesh.position.copy(from);
+  mesh.visible=!pickup; // 球架取球在手真正碰到球(k>=HOLD)之前,原球稳稳留在球架上,飞行网格先隐藏
+  scene.add(mesh);
+  passing={mesh,from,to:catchP,t:0,dur,pickup:!!pickup,kb:0,side:pickSide,
+    rack:pickup?pickup.rackIndex:null,ballIndex:pickup?pickup.ballIndex:null,nextIndex:pickup?pickup.nextIndex:null,
+    rackTaken:false,rackRolled:false};
   G.passCatch={active:true,progress:0,target:catchP.clone()};
+  if(pickup)G.passCatch.target.copy(from);
   if(!pickup){
     /* 两拍:0~35% 收球到胸口(蓄),35%~100% 双臂前送打直(送)。
        原来只有"从抬高的位置放下来"一拍,读不出发力方向,也和持球姿势接不上。 */
@@ -2031,8 +2055,6 @@ function startPass(targetPos,face){
     });
     blipBus(sfxBus||master,300,0.06,"sine",0.07,200);
     noiseBus(sfxBus||master,0.055,0.035,900,4600);
-  }else{
-    noiseBus(sfxBus||master,0.035,0.02,1400,5200);   // 抓球的短促摩擦声,不是传球音
   }
 }
 function updPass(dt){
@@ -2041,35 +2063,52 @@ function updPass(dt){
   passing.t+=dt;const k=Math.min(1,passing.t/passing.dur);
   const p=passing;
   if(p.pickup){
-    /* 取球物理因果链:
-         0 ~ HOLD   球稳稳待在架上,手伸向底球。上方球全部静止在原本格位,不提前动作。
-         k >= HOLD  手接触并开始将球抽离底格(kb>0)。底层球离开瞬间,上方球因失去支承,
-                    在斜导轨重力分量下自然加速滑落填充下一格(seatRackBalls)。
-         HOLD ~ 1   球跟随双手收回到持球位。 */
-    const HOLD=.46;
-    if(k>=HOLD&&!p.rackRolled){
+    /* 取球物理因果链(严格先后顺序):
+         1) 0 ~ HOLD(.46):  球员先转身并把双手伸向球架底球。此阶段手还没拿到球,
+                            底球与上方 4 颗球 100% 静止在球架原格位上,绝不提前飞出或下滑!
+         2) k >= HOLD(.46): 球员双手已经触碰到球架底球(reach=1),此时才从球架摘下底球(takeRackBall),
+                            球随双手一起从球架端回胸前持球位(kb: 0 -> 1)。
+         3) kb >= .30:      当底球被双手端离底格约一个球径、腾出物理空间后,
+                            上方球失去支承,才沿斜导轨受重力加速滚落填充下一格(seatRackBalls)。 */
+    const HOLD=.46,ROLL_KB=.30;
+    const kb=k<HOLD?0:ease01((k-HOLD)/(1-HOLD));
+    p.kb=kb;
+    if(k>=HOLD&&!p.rackTaken){
+      p.rackTaken=true;
+      const props=window.AIBA&&window.AIBA.runtime&&window.AIBA.runtime.service("rendering:props");
+      if(props&&props.takeRackBall&&p.rack!=null&&p.ballIndex!=null){
+        props.takeRackBall(p.rack,p.ballIndex,null,true);
+      }
+      p.mesh.visible=true;
+      noiseBus(sfxBus||master,0.035,0.02,1400,5200);   // 手真正抓到球那一刻才响起抓球摩擦声
+    }
+    if(kb>=ROLL_KB&&!p.rackRolled){
       p.rackRolled=true;
       if(p.rack!=null&&p.nextIndex!=null){
         const props=window.AIBA&&window.AIBA.runtime&&window.AIBA.runtime.service("rendering:props");
         if(props&&props.seatRackBalls)props.seatRackBalls(p.rack,p.nextIndex,true);
       }
     }
-    const kb=k<HOLD?0:ease01((k-HOLD)/(1-HOLD));
     p.mesh.position.lerpVectors(p.from,p.to,kb);
     p.mesh.position.y+=Math.sin(kb*Math.PI)*0.05;
-    /* 转身量:伸手过程中转过去,收球过程中转回来。峰值 0.5rad(29°)——
-       "轻微转身"够看清架子,又不会把人转到背对篮筐。 */
-    const turn=k<HOLD?ease01(k/HOLD):1-ease01((k-HOLD)/(1-HOLD));
-    G.pickupTurn=p.side*0.50*turn;
+    /* 转身与伸手量:0~HOLD 伸手触球(0->1),HOLD~1 双手抱球收回胸前(1->0)。 */
+    const turn=k<HOLD?ease01(k/HOLD):1-kb;
+    G.pickupTurn=p.side*0.56*turn;
     G.pickupReach=turn;
   }else{
+    p.kb=k;
     p.mesh.position.lerpVectors(p.from,p.to,k);
     p.mesh.position.y+=Math.sin(k*Math.PI)*0.65;
     G.pickupTurn=0;G.pickupReach=0;
   }
   if(G.passCatch){G.passCatch.active=k<1;G.passCatch.progress=k;G.passCatch.target.copy(p.mesh.position);}
-  p.mesh.rotation.x-=dt*10;
+  if(p.mesh.visible)p.mesh.rotation.x-=dt*10;
   if(k>=1){
+    if(p.pickup&&!p.rackRolled){
+      p.rackRolled=true;
+      const props=window.AIBA&&window.AIBA.runtime&&window.AIBA.runtime.service("rendering:props");
+      if(props&&p.rack!=null&&p.nextIndex!=null&&props.seatRackBalls)props.seatRackBalls(p.rack,p.nextIndex,true);
+    }
     scene.remove(p.mesh);const wasPickup=p.pickup;passing=null;G.pickupTurn=0;G.pickupReach=0;
     if(!wasPickup)passerBall.visible=true;
     if(G.passCatch){
@@ -2112,17 +2151,21 @@ function walkTo(shot,cb,opts){
   /* 绕架:球架沿出手线往站位后方伸约 1m,压在相邻点位的弦上,走直线会穿过去。
      直线真的撞上时才在最后插一个绕行点(绕前/绕后按球星习惯,见 config.rackDetourFor)。
      时长按**折线总长**算,不按直线距离 —— 否则绕路那一趟人会自己加速跑完。 */
-  let via=null;
+  let via=null,isRackSpot=false;
   if(shot&&shot.rack!=null){
     const rp=window.AIBA.runtime.service("rendering:props");
     const cfg=window.AIBA_CONFIG;
     if(rp&&rp.rackDetourWaypoint&&cfg&&cfg.rackDetourFor)
       via=rp.rackDetourWaypoint(shot.rack,from,cfg.rackDetourFor(typeof G!=="undefined"?G.myStar:null));
+    const stands=rp&&rp.getRackBalls&&rp.getRackBalls().regularStands;
+    if(stands&&stands[shot.rack]&&stands[shot.rack].visible)isRackSpot=true;
   }
   const legA=via?from.distanceTo(via):0;
   const total=legA+(via?via.distanceTo(to):from.distanceTo(to));
   const dur=clamp(total/WALK_CRUISE,0.42,3.6);
-  const overlapPass=!!(opts&&opts.overlapPass);
+  /* 球架点位必须等球员走到位站定后再开始转身伸手取球(isRackSpot 时禁用 overlapPass),
+     否则人还在半路跑动、手还没伸向球架,球就已经飞出来且余球提前滚落了。 */
+  const overlapPass=!!(opts&&opts.overlapPass)&&!isRackSpot;
   let passStartK=1;
   if(overlapPass){
     /* 让球的飞行时间正好填满最后一段走位:球员在收碎步/转身时迎球,

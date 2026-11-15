@@ -70,7 +70,7 @@
     /* 热身演示里人物是被"滑"到位置上的(助跑、走向篮筐),不走游戏的走位链:按位移速度判断该不该跑 */
     const slidingNow=(guy,dt)=>{try{if(state.prevX==null||!(dt>0))return false;const p=guy.g.position;return Math.hypot(p.x-state.prevX,p.z-state.prevZ)/dt>(role==="player"?.9:.5);}catch(e){return false;}};
     const catchNow=role==="player"?()=>{try{return !!(G.passCatch&&G.passCatch.active)||Number(G.pickupReach)>0;}catch(e){return false;}}:()=>false;
-    const passNow=role==="player"?()=>{try{if(typeof passing!=="undefined"&&passing&&passing.mesh){const k=G&&G.passCatch?Number(G.passCatch.progress)||0:0;return {mesh:passing.mesh,k};}}catch(e){}return null;}:()=>null;
+    const passNow=role==="player"?()=>{try{if(typeof passing!=="undefined"&&passing&&passing.mesh&&passing.mesh.visible){const k=passing.pickup?(Number(passing.kb)||0):(G&&G.passCatch?Number(G.passCatch.progress)||0:0);return {mesh:passing.mesh,k};}}catch(e){}return null;}:()=>null;
     /* ---------- 1. 加载(第一次需要时才取) ---------- */
     function load(id){
       if(state.loading||state.root||state.failed)return;
@@ -199,14 +199,43 @@
       /* 第一人称网格:只留主要受前臂/手/手指骨影响的三角面,和主网格共用同一副骨骼 */
       const geo=mesh.geometry,si=geo.attributes.skinIndex,sw=geo.attributes.skinWeight,names=mesh.skeleton.bones.map(b=>b.name);
       const keep=new Uint8Array(si.count);
-      for(let v=0;v<si.count;v++){let bi=0,bw=-1;for(let k=0;k<4;k++){const w=sw.array[v*4+k];if(w>bw){bw=w;bi=si.array[v*4+k];}}keep[v]=/(ForeArm|Hand)/.test(names[bi]||"")?1:0;}
+      /* 预采样全身各骨骼极值顶点(约 180 个顶点):街舞/倒立定格(freeze/freeze2)时任意部位(手/肘/肩/头/背/膝/脚)都可能触地,
+         用真实蒙皮极值顶点做贴地包络,耗时 <0.03ms 且 100% 杜绝任何动作穿模下沉到地板以下 */
+      const posAttr=geo.attributes.position,nb=mesh.skeleton.bones.length;
+      const bMinX=new Int32Array(nb).fill(-1),bMaxX=new Int32Array(nb).fill(-1),
+            bMinY=new Int32Array(nb).fill(-1),bMaxY=new Int32Array(nb).fill(-1),
+            bMinZ=new Int32Array(nb).fill(-1),bMaxZ=new Int32Array(nb).fill(-1);
+      const vMinX=new Float32Array(nb).fill(Infinity),vMaxX=new Float32Array(nb).fill(-Infinity),
+            vMinY=new Float32Array(nb).fill(Infinity),vMaxY=new Float32Array(nb).fill(-Infinity),
+            vMinZ=new Float32Array(nb).fill(Infinity),vMaxZ=new Float32Array(nb).fill(-Infinity);
+      const hvSet=new Set(),tv=new T.Vector3();
+      mesh.updateMatrixWorld(true);
+      for(let v=0;v<si.count;v++){
+        let bi=0,bw=-1;
+        for(let k=0;k<4;k++){const w=sw.array[v*4+k];if(w>bw){bw=w;bi=si.array[v*4+k];}}
+        keep[v]=/(ForeArm|Hand)/.test(names[bi]||"")?1:0;
+        if(bi>=0&&bi<nb){
+          mesh.boneTransform(v,tv);tv.applyMatrix4(mesh.matrixWorld);
+          if(tv.x<vMinX[bi]){vMinX[bi]=tv.x;bMinX[bi]=v;}
+          if(tv.x>vMaxX[bi]){vMaxX[bi]=tv.x;bMaxX[bi]=v;}
+          if(tv.y<vMinY[bi]){vMinY[bi]=tv.y;bMinY[bi]=v;}
+          if(tv.y>vMaxY[bi]){vMaxY[bi]=tv.y;bMaxY[bi]=v;}
+          if(tv.z<vMinZ[bi]){vMinZ[bi]=tv.z;bMinZ[bi]=v;}
+          if(tv.z>vMaxZ[bi]){vMaxZ[bi]=tv.z;bMaxZ[bi]=v;}
+          if(tv.y<.04||tv.y>HEIGHT-.12)hvSet.add(v);
+        }
+      }
+      for(let b=0;b<nb;b++){
+        for(const idx of [bMinX[b],bMaxX[b],bMinY[b],bMaxY[b],bMinZ[b],bMaxZ[b]])if(idx>=0)hvSet.add(idx);
+      }
+      const hullVerts=Uint32Array.from(hvSet);
       const src=geo.index.array,out=[];
       for(let i=0;i<src.length;i+=3)if(keep[src[i]]&&keep[src[i+1]]&&keep[src[i+2]])out.push(src[i],src[i+1],src[i+2]);
       const g2=geo.clone();g2.setIndex(new T.BufferAttribute(new src.constructor(out),1));
       const fp=new T.SkinnedMesh(g2,mesh.material);fp.name="tripoFpArms";fp.frustumCulled=false;fp.userData.tripo=true;
       fp.position.copy(mesh.position);fp.quaternion.copy(mesh.quaternion);fp.scale.copy(mesh.scale);
       mesh.parent.add(fp);fp.bind(mesh.skeleton,mesh.bindMatrix);fp.visible=false;
-      Object.assign(state,{root,M,mesh,fp,modelId:id,base:M.position.clone(),scale:s,footRest:footMin(),hipY:restPos.Hips.y});
+      Object.assign(state,{root,M,mesh,fp,hullVerts,modelId:id,base:M.position.clone(),scale:s,footRest:footMin(),hipY:restPos.Hips.y});
       readRun(gltf.animations&&gltf.animations[0]);
     }
     /* run 动画:按骨骼存成采样表;再量出"脚踩地时往后蹬的速度",得到一个循环对应的前进距离 */
@@ -279,18 +308,26 @@
     for(let i=0;i<DANCE_BONES.length;i++){
       const n=DANCE_BONES[i],bone=B[n];if(!bone)continue;
       _dq.set(dn.q[i*4],dn.q[i*4+1],dn.q[i*4+2],dn.q[i*4+3]).multiply(restW[n]);
-      const targetQ=w<1?(_dc.setFromRotationMatrix(bone.matrixWorld).slerp(_dq,w)):_dq;
-      _pq.setFromRotationMatrix(bone.parent.matrixWorld).invert();
+      const targetQ=w<1?(bone.getWorldQuaternion(_dc).slerp(_dq,w)):_dq;
+      bone.parent.getWorldQuaternion(_pq).invert();
       bone.quaternion.copy(_pq).multiply(targetQ);
       bone.updateMatrix();
       bone.matrixWorld.multiplyMatrices(bone.parent.matrixWorld,bone.matrix);
     }
-    if(B.Hips&&dn.hy){
-      _pq.setFromRotationMatrix(B.Hips.parent.matrixWorld).invert();
-      _v.set(0,dn.hy*restPos.Hips.y*w,0).applyQuaternion(_pq);
-      B.Hips.position.add(_v);
-    }
     state.root.updateMatrixWorld(true);
+  }
+  function hullMinY(){
+    const hv=state.hullVerts,mesh=state.mesh;
+    if(!hv||!hv.length||!mesh)return footMin()-state.footRest;
+    mesh.updateMatrixWorld(true);
+    if(mesh.skeleton)mesh.skeleton.update();
+    let minY=Infinity;
+    for(let i=0;i<hv.length;i++){
+      mesh.boneTransform(hv[i],_v);
+      _v.applyMatrix4(mesh.matrixWorld);
+      if(_v.y<minY)minY=_v.y;
+    }
+    return Number.isFinite(minY)?minY:(footMin()-state.footRest);
   }
 
   /* ---------- 5. 每次渲染前:重定向(零 GC 分配 + 浅层躯干矩阵合并更新) ---------- */
@@ -362,7 +399,7 @@
       const put=(n,q)=>{if(B[n])setW(B[n],TQ().copy(q).multiply(restW[n]));};
       const putShallow=(n,q)=>{
         const bone=B[n];if(!bone)return;
-        _pq.setFromRotationMatrix(bone.parent.matrixWorld).invert();
+        bone.parent.getWorldQuaternion(_pq).invert();
         bone.quaternion.copy(_pq).multiply(q).multiply(restW[n]);
         bone.updateMatrix();
         bone.matrixWorld.multiplyMatrices(bone.parent.matrixWorld,bone.matrix);
@@ -448,27 +485,32 @@
       /* 跑动:换成模型自带的 run 动画 */
       if(rw>.001){applyRun(state.phase,rw,state.armHold);}
 
-      /* 热身舞蹈:整身骨骼换成舞蹈的姿势(脚的落地、位置、朝向仍走下面这套) */
-      if(guy.pregameDance&&guy.pregameDance.q)applyDance(guy.pregameDance);
+      /* 热身舞蹈:整身骨骼换成舞蹈的姿势(脚或支撑手/肘/头的落地、位置、朝向仍走下面这套) */
+      const dn=guy.pregameDance&&guy.pregameDance.q?guy.pregameDance:null;
+      const dw=dn?clamp(dn.w==null?1:dn.w,0,1):0;
+      if(dn)applyDance(dn);
 
-      /* 摆到 AIBA 球员的位置上。跑动时不要 AIBA 那套身体起伏和侧倾(动画里自带),只取水平位置和朝向 */
+      /* 摆到 AIBA 球员的位置上。跑动/街舞时不要 AIBA 那套身体起伏和侧倾(动画里自带),只取水平位置和朝向 */
+      const kw=Math.max(rw,dw);
       const fw=TV().copy(Zax).applyQuaternion(_gq),yawQ=TQ().setFromAxisAngle(Yax,Math.atan2(fw.x,fw.z));
-      const rq=TQ().copy(_gq).slerp(yawQ,rw),rpos=TV().copy(_gp);rpos.y*=1-rw;
-      /* 贴地:鞋底最低点对齐地板;腾空时跟 AIBA 的鞋底高度走,但不低于地板 */
+      const rq=TQ().copy(_gq).slerp(yawQ,kw),rpos=TV().copy(_gp);rpos.y*=1-kw;
+      /* 贴地:正常动作按鞋底最低点对齐地板;街舞(含倒立/Freeze)按全身蒙皮极值顶点最低点对齐地板,绝不穿模下沉 */
       root.updateMatrixWorld(true);
-      const ours=footMin()-state.footRest;
+      const footRef=footMin()-state.footRest;
+      const ours=dw>.001?footRef+(hullMinY()-footRef)*dw:footRef;
+      const danceJump=dw>.001&&dn.hy>.02?dn.hy*state.hipY*dw*.35:0;
       /* 腾空高度直接用游戏的起跳高度(一条抛物线),不经过任何平滑,否则离地/触地那两帧的速度会被改掉。
          上升段身体只跟抛物线走:脚在空中绷脚尖、收腿都不该把整个人再顶高一截(以前按"鞋底最低点"对齐,脚尖一绷髋就多涨 0.5 米/秒,提前出手换脚姿时还会抖)。
          下落段再平滑换回按鞋底最低点对齐,保证触地那一刻是脚尖正好碰到地板。 */
       let ref=ours;
-      if(air<=.004){state.oursG=null;state.airTop=0;}
+      if(air<=.004||dw>.001){state.oursG=null;state.airTop=0;}
       else{
         /* 基准取离地第一帧(腿刚蹬直、脚还是平的);取离地前一帧会把没蹬完的那截算丢 */
         if(state.oursG==null)state.oursG=ours;
         state.airTop=Math.max(state.airTop||0,air);
         {const d=state.airTop>.02?clamp((state.airTop-air)/state.airTop,0,1):0;ref=state.oursG+(ours-state.oursG)*d;}
       }
-      const floor=-rpos.y,off=floor+Math.max(0,air)*(1-rw)-ref;
+      const floor=-rpos.y,off=floor+Math.max(0,air)*(1-kw)+danceJump-ref;
       M.position.y+=off;
       root.matrix.compose(rpos,rq,TV(g.scale.x<0?-1:1,1,1));
       root.updateMatrixWorld(true);
@@ -504,6 +546,7 @@
       const pushS=(m,sx,sy,sz,py)=>{const o=_shrunkN*4;_shrunkM[_shrunkN++]=m;_shrunkV[o]=sx;_shrunkV[o+1]=sy;_shrunkV[o+2]=sz;_shrunkV[o+3]=py;};
       const set=(m,k)=>{if(!m||!m.scale||k>.999)return;pushS(m,m.scale.x,m.scale.y,m.scale.z,NaN);m.scale.multiplyScalar(k);};
       if(held)set(held,BALL_VIS);if(fpBall)set(fpBall,BALL_VIS);
+      try{if(typeof passing!=="undefined"&&passing&&passing.mesh&&passing.mesh.visible)set(passing.mesh,BALL_VIS);}catch(e){}
       if(cfg.world)try{
         if(typeof balls!=="undefined"&&balls.length){
           g.getWorldPosition(_pp);

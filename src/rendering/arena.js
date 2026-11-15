@@ -481,15 +481,23 @@ function scoreboardTex(){
   }
   return centerScoreboardTex;
 }
+let lastCenterScore="",lastCenterClock="";
 function updateCenterScoreboard(data){
   if(!centerScoreboardTex||!centerScoreboardTex.image)return;
   const d=data||{};
+  if(d.score)lastCenterScore=d.score;
+  if(d.clock)lastCenterClock=d.clock;
   const key=(d.title||"")+"|"+(d.score||"")+"|"+(d.clock||"")+"|"+(d.subColor||"");
   if(key&&key===lastScoreboardKey)return;
   lastScoreboardKey=key;
   const cv=centerScoreboardTex.image,g=cv.getContext("2d");
   drawScoreboard(g,cv.width,cv.height,data);
   centerScoreboardTex.needsUpdate=true;
+  if(jumboOverlayTex&&jumboOverlayTex.image){
+    const ocv=jumboOverlayTex.image,og=ocv.getContext("2d");
+    drawJumboOverlay(og,ocv.width,ocv.height,jumboCamMode||"COURT CAM",lastCenterScore||"108 : 96",lastCenterClock||"LIVE HD");
+    jumboOverlayTex.needsUpdate=true;
+  }
   if(typeof G!=="undefined")window.__aibaHeavyFrame=G.tNow;
 }
 window.updateCenterScoreboard=updateCenterScoreboard;
@@ -595,8 +603,10 @@ function updJumbotronBroadcast(t){
     jumboCamMode=label;
     if(jumboOverlayTex&&jumboOverlayTex.image){
       const cv=jumboOverlayTex.image,g=cv.getContext("2d");
-      const sc=(typeof G!=="undefined"&&G.score!=null)?(G.score+" : "+(G.oppScore||0)):"108 : 96";
-      drawJumboOverlay(g,cv.width,cv.height,label,sc,"LIVE HD");
+      const isLS=typeof G!=="undefined"&&G.mode==="lastshot"&&lastCenterScore;
+      const sc=isLS?lastCenterScore:((typeof G!=="undefined"&&G.score!=null)?(G.score+" : "+(G.oppScore||0)):"108 : 96");
+      const clk=isLS&&lastCenterClock?lastCenterClock:"LIVE HD";
+      drawJumboOverlay(g,cv.width,cv.height,label,sc,clk);
       jumboOverlayTex.needsUpdate=true;
     }
   }
