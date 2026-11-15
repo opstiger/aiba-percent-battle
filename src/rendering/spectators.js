@@ -79,6 +79,8 @@ const VIP_ARM_MAT=new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:tru
 let _cachedSpectatorSitMesh=null;
 let _spectatorSitLoading=false;
 const _pendingVIPUpgrades=[];
+const _coloredSpectatorGeoCache=new Map();
+const _spectatorVertexColorMat=new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:true});
 
 function ensureGLTFLoader(cb){
   if(window.THREE&&window.THREE.GLTFLoader)return cb();
@@ -86,6 +88,59 @@ function ensureGLTFLoader(cb){
   s.src="vendor/GLTFLoader.r128.js";
   s.onload=cb;
   document.head.appendChild(s);
+}
+
+function getColoredSpectatorGeo(cfg){
+  const skinHex=recede(cfg.skin||0xedb48a,0.05,0.08);
+  const hairHex=cfg.capColor||cfg.hair||0x181412;
+  const outfitHex=recede(cfg.outfit||cfg.jersey||0x242a38,0.05,0.10);
+  const accentHex=cfg.accent||cfg.pom||outfitHex;
+  const pantsHex=recede(cfg.pants||0x161a24,0.05,0.12);
+  const shoeHex=cfg.shoe||0xf2f4f8;
+  const key=`${skinHex}_${hairHex}_${outfitHex}_${accentHex}_${pantsHex}_${shoeHex}`;
+  if(_coloredSpectatorGeoCache.has(key))return _coloredSpectatorGeoCache.get(key);
+
+  const baseGeo=_cachedSpectatorSitMesh.geometry;
+  const geo=baseGeo.clone();
+  const pos=geo.attributes.position;
+  const count=pos.count;
+  const colors=new Float32Array(count*3);
+  const cSkin=new THREE.Color(skinHex);
+  const cHair=new THREE.Color(hairHex);
+  const cOutfit=new THREE.Color(outfitHex);
+  const cAccent=new THREE.Color(accentHex);
+  const cPants=new THREE.Color(pantsHex);
+  const cShoe=new THREE.Color(shoeHex);
+  const cSole=new THREE.Color(0xf4f6fa);
+
+  for(let i=0;i<count;i++){
+    const vx=pos.getX(i),vy=pos.getY(i),vz=pos.getZ(i);
+    let c;
+    if(vy<0.028){
+      c=cSole;
+    }else if(vy<0.115){
+      c=cShoe;
+    }else if(vy<0.50){
+      c=cPants;
+    }else if(vy<0.66&&vz>0.03&&Math.abs(vx)<0.22){
+      // 放在膝前的双手与小臂皮肤
+      c=cSkin;
+    }else if(vy<0.915){
+      c=cOutfit;
+    }else if(vy<0.965){
+      c=cAccent;
+    }else if(vy>=1.185||(vy>=1.04&&vz<-0.055)){
+      c=cHair;
+    }else{
+      c=cSkin;
+    }
+    colors[i*3]=c.r;
+    colors[i*3+1]=c.g;
+    colors[i*3+2]=c.b;
+  }
+  geo.setAttribute("color",new THREE.BufferAttribute(colors,3));
+  _coloredSpectatorGeoCache.set(key,geo);
+  return geo;
 }
 
 function loadSpectatorSitModel(){
@@ -115,18 +170,33 @@ function loadSpectatorSitModel(){
 function applyModelToVIP(person,cfg){
   if(!_cachedSpectatorSitMesh||!person.g)return;
   if(person.body)person.body.visible=false;
-  if(person.arms&&!person.prop&&!person.phone){
-    person.arms[0].visible=false;
-    person.arms[1].visible=false;
+  if(person.arms){
+    // 将挂在旧方块手臂上的相机/饮品/手机移到真实人体胸前手部位置，彻底隐藏旧体素手臂避免“四只手”
+    for(const arm of person.arms){
+      if(!arm)continue;
+      while(arm.children.length>0){
+        const ch=arm.children[0];
+        arm.remove(ch);
+        if(person.kind==="photo"){
+          ch.position.set(0,0.96,-0.32);
+          ch.rotation.set(0.06,0,0);
+          person.g.add(ch);
+        }else if(person.poms&&(ch===person.poms[0]||ch===person.poms[1])){
+          const side=ch===person.poms[0]?-0.18:0.18;
+          ch.position.set(side,0.62,-0.22);
+          person.g.add(ch);
+        }else{
+          ch.position.set(0.10,0.62,-0.22);
+          person.g.add(ch);
+        }
+      }
+      arm.visible=false;
+    }
   }
-  const m=_cachedSpectatorSitMesh.clone();
+  const m=new THREE.Mesh(getColoredSpectatorGeo(cfg),_spectatorVertexColorMat);
   m.name="realSpectatorMesh";
-  m.material=_cachedSpectatorSitMesh.material.clone();
-  if(cfg.outfit){
-    m.material.color=new THREE.Color(cfg.outfit);
-  }
   m.rotation.y=Math.PI;
-  m.position.set(0,0,0);
+  m.position.set(0,cfg.seatOffsetY||0,0);
 
   const idx=cfg.idx||(person.phase?Math.floor(person.phase*10):0);
   const fat=0.94+((idx*7)%5)*0.04;
@@ -135,6 +205,14 @@ function applyModelToVIP(person,cfg){
 
   person.g.add(m);
   person.realMesh=m;
+}
+function queueSpectatorModelUpgrade(person,cfg){
+  if(_cachedSpectatorSitMesh){
+    applyModelToVIP(person,cfg);
+  }else{
+    _pendingVIPUpgrades.push({person,cfg});
+    loadSpectatorSitModel();
+  }
 }
 function makeCourtsideVIP(parent,cube,cfg){
   const g=new THREE.Group();
@@ -395,12 +473,17 @@ function makeFloorPhotographer(parent,cube,cfg){
   lens.rotation.x=Math.PI/2;lens.position.set(0,0,-0.17);camGroup.add(lens);
   armR.add(camGroup);
 
+  // 底线折叠摄影矮凳
+  showBox(g,cube,new THREE.MeshLambertMaterial({color:0x141720}),0,0.18,0.12,0.32,0.36,0.28);
+
   g.position.set(cfg.x,0,cfg.z);g.rotation.y=cfg.rot;g.scale.setScalar(s);
   parent.add(g);
-  nearCourtCrowd.people.push({g,body,shirtVertCount:0,arms:[armL,armR],phone:null,sign:null,prop:camGroup,poms:[null,null],
+  const person={g,body,shirtVertCount:0,arms:[armL,armR],phone:null,sign:null,prop:camGroup,poms:[null,null],
     kind:"photo",baselineCrew:true,crewRole:"photo",sitStyle,state:cfg.state||"shoot",stateTimer:cfg.phase*1.7,
     base:V3(cfg.x,0,cfg.z),baseY:0,baseRot:cfg.rot,axis:V3(0,0,0),move:0,
-    phase:cfg.phase,amp:cfg.amp||1,team:0,responseStart:-100,responseDuration:0,responseSign:0});
+    phase:cfg.phase,amp:cfg.amp||1,team:0,responseStart:-100,responseDuration:0,responseSign:0};
+  nearCourtCrowd.people.push(person);
+  queueSpectatorModelUpgrade(person,cfg);
 }
 function makeFloorCheerleader(parent,cube,cfg){
   const g=new THREE.Group();
@@ -453,10 +536,14 @@ function makeFloorCheerleader(parent,cube,cfg){
 
   g.position.set(cfg.x,0,cfg.z);g.rotation.y=cfg.rot;g.scale.setScalar(s);
   parent.add(g);
-  nearCourtCrowd.people.push({g,body,shirtVertCount:0,arms:[armL,armR],phone:null,sign:null,prop:null,poms:[pomL,pomR],
+  const person={g,body,shirtVertCount:0,arms:[armL,armR],phone:null,sign:null,prop:null,poms:[pomL,pomR],
     kind:"cheer",baselineCrew:true,crewRole:"cheer",sitStyle,state:cfg.state||(sitStyle==="stand"?"hype":"sit_chill"),stateTimer:cfg.phase*1.5,
     base:V3(cfg.x,0,cfg.z),baseY:0,baseRot:cfg.rot,axis:V3(0,0,0),move:0,
-    phase:cfg.phase,amp:cfg.amp||1,team:0,responseStart:-100,responseDuration:0,responseSign:0});
+    phase:cfg.phase,amp:cfg.amp||1,team:0,responseStart:-100,responseDuration:0,responseSign:0};
+  nearCourtCrowd.people.push(person);
+  if(sitStyle!=="stand"){
+    queueSpectatorModelUpgrade(person,{...cfg,pants:0xf2f4f8,shoe:0xffffff});
+  }
 }
 function makeBaselineMascot(parent,cube,cfg){
   const g=new THREE.Group();

@@ -19,7 +19,7 @@
 (function(global){
   "use strict";
   const clamp=(v,a,b)=>v<a?a:(v>b?b:v);
-  const RIM={R:.30,tube:.035};                  // 与 ball-physics.js GEOM.rim 一致
+  const RIM={R:.30,tube:.0135};                 // 纤细主圈管径（1.35cm），配合后半弧偏心加强领圈复刻 NBA Arena 180 篮筐
   const BOARD_FACE_Z=-8.56,BOARD_ARM_Y=3.45,BOARD_BACK_Z=-8.68;
 
   /* 阻尼弹簧：a 角度（弧度），v 角速度。f 频率 Hz，zeta 阻尼比。 */
@@ -38,30 +38,64 @@
     net:null,lastContactT:-9,clock:0
   };
 
-  /* ---------- 篮筐（圆环 + 连接件 + 挂网钩） ---------- */
+  /* ---------- 篮筐（纤细主圈 + 偏心后半弧渐变加强领圈 + L型弹簧底座 + 细挂网环） ---------- */
   function buildRimMeshes(parent,center,dir,mat){
     // parent 的原点就是铰链；center 是篮筐中心相对铰链的偏移
-    const ring=new THREE.Mesh(new THREE.TorusGeometry(RIM.R,RIM.tube,8,32),mat);
+    const s=Math.sign(center.z)||-dir;
+    // 1. 顶部纤细主钢圈（前沿纤细轻盈，不再是粗圆环）
+    const ring=new THREE.Mesh(new THREE.TorusGeometry(RIM.R,RIM.tube,12,44),mat);
     ring.rotation.x=Math.PI/2;ring.position.copy(center);ring.name="rimRing";
     ring.castShadow=true;parent.add(ring);
-    // 连接件：NBA L型下沉式弹簧篮筐底座（从圈后沿伸到篮板面，带两侧三角加强耳板，绝不伸入篮圈内部）
-    const s=Math.sign(center.z)||-dir,back=center.z-s*RIM.R,len=Math.abs(back);
-    const conn=new THREE.Mesh(new THREE.BoxGeometry(.16,.044,len),mat);
-    conn.position.set(center.x,center.y-.006,back/2);conn.name="rimConnector";parent.add(conn);
-    const mountPlate=new THREE.Mesh(new THREE.BoxGeometry(.18,.13,.032),mat);
-    mountPlate.position.set(center.x,center.y-.048,s*.016);parent.add(mountPlate);
-    const botPlate=new THREE.Mesh(new THREE.BoxGeometry(.18,.026,len*.86),mat);
-    botPlate.position.set(center.x,center.y-.102,back*.43);parent.add(botPlate);
-    for(const sx of [-1,1]){
-      const gusset=new THREE.Mesh(new THREE.BoxGeometry(.024,.082,len*.78),mat);
-      gusset.position.set(center.x+sx*.074,center.y-.054,back*.42);gusset.rotation.x=-s*.32;parent.add(gusset);
+
+    // 2. 圈底连续纤细挂网导轨细环（偏下偏内一点点）
+    const tieRail=new THREE.Mesh(new THREE.TorusGeometry(RIM.R-.003,.0042,8,36),mat);
+    tieRail.rotation.x=Math.PI/2;
+    tieRail.position.set(center.x,center.y-RIM.tube-.005,center.z);
+    parent.add(tieRail);
+
+    // 3. 偏心后半弧渐变加强领圈（Eccentric Rear Reinforcement Collar）：
+    //    圆心向篮板方向偏置（非同心圆），后半圈与两侧渐粗渐厚、前半圈收细消失，形成真实 NBA 篮筐“一段粗一段细且偏心包覆”的机械轮廓
+    const backAngle=s>0?-Math.PI/2:Math.PI/2;
+    const arcSegs=22,arcSpan=Math.PI*1.18; // 覆盖后方及左右两侧约 212° 弧段
+    const eccOffsetZ=-s*.016;              // 偏心量：整体向篮板方向偏置 1.6cm
+    const eccR=RIM.R+.008;
+    for(let i=0;i<arcSegs;i++){
+      const u=(i+.5)/arcSegs-.5;           // -0.5 .. +0.5（0 为正后方最粗处，两端 ±0.5 渐细收尖）
+      const taper=Math.cos(u*Math.PI);     // 0 -> 1 -> 0 平滑渐变
+      if(taper<=.05)continue;
+      const a=backAngle+u*arcSpan;
+      const segLen=(eccR*arcSpan/arcSegs)*1.12;
+      const thick=.008+.020*Math.pow(taper,.75); // 径向厚度：从前端 0.8cm 渐粗到后端 2.8cm
+      const depth=.010+.036*Math.pow(taper,.85); // 垂向高度：从前端 1.0cm 渐深到后端 4.6cm
+      const rMid=eccR+thick*.32;
+      const px=center.x+Math.cos(a)*rMid;
+      const pz=center.z+eccOffsetZ+Math.sin(a)*rMid;
+      const py=center.y-.004-depth*.46;
+      const seg=new THREE.Mesh(new THREE.BoxGeometry(thick,depth,segLen),mat);
+      seg.position.set(px,py,pz);
+      seg.rotation.y=-a;
+      parent.add(seg);
     }
-    // 12 个挂网钩：圈管下方的小环，网就挂在这里
-    const hookGeo=new THREE.BoxGeometry(.022,.035,.022);
+
+    // 4. 连接件：NBA L型下沉式弹簧篮筐底座（与偏心加强领圈后端无缝汇合，绝不伸入篮圈内孔）
+    const back=center.z-s*RIM.R,len=Math.abs(back);
+    const conn=new THREE.Mesh(new THREE.BoxGeometry(.14,.032,len+.018),mat);
+    conn.position.set(center.x,center.y-.008,back/2);conn.name="rimConnector";parent.add(conn);
+    const mountPlate=new THREE.Mesh(new THREE.BoxGeometry(.155,.118,.026),mat);
+    mountPlate.position.set(center.x,center.y-.046,s*.013);parent.add(mountPlate);
+    const botPlate=new THREE.Mesh(new THREE.BoxGeometry(.155,.022,len*.90),mat);
+    botPlate.position.set(center.x,center.y-.094,back*.45);parent.add(botPlate);
+    for(const sx of [-1,1]){
+      const gusset=new THREE.Mesh(new THREE.BoxGeometry(.018,.074,len*.84),mat);
+      gusset.position.set(center.x+sx*.065,center.y-.050,back*.44);gusset.rotation.x=-s*.30;parent.add(gusset);
+    }
+
+    // 5. 12 个小巧挂网扣环
+    const hookGeo=new THREE.BoxGeometry(.012,.018,.012);
     const hooks=[];
     for(let i=0;i<12;i++){
       const a=i/12*Math.PI*2,h=new THREE.Mesh(hookGeo,mat);
-      h.position.set(center.x+Math.cos(a)*(RIM.R-.004),center.y-RIM.tube-.012,center.z+Math.sin(a)*(RIM.R-.004));
+      h.position.set(center.x+Math.cos(a)*(RIM.R-.003),center.y-RIM.tube-.010,center.z+Math.sin(a)*(RIM.R-.003));
       parent.add(h);hooks.push(h);
     }
     return {ring,conn,hooks};
@@ -77,7 +111,7 @@
       const t=r/rows,a=(i+(r%2)*.5)/cols*Math.PI*2,rad=NET.topR+(NET.botR-NET.topR)*Math.pow(t,.85);
       const k=idx(r,i)*3;
       // rest：相对篮筐中心的局部坐标（篮筐坐标系）
-      rest[k]=Math.cos(a)*rad;rest[k+1]=-NET.depth*t-RIM.tube-.02;rest[k+2]=Math.sin(a)*rad;
+      rest[k]=Math.cos(a)*rad;rest[k+1]=-NET.depth*t-RIM.tube-.014;rest[k+2]=Math.sin(a)*rad;
     }
     const links=[],rings=[];
     for(let r=0;r<rows;r++)for(let i=0;i<cols;i++){

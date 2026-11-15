@@ -372,6 +372,8 @@ function buildPressRow(){
       for(let i=0;i<7;i++){
         const x=side*(2.2+i*0.86)+rnd(-.05,.05);
         const z=bz+rnd(-.08,.08);
+        // 近端底线已升级为真实 3D 观众/摄影师模型（spectator_sit.glb），跳过旧胶囊假人但保留 rnd 调用次数以维持随机种子一致
+        if(ri===0)continue;
         const coat=COAT[(i+ri*3)%COAT.length];
         const vest=VEST[(i+ri)%VEST.length];
         const skin=SKIN[(i+ri*2)%SKIN.length];

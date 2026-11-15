@@ -324,11 +324,11 @@
   }
   function hoopHardware(parent,boardZ,baseZ,dir,frameMat){
     const g=new THREE.Group();g.name="detailHoopHardware";
-    // 对照 NBA Spalding Arena Renegade 实物黑灰哑光配色
-    const blackPad=stdMat(0x13151a,0.52,0.06,0.32);
-    const blackBase=stdMat(0x181b22,0.46,0.14,0.36);
-    const darkSteel=stdMat(0x1f242d,0.38,0.55,0.48);
-    const steel=stdMat(0x363f4e,0.32,0.68,0.58);
+    // 对照 NBA Spalding Arena Renegade 实物纯正深邃哑光炭黑配色
+    const blackPad=stdMat(0x0c0e13,0.66,0.04,0.14);
+    const blackBase=stdMat(0x11141b,0.58,0.10,0.16);
+    const darkSteel=stdMat(0x181c24,0.44,0.42,0.22);
+    const steel=stdMat(0x28303d,0.36,0.58,0.32);
     const chrome=stdMat(0xd6deea,0.18,0.88,0.82);
     const ledFrame=new THREE.MeshBasicMaterial({color:0xffaa2b});
 
@@ -342,9 +342,6 @@
       box(g,.16,.038,.06,sx*.82,3.97,boardZ-dir*.02,darkSteel);
       box(g,.038,.14,.06,sx*.88,3.91,boardZ-dir*.02,darkSteel);
     }
-    // 篮板内沿纤细计时灯带
-    box(g,1.80,.015,.018,0,3.99,boardZ-dir*.04,ledFrame);
-    for(const sx of [-1,1])box(g,.015,.96,.018,sx*.90,3.50,boardZ-dir*.04,ledFrame);
 
     // 2. 篮板背部中央单中柱脊梁 + 斜向加强筋（彻底取消横跨玻璃左右翼的横杆，保证玻璃两侧通透纯净）
     const spineZ=boardZ-dir*.11;
@@ -361,17 +358,17 @@
       .14,.09,darkSteel
     );                                                       // 背部上端斜撑臂
 
-    // 3. 斜伸双层主大臂（从立柱顶部 y=1.88 斜向上 34° 伸至篮板底部中央 y=3.02，复刻 NBA 折叠悬臂结构）
+    // 3. 斜伸双层主大臂（从立柱顶罩后方凹槽 y=1.90 斜向上伸至篮板底部中央 y=3.02，绝不穿出正面护垫顶罩）
     beam(g,
-      new THREE.Vector3(0,1.84,baseZ+dir*.08),
+      new THREE.Vector3(0,1.90,baseZ-dir*.02),
       new THREE.Vector3(0,3.02,boardZ-dir*.12),
-      .25,.20,darkSteel
+      .24,.20,darkSteel
     );
     // 主大臂下方的平行副拉杆（双连杆机构）
     beam(g,
-      new THREE.Vector3(0,1.62,baseZ+dir*.14),
+      new THREE.Vector3(0,1.68,baseZ+dir*.03),
       new THREE.Vector3(0,2.90,boardZ-dir*.16),
-      .14,.08,steel
+      .13,.08,steel
     );
     // 篮板底部中央与大臂交汇处的水平托盘座
     box(g,.28,.10,.34,0,2.98,boardZ-dir*.20,darkSteel);
@@ -395,8 +392,8 @@
     for(const sx of [-1,1]){
       box(g,.085,1.46,.22,sx*.15,1.41,baseZ-dir*.05,darkSteel);
     }
-    box(g,.38,.12,.20,0,2.08,baseZ-dir*.04,darkSteel);
-    box(g,.42,.04,.04,0,1.84,baseZ+dir*.04,chrome);
+    box(g,.38,.12,.18,0,2.08,baseZ-dir*.06,darkSteel);
+    box(g,.42,.04,.04,0,1.88,baseZ-dir*.02,chrome);
     box(g,.40,.035,.035,0,1.42,baseZ-dir*.14,chrome);
 
     // 5. 篮板正上方：24 秒进攻计时器塔（Shot Clock Tower，由中央脊柱向上延伸）

@@ -164,13 +164,13 @@ function buildHoop(){
   // backboard: 复刻 NBA 官方钢化玻璃篮板（银白窄边框 + 纯白投篮内框 + 顶部金属角码 + 左下 NBA 标 + 右下美国国旗）
   const bTex=pixTex(512,320,(g,w,h)=>{
     g.clearRect(0,0,w,h);
-    g.fillStyle="rgba(232,240,250,0.34)";g.fillRect(0,0,w,h);
+    g.fillStyle="rgba(220,234,248,0.22)";g.fillRect(0,0,w,h);
     // 钢化玻璃细腻斜向光泽带
-    g.fillStyle="rgba(255,255,255,0.20)";
+    g.fillStyle="rgba(255,255,255,0.14)";
     g.beginPath();g.moveTo(w*0.20,0);g.lineTo(w*0.36,0);g.lineTo(w*0.14,h);g.lineTo(0,h);g.closePath();g.fill();
     g.beginPath();g.moveTo(w*0.60,0);g.lineTo(w*0.70,0);g.lineTo(w*0.48,h);g.lineTo(w*0.38,h);g.closePath();g.fill();
     // 玻璃内左上、右上黑色 L 型金属加强角码
-    g.fillStyle="#232832";
+    g.fillStyle="#1e232c";
     g.fillRect(18,18,52,12);g.fillRect(18,18,12,44);
     g.beginPath();g.moveTo(30,30);g.lineTo(54,30);g.lineTo(30,50);g.closePath();g.fill();
     g.fillRect(w-70,18,52,12);g.fillRect(w-30,18,12,44);
@@ -183,16 +183,23 @@ function buildHoop(){
     drawUsaFlagDecal(g,w-92,238,56,36);
   },{smooth:true,mipmaps:true});
   const env=typeof makeArenaEnvPMREM==="function"?makeArenaEnvPMREM():null;
-  const boardMat=new THREE.MeshPhysicalMaterial({map:bTex,transparent:true,opacity:0.42,
+  const boardMat=new THREE.MeshPhysicalMaterial({map:bTex,transparent:true,opacity:0.94,
     roughness:0.05,metalness:0.0,clearcoat:0.95,clearcoatRoughness:0.04,
-    envMap:env,envMapIntensity:env?0.65:0,
-    side:THREE.DoubleSide,depthWrite:false});
-  const board=new THREE.Mesh(new THREE.BoxGeometry(1.9,1.1,0.06),boardMat);
+    envMap:env,envMapIntensity:env?0.55:0,
+    side:THREE.FrontSide,depthWrite:false});
+  const glassEdgeMat=new THREE.MeshPhysicalMaterial({color:0xdbe8f8,transparent:true,opacity:0.18,
+    roughness:0.05,metalness:0.0,clearcoat:0.95,clearcoatRoughness:0.04,
+    envMap:env,envMapIntensity:env?0.45:0,
+    side:THREE.FrontSide,depthWrite:false});
+  const board=new THREE.Mesh(
+    new THREE.BoxGeometry(1.9,1.1,0.06),
+    [glassEdgeMat,glassEdgeMat,glassEdgeMat,glassEdgeMat,boardMat,glassEdgeMat]
+  );
   board.position.set(0,3.5,-8.62);grp.add(board);
   // 篮板外框：拉丝银铝金属窄边框（Brushed Silver Aluminum）
   const bFrameM=detailOn
-    ?AIBAModelDetail.stdMat(0xdce2ec,0.24,0.72,0.75)
-    :new THREE.MeshLambertMaterial({color:0xd8dfe8});
+    ?AIBAModelDetail.stdMat(0xe4eaf4,0.22,0.72,0.75)
+    :new THREE.MeshLambertMaterial({color:0xe0e6f0});
   const boardParts=[board];
   [[1.94,0.06],[1.94,-0.06]].forEach(o=>{
     const h=new THREE.Mesh(new THREE.BoxGeometry(1.94,0.055,0.085),bFrameM);
@@ -238,7 +245,10 @@ function buildHoop(){
     const farBaseBox=new THREE.Mesh(new THREE.BoxGeometry(1.06,0.66,1.58),padM);
     farBaseBox.position.set(0,0.33,FAR_BASE_Z+0.12);farGrp.add(farBaseBox);
   }
-  const farBoard=new THREE.Mesh(new THREE.BoxGeometry(1.9,1.1,0.06),boardMat);
+  const farBoard=new THREE.Mesh(
+    new THREE.BoxGeometry(1.9,1.1,0.06),
+    [glassEdgeMat,glassEdgeMat,glassEdgeMat,glassEdgeMat,glassEdgeMat,boardMat]
+  );
   farBoard.position.set(0,3.5,COURT.farBaseline-.96);farGrp.add(farBoard);
   if(window.AIBAModelDetail?.enabled){
     for(const sign of [-1,1]){
