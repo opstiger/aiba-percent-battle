@@ -82,35 +82,41 @@
     }
 
     /* ---------- 2. 骨架工具 ----------
-       重定向期间 root.matrix 是单位阵,所以骨骼的"世界坐标"就是角色自己的空间:面朝 +Z、头顶 +Y、左手 +X、真实尺寸。 */
+       重定向期间 root.matrix 是单位阵,所以骨骼的"世界坐标"就是角色自己的空间:面朝 +Z、头顶 +Y、左手 +X、真实尺寸。
+       使用预分配对象池(TV/TQ)消除每帧 200+ 次临时 Vector3/Quaternion 分配导致的手机端 GC 卡顿。 */
     const B={},restL={},restP={},restW={},restWinv={},restPos={};
+    const _vPool=Array.from({length:256},()=>new T.Vector3());
+    const _qPool=Array.from({length:128},()=>new T.Quaternion());
+    let _vPtr=0,_qPtr=0;
+    const TV=(x,y,z)=>{const v=_vPool[_vPtr=(_vPtr+1)&255];return v.set(x||0,y||0,z||0);};
+    const TQ=()=>{const q=_qPool[_qPtr=(_qPtr+1)&127];return q.identity();};
     const _q=new T.Quaternion(),_pq=new T.Quaternion(),_m=new T.Matrix4(),_v=new T.Vector3();
-    const wpos=(n,out)=>B[n].getWorldPosition(out||new T.Vector3());
+    const wpos=(n,out)=>{const b=B[n],t=out||TV();return t.setFromMatrixPosition(b.matrixWorld);};
     function setW(bone,qw){bone.parent.getWorldQuaternion(_pq);bone.quaternion.copy(_pq.invert()).multiply(qw);bone.updateMatrixWorld(true);}
-    const perp=(v,d)=>{const p=v.clone().addScaledVector(d,-v.dot(d));return p.lengthSq()>1e-8?p.normalize():null;};
+    const perp=(v,d)=>{const p=TV().copy(v).addScaledVector(d,-v.dot(d));return p.lengthSq()>1e-8?p.normalize():null;};
     function aim(name,child,dir){
       const cur=wpos(child).sub(wpos(name)).normalize();
-      _q.setFromUnitVectors(cur,dir);const qw=_q.clone().multiply(B[name].getWorldQuaternion(new T.Quaternion()));setW(B[name],qw);
+      _q.setFromUnitVectors(cur,dir);const qw=TQ().copy(_q).multiply(B[name].getWorldQuaternion(TQ()));setW(B[name],qw);
     }
-    const basisQ=(f,n)=>{const s=new T.Vector3().crossVectors(f,n);return new T.Quaternion().setFromRotationMatrix(_m.makeBasis(f,n,s));};
-    const signedAngle=(a,b,axis)=>Math.atan2(axis.dot(new T.Vector3().crossVectors(a,b)),a.dot(b));
+    const basisQ=(f,n)=>{const s=TV().crossVectors(f,n);return TQ().setFromRotationMatrix(_m.makeBasis(f,n,s));};
+    const signedAngle=(a,b,axis)=>Math.atan2(axis.dot(TV().crossVectors(a,b)),a.dot(b));
     /* 两骨 IK。bend:静止姿势下这个关节弯起来时末端摆向哪边(手臂 +Z,腿 -Z)——用来把上段骨头拧到弯折面上 */
     function solveLimb(L,target,pole){
-      const s=wpos(L.up),d=target.clone().sub(s);let dist=d.length();
+      const s=wpos(L.up),d=TV().copy(target).sub(s);let dist=d.length();
       if(dist<1e-6){d.set(0,-1,0);dist=1e-6;}else d.multiplyScalar(1/dist);
       dist=clamp(dist,Math.abs(L.l1-L.l2)+.004,(L.l1+L.l2)*.998);
       const x=(L.l1*L.l1-L.l2*L.l2+dist*dist)/(2*dist),h=Math.sqrt(Math.max(0,L.l1*L.l1-x*x));
-      const p=perp(pole,d)||perp(V(0,0,1),d)||V(1,0,0);
-      const elbow=s.clone().addScaledVector(d,x).addScaledVector(p,h),wrist=s.clone().addScaledVector(d,dist);
-      const d1=elbow.clone().sub(s).normalize();
+      const p=perp(pole,d)||perp(TV(0,0,1),d)||TV(1,0,0);
+      const elbow=TV().copy(s).addScaledVector(d,x).addScaledVector(p,h),wrist=TV().copy(s).addScaledVector(d,dist);
+      const d1=TV().copy(elbow).sub(s).normalize();
       aim(L.up,L.fore,d1);
-      const wantB=perp(wrist.clone().sub(elbow),d1);
+      const wantB=perp(TV().copy(wrist).sub(elbow),d1);
       if(wantB&&h>.015){
-        const q=B[L.up].getWorldQuaternion(new T.Quaternion());
-        const cur=perp(L.bend.clone().applyQuaternion(q.clone().multiply(restWinv[L.up])),d1);
-        if(cur){const ang=signedAngle(cur,wantB,d1)*clamp(h/(.22*L.l1),0,1);setW(B[L.up],new T.Quaternion().setFromAxisAngle(d1,ang).multiply(q));}
+        const q=B[L.up].getWorldQuaternion(TQ());
+        const cur=perp(TV().copy(L.bend).applyQuaternion(TQ().copy(q).multiply(restWinv[L.up])),d1);
+        if(cur){const ang=signedAngle(cur,wantB,d1)*clamp(h/(.22*L.l1),0,1);setW(B[L.up],TQ().setFromAxisAngle(d1,ang).multiply(q));}
       }
-      aim(L.fore,L.hand,wrist.clone().sub(wpos(L.fore)).normalize());
+      aim(L.fore,L.hand,TV().copy(wrist).sub(wpos(L.fore)).normalize());
       return wrist;
     }
     const LIMB={};
@@ -121,6 +127,8 @@
       _q.setFromAxisAngle(L.curlAxis,rad);
       for(const fn of FINGERS)for(let i=1;i<=3;i++){const n=sideName+"Hand"+fn+i,b=B[n];if(!b)continue;
         b.quaternion.copy(restL[n]).multiply(restWinv[n]).multiply(_q).multiply(restW[n]);}
+      const hb=B[sideName+"Hand"];
+      if(hb)hb.updateMatrixWorld(true);
     }
 
     /* 手指不能插进球里。量的是食/中/无名/小指和拇指的第 2~4 节骨点到球心的距离(骨点在手指中心线上,
@@ -128,20 +136,28 @@
        投篮手的手掌是贴着球定的,伸直了也插进去就保持伸直)。 */
     const FNAMES={Left:[],Right:[]};
     for(const sd of ["Left","Right"]){for(const f of FINGERS)for(let i=2;i<=4;i++)FNAMES[sd].push(sd+"Hand"+f+i);for(let i=2;i<=4;i++)FNAMES[sd].push(sd+"HandThumb"+i);}
-    const _fv=new T.Vector3();
+    const _fv=new T.Vector3(),_clearP=new T.Vector3(),_clearOut={w:1e9,p:null};
     function clearOf(side,c,r){
-      let w=1e9,p=null;
-      for(const n of FNAMES[side]){const b=B[n];if(!b)continue;b.getWorldPosition(_fv);const d=_fv.distanceTo(c)-r;if(d<w){w=d;if(!p)p=new T.Vector3();p.copy(_fv);}}
-      return {w,p};
+      let w=1e9,hasP=false;
+      const list=FNAMES[side];
+      for(let i=0;i<list.length;i++){
+        const b=B[list[i]];if(!b)continue;
+        _fv.setFromMatrixPosition(b.matrixWorld);
+        const d=_fv.distanceTo(c)-r;
+        if(d<w){w=d;hasP=true;_clearP.copy(_fv);}
+      }
+      _clearOut.w=w;_clearOut.p=hasP?_clearP:null;
+      return _clearOut;
     }
     function fitFingers(side,L,c,r,rad0,push){
       const REST=.012;
-      for(let it=0;it<4;it++){
+      const maxIt=push?2:1;
+      for(let it=0;it<maxIt;it++){
         curlFingers(side,L,rad0);let o=clearOf(side,c,r);if(o.w>=-REST)return;
         curlFingers(side,L,0);o=clearOf(side,c,r);
-        if(o.w>=-REST){let lo=0,hi=rad0;for(let k=0;k<7;k++){const m=(lo+hi)/2;curlFingers(side,L,m);if(clearOf(side,c,r).w>=-REST)lo=m;else hi=m;}curlFingers(side,L,lo);return;}
+        if(o.w>=-REST){let lo=0,hi=rad0;for(let k=0;k<4;k++){const m=(lo+hi)/2;curlFingers(side,L,m);if(clearOf(side,c,r).w>=-REST)lo=m;else hi=m;}curlFingers(side,L,lo);return;}
         if(!push||!o.p)return;
-        push(o.p.clone().sub(c).normalize().multiplyScalar(-(o.w+REST)*1.1));
+        push(TV().copy(o.p).sub(c).normalize().multiplyScalar(-(o.w+REST)*1.1));
       }
     }
 
@@ -150,6 +166,7 @@
     function unload(){
       if(state.root&&state.root.parent)state.root.parent.remove(state.root);
       for(const o of [B,restL,restP,restW,restWinv,restPos,LIMB])for(const k in o)delete o[k];
+      _prevPole.hasR=_prevPole.hasL=false;
       Object.assign(state,{root:null,M:null,mesh:null,fp:null,run:null,ready:false,player:null,modelId:null,failed:false,ballMoved:false,guideOff:null,oursG:null,airTop:0,landT:null,landV:0,airPrev:0,airVel:0});
     }
     function build(gltf,id){
@@ -169,13 +186,13 @@
       let box=skinBox();const s=HEIGHT/(box.max.y-box.min.y);
       M.scale.setScalar(s);root.updateMatrixWorld(true);box=skinBox();
       const hp=wpos("Hips");M.position.set(-hp.x,-box.min.y,-hp.z);root.updateMatrixWorld(true);
-      for(const n in B){restL[n]=B[n].quaternion.clone();restP[n]=B[n].position.clone();restW[n]=B[n].getWorldQuaternion(new T.Quaternion());restWinv[n]=restW[n].clone().invert();restPos[n]=wpos(n);}
+      for(const n in B){restL[n]=B[n].quaternion.clone();restP[n]=B[n].position.clone();restW[n]=B[n].getWorldQuaternion(new T.Quaternion());restWinv[n]=restW[n].clone().invert();restPos[n]=wpos(n,new T.Vector3());}
       for(const [k,side] of [["R","Right"],["L","Left"]]){
         const a=LIMB["arm"+k]={up:side+"Arm",fore:side+"ForeArm",hand:side+"Hand",bend:V(0,0,1)};
         a.l1=restPos[a.up].distanceTo(restPos[a.fore]);a.l2=restPos[a.fore].distanceTo(restPos[a.hand]);
         const f=restPos[side+"HandMiddle1"].clone().sub(restPos[a.hand]);a.palm=f.length()*.8;f.normalize();
-        const n=perp(V(0,-1,0),f);   // T-pose 掌心朝下
-        a.restBasisInv=basisQ(f,n).invert();a.curlAxis=new T.Vector3().crossVectors(f,n).normalize();
+        const n=perp(V(0,-1,0),f).clone();   // T-pose 掌心朝下
+        a.restBasisInv=basisQ(f,n).clone().invert();a.curlAxis=new T.Vector3().crossVectors(f,n).normalize();
         const l=LIMB["leg"+k]={up:side+"UpLeg",fore:side+"Leg",hand:side+"Foot",bend:V(0,0,-1)};
         l.l1=restPos[l.up].distanceTo(restPos[l.fore]);l.l2=restPos[l.fore].distanceTo(restPos[l.hand]);
       }
@@ -206,7 +223,7 @@
       const run=state.run={rot,hips,t0,span:t1-t0,stride:2.4,arm:/(Shoulder|Arm|Hand)/};
       try{
         const N=40,L=[],R=[];
-        for(let i=0;i<=N;i++){resetPose();applyRun(i/N,1,0);state.root.updateMatrixWorld(true);L.push(wpos("LeftToeBase"));R.push(wpos("RightToeBase"));}
+        for(let i=0;i<=N;i++){resetPose();applyRun(i/N,1,0);state.root.updateMatrixWorld(true);L.push(wpos("LeftToeBase",new T.Vector3()));R.push(wpos("RightToeBase",new T.Vector3()));}
         const sp=[],dt=run.span/N;
         for(let i=0;i<N;i++){const A=L[i].y<R[i].y?L:R;const v=-(A[i+1].z-A[i].z)/dt;if(v>0)sp.push(v);}
         sp.sort((a,b)=>a-b);const v=sp[Math.floor(sp.length*.6)];
@@ -248,38 +265,47 @@
         const f=guy.footRoots[0];inv.copy(f.matrixWorld).invert();
         f.traverse(o=>{if(o.isMesh&&o.geometry){o.geometry.computeBoundingBox();box.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld).applyMatrix4(inv);soleY=Math.min(soleY,box.min.y);}});
       }catch(e){}
+      _prevPole.hasR=_prevPole.hasL=false;
       Object.assign(state,{player:guy,armIdx,legIdx,soleY,ready:true,tA:0,prevX:null,prevZ:null,holdW:0,runW:0,armHold:0});
       return true;
     }
 
     /* 热身舞蹈:每根主骨骼 = 舞蹈的世界旋转增量 × 这副骨架自己的静止世界朝向(和跑动重映射同一个思路),
-     按 w 和当前姿势(正常重定向算出来的)混合,出入场平滑。髋部的上下起伏按这副骨架的髋高换算。 */
+     按 w 和当前姿势(正常重定向算出来的)混合,出入场平滑。髋部的上下起伏按这副骨架的髋高换算。
+     DANCE_BONES 父在前,因此逐骨只做浅层矩阵累乘,最后统一一次 updateMatrixWorld(true)(省去 22 次递归遍历)。 */
   const _dq=new T.Quaternion(),_dc=new T.Quaternion();
   function applyDance(dn){
     const w=clamp(dn.w==null?1:dn.w,0,1);if(w<=0||!dn.q)return;
     for(let i=0;i<DANCE_BONES.length;i++){
-      const n=DANCE_BONES[i];if(!B[n])continue;
+      const n=DANCE_BONES[i],bone=B[n];if(!bone)continue;
       _dq.set(dn.q[i*4],dn.q[i*4+1],dn.q[i*4+2],dn.q[i*4+3]).multiply(restW[n]);
-      if(w<1){B[n].getWorldQuaternion(_dc);_dc.slerp(_dq,w);setW(B[n],_dc);}
-      else setW(B[n],_dq);
+      const targetQ=w<1?(_dc.setFromRotationMatrix(bone.matrixWorld).slerp(_dq,w)):_dq;
+      _pq.setFromRotationMatrix(bone.parent.matrixWorld).invert();
+      bone.quaternion.copy(_pq).multiply(targetQ);
+      bone.updateMatrix();
+      bone.matrixWorld.multiplyMatrices(bone.parent.matrixWorld,bone.matrix);
     }
     if(B.Hips&&dn.hy){
-      B.Hips.parent.getWorldQuaternion(_pq);_v.set(0,dn.hy*restPos.Hips.y*w,0).applyQuaternion(_pq.invert());
+      _pq.setFromRotationMatrix(B.Hips.parent.matrixWorld).invert();
+      _v.set(0,dn.hy*restPos.Hips.y*w,0).applyQuaternion(_pq);
       B.Hips.position.add(_v);
     }
-    root.updateMatrixWorld(true);
+    state.root.updateMatrixWorld(true);
   }
 
-  /* ---------- 5. 每次渲染前:重定向 ---------- */
+  /* ---------- 5. 每次渲染前:重定向(零 GC 分配 + 浅层躯干矩阵合并更新) ---------- */
     const _gInv=new T.Matrix4(),_rm=new T.Matrix4(),_rp=new T.Vector3(),_rs=new T.Vector3(),_gp=new T.Vector3(),_gq=new T.Quaternion(),_gs=new T.Vector3();
-    const I0=new T.Quaternion(),Xax=V(1,0,0);
+    const I0=new T.Quaternion(),Xax=V(1,0,0),Yax=V(0,1,0),Zax=V(0,0,1);
+    const _armSlots={R:{},L:{}},_prevPole={R:new T.Vector3(),L:new T.Vector3(),hasR:false,hasL:false};
+    const _guideOff=new T.Vector3(),_ballWorld=new T.Vector3(),_ballShift=new T.Vector3();
     function retarget(){
+      _vPtr=0;_qPtr=0;
       const guy=state.player,g=guy.g,ball=ballNow(),root=state.root,M=state.M;
       g.updateWorldMatrix(true,true);
       const gInv=_gInv.copy(g.matrixWorld).invert();
-      const Sc=V(Math.abs(g.scale.x),Math.abs(g.scale.y),Math.abs(g.scale.z));   // AIBA 的体型缩放 / 落地挤压,读位置时乘回真实尺寸
-      const loc=n=>new T.Vector3().setFromMatrixPosition(n.matrixWorld).applyMatrix4(gInv).multiply(Sc);
-      const rot=n=>{const q=new T.Quaternion();_rm.multiplyMatrices(gInv,n.matrixWorld).decompose(_rp,q,_rs);return q;};
+      const Sc=TV(Math.abs(g.scale.x),Math.abs(g.scale.y),Math.abs(g.scale.z));   // AIBA 的体型缩放 / 落地挤压,读位置时乘回真实尺寸
+      const loc=n=>TV().setFromMatrixPosition(n.matrixWorld).applyMatrix4(gInv).multiply(Sc);
+      const rot=n=>{const q=TQ();_rm.multiplyMatrices(gInv,n.matrixWorld).decompose(_rp,q,_rs);return q;};
       /* 用游戏时钟:慢动作、暂停、回放时过渡和相位跟着游戏走,不跟墙上时间走 */
       let now=performance.now();try{if(typeof G!=="undefined"&&G&&Number.isFinite(G.tNow))now=G.tNow*1000;}catch(e){}
       const dt=Math.min(.1,Math.max(0,(now-(state.tA||now))/1000));state.tA=now;
@@ -323,62 +349,70 @@
       state.squat=squat=Math.min(squat,.24);
       root.updateMatrixWorld(true);
 
-      /* 躯干:读 AIBA 胸腔和头这一帧的朝向,分到 骨盆 / 腰 / 胸 / 颈 / 头 */
+      /* 躯干:读 AIBA 胸腔和头这一帧的朝向,分到 骨盆 / 腰 / 胸 / 颈 / 头
+         按父到子顺序只做单节点浅层矩阵更新,全部设完后再一次刷新 Hips 子树(消除 5 次整棵 65 骨递归遍历) */
       if(!state.shell||state.shell.parent!==g)state.shell=g.children.find(n=>n.name==="jerseyShell")||null;
-      const qT=state.shell?rot(state.shell):new T.Quaternion();
-      const qPel=I0.clone().slerp(qT,.15),qSp=I0.clone().slerp(qT,.53),qCh=qT.clone();
+      const qT=state.shell?rot(state.shell):TQ();
+      const qPel=TQ().copy(I0).slerp(qT,.15),qSp=TQ().copy(I0).slerp(qT,.53),qCh=TQ().copy(qT);
       if(loadK>.001&&tilt>.02){
-        const ct=Math.max(0,tilt-.04)*loadK,ax=k=>new T.Quaternion().setFromAxisAngle(Xax,-ct*k);
+        const ct=Math.max(0,tilt-.04)*loadK,ax=k=>TQ().setFromAxisAngle(Xax,-ct*k);
         qPel.multiply(ax(.4));qSp.multiply(ax(.45));qCh.multiply(ax(.15));
       }
-      const qH=guy.headRoot?rot(guy.headRoot):qCh.clone();
-      const put=(n,q)=>{if(B[n])setW(B[n],q.clone().multiply(restW[n]));};
-      put("Hips",qPel);put("Spine",qSp);put("Spine1",qSp.clone().slerp(qCh,.5));put("Spine2",qCh);
-      put("Neck",qCh.clone().slerp(qH,.5));put("Head",qH);
+      const qH=guy.headRoot?rot(guy.headRoot):TQ().copy(qCh);
+      const put=(n,q)=>{if(B[n])setW(B[n],TQ().copy(q).multiply(restW[n]));};
+      const putShallow=(n,q)=>{
+        const bone=B[n];if(!bone)return;
+        _pq.setFromRotationMatrix(bone.parent.matrixWorld).invert();
+        bone.quaternion.copy(_pq).multiply(q).multiply(restW[n]);
+        bone.updateMatrix();
+        bone.matrixWorld.multiplyMatrices(bone.parent.matrixWorld,bone.matrix);
+      };
+      putShallow("Hips",qPel);putShallow("Spine",qSp);putShallow("Spine1",TQ().copy(qSp).slerp(qCh,.5));putShallow("Spine2",qCh);
+      putShallow("Neck",TQ().copy(qCh).slerp(qH,.5));putShallow("Head",qH);
+      if(B.Hips)B.Hips.updateMatrixWorld(true);
 
       /* 腿:脚踝跟着 AIBA 脚踝的落点走(挪到这副骨架自己的胯宽和踝高上),反解膝盖;脚掌朝向照抄 */
-      const Zf=()=>V(0,0,1);
       for(const [sd,s,side] of [["L",1,"Left"],["R",-1,"Right"]]){
         const l=state.legIdx[sd],L=LIMB["leg"+sd];
         const hipA=loc(guy.legs[l]),kneeA=loc(guy.knees[l]),ankA=loc(guy.ankles[l]),rf=restPos[side+"Foot"];
-        const tg=ankA.clone();tg.x+=rf.x-s*.125;tg.y+=rf.y-.12*Sc.y;tg.y+=squat;
-        const fwT=Zf().applyQuaternion(rot(guy.legs[l]));
-        const pole=kneeA.clone().sub(hipA.clone().add(ankA).multiplyScalar(.5)).addScaledVector(fwT,.03);
+        const tg=TV().copy(ankA);tg.x+=rf.x-s*.125;tg.y+=rf.y-.12*Sc.y;tg.y+=squat;
+        const fwT=TV().copy(Zax).applyQuaternion(rot(guy.legs[l]));
+        const pole=TV().copy(kneeA).sub(TV().copy(hipA).add(ankA).multiplyScalar(.5)).addScaledVector(fwT,.03);
         solveLimb(L,tg,pole);
         put(side+"Foot",rot(guy.footRoots[l]));
       }
 
       /* 手臂:复制 AIBA 手臂的方向和伸展比例(不照搬位置:肩宽、臂长都不一样) */
-      const arm={};
       for(const [sd,side] of [["R","Right"],["L","Left"]]){
         const a=state.armIdx[sd],L=LIMB["arm"+sd];
         const S0=wpos(L.up),Sa=loc(guy.arms[a]),Ea=loc(guy.elbows[a]),Wa=loc(guy.handRoots[a]),qA=rot(guy.handRoots[a]);
         const La=Ea.distanceTo(Sa)+Wa.distanceTo(Ea),Lk=L.l1+L.l2,s=sd==="L"?1:-1;
-        const free=S0.clone().addScaledVector(Wa.clone().sub(Sa).normalize(),Math.min(.995,Wa.distanceTo(Sa)/La)*Lk);
+        const free=TV().copy(S0).addScaledVector(TV().copy(Wa).sub(Sa).normalize(),Math.min(.995,Wa.distanceTo(Sa)/La)*Lk);
         const low=clamp((1.22-free.y)/.2,0,1)*Math.max(0,1-Math.abs(free.z)/.28);       // 垂手时别插进短裤
         if(low>0&&s*free.x<.25)free.x=s*(s*free.x+(.25-s*free.x)*low);
-        const rawPole=Ea.clone().sub(Sa.clone().add(Wa).multiplyScalar(.5));
-        const fallbackPole=V(s*.35,-.25,-.85).normalize();
+        const rawPole=TV().copy(Ea).sub(TV().copy(Sa).add(Wa).multiplyScalar(.5));
+        const fallbackPole=TV(s*.35,-.25,-.85).normalize();
         let pole=rawPole.lengthSq()<.015
-          ? fallbackPole.clone().lerp(rawPole.lengthSq()>1e-5?rawPole.clone().normalize():fallbackPole,Math.min(1,rawPole.length()/.12))
+          ? TV().copy(fallbackPole).lerp(rawPole.lengthSq()>1e-5?TV().copy(rawPole).normalize():fallbackPole,Math.min(1,rawPole.length()/.12))
           : rawPole;
-        state.prevPole=state.prevPole||{};
-        const pn=pole.clone().normalize();
-        if(state.prevPole[sd]&&dt>0){
-          pn.lerp(state.prevPole[sd],Math.exp(-18*dt)).normalize();
+        const pn=TV().copy(pole).normalize();
+        const hasPrev=sd==="R"?_prevPole.hasR:_prevPole.hasL;
+        if(hasPrev&&dt>0){
+          pn.lerp(_prevPole[sd],Math.exp(-18*dt)).normalize();
         }
-        state.prevPole[sd]=pn.clone();
+        _prevPole[sd].copy(pn);
+        if(sd==="R")_prevPole.hasR=true;else _prevPole.hasL=true;
         pole=pn;
         /* 持球时肘部放松外张:方块人的肘是贴着身体夹住的,真人抱球时两肘自然离开躯干。
            手举过肩(举球、出手)时逐渐收回,投篮手的肘要回到球的正下方。 */
-        {const fl=state.elbowOut*hw*clamp((S0.y+.02-free.y)/.3,0,1);if(fl>.001)pole.normalize().add(V(s*fl,0,-.25*fl));}
-        arm[sd]={a,L,side,S0,Sa,Ea,Wa,qA,free,pole,
-          N:V(0,0,-1).applyQuaternion(qA),F:V(0,-1,0).applyQuaternion(qA)};   // AIBA 的手:手指 -Y、掌心 -Z
+        {const fl=state.elbowOut*hw*clamp((S0.y+.02-free.y)/.3,0,1);if(fl>.001)pole.normalize().add(TV(s*fl,0,-.25*fl));}
+        const slot=_armSlots[sd];
+        slot.a=a;slot.L=L;slot.side=side;slot.S0=S0;slot.Sa=Sa;slot.Ea=Ea;slot.Wa=Wa;slot.qA=qA;slot.free=free;slot.pole=pole;
+        slot.N=TV(0,0,-1).applyQuaternion(qA);slot.F=TV(0,-1,0).applyQuaternion(qA);
       }
       const setHand=A=>setW(B[A.L.hand],basisQ(A.F,A.N).multiply(A.L.restBasisInv).multiply(restW[A.L.hand]));
       curlFingers("Right",LIMB.armR,.2+.3*rw*(1-state.armHold)+state.holdCurl*hw);curlFingers("Left",LIMB.armL,.2+.3*rw*(1-state.armHold)+state.holdCurl*hw);
-      root.updateMatrixWorld(true);
-      const R=arm.R,Lf=arm.L;
+      const R=_armSlots.R,Lf=_armSlots.L;
       solveLimb(R.L,R.free,R.pole);setHand(R);
       /* 球:贴在投篮手掌心。辅助手按 AIBA 里"手腕相对球心"的关系摆到这颗球旁边 */
       let ballK=null,ballR=0;
@@ -389,14 +423,14 @@
         const br=BALL_R*Math.max(ball.scale.x,.01);ballR=br;
         /* 球心相对手腕的向量直接取自 AIBA 那只手(方块手里球本来就在掌心),手的朝向已经抄过来了 */
         /* 这只手比方块手小,AIBA 手腕到球心的距离照搬会让球悬在掌心外面:只保留侧向偏移,沿指向/掌心法向按这只手的尺寸重新定 */
-        const rel0=grip?loc(grip).sub(R.Wa):new T.Vector3();
-        const side=rel0.clone().addScaledVector(R.F,-rel0.dot(R.F)).addScaledVector(R.N,-rel0.dot(R.N)).multiplyScalar(.4);
+        const rel0=grip?loc(grip).sub(R.Wa):TV();
+        const side=TV().copy(rel0).addScaledVector(R.F,-rel0.dot(R.F)).addScaledVector(R.N,-rel0.dot(R.N)).multiplyScalar(.4);
         ballK=wpos(R.L.hand).add(side).addScaledVector(R.F,state.ballAlong+.11*roll*roll).addScaledVector(R.N,br+state.ballLift+.01*roll);
       }
-      const tL=Lf.free.clone();
+      const tL=TV().copy(Lf.free);
       if(ballK&&grip){
-        const rel=Lf.Wa.clone().sub(loc(grip)).multiplyScalar(.86);
-        const tg=ballK.clone().add(rel);state.guideOff=tg.clone().sub(Lf.free);
+        const rel=TV().copy(Lf.Wa).sub(loc(grip)).multiplyScalar(.86);
+        const tg=TV().copy(ballK).add(rel);state.guideOff=_guideOff.copy(tg).sub(Lf.free);
         tL.lerp(tg,hw);
         const rh=wpos(R.L.hand);
         if(tL.x<rh.x+.05)tL.x=rh.x+.05;                                               // 辅助手不越过投篮手
@@ -415,11 +449,11 @@
       if(rw>.001){applyRun(state.phase,rw,state.armHold);}
 
       /* 热身舞蹈:整身骨骼换成舞蹈的姿势(脚的落地、位置、朝向仍走下面这套) */
-    if(guy.pregameDance&&guy.pregameDance.q)applyDance(guy.pregameDance);
+      if(guy.pregameDance&&guy.pregameDance.q)applyDance(guy.pregameDance);
 
-    /* 摆到 AIBA 球员的位置上。跑动时不要 AIBA 那套身体起伏和侧倾(动画里自带),只取水平位置和朝向 */
-      const fw=Zf().applyQuaternion(_gq),yawQ=new T.Quaternion().setFromAxisAngle(V(0,1,0),Math.atan2(fw.x,fw.z));
-      const rq=_gq.clone().slerp(yawQ,rw),rpos=_gp.clone();rpos.y*=1-rw;
+      /* 摆到 AIBA 球员的位置上。跑动时不要 AIBA 那套身体起伏和侧倾(动画里自带),只取水平位置和朝向 */
+      const fw=TV().copy(Zax).applyQuaternion(_gq),yawQ=TQ().setFromAxisAngle(Yax,Math.atan2(fw.x,fw.z));
+      const rq=TQ().copy(_gq).slerp(yawQ,rw),rpos=TV().copy(_gp);rpos.y*=1-rw;
       /* 贴地:鞋底最低点对齐地板;腾空时跟 AIBA 的鞋底高度走,但不低于地板 */
       root.updateMatrixWorld(true);
       const ours=footMin()-state.footRest;
@@ -436,21 +470,21 @@
       }
       const floor=-rpos.y,off=floor+Math.max(0,air)*(1-rw)-ref;
       M.position.y+=off;
-      root.matrix.compose(rpos,rq,V(g.scale.x<0?-1:1,1,1));
+      root.matrix.compose(rpos,rq,TV(g.scale.x<0?-1:1,1,1));
       root.updateMatrixWorld(true);
 
       /* 手里的球挪到这副手上,AIBA 出手从这里读;第一人称的显示球用同一个世界坐标 */
       state.ballWorld=null;
-      if(ballK){ballK.y+=off;state.ballWorld=ballK.applyMatrix4(root.matrix);}
+      if(ballK){ballK.y+=off;state.ballWorld=_ballWorld.copy(ballK).applyMatrix4(root.matrix);}
       if(ball&&grip&&ball.parent===grip){
-        const w=state.ballWorld?state.ballWorld.clone():wpos(R.L.hand);
-        state.ballShift=w.clone().sub(new T.Vector3().setFromMatrixPosition(grip.matrixWorld));
+        const w=state.ballWorld?TV().copy(state.ballWorld):wpos(R.L.hand);
+        state.ballShift=_ballShift.copy(w).sub(TV().setFromMatrixPosition(grip.matrixWorld));
         if(cfg.player&&window.AIBAKobe)AIBAKobe.ballShift=state.ballShift;   // 回放 / 传球读这个字段把球对到画面上的手
         ball.position.copy(w.applyMatrix4(_m.copy(grip.matrixWorld).invert()));state.ballMoved=true;
       }
     }
 
-    /* ---------- 6. 渲染钩子 ---------- */
+    /* ---------- 6. 渲染钩子(零 GC 预分配恢复缓冲) ---------- */
     const hidden=[];   // 这个实例自己藏起来的方块网格
     function hideTree(top,keepA,keepB){
       const walk=o=>{
@@ -462,9 +496,12 @@
     }
     const visibleInScene=o=>{for(;o;o=o.parent){if(!o.visible)return false;if(o.isScene)return true;}return false;};
     const _bp=new T.Vector3(),_pp=new T.Vector3();
+    const _shrunkM=[],_shrunkV=new Float32Array(256);let _shrunkN=0;
+    const _movedM=[],_movedV=new Float32Array(12);let _movedN=0;
     function shrinkBalls(g,held,fpBall){
-      const out=[];
-      const set=(m,k)=>{if(!m||!m.scale||k>.999)return;out.push([m,m.scale.clone()]);m.scale.multiplyScalar(k);};
+      _shrunkN=0;
+      const pushS=(m,sx,sy,sz,py)=>{const o=_shrunkN*4;_shrunkM[_shrunkN++]=m;_shrunkV[o]=sx;_shrunkV[o+1]=sy;_shrunkV[o+2]=sz;_shrunkV[o+3]=py;};
+      const set=(m,k)=>{if(!m||!m.scale||k>.999)return;pushS(m,m.scale.x,m.scale.y,m.scale.z,NaN);m.scale.multiplyScalar(k);};
       if(held)set(held,BALL_VIS);if(fpBall)set(fpBall,BALL_VIS);
       if(cfg.world)try{
         if(typeof balls!=="undefined"&&balls.length){
@@ -475,11 +512,10 @@
         }
       }catch(e){}
       if(cfg.world)try{
-        const drop=m=>{if(!m||!m.visible||!m.scale)return;const r0=BALL_R*m.scale.y;out.push([m,m.scale.clone(),m.position.y]);m.scale.multiplyScalar(BALL_VIS);m.position.y-=r0*(1-BALL_VIS);};
+        const drop=m=>{if(!m||!m.visible||!m.scale)return;const r0=BALL_R*m.scale.y;pushS(m,m.scale.x,m.scale.y,m.scale.z,m.position.y);m.scale.multiplyScalar(BALL_VIS);m.position.y-=r0*(1-BALL_VIS);};
         if(typeof rackBalls!=="undefined")for(const r of rackBalls)if(r)for(const m of r)drop(m);
         if(typeof deepBalls!=="undefined")for(const m of deepBalls)drop(m);
       }catch(e){}
-      return out;
     }
     function hookRenderer(){
       const svc=window.AIBA&&AIBA.runtime&&AIBA.runtime.service&&AIBA.runtime.service("rendering:core");
@@ -513,26 +549,26 @@
            表现为球员每隔几帧抽一下、像几个动作来回切。 */
         const mirror=(sc.scale&&sc.scale.y<0)||state.aux>0;
         const held=ballNow(),fpBall=fpBallNow();
-        const shrunk=shrinkBalls(guy.g,held,fpOn?fpBall:null);
+        shrinkBalls(guy.g,held,fpOn?fpBall:null);
         if(!mirror)try{retarget();}catch(e){oops(e);}
         root.visible=true;state.mesh.visible=tp;state.fp.visible=fpOn;
         if(tp)hideTree(guy.g,held,null);
-        let moved=[];
+        _movedN=0;
         if(fpOn){
           hideTree(state.fpRig,fpBall,null);
           /* 第一人称的显示球挂在方块手的 ballGrip 上,挪到这副手的掌心 */
           if(fpBall&&fpBall.parent&&state.ballWorld){
             fpBall.parent.updateWorldMatrix(true,false);
-            moved.push([fpBall,fpBall.position.clone()]);
+            const o=_movedN*3;_movedM[_movedN++]=fpBall;_movedV[o]=fpBall.position.x;_movedV[o+1]=fpBall.position.y;_movedV[o+2]=fpBall.position.z;
             fpBall.position.copy(state.ballWorld).applyMatrix4(_m.copy(fpBall.parent.matrixWorld).invert());
           }
         }
-        try{const p=state.ballShift&&passNow();if(p){const e=p.k*p.k*(3-2*p.k);moved.push([p.mesh,p.mesh.position.clone()]);p.mesh.position.addScaledVector(state.ballShift,e);}}catch(e){}
+        try{const p=state.ballShift&&passNow();if(p){const e=p.k*p.k*(3-2*p.k);const o=_movedN*3;_movedM[_movedN++]=p.mesh;_movedV[o]=p.mesh.position.x;_movedV[o+1]=p.mesh.position.y;_movedV[o+2]=p.mesh.position.z;p.mesh.position.addScaledVector(state.ballShift,e);}}catch(e){}
         try{return orig(sc,cam);}
         finally{
-          for(const o of hidden)o.visible=true;hidden.length=0;
-          for(const m of moved)m[0].position.copy(m[1]);
-          for(const r of shrunk){r[0].scale.copy(r[1]);if(r[2]!=null)r[0].position.y=r[2];}
+          for(let i=0;i<hidden.length;i++)hidden[i].visible=true;hidden.length=0;
+          for(let i=0;i<_movedN;i++){const o=i*3;_movedM[i].position.set(_movedV[o],_movedV[o+1],_movedV[o+2]);}_movedN=0;
+          for(let i=0;i<_shrunkN;i++){const o=i*4,m=_shrunkM[i];m.scale.set(_shrunkV[o],_shrunkV[o+1],_shrunkV[o+2]);if(!Number.isNaN(_shrunkV[o+3]))m.position.y=_shrunkV[o+3];}_shrunkN=0;
           root.visible=false;
         }
       };

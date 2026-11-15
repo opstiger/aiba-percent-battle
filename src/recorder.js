@@ -211,7 +211,9 @@
     ctx.fillStyle="#05060c";ctx.fillRect(0,0,W,H);
     ctx.save();drawCover(ctx,source,0,0,W,H);ctx.restore();
     ctx.fillStyle="rgba(3,6,12,.2)";ctx.fillRect(0,0,W,H);
-    for(let y=0;y<H;y+=6){ctx.fillStyle="rgba(255,255,255,.025)";ctx.fillRect(0,y,W,1);}
+    if(!MOBILE){
+      for(let y=0;y<H;y+=6){ctx.fillStyle="rgba(255,255,255,.025)";ctx.fillRect(0,y,W,1);}
+    }
     drawHud(ctx);drawVisionPip(ctx);drawResultCard(ctx);
     return c;
   }
@@ -244,6 +246,8 @@
   }
   function tick(ctxObj){
     if(!supported()||!state.capturing)return;
+    /* 移动端正在按住蓄力投篮的那几帧跳过主画布回读拷贝,保证出手瞬间绝对跟手 */
+    if(MOBILE&&typeof G!=="undefined"&&G&&G.charging)return;
     const now=performance.now();
     if(now-state.lastDraw<1000/FPS)return;
     state.lastDraw=now;draw(ctxObj);
@@ -262,8 +266,12 @@
     const fmt=/mp4/i.test(mt)?"MP4":"WebM";
     updateStatus(state.audioTracks.length?`精彩${fmt}${state.armed?"预录中":"生成中"}...含现场音频`:`精彩${fmt}${state.armed?"预录中":"生成中"}...音频未接入`);
   }
+  const FORCE_ARM_REC=(()=>{try{return /[?&]record=1\b/.test(location.search);}catch(e){return false;}})();
   function arm(label){
     if(!supported())return false;
+    /* 移动端在比赛对局中默认关闭后台常驻预录(arm),把算力全留给体感识别与 60fps 渲染,
+       避免决胜阶段(85分/最后12秒)编码发热降频;最后一球出手后仍由 mark() 录制结算高光视频。 */
+    if(MOBILE&&!FORCE_ARM_REC)return false;
     if(state.capturing)return true;
     try{startRecording(label||"最后回合预录",{armed:true});return true;}catch(e){state.capturing=false;state.armed=false;updateStatus("精彩视频预录失败");return false;}
   }

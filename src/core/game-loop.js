@@ -1,6 +1,6 @@
 /* ---------------- main loop ---------------- */
 const clock=new THREE.Clock();
-let jumboAcc=0,lowBeep=0,menuFrameAcc=0,visionAmbienceAcc=0,lastI18nState=null;
+let jumboAcc=0,lowBeep=0,menuFrameAcc=0,visionAmbienceAcc=0,visionAmbiencePhase=0,lastI18nState=null;
 let pausePresentationT=0,pauseAmbienceAcc=0,pauseWasOn=false;
 const pauseLook=V3(0,0,0);
 /* 暂停时压低场馆声。这里只在进入/退出那一帧拨开关：暂停分支会直接 return，
@@ -76,10 +76,14 @@ function animate(){
   updConf(dt);
   G.cheer=Math.max(0,G.cheer-realDt*0.5);
   visionAmbienceAcc+=realDt;
-  if(visionAmbienceAcc>=1/12){
+  if(visionAmbienceAcc>=1/36){
     const ambienceDt=visionAmbienceAcc;visionAmbienceAcc=0;
-    updCrowd(G.tNow);updBackcourtShow(G.tNow);updStreetCrowd(G.tNow,ambienceDt);
+    visionAmbiencePhase=(visionAmbiencePhase+1)%3;
+    if(visionAmbiencePhase===0)updCrowd(G.tNow);
+    else if(visionAmbiencePhase===1)updBackcourtShow(G.tNow);
+    else updStreetCrowd(G.tNow,ambienceDt*3);
   }
+  if(window.AIBAShow&&typeof AIBAShow.update==="function")AIBAShow.update(G.tNow);
   /* 近场观众的欢呼、举牌和身体摆动在 12fps 下会明显卡顿；只把远景留在
      节流分支，近场每帧更新。它不参与玩法和判定。 */
   if(typeof updNearCourtCrowd==="function")updNearCourtCrowd(G.tNow,realDt);

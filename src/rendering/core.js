@@ -69,11 +69,11 @@ const RENDER_QUALITY=(()=>{
   const preset=presets[q];
   if(preset)return {mode:q,scale:preset.scale,target:preset.scale,min:preset.min,max:preset.max,locked:preset.locked,low:0,high:0,fps:60,w:1,h:1};
   const start=reduced?Math.min(base,1.05):base;
-  return {mode:"auto",scale:start,target:base,min:coarse?.86:.98,max,locked:false,low:0,high:0,fps:60,w:1,h:1};
+  return {mode:"auto",scale:start,target:base,min:coarse?.78:.98,max,locked:false,low:0,high:0,fps:60,w:1,h:1};
 })();
 function renderQualityTarget(){
   let target=RENDER_QUALITY.target;
-  if(VISION&&VISION.desired)target-=0.08;
+  if(VISION&&VISION.desired)target-=(AA_COARSE_POINTER?0.14:0.08);
   if(G&&(G.state==="menu"||G.state==="diff"))target-=0.06;
   return clamp(target,RENDER_QUALITY.min,RENDER_QUALITY.max);
 }
@@ -100,14 +100,17 @@ function updateRenderQuality(dt){
   const q=RENDER_QUALITY;
   if(q.locked||G.state==="menu"||G.state==="diff")return;
   const fps=1/Math.max(dt,0.001);
-  q.fps=q.fps*0.92+fps*0.08;
+  q.fps=q.fps*0.90+fps*0.10;
   const active=G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="pregame"||G.state==="lastshot";
   if(!active)return;
   const target=renderQualityTarget();
-  if(q.fps<43){q.low+=dt;q.high=0;}else if(q.fps>56){q.high+=dt;q.low=0;}else{q.low=Math.max(0,q.low-dt*.5);q.high=Math.max(0,q.high-dt*.5);}
-  if(q.low>1.25&&q.scale>q.min+.01){
-    q.scale=Math.max(q.min,q.scale-0.08);q.low=0;applyRenderScale(true);
-  }else if(q.high>4.5&&q.scale<target-.01){
+  const lowThresh=AA_COARSE_POINTER?47:43;
+  const lowHold=AA_COARSE_POINTER?0.65:1.25;
+  if(q.fps<lowThresh){q.low+=dt*(q.fps<36?1.8:1);q.high=0;}else if(q.fps>56){q.high+=dt;q.low=0;}else{q.low=Math.max(0,q.low-dt*.5);q.high=Math.max(0,q.high-dt*.5);}
+  if(q.low>lowHold&&q.scale>q.min+.01){
+    const step=q.fps<36?0.12:0.08;
+    q.scale=Math.max(q.min,q.scale-step);q.low=0;applyRenderScale(true);
+  }else if(q.high>4.2&&q.scale<target-.01){
     q.scale=Math.min(target,q.scale+0.06);q.high=0;applyRenderScale(true);
   }
 }

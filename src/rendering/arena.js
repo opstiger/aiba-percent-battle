@@ -303,6 +303,7 @@ function buildUpperRibbon(){
         new THREE.MeshBasicMaterial({map:upperRibbonTex[(i+ri)%2],
           side:THREE.DoubleSide,color:R.col}));
       m.position.set(p.x,R.y,p.z);m.rotation.y=p.rot-Math.PI/2;
+      freezeStaticMesh(m);
       indoorRoot.add(m);
     }
   }
@@ -443,7 +444,7 @@ function retiredJerseyTex(num,idx){
     for(let x=14;x<w-14;x+=10)g.fillRect(x,h-12,6,10);
   },{smooth:true,mipmaps:true});
 }
-let centerScoreboardTex=null;
+let centerScoreboardTex=null,lastScoreboardKey="";
 function drawScoreboard(g,w,h,data){
   const d=data||{};
   const gr=g.createLinearGradient(0,0,0,h);
@@ -475,15 +476,21 @@ function drawScoreboard(g,w,h,data){
 }
 function scoreboardTex(){
   if(!centerScoreboardTex){
+    lastScoreboardKey="";
     centerScoreboardTex=pixTex(512,256,(g,w,h)=>drawScoreboard(g,w,h),{smooth:true,mipmaps:true});
   }
   return centerScoreboardTex;
 }
 function updateCenterScoreboard(data){
   if(!centerScoreboardTex||!centerScoreboardTex.image)return;
+  const d=data||{};
+  const key=(d.title||"")+"|"+(d.score||"")+"|"+(d.clock||"")+"|"+(d.subColor||"");
+  if(key&&key===lastScoreboardKey)return;
+  lastScoreboardKey=key;
   const cv=centerScoreboardTex.image,g=cv.getContext("2d");
   drawScoreboard(g,cv.width,cv.height,data);
   centerScoreboardTex.needsUpdate=true;
+  if(typeof G!=="undefined")window.__aibaHeavyFrame=G.tNow;
 }
 window.updateCenterScoreboard=updateCenterScoreboard;
 function buildRetiredJerseys(){
@@ -500,6 +507,7 @@ function buildRetiredJerseys(){
     const m=new THREE.Mesh(new THREE.PlaneGeometry(1.96,2.56),
       new THREE.MeshBasicMaterial({map:retiredJerseyTex(row1[i],i),side:THREE.DoubleSide,color:0xd8e0ee}));
     m.position.set(x,y,z);
+    freezeStaticMesh(m);
     indoorRoot.add(m);
     rodParts.push({color:0xfdb927,pos:[x,y+1.32,z],scale:[2.04,0.06,0.07]});
     rodParts.push({color:0x384252,pos:[x,y-1.32,z],scale:[2.00,0.045,0.055]});
@@ -540,18 +548,25 @@ function getJumboOverlayTex(){
   }
   return jumboOverlayTex;
 }
+const IS_COARSE_JUMBO=(typeof matchMedia==="function"&&matchMedia("(pointer:coarse)").matches)||((typeof navigator!=="undefined"&&navigator.maxTouchPoints>0));
 function updJumbotronBroadcast(t){
   if(!jumboRoot||!indoorRoot||!indoorRoot.visible||typeof renderer==="undefined"||!renderer)return;
+  /* 投篮蓄力关键帧或地板灯光秀高潮期间,暂停头顶副屏二次全场景重绘,把 100% 算力留给手感与主视角 */
+  if(typeof G!=="undefined"&&(G.charging||G.state==="pregame"))return;
   if(!jumboRT){
-    jumboRT=new THREE.WebGLRenderTarget(320,192,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
-    jumboCam=new THREE.PerspectiveCamera(46,320/192,0.5,90);
+    const rtw=IS_COARSE_JUMBO?240:320,rth=IS_COARSE_JUMBO?144:192;
+    jumboRT=new THREE.WebGLRenderTarget(rtw,rth,{minFilter:THREE.LinearFilter,magFilter:THREE.LinearFilter});
+    jumboCam=new THREE.PerspectiveCamera(46,rtw/rth,0.5,90);
     for(const ch of jumboRoot.children){
       if(ch.userData&&ch.userData.isLiveFeed){ch.material.map=jumboRT.texture;ch.material.needsUpdate=true;}
     }
   }
   jumboFrame++;
-  if(jumboFrame<4||(t-jumboLastT>=0&&t-jumboLastT<0.12))return;
+  const minInterval=IS_COARSE_JUMBO?0.36:0.12;
+  if(jumboFrame<4||(t-jumboLastT>=0&&t-jumboLastT<minInterval))return;
+  if(IS_COARSE_JUMBO&&window.__aibaHeavyFrame===t)return;
   jumboLastT=t;
+  window.__aibaHeavyFrame=t;
   // 每 3.8 秒自动切换真实直播机位：赛场直播 / 球星特写 / 名人VIP席 / 观众席
   const slot=Math.floor(t/3.8)%4;
   const labels=["COURT LIVE","STAR CLOSE-UP","COURTSIDE VIP","FAN CROWD CAM"];
@@ -737,7 +752,7 @@ function buildLightShafts(lampPos){
     const tiltX=p[0]>0?0.11:-0.11;
     m.position.set(p[0]*0.86,height/2+2.0,p[2]);
     m.rotation.z=tiltX;
-    m.renderOrder=6;indoorRoot.add(m);
+    m.renderOrder=6;freezeStaticMesh(m);indoorRoot.add(m);
   }
 }
 const POOLS_ON=(()=>{
@@ -860,9 +875,16 @@ function bakeVoxelGeometry(parts){
   geo.computeBoundingSphere();
   return geo;
 }
-/* 便捷封装:烘焙并挂到 parent 上,返回单个 Mesh */
+/* 便捷封装:烘焙并挂到 parent 上,返回单个 Mesh(静态建筑网格冻结 matrixAutoUpdate,省去每帧矩阵重算) */
+function freezeStaticMesh(m){
+  if(!m)return m;
+  m.updateMatrix();
+  m.matrixAutoUpdate=false;
+  return m;
+}
 function bakeVoxelMesh(parent,parts,opts){
   const mesh=new THREE.Mesh(bakeVoxelGeometry(parts),bakedVoxelMaterial((opts&&opts.materialKey)||"basic",opts&&opts.material,!!(opts&&opts.standard)));
+  freezeStaticMesh(mesh);
   if(parent)parent.add(mesh);
   return mesh;
 }

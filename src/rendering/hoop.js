@@ -201,7 +201,7 @@ function buildHoop(){
   grp.name="nearHoopRig";farGrp.name="farHoopRig";courtHoopRigs.push(grp,farGrp);
 }
 /* light cones + jumbotron lower pod */
-let jumboCv,jumboTex;
+let jumboCv,jumboTex,lastJumboKey="";
 function buildAtmos(){
   [[-9.5,COURT.nearBaseline+.8],[9.5,COURT.nearBaseline+.8],[-9.5,COURT.midZ],[9.5,COURT.midZ],[-9.5,COURT.farBaseline-.8],[9.5,COURT.farBaseline-.8]].forEach(p=>{
     const lamp=new THREE.Mesh(new THREE.BoxGeometry(0.9,0.4,0.9),
@@ -218,34 +218,40 @@ function buildAtmos(){
   jumbo.position.set(0,13.85,COURT.midZ);indoorRoot.add(jumbo);
   const hang=new THREE.Mesh(new THREE.BoxGeometry(0.42,2.6,0.42),dark);
   hang.position.set(0,15.1,COURT.midZ);indoorRoot.add(hang);
+  lastJumboKey="";
   updJumbo();
 }
 function updJumbo(){
   if(!jumboCv)return;
+  const battle=G.mode==="battle"&&(G.state==="battle"||G.state==="battleend");
+  const rush=G.mode==="rackrush"&&G.rush;
+  const titleTxt=battle?"RACE TO 100":(rush?"RACK RUSH":"3PT CONTEST");
+  const scoreTxt=battle?Math.min(G.score,BATTLE_TARGET)+" : "+Math.min(G.battleOppScore||0,BATTLE_TARGET):(rush?(G.running?Math.max(0,G.timer).toFixed(0)+'"  '+G.rush.total+" PTS":"READY"):(G.running?G.timer.toFixed(0)+'"  '+G.score+" PTS":"BLOCK KING"));
+  const subTxt=battle?"PERCENT BATTLE":(rush?(RACK_RUSH_LEVELS[G.rush.level]||RACK_RUSH_LEVELS[0]).name:(G.running?(G.stage==="final"?"FINAL ROUND":"SEMI-FINAL"):"PIXEL NIGHT"));
+  const subColor=G.timer<=10&&G.running?"#ff4040":"#7CFC6B";
+  const key=titleTxt+"|"+scoreTxt+"|"+subTxt+"|"+subColor+"|"+G.mode;
+  if(key===lastJumboKey)return;
+  lastJumboKey=key;
   const g=jumboCv.getContext("2d"),w=jumboCv.width,h=jumboCv.height;
   g.fillStyle="#070a12";g.fillRect(0,0,w,h);
   g.fillStyle="rgba(126,231,255,.04)";
   for(let y=0;y<h;y+=6)g.fillRect(0,y,w,2);
   g.strokeStyle="#28364e";g.lineWidth=8;g.strokeRect(6,6,w-12,h-12);
   g.textAlign="center";g.font="bold 34px Orbitron, monospace";
-  const battle=G.mode==="battle"&&(G.state==="battle"||G.state==="battleend");
-  const rush=G.mode==="rackrush"&&G.rush;
-  const titleTxt=battle?"RACE TO 100":(rush?"RACK RUSH":"3PT CONTEST");
-  const scoreTxt=battle?Math.min(G.score,BATTLE_TARGET)+" : "+Math.min(G.battleOppScore||0,BATTLE_TARGET):(rush?(G.running?Math.max(0,G.timer).toFixed(0)+'"  '+G.rush.total+" PTS":"READY"):(G.running?G.timer.toFixed(0)+'"  '+G.score+" PTS":"BLOCK KING"));
-  const subTxt=battle?"PERCENT BATTLE":(rush?(RACK_RUSH_LEVELS[G.rush.level]||RACK_RUSH_LEVELS[0]).name:(G.running?(G.stage==="final"?"FINAL ROUND":"SEMI-FINAL"):"PIXEL NIGHT"));
   g.fillStyle="#ffd23f";g.fillText(titleTxt,w/2,46);
   g.font="bold 58px Orbitron, monospace";
-  g.fillStyle=G.timer<=10&&G.running?"#ff4040":"#7CFC6B";
+  g.fillStyle=subColor;
   g.fillText(scoreTxt,w/2,118);
   g.font="bold 24px Orbitron, monospace";g.fillStyle="#8fd0ff";
   g.fillText(subTxt,w/2,166);
   jumboTex.needsUpdate=true;
+  if(typeof G!=="undefined")window.__aibaHeavyFrame=G.tNow;
   if(G.mode!=="lastshot"&&typeof window.updateCenterScoreboard==="function"){
     window.updateCenterScoreboard({
       title:titleTxt,
       score:scoreTxt,
       clock:subTxt,
-      subColor:G.timer<=10&&G.running?"#ff4040":"#7CFC6B"
+      subColor
     });
   }
 }

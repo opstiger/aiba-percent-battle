@@ -94,8 +94,10 @@
     rings.push({mesh,col,ang,SEG,lag,attr:geo.attributes.color});
   }
 
-  /* ---------- 地板:半场一张画布 ---------- */
-  const FK=1.5;                                                // 画布实际像素 = 逻辑尺寸 × FK
+  /* ---------- 地板:半场一张画布(移动端自适应采样率 + 空闲零上传 + 错峰刷新) ---------- */
+  const IS_MOBILE=(typeof matchMedia==="function"&&matchMedia("(pointer:coarse)").matches)||((typeof navigator!=="undefined"&&navigator.maxTouchPoints>0));
+  const FK=IS_MOBILE?1.0:1.5;                                  // 移动端 1.0x (544×512) 省 56% 纹理上传带宽,桌面端保持 1.5x
+  const FLOOR_MIN_DT=IS_MOBILE?(1/31):(1/61);                  // 移动端地板画布 30fps 重绘(3D光束/曝光仍为 60fps),桌面端 60fps
   const FW=544,FH=512;                                         // 15.24m × 14.325m,约 35.7 像素/米;画布上方 = 篮筐一侧
   const PX=FW/COURT.width,HOOP_PY=(COURT.nearHoopZ-COURT.nearBaseline)*PX,CXF=FW/2;
   let floor=null,floorFar=null,fg=null,ftex=null,floorDirty=false;
@@ -139,10 +141,17 @@
   /* k:整体亮度 0..1;gather:0=各扫各的,1=全部聚到表演者身上;retract:0..1 亮灯瞬间向上快速收回顶棚 */
   function setBeams(k,gather,retract){
     retract=clamp(retract||0,0,1);
+    if(k<.01||retract>=.995){
+      if(!S.beamsOff){
+        for(const B of beams){B.m.visible=false;B.active=false;}
+        S.beamsOff=true;
+      }
+      return;
+    }
+    S.beamsOff=false;
     const cz=-2.6;
     const spec=S.special;
     for(const B of beams){
-      if(k<.01||retract>=.995){B.m.visible=false;B.active=false;continue;}
       const speedMul=spec?(spec.kind==="super10"?2.2:1.65):1;
       const t=S.t*B.sp*speedMul+B.ph;
       const R=2.2+4.4*(.5+.5*Math.sin(t*.78+B.ph));
@@ -416,8 +425,16 @@
 
   /* ---------- 每帧 ---------- */
   function setRings(){
-    let any=false;
     const e=S.ent,b=S.burst,spec=S.special;
+    if(S.heat<=.01&&!S.pulses.length&&!spec&&b<0&&e<0){
+      if(!S.ringsOff){
+        for(const R of rings)R.mesh.visible=false;
+        S.ringsOff=true;
+      }
+      return false;
+    }
+    S.ringsOff=false;
+    let any=false;
     for(const R of rings){
       let on=false;
       for(let i=0;i<R.SEG;i++){
@@ -776,9 +793,10 @@
   }
   function update(t){
     if(!S.built){if(!active())return;build();syncStar();}
+    if(Math.abs(t-S.t)<1e-4)return;
     const dt=clamp(t-S.t,0,.1);S.t=t;
     const live=active();
-    if(!live){for(const R of rings)R.mesh.visible=false;floor.visible=false;if(floorFar)floorFar.visible=false;setBeams(0,0,0);setStars(0);if(pyroPoints)pyroPoints.visible=false;if(dryIcePoints)dryIcePoints.visible=false;if(S.dim!==1&&S.base!=null){S.dim=1;renderer.toneMappingExposure=S.base;S.wrote=false;}S.ent=-1;S.burst=-1;S.special=null;S.pulses.length=0;S.ripples.length=0;if(spot)spot.intensity=0;return;}
+    if(!live){for(const R of rings)R.mesh.visible=false;S.ringsOff=true;floor.visible=false;if(floorFar)floorFar.visible=false;setBeams(0,0,0);setStars(0);if(pyroPoints)pyroPoints.visible=false;if(dryIcePoints)dryIcePoints.visible=false;if(S.dim!==1&&S.base!=null){S.dim=1;renderer.toneMappingExposure=S.base;S.wrote=false;}S.ent=-1;S.burst=-1;S.special=null;S.pulses.length=0;S.ripples.length=0;if(spot)spot.intensity=0;return;}
     for(const p of S.pulses)p.t+=dt;
     for(const p of S.ripples)p.t+=dt;
     while(S.pulses.length&&S.pulses[0].t>RING_PULSE+RING_LAG[3]+.3)S.pulses.shift();
@@ -860,9 +878,18 @@
       }
       if(S.burst>=0&&!S.special){const u=S.burst/BURST;if(u>.13)bk=Math.max(bk,.75*Math.pow(1-(u-.13)/.87,1.6));}
       setBeams(bk,gather,retract);setStars(sk);}
-    /* 地板画布重绘:登场和特种灯光秀期间 60fps 丝滑刷新 */
+    /* 地板画布重绘:平时空闲 0 重绘 0 上传;特效期移动端自适应 30fps 并避开重负载帧,桌面端 60fps */
     const need=S.ent>=0||S.special!=null||S.ripples.length||S.streakT>=0||S.burst>=0;
-    if(need){if(t-S.lastDraw>=1/31||(S.ent>=0||S.special!=null)&&t-S.lastDraw>=1/61){S.lastDraw=t;drawFloor();}}
+    if(need){
+      const minDt=(S.ent>=0||S.special!=null)?FLOOR_MIN_DT:(1/31);
+      const elapsed=t-S.lastDraw;
+      const busyFrame=IS_MOBILE&&global.__aibaHeavyFrame===t&&elapsed<(1/18);
+      if(elapsed>=minDt&&!busyFrame){
+        S.lastDraw=t;
+        drawFloor();
+        global.__aibaHeavyFrame=t;
+      }
+    }
     else if(floor.visible){floor.visible=false;if(floorFar)floorFar.visible=false;}
   }
 
