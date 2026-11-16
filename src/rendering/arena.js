@@ -1226,11 +1226,10 @@ function makeJerseyBodyGeo(){
     [0.001,-0.17,0x343a48],
     [0.19,-0.15,0x343a48],
     [0.17,-0.02,0xffffff],
-    [0.215,0.16,0xffffff],
-    [0.21,0.25,0xffffff],
+    [0.215,0.20,0xffffff],
     [0.088,0.30,0x484f60],
     [0.001,0.31,0x484f60]
-  ],8,0.66,[
+  ],5,0.66,[
     {shape:"cyl",color:0x343a48,pos:[-0.105,-0.13,0.11],scale:[0.13,0.24,0.13],rot:[1.30,0,0],taperX:0.86,taperZ:0.86},
     {shape:"cyl",color:0x343a48,pos:[0.105,-0.13,0.11],scale:[0.13,0.24,0.13],rot:[1.30,0,0],taperX:0.86,taperZ:0.86}
   ]);
@@ -1241,11 +1240,10 @@ function makeHoodieBodyGeo(){
     [0.001,-0.17,0x2e3442],
     [0.20,-0.15,0x2e3442],
     [0.195,-0.02,0xffffff],
-    [0.23,0.16,0xffffff],
-    [0.235,0.25,0xd8dde8],
+    [0.235,0.20,0xd8dde8],
     [0.125,0.32,0xd8dde8],
     [0.001,0.33,0xd8dde8]
-  ],8,0.70,[
+  ],5,0.70,[
     {shape:"cyl",color:0x2e3442,pos:[-0.105,-0.13,0.11],scale:[0.135,0.24,0.135],rot:[1.30,0,0],taperX:0.88,taperZ:0.88},
     {shape:"cyl",color:0x2e3442,pos:[0.105,-0.13,0.11],scale:[0.135,0.24,0.135],rot:[1.30,0,0],taperX:0.88,taperZ:0.88}
   ]);
@@ -1254,27 +1252,21 @@ function makeHoodieBodyGeo(){
 function makeFacetCrowdHeadGeo(){
   return bakeLatheCrowdGeo([
     [0.001,-0.16,0xffffff],
-    [0.052,-0.15,0xffffff],
-    [0.048,-0.09,0xffffff],
-    [0.088,-0.05,0xffffff],
-    [0.110,0.00,0xffffff],
-    [0.114,0.055,0x221c18],
-    [0.092,0.105,0x221c18],
+    [0.050,-0.12,0xffffff],
+    [0.108,0.00,0xffffff],
+    [0.112,0.06,0x221c18],
     [0.001,0.135,0x221c18]
-  ],8,1.06);
+  ],5,1.06);
 }
 // 佩戴鸭舌帽光滑头部
 function makeCapCrowdHeadGeo(){
   return bakeLatheCrowdGeo([
     [0.001,-0.16,0xffffff],
-    [0.052,-0.15,0xffffff],
-    [0.048,-0.09,0xffffff],
-    [0.088,-0.05,0xffffff],
-    [0.110,0.00,0xffffff],
-    [0.122,0.05,0x2b3040],
-    [0.105,0.11,0x2b3040],
+    [0.050,-0.12,0xffffff],
+    [0.108,0.00,0xffffff],
+    [0.120,0.055,0x2b3040],
     [0.001,0.145,0x2b3040]
-  ],8,1.06,[
+  ],5,1.06,[
     {shape:"cyl",color:0x222634,pos:[0,0.045,0.11],scale:[0.19,0.024,0.14],rot:[0.14,0,0],taperX:0.86,taperZ:0.86}
   ]);
 }
@@ -1286,13 +1278,10 @@ function buildCrowd(seats){
   const capGeo=makeCapCrowdHeadGeo();
   const armGeo=bakeLatheCrowdGeo([
     [0.001,0.03,0xffffff],
-    [0.054,0.00,0xffffff],
-    [0.050,-0.12,0xffffff],
-    [0.044,-0.21,0xffffff],
+    [0.052,-0.12,0xffffff],
     [0.035,-0.33,0xf5ede6],
-    [0.030,-0.38,0xf5ede6],
     [0.001,-0.40,0xf5ede6]
-  ],6,1.0);
+  ],4,1.0);
 
   const NT=BOWL_TIERS.length,NC=CROWD_BODY.length;
   const buckets=[];for(let i=0;i<NT*NC;i++)buckets.push([]);

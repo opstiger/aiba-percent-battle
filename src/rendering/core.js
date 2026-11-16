@@ -58,18 +58,21 @@ const RENDER_QUALITY=(()=>{
   const hasMatch=typeof matchMedia==="function";
   const coarse=!!(hasMatch&&matchMedia("(pointer:coarse)").matches);
   const reduced=!!(hasMatch&&matchMedia("(prefers-reduced-motion: reduce)").matches);
-  const mem=navigator.deviceMemory||4;
-  const base=coarse?(mem>=6?1.24:1.12):1.48;
-  const max=coarse?(mem>=6?1.42:1.28):1.8;
+  const mem=navigator.deviceMemory||0;
+  const dpr=Math.min(window.devicePixelRatio||1,3);
+  const hiMobile=coarse&&(dpr>=2.5||mem>=6);
+  const base=coarse?(hiMobile?1.65:(dpr>=2?1.35:1.15)):1.48;
+  const max=coarse?(hiMobile?2.0:(dpr>=2?1.65:1.35)):1.8;
+  const min=coarse?(hiMobile?1.35:(dpr>=2?1.05:0.85)):0.98;
   const presets={
     low:{scale:.88,min:.78,max:.96,locked:true},
-    hd:{scale:base,min:.9,max,locked:true},
-    ultra:{scale:coarse?1.48:2,min:1,max:coarse?1.55:2,locked:true}
+    hd:{scale:base,min:Math.max(1.0,min),max,locked:true},
+    ultra:{scale:coarse?max:2,min:1,max:coarse?max:2,locked:true}
   };
   const preset=presets[q];
   if(preset)return {mode:q,scale:preset.scale,target:preset.scale,min:preset.min,max:preset.max,locked:preset.locked,low:0,high:0,fps:60,w:1,h:1};
-  const start=reduced?Math.min(base,1.05):base;
-  return {mode:"auto",scale:start,target:base,min:coarse?.78:.98,max,locked:false,low:0,high:0,fps:60,w:1,h:1};
+  const start=reduced?Math.min(base,1.25):base;
+  return {mode:"auto",scale:start,target:base,min,max,locked:false,low:0,high:0,fps:60,w:1,h:1};
 })();
 function renderQualityTarget(){
   let target=RENDER_QUALITY.target;
@@ -104,8 +107,8 @@ function updateRenderQuality(dt){
   const active=G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="pregame"||G.state==="lastshot";
   if(!active)return;
   const target=renderQualityTarget();
-  const lowThresh=AA_COARSE_POINTER?47:43;
-  const lowHold=AA_COARSE_POINTER?0.65:1.25;
+  const lowThresh=AA_COARSE_POINTER?40:43;
+  const lowHold=AA_COARSE_POINTER?1.8:1.25;
   if(q.fps<lowThresh){q.low+=dt*(q.fps<36?1.8:1);q.high=0;}else if(q.fps>56){q.high+=dt;q.low=0;}else{q.low=Math.max(0,q.low-dt*.5);q.high=Math.max(0,q.high-dt*.5);}
   if(q.low>lowHold&&q.scale>q.min+.01){
     const step=q.fps<36?0.12:0.08;

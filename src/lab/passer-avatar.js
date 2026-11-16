@@ -24,6 +24,7 @@
     mixer: null,
     throwAction: null,
     rHand: null,
+    rPalm: null,
     lHand: null,
     isThrowing: false,
     released: false,
@@ -70,10 +71,12 @@
         });
 
         let rHand = gltf.scene.getObjectByName("mixamorigRightHand") || gltf.scene.getObjectByName("mixamorig:RightHand");
+        let rPalm = gltf.scene.getObjectByName("mixamorigRightHandMiddle1") || gltf.scene.getObjectByName("mixamorig:RightHandMiddle1");
         let lHand = gltf.scene.getObjectByName("mixamorigLeftHand") || gltf.scene.getObjectByName("mixamorig:LeftHand");
-        if(!rHand || !lHand){
+        if(!rHand || !lHand || !rPalm){
           gltf.scene.traverse(c=>{
             if(!rHand && /RightHand$/.test(c.name)) rHand = c;
+            if(!rPalm && /RightHandMiddle1$/.test(c.name)) rPalm = c;
             if(!lHand && /LeftHand$/.test(c.name)) lHand = c;
           });
         }
@@ -99,6 +102,7 @@
         state.mixer = mixer;
         state.throwAction = throwAction;
         state.rHand = rHand;
+        state.rPalm = rPalm || rHand;
         state.lHand = lHand;
         state.throwDuration = dur;
         state.ready = true;
@@ -145,6 +149,9 @@
     }
   }
 
+  const _vPalm = new THREE.Vector3();
+  const _vRight = new THREE.Vector3();
+
   function getBallWorldPos(out){
     if(!state.ready || !state.root || !state.rHand || !state.lHand) return null;
     state.root.updateMatrixWorld(true);
@@ -155,6 +162,19 @@
     state.root.getWorldQuaternion(_qWorld);
     _vFwd.set(0, 0.02, 0.07).applyQuaternion(_qWorld);
     target.add(_vFwd);
+
+    if(state.isThrowing){
+      const blend = Math.min(1, Math.max(0, state.throwTime / 0.12));
+      if(state.rPalm){
+        state.rPalm.getWorldPosition(_vPalm);
+        _vRight.addVectors(_vR, _vPalm).multiplyScalar(0.5);
+      }else{
+        _vRight.copy(_vR);
+      }
+      _vFwd.set(0, 0.04, 0.09).applyQuaternion(_qWorld);
+      _vRight.add(_vFwd);
+      target.lerp(_vRight, blend);
+    }
     return target;
   }
 
