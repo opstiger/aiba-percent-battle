@@ -48,6 +48,11 @@ const PREGAME_DANCE_LABELS={
 function ensurePregameDanceClip(seg,actor,avoidClip){
   if(!seg||!(window.AIBADance&&AIBADance.ready&&AIBADance.ids&&AIBADance.ids.length))return false;
   const avoidList=Array.isArray(avoidClip)?avoidClip.slice():(avoidClip?[avoidClip]:[]);
+  if(Array.isArray(PREGAME.actors)){
+    for(const a of PREGAME.actors){
+      if(a&&a!==actor&&a._idleClip&&avoidList.indexOf(a._idleClip)<0)avoidList.push(a._idleClip);
+    }
+  }
   if(!seg.clip){
     const clip=AIBADance.pick(pregameSkinned(actor&&actor.guy,actor),avoidList);
     if(clip){
@@ -376,7 +381,7 @@ function pregameIdle(actor,t,seg){
     const other=PREGAME.actors.find(a=>a!==actor);
     const activeClip=seg&&seg.clip;
     const avoid=[activeClip,seg&&seg.clip2,other&&other._idleClip].filter(Boolean);
-    if(!actor._idleClip||avoid.indexOf(actor._idleClip)>=0){
+    if(!actor._idleClip||(activeClip&&actor._idleClip===activeClip)||(seg&&seg.clip2&&actor._idleClip===seg.clip2)||(other&&other._idleClip&&actor._idleClip===other._idleClip)){
       actor._idleClip=AIBADance.pick(pregameSkinned(guy,actor),avoid);
     }
     const smp=actor._idleClip?AIBADance.sample(actor._idleClip,t+(actor.role==="hero"?0:1.7)):null;

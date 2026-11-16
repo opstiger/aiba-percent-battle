@@ -1435,8 +1435,8 @@
     }
     const want=faceTo(P.pos,target);
     let d=want-LS.lookYaw;while(d>Math.PI)d-=6.283185307;while(d<-Math.PI)d+=6.283185307;
-    // 传球途中要跟上插值,不能再用慢平滑,否则接到球那一刻会硬切
-    LS.lookYaw+=d*Math.min(1,dt*(LS.pass?14:4.5));
+    // 传球途中与接球出手时迅速转向正对篮筐（squared up），绝不侧身/背身投篮
+    LS.lookYaw+=d*Math.min(1,dt*((inHand||G.charging)?26:(LS.pass?16:4.5)));
 
     LS.footT=(LS.footT||0)+dt;
     const cutDur=LS.cutDur||0;
@@ -1470,6 +1470,7 @@
       if(inHand||LS.shooting){
         player.g.position.x=P.pos.x;
         player.g.position.z=P.pos.z;
+        player.g.rotation.y=P.face;
       }else{
         player.g.position.set(P.pos.x,0,P.pos.z);
         player.g.rotation.y=P.face;

@@ -191,9 +191,25 @@
   }
 
   /* ---------- 烟花(Pyro)与干冰气柱(Dry Ice):从黑到亮的仪式高潮 + 5分/10分进球狂欢 ---------- */
+  function makeSoftParticleTex(soft){
+    const c=document.createElement("canvas");c.width=c.height=64;
+    const g=c.getContext("2d"),grad=g.createRadialGradient(32,32,0,32,32,32);
+    if(soft){
+      grad.addColorStop(0,"rgba(255,255,255,0.58)");
+      grad.addColorStop(0.45,"rgba(240,248,255,0.24)");
+      grad.addColorStop(1,"rgba(220,240,255,0)");
+    }else{
+      grad.addColorStop(0,"rgba(255,255,255,1)");
+      grad.addColorStop(0.35,"rgba(255,245,210,0.6)");
+      grad.addColorStop(1,"rgba(255,220,160,0)");
+    }
+    g.fillStyle=grad;g.fillRect(0,0,64,64);
+    const tex=new THREE.CanvasTexture(c);tex.needsUpdate=true;return tex;
+  }
   let pyroPoints=null,pyroData=null,dryIcePoints=null,dryIceData=null;
   function makeAtmosphereFX(){
-    /* 1. 干冰气柱粒子:沿底线与边线喷涌的冷雾 */
+    /* 1. 干冰气柱粒子:沿底线与边线喷涌的柔和冷雾（使用径向羽化贴图，告别像素方块） */
+    const mistTex=makeSoftParticleTex(true),sparkTex=makeSoftParticleTex(false);
     const DN=120,dPos=new Float32Array(DN*3),dCol=new Float32Array(DN*3);
     dryIceData=[];
     const vents=[[-5.2,-8.9],[-2.6,-8.9],[2.6,-8.9],[5.2,-8.9],[-6.8,-5.2],[6.8,-5.2],[-6.8,-1.5],[6.8,-1.5]];
@@ -205,7 +221,7 @@
     const dGeo=new THREE.BufferGeometry();
     dGeo.setAttribute("position",new THREE.BufferAttribute(dPos,3));
     dGeo.setAttribute("color",new THREE.BufferAttribute(dCol,3));
-    dryIcePoints=new THREE.Points(dGeo,new THREE.PointsMaterial({size:.48,sizeAttenuation:true,vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,opacity:0,depthWrite:false,toneMapped:false,fog:false}));
+    dryIcePoints=new THREE.Points(dGeo,new THREE.PointsMaterial({size:1.15,map:mistTex,sizeAttenuation:true,vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,opacity:0,depthWrite:false,toneMapped:false,fog:false}));
     dryIcePoints.name="motionShowDryIce";dryIcePoints.visible=false;dryIcePoints.frustumCulled=false;dryIcePoints.renderOrder=7;
     indoorRoot.add(dryIcePoints);
 
@@ -220,7 +236,7 @@
     const pGeo=new THREE.BufferGeometry();
     pGeo.setAttribute("position",new THREE.BufferAttribute(pPos,3));
     pGeo.setAttribute("color",new THREE.BufferAttribute(pCol,3));
-    pyroPoints=new THREE.Points(pGeo,new THREE.PointsMaterial({size:.19,sizeAttenuation:true,vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,opacity:.62,depthWrite:false,toneMapped:false,fog:false}));
+    pyroPoints=new THREE.Points(pGeo,new THREE.PointsMaterial({size:.28,map:sparkTex,sizeAttenuation:true,vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,opacity:.62,depthWrite:false,toneMapped:false,fog:false}));
     pyroPoints.name="motionShowPyro";pyroPoints.visible=false;pyroPoints.frustumCulled=false;pyroPoints.renderOrder=8;
     indoorRoot.add(pyroPoints);
   }
