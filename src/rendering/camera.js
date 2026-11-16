@@ -91,8 +91,12 @@ function setCameraIcon(){
 function setCameraMode(mode,options){
   const modes=availableCameraModes();
   CAM.mode=modes.includes(mode)?mode:1;
+  if(typeof G!=="undefined"&&G)G._preSuperCam=null;
   setCameraIcon();
   applyCamMode();
+  if(typeof document!=="undefined"&&document.activeElement&&typeof document.activeElement.blur==="function"){
+    document.activeElement.blur();
+  }
   if(!(options&&options.silent)&&typeof blip==="function")blip(700,0.05,"square",0.06);
   return CAM.mode;
 }

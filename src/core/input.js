@@ -46,12 +46,22 @@ addEventListener("keydown",e=>{
     return;
   }
   if(PAUSE.on)return;
-  if(e.code==="Space"&&!e.repeat)startCharge();
+  if(e.code==="Space"){
+    const inPlay=G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot";
+    if(inPlay)e.preventDefault();
+    if(!e.repeat)startCharge();
+  }
   if(e.code==="KeyC"&&(G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot"))cycleCam();
   if(G.state==="battle"&&(e.code==="ArrowLeft"||e.code==="KeyA"))battlePrevSpot();
   if(G.state==="battle"&&(e.code==="ArrowRight"||e.code==="KeyD"))battleNextSpot();
 });
-addEventListener("keyup",e=>{if(e.code==="Space")doRelease();});
+addEventListener("keyup",e=>{
+  if(e.code==="Space"){
+    const inPlay=G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="lastshot";
+    if(inPlay)e.preventDefault();
+    doRelease();
+  }
+});
 addEventListener("contextmenu",e=>e.preventDefault());
 
 /* ---------------- device tilt (手机左右倾斜影响球路) ---------------- */
