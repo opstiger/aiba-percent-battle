@@ -61,9 +61,9 @@ const RENDER_QUALITY=(()=>{
   const mem=navigator.deviceMemory||0;
   const dpr=Math.min(window.devicePixelRatio||1,3);
   const hiMobile=coarse&&(dpr>=2.5||mem>=6);
-  const base=coarse?(hiMobile?1.65:(dpr>=2?1.35:1.15)):1.48;
-  const max=coarse?(hiMobile?2.0:(dpr>=2?1.65:1.35)):1.8;
-  const min=coarse?(hiMobile?1.35:(dpr>=2?1.05:0.85)):0.98;
+  const base=coarse?(hiMobile?2.40:(dpr>=2?1.50:1.15)):1.48;
+  const max=coarse?(hiMobile?dpr:(dpr>=2?1.85:1.35)):1.8;
+  const min=coarse?(hiMobile?1.85:(dpr>=2?1.10:0.85)):0.98;
   const presets={
     low:{scale:.88,min:.78,max:.96,locked:true},
     hd:{scale:base,min:Math.max(1.0,min),max,locked:true},

@@ -502,8 +502,13 @@ function stopVictoryCine(){
   const v=VICTORY_CINE;
   v.on=false;v.t=0;v.phase="";
   if(v.hero&&v.hero._celeb)stopCelebrate(v.hero);
+  if(v.hero&&v.hero.g){
+    v.hero.g.rotation.x=0;
+    if(v.hero.legs)v.hero.legs.forEach(l=>l.rotation.set(0,0,0));
+    if(v.hero.knees)v.hero.knees.forEach(k=>k.rotation.set(0,0,0));
+  }
   if(v.foil&&v.foil._celeb)stopCelebrate(v.foil);
-  v.hero=null;v.foil=null;v.cb=null;
+  v.hero=null;v.foil=null;v.cb=null;v.run=null;
   const top=$("lbT"),bottom=$("lbB"),tag=$("heroTag");
   if(top)top.style.height="0";
   if(bottom)bottom.style.height="0";
@@ -533,7 +538,13 @@ function startVictoryCine(opts){
   if(curSpotRing)curSpotRing.visible=false;
   handBall.visible=false;pBall.visible=false;
   applyCamMode();
-  if(v.hero&&v.hero.g){stopCelebrate(v.hero);v.hero.g.visible=true;startCelebrate(v.hero,v.heroType);}
+  if(v.hero&&v.hero.g){
+    stopCelebrate(v.hero);v.hero.g.visible=true;startCelebrate(v.hero,v.heroType);
+    const sx=v.hero.g.position.x,sz=v.hero.g.position.z;
+    // 获胜后兴奋狂奔：朝场地中央/场边人群弧线冲刺，再急停挥拳庆祝
+    const tx=sx>0?-3.2:3.2, tz=clamp(sz+2.2,-6.5,2.5);
+    v.run={sx,sz,tx,tz,cx:(sx+tx)*0.5+(Math.random()<0.5?-1.8:1.8),cz:(sz+tz)*0.5+1.4,style:((Math.random()*3)|0)};
+  }
   if(v.foil&&v.foil.g){v.foil.g.visible=true;stopCelebrate(v.foil);}
   $("lbT").style.height="10vh";$("lbB").style.height="10vh";
   $("heroTag").style.display="block";setVictoryTag(v,"opening",v.tag);
@@ -542,13 +553,63 @@ function updVictoryCine(dt){
   const v=VICTORY_CINE;if(!v.on)return;
   if(G.state!=="victorycine"){stopVictoryCine();return;}
   v.t+=dt;
+  const p=clamp(v.t/Math.max(0.01,v.dur),0,1);
+  if(v.hero&&v.hero.g&&v.run){
+    const r=v.run,runEnd=0.64;
+    if(p<runEnd){
+      const u=p/runEnd;
+      const e=u<0.15?(u/0.15)*0.15:u;
+      const omt=1-e;
+      const nx=omt*omt*r.sx+2*omt*e*r.cx+e*e*r.tx;
+      const nz=omt*omt*r.sz+2*omt*e*r.cz+e*e*r.tz;
+      const dx=nx-v.hero.g.position.x,dz=nz-v.hero.g.position.z;
+      const moveD=Math.hypot(dx,dz);
+      v.hero.g.position.x=clamp(nx,-COURT.halfWidth+1.5,COURT.halfWidth-1.5);
+      v.hero.g.position.z=clamp(nz,COURT.nearBaseline+1.8,COURT.playMaxZ-1.2);
+      if(moveD>0.001)v.hero.g.rotation.y=Math.atan2(dx,dz);
+      // 跑步跨步与双臂展开/挥拳庆祝动作
+      const stride=v.t*11.5;
+      const s0=Math.sin(stride),s1=Math.sin(stride+Math.PI);
+      if(v.hero.legs&&v.hero.legs.length>=2){
+        v.hero.legs[0].rotation.x=s0*0.58;
+        v.hero.legs[1].rotation.x=s1*0.58;
+      }
+      if(v.hero.knees&&v.hero.knees.length>=2){
+        v.hero.knees[0].rotation.x=Math.max(0,-s0)*0.85;
+        v.hero.knees[1].rotation.x=Math.max(0,-s1)*0.85;
+      }
+      v.hero.g.position.y=Math.abs(Math.sin(stride))*0.075;
+      v.hero.g.rotation.x=0.12;
+      if(v.hero.arms&&v.hero.arms.length>=2){
+        if(r.style===0){
+          // 张开双臂滑翔庆祝（“飞机”式狂奔）
+          v.hero.arms[0].rotation.set(-0.35,0,-1.35+Math.sin(v.t*5)*0.18);
+          v.hero.arms[1].rotation.set(-0.35,0,1.35-Math.sin(v.t*5)*0.18);
+        }else if(r.style===1){
+          // 右手高举挥拳狂奔
+          v.hero.arms[0].rotation.set(-2.6+Math.sin(v.t*9)*0.25,0,-0.22);
+          v.hero.arms[1].rotation.set(s1*0.45,0,0.18);
+        }else{
+          // 双手高举欢呼奔跑
+          v.hero.arms[0].rotation.set(-2.55+Math.sin(v.t*8)*0.22,0,-0.32);
+          v.hero.arms[1].rotation.set(-2.55+Math.cos(v.t*8)*0.22,0,0.32);
+        }
+      }
+    }else{
+      // 急停面向观众席/镜头挥拳跳起定格庆祝
+      if(v.hero.legs)v.hero.legs.forEach(l=>l.rotation.x*=0.82);
+      if(v.hero.knees)v.hero.knees.forEach(k=>k.rotation.x*=0.82);
+      v.hero.g.rotation.x*=0.82;
+      updateCelebrate(v.hero,dt);
+    }
+  }else if(v.hero){
+    updateCelebrate(v.hero,dt);
+  }
   const {hp,fp,focus}=victoryFocus(v.hero,v.foil);
-  if(v.hero)updateCelebrate(v.hero,dt);
   const dir=HOOP.clone().sub(focus);dir.y=0;if(dir.lengthSq()<1e-4)dir.set(0,0,-1);dir.normalize();
   const perp=V3(dir.z,0,-dir.x);
   const side=Math.sin(v.camSeed)>=0?1:-1;
   const hb=Math.sin(v.t*6.3)*0.04;
-  const p=clamp(v.t/Math.max(0.01,v.dur),0,1);
   let cp,lk;
   if(p<0.22){
     const q=p/0.22;

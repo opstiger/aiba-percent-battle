@@ -58,6 +58,8 @@
         root.add(gltf.scene);
 
         let mesh = null;
+        const maxAniso = (typeof renderer !== "undefined" && renderer && renderer.capabilities && renderer.capabilities.getMaxAnisotropy)
+          ? Math.min(8, renderer.capabilities.getMaxAnisotropy()) : 4;
         gltf.scene.traverse(child=>{
           if(child.isSkinnedMesh && !mesh) mesh = child;
           if(child.isMesh){
@@ -66,6 +68,10 @@
             if(child.material){
               child.material.roughness = 0.65;
               child.material.metalness = 0.1;
+              if(child.material.map){
+                child.material.map.anisotropy = maxAniso;
+                child.material.map.needsUpdate = true;
+              }
             }
           }
         });

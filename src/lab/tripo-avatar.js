@@ -173,7 +173,8 @@
       const root=new T.Group();root.name="tripoAvatar";root.matrixAutoUpdate=false;root.visible=false;
       const M=new T.Group();M.rotation.y=MODELS[id].yaw;root.add(M);M.add(gltf.scene);
       let mesh=null;
-      gltf.scene.traverse(o=>{o.frustumCulled=false;o.userData.tripo=true;if(o.isSkinnedMesh&&!mesh)mesh=o;if(o.isBone)B[o.name.replace(/^mixamorig:?/,"")]=o;});
+      const maxAniso=(typeof renderer!=="undefined"&&renderer&&renderer.capabilities&&renderer.capabilities.getMaxAnisotropy)?Math.min(8,renderer.capabilities.getMaxAnisotropy()):4;
+      gltf.scene.traverse(o=>{o.frustumCulled=false;o.userData.tripo=true;if(o.isSkinnedMesh&&!mesh)mesh=o;if(o.isBone)B[o.name.replace(/^mixamorig:?/,"")]=o;if(o.isMesh&&o.material&&o.material.map){o.material.map.anisotropy=maxAniso;o.material.map.needsUpdate=true;}});
       if(!mesh||!B.Hips)throw new Error(MODELS[id].file+" 里没有蒙皮网格或骨骼");
       root.updateMatrixWorld(true);
       /* 量身高要用蒙皮后的真实顶点:Mixamo 绑的模型,Armature 节点带着一个 90° 旋转(Z 朝上遗留),
