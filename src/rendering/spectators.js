@@ -158,8 +158,9 @@ function loadSpectatorSitModel(){
       _spectatorSitLoading=false;
       while(_pendingVIPUpgrades.length>0){
         const item=_pendingVIPUpgrades.shift();
-        applyModelToVIP(item.person,item.cfg);
+        applyModelToVIP(item.person,item.cfg,true);
       }
+      rebuildSpectatorInstances();
     },undefined,err=>{
       console.warn("Failed to load spectator_sit.glb:",err);
       _spectatorSitLoading=false;
@@ -167,7 +168,47 @@ function loadSpectatorSitModel(){
   });
 }
 
-function applyModelToVIP(person,cfg){
+const _specUp=new THREE.Vector3(0,1,0);
+const _specPos=new THREE.Vector3(),_specQuat=new THREE.Quaternion(),_specScale=new THREE.Vector3(1,1,1);
+const _specMatParent=new THREE.Matrix4(),_specMatOut=new THREE.Matrix4();
+const _specInstancedBatches=[];
+
+function rebuildSpectatorInstances(){
+  const root=nearCourtCrowd.root;
+  for(const b of _specInstancedBatches){
+    if(b.parent)b.parent.remove(b);
+    b.dispose&&b.dispose();
+  }
+  _specInstancedBatches.length=0;
+  if(!root)return;
+  const buckets=new Map();
+  for(const p of nearCourtCrowd.people){
+    if(!p.realSpec)continue;
+    const g=p.realSpec.geo;
+    let arr=buckets.get(g);
+    if(!arr){arr=[];buckets.set(g,arr);}
+    arr.push(p);
+  }
+  for(const [geo,list] of buckets){
+    const inst=new THREE.InstancedMesh(geo,_spectatorVertexColorMat,list.length);
+    inst.name="realSpectatorBatch";
+    inst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    inst.frustumCulled=false;
+    for(let i=0;i<list.length;i++){
+      const p=list[i];
+      p.realInst={inst,index:i};
+      _specQuat.setFromAxisAngle(_specUp,p.g.rotation.y);
+      _specMatParent.compose(p.g.position,_specQuat,_specScale);
+      _specMatOut.multiplyMatrices(_specMatParent,p.realSpec.localMat);
+      inst.setMatrixAt(i,_specMatOut);
+    }
+    inst.instanceMatrix.needsUpdate=true;
+    root.add(inst);
+    _specInstancedBatches.push(inst);
+  }
+}
+
+function applyModelToVIP(person,cfg,deferBatch){
   if(!_cachedSpectatorSitMesh||!person.g)return;
   if(person.body)person.body.visible=false;
   if(person.arms){
@@ -193,22 +234,20 @@ function applyModelToVIP(person,cfg){
       arm.visible=false;
     }
   }
-  const m=new THREE.Mesh(getColoredSpectatorGeo(cfg),_spectatorVertexColorMat);
-  m.name="realSpectatorMesh";
-  m.rotation.y=Math.PI;
-  m.position.set(0,cfg.seatOffsetY||0,0);
-
   const idx=cfg.idx||(person.phase?Math.floor(person.phase*10):0);
   const fat=0.94+((idx*7)%5)*0.04;
   const height=0.95+((idx*11)%5)*0.035;
-  m.scale.set(fat,height,fat*0.98);
-
-  person.g.add(m);
-  person.realMesh=m;
+  const localMat=new THREE.Matrix4().compose(
+    new THREE.Vector3(0,cfg.seatOffsetY||0,0),
+    new THREE.Quaternion().setFromAxisAngle(_specUp,Math.PI),
+    new THREE.Vector3(fat,height,fat*0.98)
+  );
+  person.realSpec={geo:getColoredSpectatorGeo(cfg),localMat};
+  if(!deferBatch)rebuildSpectatorInstances();
 }
 function queueSpectatorModelUpgrade(person,cfg){
   if(_cachedSpectatorSitMesh){
-    applyModelToVIP(person,cfg);
+    applyModelToVIP(person,cfg,true);
   }else{
     _pendingVIPUpgrades.push({person,cfg});
     loadSpectatorSitModel();
@@ -760,6 +799,7 @@ function buildNearCourtCrowd(){
       axis,move:(s[2]==="hype"||s[2]==="distract"||s[2]==="filmer")?rnd(.08,.22):0},mats);
   });
   buildCourtsideVIPs(root,cube);
+  if(_cachedSpectatorSitMesh)rebuildSpectatorInstances();
 }
 function triggerNearCourtCrowdReaction(kind,points){
   if(!nearCourtCrowd.root)return;
@@ -961,7 +1001,16 @@ function updNearCourtCrowd(t,dt){
     }
     /* 身体已烘焙成整块:以脚为轴做等效的轻微前倾/后仰(系数减半补偿更长的力臂) */
     if(p.body)p.body.rotation.x=-.012*cheer+.05*taunt;
+    if(p.realInst&&p.realSpec){
+      _specQuat.setFromAxisAngle(_specUp,p.g.rotation.y);
+      _specMatParent.compose(p.g.position,_specQuat,_specScale);
+      _specMatOut.multiplyMatrices(_specMatParent,p.realSpec.localMat);
+      p.realInst.inst.setMatrixAt(p.realInst.index,_specMatOut);
+    }
   });
+  for(let b=0;b<_specInstancedBatches.length;b++){
+    _specInstancedBatches[b].instanceMatrix.needsUpdate=true;
+  }
   nearCourtCrowd.reaction=Math.max(0,nearCourtCrowd.reaction-dt*1.25);
   nearCourtCrowd.miss=Math.max(0,nearCourtCrowd.miss-dt*1.15);
 }

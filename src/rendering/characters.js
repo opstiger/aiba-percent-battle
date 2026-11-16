@@ -125,7 +125,8 @@ function markShadowCasters(o){
      于是手臂压在躯干上、头压在脖子上、头发压在额头上的暗部一个都没有 ——
      这是"角色像塑料/贴纸"的直接来源，比材质和灯光都更影响体积感。
      补上 receiveShadow 之后角色既投影也接影，多人场景里彼此的影子也会落在对方身上。 */
-  o.g.traverse(m=>{if(m.isMesh||m.isInstancedMesh){m.castShadow=true;m.receiveShadow=SHADOW_RECEIVE;n++;}});
+  const TINY_SHADOW_SKIP=/eye|brow|mouth|pupil|stripe|lace|band|sock|collar|tag|badge|bezel|visor/i;
+  o.g.traverse(m=>{if(m.isMesh||m.isInstancedMesh){m.castShadow=!TINY_SHADOW_SKIP.test(m.name||"");m.receiveShadow=SHADOW_RECEIVE;n++;}});
   o._shadowNodes=n;
 }
 let _shadowScanTick=0;
