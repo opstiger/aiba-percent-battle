@@ -7,7 +7,8 @@ const AA_COARSE_POINTER=(()=>{
     return matchMedia("(pointer:coarse)").matches||Math.min(innerWidth,innerHeight)<700;
   }catch(e){return false;}
 })();
-const renderer=new THREE.WebGLRenderer({canvas:$("c"),antialias:!AA_COARSE_POINTER,powerPreference:"high-performance"});
+const HI_MOBILE_DPR=AA_COARSE_POINTER&&Math.min(window.devicePixelRatio||1,3)>=2.5;
+const renderer=new THREE.WebGLRenderer({canvas:$("c"),antialias:!AA_COARSE_POINTER||HI_MOBILE_DPR,powerPreference:"high-performance"});
 renderer.setPixelRatio(1);
 if(THREE.sRGBEncoding)renderer.outputEncoding=THREE.sRGBEncoding;
 /* 色调映射。之前完全没开(默认 NoToneMapping),意味着亮度超过 1 的部分被**硬切**成白 ——
@@ -61,9 +62,9 @@ const RENDER_QUALITY=(()=>{
   const mem=navigator.deviceMemory||0;
   const dpr=Math.min(window.devicePixelRatio||1,3);
   const hiMobile=coarse&&(dpr>=2.5||mem>=6);
-  const base=coarse?(hiMobile?2.40:(dpr>=2?1.50:1.15)):1.48;
-  const max=coarse?(hiMobile?dpr:(dpr>=2?1.85:1.35)):1.8;
-  const min=coarse?(hiMobile?1.85:(dpr>=2?1.10:0.85)):0.98;
+  const base=coarse?(hiMobile?1.90:(dpr>=2?1.45:1.15)):1.48;
+  const max=coarse?(hiMobile?2.5:(dpr>=2?1.80:1.35)):1.8;
+  const min=coarse?(hiMobile?1.60:(dpr>=2?1.10:0.85)):0.98;
   const presets={
     low:{scale:.88,min:.78,max:.96,locked:true},
     hd:{scale:base,min:Math.max(1.0,min),max,locked:true},

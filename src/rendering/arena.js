@@ -560,6 +560,7 @@ function getJumboOverlayTex(){
 }
 const IS_COARSE_JUMBO=(typeof matchMedia==="function"&&matchMedia("(pointer:coarse)").matches)||((typeof navigator!=="undefined"&&navigator.maxTouchPoints>0));
 function updJumbotronBroadcast(t){
+  if(IS_COARSE_JUMBO)return;
   if(!jumboRoot||!indoorRoot||!indoorRoot.visible||typeof renderer==="undefined"||!renderer)return;
   /* 投篮蓄力关键帧或地板灯光秀高潮期间,暂停头顶副屏二次全场景重绘,把 100% 算力留给手感与主视角 */
   if(typeof G!=="undefined"&&(G.charging||G.state==="pregame"))return;
@@ -1363,9 +1364,11 @@ function updCrowd(t){
   _crowdTick++;
   const d=crowd.dummy;
 
-  for(const g of crowd.groups){
+  for(let gi=0;gi<crowd.groups.length;gi++){
+    const g=crowd.groups[gi];
     const tier=(g.tier==null?1:g.tier);
-    if(tier>=2&&(_crowdTick%3)!==0)continue;
+    if(IS_COARSE_JUMBO){if((_crowdTick+gi)%3!==0)continue;}
+    else if(tier>=2&&(_crowdTick%3)!==0)continue;
 
     for(let i=0;i<g.seats.length;i++){
       const s=g.seats[i];

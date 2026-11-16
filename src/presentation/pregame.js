@@ -345,18 +345,8 @@ function pregameBuildShots(opts){
   return shots;
 }
 function pregameCaption(seg,bulletActive){
-  const el=$("vsBanner"),mode=G.mode==="battle"?"PERCENT BATTLE":(G.mode==="rackrush"?"RACK RUSH":"3PT CONTEST");
-  const name=seg.group&&PREGAME.actors.length>1
-    ?PREGAME.actors.map(a=>a.name).join(" × ")
-    :(seg.actor&&seg.actor.name||"STAR");
-  const moveLabel=seg.action==="dance"&&seg.clip&&PREGAME_DANCE_LABELS[seg.clip]
-    ?PREGAME_DANCE_LABELS[seg.clip]
-    :(PREGAME_LABELS[seg.action]||"赛前热身");
-  const camBadge=bulletActive
-    ?`<span style="display:inline-block;margin-left:8px;padding:1px 7px;border-radius:99px;background:linear-gradient(90deg,#ff3b6b,#ffb800);color:#101420;font-size:10px;font-weight:900;letter-spacing:1px;vertical-align:middle">⚡ BULLET TIME · 360°</span>`
-    :`<span style="display:inline-block;margin-left:8px;padding:1px 6px;border-radius:99px;background:rgba(127,234,255,.16);color:#7feaff;font-size:10px;letter-spacing:1px;vertical-align:middle">LIVE CAM</span>`;
-  el.innerHTML=`<span style="font-size:11px;color:#7feaff;letter-spacing:2px">${mode} / PREGAME SHOWTIME</span>${camBadge}<br>${name} · ${moveLabel}`;
-  el.style.display="block";
+  const el=$("vsBanner");
+  if(el)el.style.display="none";
 }
 function pregamePlace(actor,pos,face){
   const guy=actor.guy;
@@ -411,15 +401,13 @@ function pregameIdle(actor,t,seg){
 /* 时间轴(占整段的比例):先在地面助跑到离篮筐约 1.6 米(0→.40),再起跳(.40→.56),
    手到篮圈(.56)→ 球压进网 → 挂一下 → 落地。以前从三分线外一起步就离地,等于飞了七米。 */
 const PREGAME_DUNK_TIMING=Object.freeze({
-  takeoffStart:.34,contact:.48,ballRelease:.52,ballEntry:.58,ballThrough:.65,
-  ballExit:.74,hangEnd:.79,landEnd:.96
+  takeoffStart:.28,contact:.52,ballRelease:.53,ballEntry:.57,ballThrough:.63,
+  ballExit:.70,hangEnd:.55,landEnd:.86
 });
 function pregameDunkAir(u){
   const t=PREGAME_DUNK_TIMING;
-  if(u<=t.takeoffStart)return 0;
-  if(u<t.contact)return Math.sin(ease01((u-t.takeoffStart)/Math.max(.001,t.contact-t.takeoffStart))*Math.PI*.5);
-  if(u<t.hangEnd)return 1;
-  return 1-smoothRange(t.hangEnd,t.landEnd,u);
+  if(u<=t.takeoffStart||u>=t.landEnd)return 0;
+  return Math.sin(clamp((u-t.takeoffStart)/Math.max(.001,t.landEnd-t.takeoffStart),0,1)*Math.PI);
 }
 function pregameDunkPhase(u){
   const t=PREGAME_DUNK_TIMING;
@@ -688,7 +676,7 @@ function pregameUpdateCamera(seg,rawU,u,dt){
   const face=guy.g.rotation.y||faceTo(actor.base,HOOP);
   /* 镜头始终放在球员正面偏侧(朝向球员与球场中心/聚光灯),绝不跑到篮架背后拍空场 */
   const f=V3(Math.sin(face),0,Math.cos(face)),side=V3(f.z,0,-f.x).multiplyScalar(seg.side||1);
-  const front=f.clone().multiplyScalar(-1); // 从篮筐往球员看的方向(正对球员正面)
+  const front=f.clone(); // 镜头站在球员面朝的正前方，拍正脸而不是屁股后面
   const dest=V3(),look=focus.clone();
   const isDunk=seg.action==="dunk"||seg.action==="hang";
   const bulletK=pregameBulletWeight(rawU,seg);

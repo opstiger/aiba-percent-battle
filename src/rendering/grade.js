@@ -43,8 +43,8 @@
   const FX_MODE=(()=>{
     if(FORCED==="0")return "off";
     if(FORCED==="full"||FORCED==="1")return "full";
-    if(WEAK)return "off";
-    return COARSE?"lite":"full";
+    if(WEAK||COARSE)return "off";
+    return "full";
   })();
   const LITE=FX_MODE==="lite";
 
