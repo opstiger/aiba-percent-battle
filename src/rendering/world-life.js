@@ -118,27 +118,7 @@
       }
     }
     if(s.name==="beachSunset"){
-      // A compact beach bar directly behind the baseline, visible from the shooting camera.
-      const x=-9.8,z=-17.3;
-      b.box(0x705038,x,.68,z,5.4,1.25,1.3);b.box(0xc19c66,x,1.36,z+.05,5.8,.16,1.6);
-      for(const side of [-1,1])b.box(0x69513c,x+side*2.65,1.7,z-.45,.18,3.4,.18);
-      b.box(0x4e766f,x,3.35,z,6.2,.18,2.8,0,0,.035);
-      sign(s,"SUNSET BAR",x,2.85,z+.66,4.4,.72,"#3c4841","#edb57a");
-      for(let i=0;i<7;i++){
-        const xx=x-2.15+i*.7;b.box(0x3e6b4d,xx,1.57,z,.085,.25,.085);b.box(0xc6a56c,xx,1.73,z,.038,.09,.038);
-        if(i%2===0){b.box(0x3b3930,xx,.43,z+1.2,.08,.75,.08);b.box(0xad7153,xx,.83,z+1.2,.5,.12,.46);}
-      }
-      const bulbs=batch();for(let i=0;i<9;i++)bulbs.add("blob",i%2?0xffba68:0xef857c,x-2.5+i*.62,3.07-Math.sin(i/8*Math.PI)*.21,z+.9,.075,.1,.075);
-      const glow=bulbs.finish(s.root,"beachBarLights",true);glow.material.color.setScalar(.12);s.lights.push({mesh:glow,threshold:.38});
-      for(let i=0;i<4;i++){
-        const xx=9.8+(i%2)*2.2,zz=-16.5-Math.floor(i/2)*3.3;
-        b.box(i%2?0xcfa478:0x759e98,xx,.36,zz,.85,.12,1.75);
-        b.box(i%2?0xcfa478:0x759e98,xx,.75,zz-.9,.85,.12,1.15,.75);
-        for(const a of [-1,1])b.box(0x6c6551,xx+a*.34,.18,zz,.055,.32,1.6);
-        b.box(0x937955,xx+.85,.5,zz,.5,.06,.5);b.add("blob",0x8b783e,xx+.85,.67,zz,.13,.15,.13);
-        b.box(0xe8d4a0,xx+.86,.88,zz,.025,.27,.025,0,0,.16);
-      }
-      sign(s,"STAY LOOSE",7.3,1.15,-15.8,3.9,1.3,"#756d58","#d99370");
+      // Angels Gate 悬崖球场保持篮筐后方全开阔海景，不放遮挡海天线的沙滩酒吧与牌子
     }
     if(s.name==="spanishQuarter"){
       for(const side of [-1,1]){

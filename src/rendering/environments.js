@@ -450,10 +450,10 @@ function applyScenePreset(name,opts){
   }
   if(outdoor){
     if(beach){
-      scene.background.setHex(0xf1a05f);scene.fog.color.setHex(0xb48272);scene.fog.near=44;scene.fog.far=105;
-      ambient.color.setHex(0xffe0c2);ambient.intensity=.4;
-      hemi.color.setHex(0xffbd86);hemi.groundColor.setHex(0x51444b);hemi.intensity=.58;
-      sun.color.setHex(0xffd5a0);sun.intensity=.9;sun.position.set(-14,15,-8);spot.intensity=0;camFill.intensity=.2;
+      scene.background.setHex(0xe87a48);scene.fog.color.setHex(0xc97b5f);scene.fog.near=68;scene.fog.far=210;
+      ambient.color.setHex(0xffd7b5);ambient.intensity=.36;
+      hemi.color.setHex(0xffb47c);hemi.groundColor.setHex(0x463d44);hemi.intensity=.52;
+      sun.color.setHex(0xffbe78);sun.intensity=1.25;sun.position.set(-22,8.5,-36);spot.intensity=0;camFill.intensity=.2;
       arenaLights.forEach(l=>{l.intensity=0;});
     }else if(name==="arcticSnow"){
       scene.background.setHex(0x081524);scene.fog.color.setHex(0x536c7c);scene.fog.near=48;scene.fog.far=180;

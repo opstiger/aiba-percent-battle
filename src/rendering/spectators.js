@@ -1199,7 +1199,7 @@ function buildStreetCrowd(opts){
         [-5.6,-13.98,"bench"],[-3.3,-13.98,"bench"],
         [-7.6,-14.3,"fan",.19],[4.8,-14.3,"filmer",.19],[1.4,-14.3,"quiet",.19],
         [-11.5,.4,"passer"],[-11.3,9.6,"player"],[-1.5,23.6,"quiet"],[3.6,23.8,"fan"]],
-      beachSunset:[[-8.9,-13.6,"passer"],[-7.7,-13.4,"passer"],[-5.2,-12.7,"player"],[5.9,-13,"filmer"],[7.2,-13.5,"quiet"],[-11.8,-4.8,"bench"],[-12.5,-3.4,"quiet"],[11,-1,"fan"],[12.2,-.3,"player"],[11.7,3.2,"bench"],[-13,7,"passer"],[-14.2,8,"passer"],[12.4,11,"quiet"],[11.4,12,"fan"],[-10.8,16,"filmer"],[-6.2,21.8,"bench"],[6.4,22,"quiet"],[13.9,17,"passer"],[14.7,18,"passer"]]
+      beachSunset:[[-12.2,-1.5,"quiet"],[11.8,4.2,"bench"],[-11.8,11.5,"passer"],[12.4,14.5,"quiet"]]
     };spots=layouts[place];
     if(place==="shonanCoast"){
       spots=[];
@@ -1216,7 +1216,7 @@ function buildStreetCrowd(opts){
         }
       }
     }
-    if(place==="beachSunset")spots.push([-9.6,-15.8,"quiet"],[-11.6,-15.9,"quiet"],[-8,-15.7,"fan"],[10.5,-17,"quiet"]);
+    if(place==="beachSunset")spots=spots.slice(0,4);
   }
   const max=place?(place==="shonanCoast"?spots.length:mobile?Math.ceil(spots.length*.75):spots.length):(mobile?16:26),center=V3(0,0,COURT.midZ);
   let seatedIndex=0;

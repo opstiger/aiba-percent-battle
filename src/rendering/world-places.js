@@ -12,7 +12,7 @@
     /* 浅灰蓝 / 海盐蓝 + 米白线(文档 §球场设计),不做荧光街头配色 */
     medCliff:{ground:"#cdc3a8",field:"#7d9aa8",key:"#6b8a99",line:"#f4efe2",shirts:[0xf2ece0,0x2c6ba4,0xd9cdb4,0xb05f3d,0xe8e0cf,0x3f7f9e,0xc63a7a,0xcfc3a8]},
     shonanCoast:{ground:"#9a9e97",field:"#6d8686",key:"#5b7676",line:"#eef0e8",shirts:[0xe8e4d8,0x2f4f6b,0x8fa8b4,0xd9d2bd,0x44606d,0xf0ece0,0x7d9aa2,0xc3ccc4]},
-    beachSunset:{ground:"#9a998c",field:"#92978e",key:"#747f7a",line:"#c9c4a9",shirts:[0xdcc6a4,0x7caaaa,0xc07765,0xead7a6,0x4c7583,0xb39a85,0xd6c7c3,0x577368]},
+    beachSunset:{ground:"#4d5157",field:"#45494f",key:"#3e4248",line:"#e8e3d5",shirts:[0xdcc6a4,0x7caaaa,0xc07765,0xead7a6,0x4c7583,0xb39a85,0xd6c7c3,0x577368]},
     ...AIBAWorldWonders.palettes
   };
   const clamp01=x=>Math.max(0,Math.min(1,x));
@@ -251,9 +251,30 @@
     setPlaceHoops(false);
   }
   function themeHoops(s,b){
-    const lunar=s.name==="lunarCrater",wood=s.name==="flowerCourt",rain=s.name==="rainyCourt",color=lunar?0xeef1f5:wood?0x5c5139:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
+    const beach=s.name==="beachSunset",lunar=s.name==="lunarCrater",wood=s.name==="flowerCourt",rain=s.name==="rainyCourt",color=beach?0x8e969e:lunar?0xeef1f5:wood?0x5c5139:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
     [[-8.62,1],[COURT.farBaseline-.96,-1]].forEach(([z,dir])=>{
       const base=z-dir*1.55;
+      if(beach){
+        // 洛杉矶 Angels Gate 经典大弧度弯曲鹅颈镀锌钢篮架
+        const N=12;
+        for(let i=0;i<N;i++){
+          const t0=i/N,t1=(i+1)/N,tm=(t0+t1)*.5;
+          const a0=t0*Math.PI/2,a1=t1*Math.PI/2,am=tm*Math.PI/2;
+          const z0=base+dir*1.55*(1-Math.cos(a0)),y0=3.48*Math.sin(a0);
+          const z1=base+dir*1.55*(1-Math.cos(a1)),y1=3.48*Math.sin(a1);
+          const len=Math.hypot(z1-z0,y1-y0)+.04;
+          const thick=.25-.07*tm;
+          const ang=Math.atan2(z1-z0,y1-y0);
+          b.box(i%2?0x889098:0x969ea6,0,(y0+y1)*.5,(z0+z1)*.5,thick,len,thick,ang,0,0);
+        }
+        b.box(0x707880,0,.08,base,.52,.16,.52);
+        b.box(0xa6b0bc,0,3.5,z,1.9,1.1,.1);
+        const ink=0x262c34;
+        [-1,1].forEach(a=>{b.box(ink,0,3.5+a*.51,z+dir*.056,1.86,.035,.012);b.box(ink,a*.915,3.5,z+dir*.056,.035,1.05,.012);
+          b.box(ink,a*.3,3.25,z+dir*.059,.035,.36,.014);b.box(ink,0,3.25+a*.18,z+dir*.059,.63,.035,.014);});
+        b.box(0xc83e2b,0,3.04,z+dir*.09,.24,.09,.12);
+        return;
+      }
       b.box(color,0,1.75,base,.24,3.5,.24);b.box(color,0,3.46,z-dir*.76,.22,.22,1.55);
       b.box(lunar?0xcfd5de:color,0,2.955,base+dir*.505,.13,1.48,.13,dir*Math.PI/4);b.box(lunar?0xc4cad4:wood?0x66513b:0x757b76,0,.1,base,.75,.2,.75);
       b.box(lunar?0xdce2ea:wood?0xad8054:rain?0xc5c1a9:s.name==="spanishQuarter"?0x91988c:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
@@ -1390,142 +1411,128 @@
     }
   }
   function coast(s,b){
-    const windowBatches=Array.from({length:6},()=>batch());
-    b.box(0xc6b487,0,-.12,-21,110,.1,18);b.box(0x878c7f,0,-.12,21,110,.1,25);
-    const ocean=new THREE.Mesh(new THREE.PlaneGeometry(130,70),new THREE.MeshLambertMaterial({color:0x4d8794}));ocean.rotation.x=-Math.PI/2;ocean.position.set(0,-.2,-63);ocean.name="pacificOcean";s.root.add(ocean);s.ocean=ocean;
-    const waves=batch();for(let i=0;i<10;i++)for(let j=0;j<7;j++)waves.box(0xb7ccc1,-50+j*16+(i%2)*4,.01,-29-i*4.6,8+s.r()*5,.018,.1+s.r()*.15);s.wave=waves.finish(s.root,"pacificFoam");
-    // A public promenade, with unrestricted gaps on every side of the court.
-    b.box(0xb6ad98,0,-.045,-15.4,110,.04,3.1);for(let x=-54;x<55;x+=2)b.box(0x827e70,x,-.02,-15.4,.025,.012,3.1);
-    for(let side of [-1,1])for(let i=0;i<3;i++){
-      const x=side*(23+i*12),z=8+i*7,h=8+(i%2)*4;
-      b.box(i%2?0xbab5a2:0xd0bc9d,x,h/2,z,9,h,13);
-      for(let y=2;y<h;y+=2.5){
-        b.box(0xe1cfad,x,y-.85,z-7,9.5,.2,2.1);b.box(0x858c7f,x,y-.35,z-7.9,9,.1,.1);
-        for(let dx=-3;dx<=3;dx+=2){
-          b.box(0x48616a,x+dx,y,z-6.54,1.3,1.6,.09);
-          if(s.r()>.25)windowBatches[Math.floor(s.r()*6)].box(0xffd39a,x+dx,y,z-6.6,1.12,1.42,.04);
-        }
-      }
-      b.box(0xc89b79,x,h+.35,z,9.3,.65,13.3);
-      // Side balconies face the court too: windows must work from both shooting ends.
-      for(let y=2;y<h;y+=2.5)for(let dz of [-4,-1,2,5]){
-        b.box(0x3e6471,x-side*4.54,y,z+dz,.09,1.65,1.7);b.box(0xcec1a5,x-side*5.1,y-.9,z+dz,1.3,.16,2.4);
-        b.box(0x7e8e87,x-side*5.7,y-.35,z+dz,.1,.09,2.3);
-        if(s.r()>.25)windowBatches[Math.floor(s.r()*6)].box(0xffc477,x-side*4.61,y,z+dz,.04,1.45,1.5);
-      }
+    // 1. 洛杉矶 Angels Gate 海岸悬崖球场：篮筐后方紧贴草坡悬崖，直面开阔太平洋
+    b.box(0x526932,0,-.06,-13.2,120,.14,5.4); // 球场后方海岸草坡
+    b.box(0x3f5425,0,-.32,-16.2,120,.45,2.2); // 草坡崖沿
+    b.box(0x8e8670,0,-.95,-18.0,130,1.0,2.8); // 崖壁岩石
+    b.box(0x54595e,0,-.12,21,120,.1,24); // 后场沥青外坪
+
+    // 远处 Catalina 岛屿平滑山影（照片左前方海天线上）
+    const islGeo=new THREE.BufferGeometry();
+    const islPts=[[-72,0],[-58,1.8],[-44,4.2],[-32,4.9],[-20,3.8],[-8,2.6],[8,1.5],[24,.7],[38,0]];
+    const iPos=[];
+    for(let i=0;i<islPts.length-1;i++){
+      const [x0,h0]=islPts[i],[x1,h1]=islPts[i+1];
+      iPos.push(x0,-1.4,-118, x1,-1.4,-118, x0,h0-1.4,-118, x1,-1.4,-118, x1,h1-1.4,-118, x0,h0-1.4,-118);
     }
-    /* 度假区密度。原来两侧各 3 栋、再往后什么都没有,岸线读起来是荒地不是度假村。
-       这里补三层:① 后排中高层酒店(错落,不与前排对齐);② 贴地的白色小别墅群;
-       ③ 沿街棕榈与矮花坛。全部走同一个合批,只增三角形不增 draw call。 */
-    for(let side of [-1,1]){
-      // ① 后排酒店:高度与进深都错开,避免和前排连成一堵墙
-      for(let i=0;i<4;i++){
-        const x=side*(30+i*13+s.r()*4),z=-6+i*13+s.r()*5,h=11+((i+ (side>0?1:0))%3)*5.5;
-        const wall=[0xd8cdb4,0xc9bda4,0xe2d8c2,0xbfb49c][i%4];
-        b.box(wall,x,h/2,z,11+s.r()*3,h,12);
-        b.box(0xb8845f,x,h+.4,z,11.6,.8,12.6);                    // 陶土檐口
-        for(let y=2.4;y<h-1;y+=2.6)for(let dz=-4.5;dz<=4.5;dz+=2.2){
-          b.box(0x3f6470,x-side*5.56,y,z+dz,.08,1.5,1.5);
-          if(s.r()>.35)windowBatches[Math.floor(s.r()*6)].box(0xffd39a,x-side*5.62,y,z+dz,.04,1.3,1.3);
-          b.box(0xd9cdb0,x-side*6.05,y-.85,z+dz,1.1,.14,2.0);      // 小阳台
-        }
-      }
-      // ② 白色小别墅:贴地、坡顶、成组
-      for(let i=0;i<5;i++){
-        const x=side*(27+s.r()*20),z=26+i*8+s.r()*4,h=4.2+s.r()*1.6,w=6+s.r()*2.4;
-        b.box(0xe6ddc9,x,h/2,z,w,h,7);
-        for(let t=0;t<3;t++)b.box(0xa9603f,x,h+.28+t*.42,z,w*(1-t*.22),.42,7*(1-t*.2));
-        for(let dz=-2;dz<=2;dz+=2)b.box(0x3f6470,x-side*(w/2+.04),1.9,z+dz,.07,1.2,1.1);
-        b.box(0x8fa07d,x+side*(w/2+1.2),.5,z,1.6,1,1.6);           // 门口绿植
-      }
-      // ③ 沿街棕榈 + 矮花坛
-      for(let i=0;i<6;i++){
-        const x=side*(17.5+s.r()*2),z=-14+i*9+s.r()*3;
-        tree(s,b,x,z,"palm",.95+s.r()*.35);
-        b.box(0xcabd9f,x,.22,z+2.4,2.2,.44,1.4);
-        b.box(0x6f8a5c,x,.5,z+2.4,1.9,.3,1.1);
-      }
+    islGeo.setAttribute("position",new THREE.Float32BufferAttribute(iPos,3));
+    const islMesh=new THREE.Mesh(islGeo,new THREE.MeshBasicMaterial({color:0x6e6a7c,side:THREE.DoubleSide,fog:false}));
+    islMesh.name="catalinaIsland";s.root.add(islMesh);
+
+    // 2. 真实动态海浪着色器（深邃太平洋蓝 + 夕阳晚霞反射 + 金光带 + 岸边白浪泡沫）
+    const oceanGeo=new THREE.PlaneGeometry(260,135,84,48);oceanGeo.rotateX(-Math.PI/2);
+    const oceanMat=new THREE.ShaderMaterial({
+      uniforms:{
+        uTime:{value:0},
+        uProgress:{value:0},
+        uSunPos:{value:new THREE.Vector3(-24,7.5,-92)}
+      },
+      vertexShader:`uniform float uTime;varying vec3 vWorld;varying float vCrest;
+        void main(){
+          vec3 p=position;
+          float w1=sin(p.z*.28+uTime*1.4+p.x*.05)*.22;
+          float w2=cos(p.x*.18-p.z*.19+uTime*1.05)*.14;
+          float w3=sin(p.z*.65+uTime*2.1)*.07;
+          p.y+=w1+w2+w3;
+          vCrest=clamp((w1+w2+.2)/.55,0.,1.);
+          vec4 wp=modelMatrix*vec4(p,1.);
+          vWorld=wp.xyz;
+          gl_Position=projectionMatrix*viewMatrix*wp;
+        }`,
+      fragmentShader:`uniform float uTime;uniform float uProgress;uniform vec3 uSunPos;
+        varying vec3 vWorld;varying float vCrest;
+        void main(){
+          vec3 V=normalize(cameraPosition-vWorld);
+          float gx=cos(vWorld.x*.18-vWorld.z*.19+uTime*1.05)*.18*.14+.05*cos(vWorld.z*.28+uTime*1.4+vWorld.x*.05)*.22;
+          float gz=.28*cos(vWorld.z*.28+uTime*1.4+vWorld.x*.05)*.22-.19*cos(vWorld.x*.18-vWorld.z*.19+uTime*1.05)*.14+.65*cos(vWorld.z*.65+uTime*2.1)*.07;
+          vec3 N=normalize(vec3(-gx,1.0,-gz));
+          float fres=pow(1.0-max(dot(N,V),0.0),3.8);
+          vec3 deepCol=mix(vec3(.05,.15,.28),vec3(.02,.07,.15),uProgress);
+          vec3 skyRef=mix(vec3(.92,.44,.22),vec3(.14,.18,.32),uProgress);
+          vec3 col=mix(deepCol,skyRef,fres*.46);
+          vec3 L=normalize(uSunPos-vWorld);
+          vec3 H=normalize(L+V);
+          float glint=pow(max(dot(N,H),0.0),68.0)*(1.0-uProgress*.85);
+          col+=vec3(1.0,.76,.40)*glint*1.45;
+          // 岸边拍岸白浪泡沫 + 波峰白沫
+          float shore=smoothstep(-25.0,-18.0,vWorld.z);
+          float surfBand=smoothstep(.52,.96,sin(vWorld.z*.85+uTime*1.75+sin(vWorld.x*.14)));
+          float foam=clamp(shore*surfBand*.85+pow(vCrest,3.8)*.28,0.0,1.0);
+          col=mix(col,mix(vec3(.94,.89,.84),vec3(.48,.55,.66),uProgress),foam*.75);
+          gl_FragColor=vec4(col,1.0);
+          #include <tonemapping_fragment>
+          #include <encodings_fragment>
+        }`
+    });
+    const ocean=new THREE.Mesh(oceanGeo,oceanMat);
+    ocean.position.set(0,-1.25,-84);ocean.name="pacificOcean";s.root.add(ocean);
+    s.ocean=ocean;s.oceanShader=oceanMat;s.wave=null;
+
+    // 3. 晚霞火烧云（低空多层橙红/金粉辉光云带）
+    const sunsetClouds=new THREE.Group();sunsetClouds.name="sunsetAfterglowClouds";
+    const cloudSpecs=[
+      [-28,15,-92,38,3.6,0xff8b42,.52],[12,18,-96,46,4.2,0xff6448,.46],
+      [-6,11.5,-88,34,2.8,0xffba66,.56],[34,13.5,-90,30,3.0,0xf06858,.44],
+      [-44,12,-85,28,2.6,0xffa255,.42],[2,23,-98,54,4.8,0xd95b66,.35]
+    ];
+    cloudSpecs.forEach(([cx,cy,cz,cw,ch,col,op],idx)=>{
+      const cm=new THREE.ShaderMaterial({
+        transparent:true,depthWrite:false,fog:false,
+        uniforms:{uCol:{value:new THREE.Color(col)},uOp:{value:op}},
+        vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
+        fragmentShader:`uniform vec3 uCol;uniform float uOp;varying vec2 vUv;
+          void main(){
+            vec2 p=vUv*2.-1.;float d=dot(vec2(p.x*.85,p.y*1.2),vec2(p.x*.85,p.y*1.2));
+            float a=smoothstep(1.,.1,d)*(.6+.4*sin(vUv.x*14.+vUv.y*6.));
+            gl_FragColor=vec4(uCol,a*uOp);
+          }`
+      });
+      const m=new THREE.Mesh(new THREE.PlaneGeometry(cw,ch),cm);
+      m.position.set(cx,cy,cz);sunsetClouds.add(m);
+    });
+    s.root.add(sunsetClouds);s.sunsetClouds=sunsetClouds;
+
+    // 4. 海面上冲浪的人（乘浪起伏左右滑行）
+    s.surfers=[];
+    const surferConfigs=[
+      [-20,-28,0xf2ede0,0x22262e,1.0,0.0],
+      [-5,-34,0xe66a4c,0x1f2833,0.85,1.8],
+      [14,-26,0x4fb0bd,0x2b2420,1.15,3.4],
+      [28,-38,0xf2c14e,0x202830,0.9,5.0]
+    ];
+    surferConfigs.forEach(([sx,sz,boardCol,suitCol,spd,ph])=>{
+      const sg=new THREE.Group(),sb=batch();
+      sb.box(boardCol,0,0,0,.52,.06,1.85); // 冲浪板
+      sb.box(suitCol,0,.38,.05,.24,.52,.18,.15,0,0); // 屈膝半蹲躯干
+      sb.add("sphere",0xdfb48c,0,.78,.12,.11,.12,.11); // 头
+      sb.box(suitCol,-.26,.5,.05,.38,.09,.09,0,0,-.35); // 展开双臂平衡
+      sb.box(suitCol,.26,.5,.05,.38,.09,.09,0,0,.35);
+      sb.box(suitCol,-.11,.15,-.12,.11,.34,.12,-.35,0,0);
+      sb.box(suitCol,.11,.15,.22,.11,.34,.12,.35,0,0);
+      sb.finish(sg,"surferMesh");
+      sg.position.set(sx,-1.05,sz);sg.rotation.y=.35;s.root.add(sg);
+      s.surfers.push({g:sg,baseX:sx,baseZ:sz,speed:spd,phase:ph});
+    });
+
+    // 远侧少量海岸棕榈与零星矮木，绝不遮挡正面海景
+    for(const [tx,tz,sc] of [[-19,-14,1.05],[18,-15,.95],[-24,6,1.1],[22,12,1.0]]){
+      tree(s,b,tx,tz,"palm",sc);
     }
-    /* ---- 步道街区(计划 §C:"建筑沿步道拐进左右画面,不把酒店全部放在镜头之外")----
-       原来两侧酒店都在 z=+8~22,也就是**投篮机位背后**;画面里只剩
-       球场 → 大片沙滩 → 远处酒店 三段互不相干的东西。
-       这里沿 -x 补一条连续的低层街边(冲浪店 / 餐饮 / 酒店裙房),从玩家身后一路
-       拐到画框左侧,再在步道尽头转角收住;面海方向(正后方)一点不动,留给落日和海天线。
-       ⚠ 立面压在 x=-13.6:生产机位包络实测 |x|≤9.96,再留净空。 */
-    (()=>{
-      const FX=-13.6,warm=batch();
-      const unit=(z0,w,kind,i)=>{
-        const cz=z0+w/2,wall=[0xe4d9c0,0xd6c8a8,0xcbbb9c,0xe9e0cb][i%4];
-        const h=kind==="terrace"?6.4:4.6;
-        b.box(wall,FX-3.2,h/2,cz,6.4,h,w);                     // 主体(共墙,连成一条街)
-        b.box(0x9c8f74,FX-3.2,h+.22,cz,6.8,.34,w+.3);          // 女儿墙
-        b.box(0x8d8270,FX+.02,.3,cz,.28,.6,w);                 // 墙裙
-        b.box(0x2b2620,FX+.03,1.5,cz,.1,2.6,w-1.4);            // 敞开的店面
-        warm.box(0xd8a869,FX+.09,1.9,cz,.05,1.5,w-1.9);        // 店内暖光
-        b.box([0xc06a52,0x4f7f86,0xcf9b52][i%3],FX+1.2,2.95,cz,2.6,.16,w-.5,0,0,-.2);  // 遮阳棚
-        for(let k=0;k<Math.ceil(w/1.1);k++)
-          b.box(k%2?0xe9e2d0:[0xc06a52,0x4f7f86,0xcf9b52][i%3],FX+2.4,2.66,cz-w/2+.55+k*1.1,.5,.34,.9);
-        if(kind==="terrace"){                                   // 二层露台 + 栏杆 + 串灯
-          b.box(0xd8cfb6,FX+.9,4.3,cz,2.6,.18,w-.4);
-          for(let k=0;k<Math.ceil(w/.9);k++)b.box(0x6f7a72,FX+2.05,4.9,cz-w/2+.45+k*.9,.06,1.1,.06);
-          b.box(0x6f7a72,FX+2.05,5.44,cz,.07,.07,w-.3);
-          for(let k=0;k<Math.ceil(w/1.3);k++)warm.box(0xffcf8e,FX+2.05,5.3,cz-w/2+.65+k*1.3,.14,.14,.14);
-          for(const dz of [-w*.28,w*.28]){                      // 露台上的桌椅
-            b.box(0xb9ac90,FX+.9,4.86,cz+dz,.8,.08,.8);
-            b.box(0x8a7d64,FX+.9,4.58,cz+dz,.11,.56,.11);
-          }
-        }else{
-          for(let y=3.5;y<h;y+=1.6)for(let k=0;k<Math.ceil(w/2.2);k++){
-            b.box(0x3f5d66,FX+.04,y,cz-w/2+1.1+k*2.2,.08,1.1,1.3);
-            warm.box(0xe7b878,FX+.1,y,cz-w/2+1.1+k*2.2,.05,.95,1.15);
-          }
-        }
-      };
-      let z=20.5;const kinds=["shop","terrace","shop","shop","terrace","shop"];
-      for(let i=0;i<kinds.length;i++){const w=5.4+(i%3)*1.6;unit(z-w,w,kinds[i],i);z-=w;}
-      /* 转角:街到步道尽头折向 +z,后面还有一段墙和屋顶 —— 不是一刀切断。 */
-      b.box(0xdcd0b4,-19.4,2.5,z-2.6,12,5,5.2);
-      b.box(0x9c8f74,-19.4,5.22,z-2.6,12.4,.34,5.6);
-      b.box(0x2b2620,-19.4,1.5,z-.1,7,2.6,.12);
-      warm.box(0xd8a869,-19.4,1.9,z-.04,5.6,1.5,.06);
-      b.box(0x4f7f86,-19.4,3.05,z+1.1,11,.16,2.6,-.2);
-      /* ---- 三个节点(§C)---- */
-      // ① 棕榈树下的座椅:步道上,朝海
-      tree(s,b,-10.9,-14.6,"palm",1.05);
-      b.box(0x8d7f66,-10.6,.4,-12.6,1.7,.12,.5);
-      b.box(0x8d7f66,-10.6,.68,-12.3,1.7,.5,.12);
-      for(const dx of [-.7,.7])b.box(0x6f6553,-10.6+dx,.2,-12.6,.12,.4,.4);
-      // ② 冲浪店门前:板架 + 自行车
-      for(let k=0;k<5;k++)b.box([0xe8e2d2,0xd45f4a,0x3f7f8c,0xe9b955,0xdcd5c2][k],
-        -12.5,1.15,-6.4+k*.46,.12,2.1,.4,0,0,-.14);
-      b.box(0x7a6f5b,-12.5,2.25,-5.5,.5,.14,2.9);
-      for(let i=0;i<3;i++){
-        const bz=-8.6-i*1.2;
-        b.box(0x3b4a52,-12.2,.62,bz,.46,.06,1.5);
-        for(const dz of [-.56,.56])b.box(0x2b2f33,-12.2,.34,bz+dz,.07,.66,.66);
-        b.box(i%2?0xd45f4a:0x3f7f8c,-12.2,.86,bz+.16,.32,.2,.42);
-      }
-      // ③ 沙滩边缘的浅坡与积沙:场地到步道之间不再是一条硬边(§C"少量积沙、磨损台阶")
-      for(let k=0;k<4;k++)b.box(0xcabb96,-2+k*0,-.03-k*.02,-17.6-k*1.4,80-k*6,.1,1.5);
-      for(let k=0;k<3;k++)b.box(0xd7c9a4,-9.4,.06+k*.06,-14.2-k*.5,3.6,.16+k*.1,.5);
-      const glow=warm.finish(s.root,"boardwalkGlow",true);
-      if(glow){glow.material.polygonOffset=true;glow.material.polygonOffsetFactor=-1;glow.material.polygonOffsetUnits=-4;
-        glow.material.color.setScalar(.12);s.lights.push({mesh:glow,threshold:.4});}
-    })();
-    windowBatches.forEach((b,i)=>{const mesh=b.finish(s.root,`hotelWindowGroup:${i}`,true);if(mesh){
-      // The desktop grading RT uses 16-bit depth. Keep lit panes ahead of their
-      // dark backing at oblique, distant views without disabling occlusion.
-      mesh.material.polygonOffset=true;mesh.material.polygonOffsetFactor=-1;mesh.material.polygonOffsetUnits=-4;
-      mesh.material.color.setScalar(.12);s.lights.push({mesh,threshold:.45+i*.08});
-    }});
-    for(let i=0;i<10;i++){const x=-41+i*9;if(Math.abs(x)>5)tree(s,b,x,-17.8,"palm",.85+(i%3)*.13);}
-    for(let side of [-1,1])for(let z=-9;z<=21;z+=10)lamp(s,b,side*14,z);
-    // Lifeguard hut and beach steps, deliberately off the shooting axis.
-    b.box(0xb0c4bc,-19,2.1,-24,3.8,2.6,3);b.box(0x618d99,-19,3.5,-24,4.5,.24,3.8);
-    for(let dx of [-1.5,1.5])b.box(0x81745d,-19+dx,.8,-24,.18,1.6,.18);
-    for(let j=0;j<5;j++)b.box(0xc0ae8e,-19,.15+j*.16,-20.4-j*.32,1.6,.25,.4);
-    const sunDisc=new THREE.Mesh(new THREE.SphereGeometry(2.1,16,10),new THREE.MeshBasicMaterial({color:0xffcc83,transparent:true}));sunDisc.position.set(-18,8.5,-57);s.root.add(sunDisc);s.sunDisc=sunDisc;
-    s.nightColors=[0xf1a05f,0xb86792,0x39466f,0x101e35].map(c=>new THREE.Color(c));s.skyColor=new THREE.Color();s.fogTint=new THREE.Color(0x607485);s.oceanDay=new THREE.Color(0x4d8794);s.oceanNight=new THREE.Color(0x203c52);
+    for(const [lx,lz] of [[-13,-6],[13,-6],[-13,12],[13,12]])lamp(s,b,lx,lz);
+
+    const sunDisc=new THREE.Mesh(new THREE.SphereGeometry(3.2,20,14),new THREE.MeshBasicMaterial({color:0xffb85c,transparent:true,fog:false}));
+    sunDisc.position.set(-24,7.5,-96);s.root.add(sunDisc);s.sunDisc=sunDisc;
+    s.nightColors=[0xe87a48,0xb85872,0x39466f,0x101e35].map(c=>new THREE.Color(c));s.skyColor=new THREE.Color();s.fogTint=new THREE.Color(0x607485);s.oceanDay=new THREE.Color(0x163754);s.oceanNight=new THREE.Color(0x0a1628);
     s.sky=s.root.getObjectByName("aibaSkyDome");if(s.sky){s.skyBase=s.sky.geometry.attributes.color.array.slice();s.skyVertex=new THREE.Color();}
     for(let x of [-12,12]){const light=new THREE.PointLight(0xffd2a0,0,23,1.3);light.position.set(x,4.8,0);s.root.add(light);s.realLights.push(light);}
   }
@@ -1575,7 +1582,8 @@
       themeHoops(s,b);
     }
     b.finish(root,`placeArchitecture:${name}`);
-    if(name!=="lunarCrater"){clouds(s);makeBirdPool(s);}
+    if(name!=="lunarCrater"&&name!=="beachSunset"){clouds(s);}
+    if(name!=="lunarCrater"){makeBirdPool(s);}
     if(name==="outdoorSunny"){scene.fog.near=52;scene.fog.far=145;}
     if(name==="shonanCoast"){scene.fog.near=58;scene.fog.far=190;}
     if(name==="medCliff"){scene.fog.near=95;scene.fog.far=330;}
@@ -1642,9 +1650,18 @@
     if(s.name==="beachSunset"){
       const p=clamp01(progress),u=p*3,i=Math.min(2,Math.floor(u));s.skyColor.copy(s.nightColors[i]).lerp(s.nightColors[i+1],u-i);scene.background.copy(s.skyColor);scene.fog.color.copy(s.skyColor).lerp(s.fogTint,.2);
       if(s.sky){const attr=s.sky.geometry.attributes.color;for(let j=0;j<attr.count;j++){const a=j*3,base=s.skyBase;s.skyVertex.setRGB(base[a],base[a+1],base[a+2]).lerp(s.skyColor,clamp01(.18+p*.92));attr.setXYZ(j,s.skyVertex.r,s.skyVertex.g,s.skyVertex.b);}attr.needsUpdate=true;}
-      s.sunDisc.position.y=8.5-p*11;s.sunDisc.material.opacity=1-clamp01((p-.48)/.25);s.ocean.material.color.copy(s.oceanDay).lerp(s.oceanNight,p);s.wave.position.z=(s.time*.32)%4.6;
+      s.sunDisc.position.y=7.5-p*10;s.sunDisc.material.opacity=1-clamp01((p-.48)/.25);
+      if(s.oceanShader){s.oceanShader.uniforms.uTime.value=s.time;s.oceanShader.uniforms.uProgress.value=p;}
+      if(s.surfers)s.surfers.forEach(sf=>{
+        const ph=s.time*sf.speed+sf.phase;
+        sf.g.position.x=sf.baseX+Math.sin(ph*.45)*4.2;
+        sf.g.position.z=sf.baseZ+Math.cos(ph*.38)*1.8;
+        sf.g.position.y=-1.06+Math.sin(sf.g.position.z*.26+s.time*1.35)*.22;
+        sf.g.rotation.z=Math.sin(ph*.45)*.22;
+        sf.g.rotation.x=Math.cos(ph*.9)*.12;
+      });
       let on=0;s.lights.forEach(l=>{const t=clamp01((p-l.threshold)/.07);l.mesh.material.color.setScalar(.12+t*.88);if(t>.5)on++;});s.root.userData.litWindows=on;
-      s.realLights.forEach(l=>l.intensity=clamp01((p-.5)/.3)*1.25);ambient.intensity=.4-p*.08;hemi.intensity=.58-p*.15;sun.intensity=.9-p*.72;sun.color.setHex(p>.6?0x9aa9c4:0xffd5a0);
+      s.realLights.forEach(l=>l.intensity=clamp01((p-.5)/.3)*1.25);ambient.intensity=.36-p*.08;hemi.intensity=.52-p*.15;sun.intensity=1.25-p*.92;sun.color.setHex(p>.6?0x9aa9c4:0xffbe78);
       s.clouds.forEach(c=>c.g.children[0].material.color.copy(s.skyColor).lerp(s.fogTint,.45-p*.25));
       document.documentElement.dataset.environmentPhase=p<.25?"golden":p<.5?"sunset":p<.75?"dusk":"night";
     }else s.lights.forEach(l=>l.mesh.material.color.setScalar(s.name==="rainyCourt"?.9:.18));

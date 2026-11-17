@@ -566,34 +566,58 @@ function setPauseAudioDuck(on){
 function externalMediaDuckActive(){
   return Date.now()<mediaDuckUntil;
 }
+const QUIET_CROWD_SCENES=new Set(["lunarCrater","beachSunset","arcticSnow","flowerCourt","medCliff","rainyCourt","spanishQuarter"]);
+function isCrowdQuietScene(){
+  const s=(typeof currentScenePreset==="string"&&currentScenePreset)||document.documentElement.dataset.scenePreset||"indoor";
+  return QUIET_CROWD_SCENES.has(s);
+}
+let windBus=null,windNode=null;
+function syncCoastalWind(on){
+  if(!AC||!master)return;
+  if(on&&!windBus){
+    try{
+      windBus=AC.createGain();windBus.gain.value=0.0001;windBus.connect(master);
+      const src=AC.createBufferSource();src.buffer=noiseBuf(3);src.loop=true;
+      const bp=AC.createBiquadFilter();bp.type="bandpass";bp.frequency.value=310;bp.Q.value=0.85;
+      src.connect(bp);bp.connect(windBus);src.start();windNode=src;
+    }catch(e){}
+  }
+  if(windBus){
+    const t=AC.currentTime;
+    windBus.gain.cancelScheduledValues(t);
+    windBus.gain.setTargetAtTime((on&&!MUTED)?0.055:0.0001,t,0.35);
+  }
+}
 function applyExternalMediaMix(){
-  const duck=externalMediaDuckActive(),arenaLike=sceneAudioArenaLike();
+  const duck=externalMediaDuckActive(),arenaLike=sceneAudioArenaLike(),quiet=isCrowdQuietScene();
   const heat=Math.max(0,Math.min(1,crowdHeat||0));
   const pd=pauseDuck?PAUSE_DUCK:1;
   const set=(k,v)=>{if(extA[k]&&!extFade[k])extA[k].volume=v;};
   set("bgm",EXT_DEFAULT_VOLUME.bgm*(duck?0.58:1)*pd);
-  set("crowd",(G.finalRun?0.34:EXT_DEFAULT_VOLUME.crowd)*(1+heat*.42)*(duck?0.72:1)*pd);
-  set("crowdCheer",(G.finalRun?0.31:EXT_DEFAULT_VOLUME.crowdCheer)*(1+heat*.62)*(duck?0.7:1)*pd);
+  set("crowd",quiet?0:(G.finalRun?0.34:EXT_DEFAULT_VOLUME.crowd)*(1+heat*.42)*(duck?0.72:1)*pd);
+  set("crowdCheer",quiet?0:(G.finalRun?0.31:EXT_DEFAULT_VOLUME.crowdCheer)*(1+heat*.62)*(duck?0.7:1)*pd);
   set("rain",(arenaLike?0.2:0.11)*(duck?0.82:1)*pd);
-  set("ocean",(G.finalRun?0.24:(arenaLike?0.18:0.1))*(duck?0.82:1)*pd);
+  set("ocean",(G.finalRun?0.26:(arenaLike?0.24:0.12))*(duck?0.82:1)*pd);
 }
 function setCrowdHeat(level){
   crowdHeat=Math.max(0,Math.min(1,Number(level)||0));
   if(crowdBus&&AC){
-    const t=AC.currentTime,base=extA.crowd?0.035:CROWD_BASE;
+    const t=AC.currentTime,base=isCrowdQuietScene()?0:(extA.crowd?0.035:CROWD_BASE);
+    const target=isCrowdQuietScene()?0:(base+crowdHeat*(extA.crowd?0.035:0.075))*(pauseDuck?PAUSE_DUCK:1);
     crowdBus.gain.cancelScheduledValues(t);
-    crowdBus.gain.setTargetAtTime((base+crowdHeat*(extA.crowd?0.035:0.075))*(pauseDuck?PAUSE_DUCK:1),t,pauseDuck?0.12:0.55);
+    crowdBus.gain.setTargetAtTime(target,t,pauseDuck?0.12:0.55);
   }
   applyExternalMediaMix();
 }
 function syncSceneAmbience(){
   const arenaLike=sceneAudioArenaLike(),allowed=G.state==="diff"||arenaLike;
   applyExternalMediaMix();
-  if(!AC||MUTED||AC.state==="suspended"||!allowed){extStop("rain");extStop("ocean");syncAudioDebug();return;}
+  if(!AC||MUTED||AC.state==="suspended"||!allowed){extStop("rain");extStop("ocean");syncCoastalWind(false);syncAudioDebug();return;}
   const rainy=currentWeather==="rain",beach=currentScenePreset==="beachSunset";
   applyExternalMediaMix();
   if(rainy)extPlay("rain");else extStop("rain");
-  if(beach)extPlay("ocean");else extStop("ocean");
+  if(beach){extPlay("ocean");syncCoastalWind(arenaLike);}else{extStop("ocean");syncCoastalWind(false);}
+  setCrowdHeat(crowdHeat);
   syncAudioDebug();
 }
 function updateSceneAudio(dt){
@@ -792,9 +816,13 @@ function audioInit(){
     document.documentElement.dataset.audioVoices="on-demand";
     if(extA.crowd||extA.crowdCheer)crowdBus.gain.value=0.035;
     syncSceneAmbience();
-    // ---- 随机现场事件:人浪/零星掌声/口哨/远处喊叫 ----
+    // ---- 随机现场事件:人浪/零星掌声/口哨/远处喊叫（少观众场地禁欢呼，夕阳海滩改播海鸥）----
     ambTimer=setInterval(()=>{
       if(!AC||MUTED)return;
+      if(isCrowdQuietScene()){
+        if(currentScenePreset==="beachSunset"&&sceneAudioArenaLike()&&Math.random()<0.45&&extA.gull)extPlay("gull");
+        return;
+      }
       const r=Math.random();
       if(r<0.30)crowdSwell(rnd2(0.06,0.14));
       else if(r<0.50)applause(0.25,rnd2(1.0,1.8));
@@ -867,7 +895,7 @@ function mkNoiseBuf(sec){
   return b;
 }
 function crowdSwell(amt,dur){
-  if(!crowdBus)return;
+  if(!crowdBus||isCrowdQuietScene())return;
   const t=AC.currentTime,b=(extA.crowd?0.04:CROWD_BASE)+Math.max(0,Math.min(1,crowdHeat||0))*(extA.crowd?0.03:0.06);
   crowdBus.gain.cancelScheduledValues(t);
   crowdBus.gain.setValueAtTime(crowdBus.gain.value,t);
@@ -877,7 +905,7 @@ function crowdSwell(amt,dur){
 try{window.AIBAAudio=Object.assign(window.AIBAAudio||{},{setCrowdHeat,crowdSwell,setPauseAudioDuck});}catch(e){}
 /* ---- 掌声:几十个去相关的真实拍手颗粒 ---- */
 function applause(vol,dur,n){
-  if(!AC||MUTED)return;
+  if(!AC||MUTED||isCrowdQuietScene())return;
   if(extA.applause&&vol>0.4&&extPlay("applause"))return;
   dur=dur||2.4;n=n||Math.floor(dur*38);
   const t0=AC.currentTime;
