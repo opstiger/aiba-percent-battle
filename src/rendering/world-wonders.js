@@ -409,6 +409,55 @@
     const suit2=makeSuit("lunarSuit2",9.1,-1.6,-1.25,0x2d6fd6);
     suit2.visible=(typeof G!=="undefined"&&G&&G.mode==="battle");
 
+    // 2.6 等比例（约 7 米高）阿波罗登月舱 (Apollo Lunar Module) + 从登月舱走向球场的脚印
+    const lmPos=[-17.5,-20.5],lmY=terrainY(lmPos[0],lmPos[1]);
+    const lm=batch();
+    // 下降级八边形金箔隔热层主体
+    lm.box(0xd6a026,0,2.25,0,3.2,1.65,3.2,0,0,0);
+    lm.box(0xc48b1a,0,2.25,0,3.5,1.45,2.2,0,Math.PI/4,0);
+    lm.box(0x282b30,0,1.25,0,1.15,.55,1.15); // 下降发动机喷口底座
+    lm.add("cone",0x3a3e45,0,.85,0,1.35,.95,1.35,Math.PI,0,0); // 发动机喷管
+    // 四条着陆支架 + 圆形着陆脚垫 + 登月梯
+    for(let k=0;k<4;k++){
+      const ang=Math.PI/4+k*Math.PI/2,cx=Math.cos(ang),cz=Math.sin(ang);
+      lm.box(0x9ca2ac,cx*2.25,1.15,cz*2.25,.15,2.65,.15,0,-ang,-0.62); // 主斜撑直连脚垫
+      lm.box(0x888e98,cx*1.95,1.68,cz*1.95,.10,1.45,.10,0,-ang,0.78);  // 上拉杆
+      lm.box(0xd4a438,cx*3.0,.08,cz*3.0,.92,.12,.92,0,ang,0);           // 着陆脚垫
+      if(k===1){
+        for(let r=0;r<6;r++)lm.box(0xbac0ca,cx*2.1,.45+r*.36,cz*2.1,.44,.05,.07,0,ang+Math.PI/2,0);
+      }
+    }
+    // 上升级银灰/炭黑乘员舱
+    lm.box(0xb8bec8,0,4.15,0,2.7,1.9,2.5);
+    lm.box(0x32363e,0,4.25,.85,2.35,1.5,1.2); // 前部深色隔热面板
+    lm.box(0x7c8490,0,4.25,-1.15,2.1,1.45,.85); // 后部设备舱
+    // 前部两个三角形舷窗
+    lm.box(0x162230,-.52,4.42,1.46,.52,.36,.06,0,0,-.22);
+    lm.box(0x162230,.52,4.42,1.46,.52,.36,.06,0,0,.22);
+    // 顶部对接舱口与 S 波段抛物面天线
+    lm.box(0x9aa0aa,0,5.25,0,1.0,.35,1.0);
+    lm.box(0x8c929c,.85,5.65,.2,.08,.9,.08);
+    lm.add("cone",0xdce0e6,.85,6.1,.35,1.1,.45,1.1,-1.1,0,0);
+    // 两侧姿态控制喷口组 (RCS)
+    for(const sx of [-1,1]){
+      lm.box(0x464a52,sx*1.58,4.35,.4,.42,.42,.42);
+      lm.box(0x8c929c,sx*1.82,4.35,.4,.22,.10,.10);
+    }
+    const lmGrp=new THREE.Group();
+    lmGrp.position.set(lmPos[0],lmY,lmPos[1]);lmGrp.rotation.y=.48;lmGrp.name="lunarLander";
+    const lmMesh=lm.finish(lmGrp,"lunarLanderMesh");
+    if(lmMesh){lmMesh.castShadow=true;lmMesh.receiveShadow=true;}
+    s.root.add(lmGrp);
+
+    // 从登月舱走向场边宇航服的月尘脚印链
+    const prints=batch();
+    for(let i=0;i<18;i++){
+      const t=i/17,px=-15.2+t*5.6+Math.sin(i*.4)*.25,pz=-17.8+t*13.8;
+      const side=(i%2?1:-1)*.18,py=terrainY(px+side,pz);
+      prints.box(0x484b50,px+side,py+.015,pz,.16,.02,.28,0,.35,0);
+    }
+    prints.finish(s.root,"lunarBootprints");
+
     // 3. 阿波罗实拍感漆黑宇宙星空（稀疏、微弱、柔和圆点星光，不抢主画面）
     const starCount=s.mobile?110:190,sPos=new Float32Array(starCount*3),sCol=new Float32Array(starCount*3);
     for(let i=0;i<starCount;i++){
@@ -473,10 +522,13 @@
           float lon=atan(N.x,N.z)/6.2831853+0.5+uTime*0.003;
           float lat=asin(clamp(N.y,-0.999,0.999))/3.14159265+0.5;
           vec3 albedo=texture2D(uMap,vec2(fract(lon),lat)).rgb;
-          float edgeFade=smoothstep(1.0,0.955,r);
-          vec3 atmo=vec3(0.28,0.68,1.0)*rim*(0.06+0.94*lit);
-          vec3 surface=albedo*(0.008+1.24*lit)+atmo;
-          vec3 col=mix(vec3(0.24,0.62,1.0)*(0.06+0.75*lit),surface,edgeFade);
+          float edgeFade=smoothstep(1.0,0.96,r);
+          // 柔和的海面太阳高光与锐利的瑞利蓝大气边缘散射
+          vec3 H=normalize(L+vec3(0.0,0.0,1.0));
+          float spec=pow(max(dot(N,H),0.0),28.0)*0.22*lit;
+          vec3 atmo=vec3(0.24,0.64,1.0)*pow(1.0-N.z,3.4)*(0.05+0.95*lit)*1.15;
+          vec3 surface=albedo*(0.008+1.26*lit)+vec3(0.75,0.88,1.0)*spec+atmo;
+          vec3 col=mix(vec3(0.22,0.60,1.0)*(0.05+0.72*lit),surface,edgeFade);
           float alpha=max(edgeFade,halo*0.85);
           gl_FragColor=vec4(col,clamp(alpha,0.0,1.0));
           #include <tonemapping_fragment>
