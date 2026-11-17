@@ -27,14 +27,16 @@
 
   /* ---------- 预告卡(授权前) ---------- */
   const origEnable=global.enableVisionControl;
-  global.enableVisionControl=function(ev){
+  global.enableVisionControl=function(ev,mode){
+    const V=VV();
+    if(V&&V.enabled&&typeof origEnable==="function")return origEnable(ev,mode);
     if(!seen.intro&&typeof origEnable==="function"){
-      showIntro(ev);
+      showIntro(ev,mode);
       return;
     }
-    return typeof origEnable==="function"?origEnable(ev):undefined;
+    return typeof origEnable==="function"?origEnable(ev,mode):undefined;
   };
-  function showIntro(ev){
+  function showIntro(ev,mode){
     if(document.getElementById("vtIntro"))return;
     const el=document.createElement("div");
     el.id="vtIntro";
@@ -48,7 +50,7 @@
     document.getElementById("vtGo").onclick=()=>{
       mark("intro");el.remove();
       try{
-        const enabled=typeof origEnable==="function"?origEnable(ev):null;
+        const enabled=typeof origEnable==="function"?origEnable(ev,mode):null;
         Promise.resolve(enabled).then(()=>{
           const V=VV();
           if(V&&V.enabled&&global.AIBAInteractiveTutorial)global.AIBAInteractiveTutorial.start({skipVisionIntro:true});
