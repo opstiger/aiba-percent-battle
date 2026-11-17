@@ -614,8 +614,17 @@ function noteVisionInference(start){
   VISION.inferAvg=VISION.inferAvg?VISION.inferAvg*.82+cost*.18:cost;
   document.documentElement.dataset.visionInferenceMs=VISION.inferAvg.toFixed(1);
 }
+function visionCanTurnAim(){
+  if(typeof G==="undefined"||!G)return false;
+  return !!G.canShoot&&!G.charging&&!G.moving;
+}
 function visionUpdateFaceAim(lm){
-  if(!VISION.aimMode||!lm){VISION.faceAim=(VISION.faceAim||0)*.82;return VISION.faceAim;}
+  if(!VISION.aimMode||!lm){
+    if(!VISION.aimMode)VISION.faceAim=0;
+    return VISION.faceAim||0;
+  }
+  // 仅在接球待投、尚未蓄力时允许转头瞄准；蓄力与出球飞行期间锁定视角与轨迹，接新球后再解锁
+  if(!visionCanTurnAim())return VISION.faceAim||0;
   const nose=visionGoodPoint(lm,0,.28),eyeL=visionGoodPoint(lm,2,.25),eyeR=visionGoodPoint(lm,5,.25),
     earL=visionGoodPoint(lm,7,.25),earR=visionGoodPoint(lm,8,.25),sL=visionGoodPoint(lm,11,.28),sR=visionGoodPoint(lm,12,.28);
   if(!nose)return VISION.faceAim||0;
@@ -637,10 +646,10 @@ function visionUpdateFaceAim(lm){
   // 右手投篮天然朝左侧（辅助手侧）略转一点，左手投篮天然朝右侧略转一点
   const lefty=typeof player!=="undefined"&&player&&!!player.lefty;
   const stanceBias=lefty?-.12:.12;
-  const centered=rawYaw-stanceBias,dead=.06;
+  const centered=rawYaw-stanceBias,dead=.09;
   const adj=Math.abs(centered)<dead?0:(centered-Math.sign(centered)*dead)/(1-dead);
-  const target=clamp(adj*1.15,-1,1);
-  VISION.faceAim=(VISION.faceAim||0)*.78+target*.22;
+  const target=clamp(adj*.78,-1,1);
+  VISION.faceAim=(VISION.faceAim||0)*.86+target*.14;
   return VISION.faceAim;
 }
 function visionFrame(now){
@@ -764,7 +773,7 @@ function disableVisionControl(event){
   refreshControlPanel();
 }
 function suspendVisionControl(){
-  VISION.desired=false;VISION.enabled=false;VISION.loading=false;VISION.faceAim=0;cancelAnimationFrame(VISION.raf);cancelVisionOwnedCharge();
+  VISION.desired=false;VISION.enabled=false;VISION.loading=false;VISION.faceAim=0;if(aimArcLine)aimArcLine.visible=false;cancelAnimationFrame(VISION.raf);cancelVisionOwnedCharge();
   if(VISION.stream)VISION.stream.getTracks().forEach(t=>t.stop());VISION.stream=null;const video=$("visionVideo");if(video)video.srcObject=null;
   visionResetTracking(true);resetVisionGesture(VISION.machine);VISION.lastSample=null;VISION.lastPose=null;VISION.lastHands=[];VISION.lastPoseAt=0;VISION.lastHandAt=0;VISION.lastDraw=0;VISION.lastVideoTime=-1;VISION.inferAvg=0;$("visionPreview").style.display="none";
   VISION.orientationBlocked=false;document.documentElement.dataset.visionControl="off";delete document.documentElement.dataset.visionPhase;delete document.documentElement.dataset.visionReady;delete document.documentElement.dataset.visionHands;delete document.documentElement.dataset.visionFrame;
@@ -781,11 +790,48 @@ function visionModeMarkup(){
 }
 VISION.fold.on=visionFoldLoad();
 Object.assign(window,{toggleVisionFold,setVisionFold});
+const AIM_ARC_SEGS=16;
+let aimArcLine=null,_aimP0=null;
+function updateAimArc(){
+  if(typeof THREE==="undefined"||typeof scene==="undefined"||typeof HOOP==="undefined"||typeof P==="undefined")return;
+  const show=!!(VISION.enabled&&VISION.aimMode&&typeof G!=="undefined"&&G&&(G.canShoot||G.charging)&&!G.moving);
+  if(!show){if(aimArcLine)aimArcLine.visible=false;return;}
+  if(!aimArcLine){
+    const g=new THREE.BufferGeometry();
+    g.setAttribute("position",new THREE.BufferAttribute(new Float32Array(AIM_ARC_SEGS*2*3),3));
+    const m=new THREE.LineBasicMaterial({color:0x9be7ff,transparent:true,opacity:.32,depthWrite:false});
+    aimArcLine=new THREE.LineSegments(g,m);
+    aimArcLine.name="visionAimArc";aimArcLine.frustumCulled=false;aimArcLine.renderOrder=18;
+    scene.add(aimArcLine);
+    _aimP0=new THREE.Vector3();
+  }
+  if(typeof ballWorldPos==="function")ballWorldPos(_aimP0);
+  else _aimP0.set(P.pos.x,2.05,P.pos.z);
+  const dx=HOOP.x-_aimP0.x,dz=HOOP.z-_aimP0.z,dist=Math.max(.5,Math.hypot(dx,dz));
+  const dirX=dx/dist,dirZ=dz/dist,perpX=dirZ,perpZ=-dirX;
+  const lat=(VISION.faceAim||0)*0.22;
+  const tx=HOOP.x+perpX*lat,ty=HOOP.y,tz=HOOP.z+perpZ*lat;
+  const shot=typeof curShot==="function"?curShot():null;
+  const tf=typeof shotFlightTime==="function"?shotFlightTime(0.78+dist*0.062,typeof G!=="undefined"?G.myStar:null,shot):0.95;
+  const vx=(tx-_aimP0.x)/tf,vy=(ty-_aimP0.y)/tf+4.9*tf,vz=(tz-_aimP0.z)/tf;
+  const arr=aimArcLine.geometry.attributes.position.array;
+  for(let i=0;i<AIM_ARC_SEGS;i++){
+    const t0=tf*(0.06+(i/AIM_ARC_SEGS)*0.88);
+    const t1=t0+tf*0.026;
+    const j=i*6;
+    arr[j]=_aimP0.x+vx*t0;arr[j+1]=_aimP0.y+vy*t0-4.9*t0*t0;arr[j+2]=_aimP0.z+vz*t0;
+    arr[j+3]=_aimP0.x+vx*t1;arr[j+4]=_aimP0.y+vy*t1-4.9*t1*t1;arr[j+5]=_aimP0.z+vz*t1;
+  }
+  aimArcLine.geometry.attributes.position.needsUpdate=true;
+  aimArcLine.visible=true;
+}
 window.AIBAVisionAim=Object.freeze({
   active:()=>!!(VISION.enabled&&VISION.aimMode),
   raw:()=>VISION.faceAim||0,
-  shotLat:()=>(VISION.enabled&&VISION.aimMode)?(VISION.faceAim||0)*0.26:0,
-  camLat:()=>(VISION.enabled&&VISION.aimMode)?(VISION.faceAim||0)*0.65:0,
+  shotLat:()=>(VISION.enabled&&VISION.aimMode)?(VISION.faceAim||0)*0.22:0,
+  yawRad:()=>(VISION.enabled&&VISION.aimMode)?(VISION.faceAim||0)*0.075:0,
+  canTurn:()=>visionCanTurnAim(),
+  updateArc:updateAimArc,
   updateFromLandmarks:lm=>visionUpdateFaceAim(lm)
 });
 window.AIBAVisionFold=Object.freeze({

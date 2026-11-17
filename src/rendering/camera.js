@@ -76,6 +76,7 @@ function activeCustomCameraView(mode){
   return customCameraSlots[i];
 }
 function availableCameraModes(){
+  if(typeof window!=="undefined"&&window.AIBAVisionAim&&window.AIBAVisionAim.active())return [0,1];
   const modes=[0,1,2,CAM_SHOULDER];
   customCameraSlots.forEach((v,i)=>{if(v||cameraEditor&&cameraEditor.slot===i)modes.push(3+i);});
   return modes;
@@ -367,6 +368,9 @@ function updPlayCam(dt){
   // 百分大战按站位动态取景,中场这种极端距离也要把人物+篮筐一起框住。
   const isBattle=G.mode==="battle";
   const isRush=G.mode==="rackrush";
+  const aimOn=!!(typeof window!=="undefined"&&window.AIBAVisionAim&&window.AIBAVisionAim.active());
+  const aimYaw=aimOn&&typeof window.AIBAVisionAim.yawRad==="function"?window.AIBAVisionAim.yawRad():0;
+  if(aimOn&&CAM.mode!==0&&CAM.mode!==1){CAM.mode=1;setCameraIcon();applyCamMode();}
   const isContest=G.mode==="contest";
   if(CAM.mode===0){
     // 第一人称:略微后拉抬高(身体网格在本视角隐藏,不会入画);
@@ -394,7 +398,12 @@ function updPlayCam(dt){
       if(fb&&(fb.phase==="fly"||(fb.phase==="path"&&fb.t<fb.tf))&&fb.mesh)fpTarget=Math.max(fpTarget,HOOP.y+0.15+(fb.mesh.position.y-HOOP.y)*0.5);
     }
     fpLookY=fpLookY==null?fpTarget:fpLookY+(fpTarget-fpLookY)*Math.min(1,dt*7);
-    rig.look.set(HOOP.x,fpLookY,HOOP.z);
+    if(aimYaw){
+      const cs=Math.cos(aimYaw),sn=Math.sin(aimYaw),hx=HOOP.x-e.x,hz=HOOP.z-e.z;
+      rig.look.set(e.x+hx*cs+hz*sn,fpLookY,e.z-hx*sn+hz*cs);
+    }else{
+      rig.look.set(HOOP.x,fpLookY,HOOP.z);
+    }
     /* 取球时视线要真的转向球架。第一人称的 look 一直死盯 HOOP,
        所以身体转过去了、镜头没动 —— 玩家在 FP 下永远看不到架子,
        球仍然是"凭空出现在手里"。这里按取球进度把视线朝球(还在架上)插过去,
@@ -404,7 +413,14 @@ function updPlayCam(dt){
       rig.look.lerp(G.passCatch.target,Math.min(.85,reach*.85));
     camSnap=true;
   }else if(CAM.mode===1){
-    if(isBattle||isRush||isContest){
+    if(aimOn){
+      // 体感瞄准第三人称正背后视角：以球员自身为中心中轴左右微转，人物始终保持在画面中轴
+      const cs=Math.cos(aimYaw),sn=Math.sin(aimYaw);
+      const rx=d.x*cs+d.z*sn,rz=-d.x*sn+d.z*cs;
+      camTarget.pos.set(P.pos.x-rx*2.95,2.15+P.jump*0.4,P.pos.z-rz*2.95);
+      camTarget.look.set(P.pos.x+rx*3.2,1.72+P.jump*0.45,P.pos.z+rz*3.2);
+      dampRig(dt,7);
+    }else if(isBattle||isRush||isContest){
       // 投篮机同款低位越肩球员锁定镜头；百分大战会随距离平滑拉远。
       updatePlayerLockCamera(dt);
     }else{
@@ -429,10 +445,8 @@ function updPlayCam(dt){
       dampRig(dt,5);
     }
   }
-  const aimCamLat=window.AIBAVisionAim&&typeof window.AIBAVisionAim.camLat==="function"?window.AIBAVisionAim.camLat():0;
-  if(aimCamLat){
-    const dx=HOOP.x-rig.pos.x,dz=HOOP.z-rig.pos.z,L=Math.hypot(dx,dz)||1;
-    rig.look.x+=(dz/L)*aimCamLat;rig.look.z+=(-dx/L)*aimCamLat;
+  if(typeof window!=="undefined"&&window.AIBAVisionAim&&typeof window.AIBAVisionAim.updateArc==="function"){
+    window.AIBAVisionAim.updateArc();
   }
 }
 /* CameraDirector：所有镜头的唯一调度入口。镜头优先级固定为
