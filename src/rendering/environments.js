@@ -10,7 +10,7 @@ function disposeEnvironmentRoot(root){
     }
   });
   geometries.forEach(g=>g.dispose());
-  materials.forEach(m=>{if(m.map&&m.map.dispose)m.map.dispose();if(m.dispose)m.dispose();});
+  materials.forEach(m=>{if(m.map&&m.map.dispose)m.map.dispose();if(m.bumpMap&&m.bumpMap.dispose)m.bumpMap.dispose();if(m.dispose)m.dispose();});
   while(root.children.length)root.remove(root.children[0]);
   root.userData={};
 }

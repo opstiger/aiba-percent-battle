@@ -255,7 +255,7 @@
     [[-8.62,1],[COURT.farBaseline-.96,-1]].forEach(([z,dir])=>{
       const base=z-dir*1.55;
       b.box(color,0,1.75,base,.24,3.5,.24);b.box(color,0,3.46,z-dir*.76,.22,.22,1.55);
-      b.box(color,0,2.9,base+dir*.45,.14,1.45,.14,-dir*.6);b.box(lunar?0x585e68:wood?0x66513b:0x757b76,0,.1,base,.75,.2,.75);
+      b.box(color,0,2.955,base+dir*.505,.13,1.48,.13,dir*Math.PI/4);b.box(lunar?0x585e68:wood?0x66513b:0x757b76,0,.1,base,.75,.2,.75);
       b.box(lunar?0x9ea7b4:wood?0xad8054:rain?0xc5c1a9:s.name==="spanishQuarter"?0x91988c:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
       for(let j=-2;j<=2;j++)if(wood)b.box(0x694c34,j*.34,3.5,z+dir*.062,.018,1.07,.006);
       const ink=lunar?0xf0f4fa:wood?0xe4cca0:rain?0x704f40:0x384f56;

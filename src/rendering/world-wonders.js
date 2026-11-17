@@ -324,25 +324,13 @@
       }
       return -0.022+blend*(wave+cy+my);
     };
-    // 无缝衔接的地表沙砾纹理（与球场底色一致，消除矩形边界感）
-    const sandCv=document.createElement("canvas");sandCv.width=512;sandCv.height=512;
-    const sg=sandCv.getContext("2d");
-    sg.fillStyle="#717479";sg.fillRect(0,0,512,512);
-    for(let i=0;i<140;i++){
-      const sx=s.r()*512,sy=s.r()*512,sr=10+s.r()*38;
-      const gr=sg.createRadialGradient(sx,sy,0,sx,sy,sr);
-      const col=i%2?"rgba(95,98,104,.24)":"rgba(130,133,140,.20)";
-      gr.addColorStop(0,col);gr.addColorStop(1,"rgba(113,116,121,0)");
-      sg.fillStyle=gr;sg.fillRect(sx-sr,sy-sr,sr*2,sr*2);
-    }
-    for(let i=0;i<4500;i++){
-      const sx=s.r()*512,sy=s.r()*512,sr=.6+s.r()*1.4;
-      sg.fillStyle=i%2?"rgba(220,222,228,.08)":"rgba(30,32,36,.10)";
-      sg.beginPath();sg.arc(sx,sy,sr,0,Math.PI*2);sg.fill();
-    }
-    const sandTex=new THREE.CanvasTexture(sandCv);
-    sandTex.wrapS=sandTex.wrapT=THREE.RepeatWrapping;sandTex.repeat.set(16,16);
-    if(THREE.sRGBEncoding)sandTex.encoding=THREE.sRGBEncoding;
+    // 真实月球风化层反照率与凹凸法线感贴图（无缝平铺，消除塑料感）
+    const tl=new THREE.TextureLoader();
+    const regAlbedo=tl.load("assets/lunar/regolith_albedo.jpg");
+    regAlbedo.wrapS=regAlbedo.wrapT=THREE.RepeatWrapping;regAlbedo.repeat.set(14,14);
+    if(THREE.sRGBEncoding)regAlbedo.encoding=THREE.sRGBEncoding;
+    const regBump=tl.load("assets/lunar/regolith_bump.jpg");
+    regBump.wrapS=regBump.wrapT=THREE.RepeatWrapping;regBump.repeat.set(14,14);
 
     const tGeo=new THREE.PlaneGeometry(230,230,96,96);tGeo.rotateX(-Math.PI/2);
     const tPos=tGeo.attributes.position,tCol=new Float32Array(tPos.count*3),c=new THREE.Color();
@@ -356,7 +344,10 @@
     }
     tGeo.setAttribute("color",new THREE.BufferAttribute(tCol,3));
     tGeo.computeVertexNormals();
-    const terrain=new THREE.Mesh(tGeo,new THREE.MeshLambertMaterial({map:sandTex,vertexColors:true,flatShading:true}));
+    const terrain=new THREE.Mesh(tGeo,new THREE.MeshStandardMaterial({
+      map:regAlbedo,bumpMap:regBump,bumpScale:.25,
+      roughness:.96,metalness:0,vertexColors:true
+    }));
     terrain.name="lunarTerrain";terrain.receiveShadow=true;s.root.add(terrain);
 
     // 2. 月球岩石与前景巨石（投射清晰长影）
