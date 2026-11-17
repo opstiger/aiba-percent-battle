@@ -372,6 +372,43 @@
     const rockMesh=rocks.finish(s.root,"lunarRocks");
     if(rockMesh){rockMesh.castShadow=true;rockMesh.receiveShadow=true;}
 
+    // 2.5 场边脱下的宇航服（1人模式1套，双人对战模式2套）
+    const makeSuit=(name,x,z,rotY,accentCol)=>{
+      const sb=batch(),gy=terrainY(x,z);
+      // 靠垫月岩
+      sb.add("rock",0x686b72,0,.18,-.22,.78,.36,.52,.1,.4,0);
+      // 生命保障背包（靠在石头上）
+      sb.box(0xd8dde5,0,.38,-.06,.42,.52,.18,-.42,0,0);
+      sb.box(0x3a404a,0,.44,-.02,.28,.22,.20,-.42,0,0);
+      sb.box(accentCol,0,.24,-.12,.38,.07,.20,-.42,0,0);
+      // 软塌的白色宇航服上身与双袖
+      sb.box(0xeef2f7,0,.28,.12,.46,.22,.44,.22,0,0);
+      sb.box(0xd4dae2,0,.29,.22,.48,.09,.12,.22,0,0); // 腰带
+      sb.box(0xe6ebf2,-.30,.15,.16,.14,.14,.42,.15,.28,.12);
+      sb.box(0xe6ebf2,.30,.16,.18,.14,.14,.40,.18,-.32,-.1);
+      // 手套
+      sb.box(0x8e95a0,-.38,.07,.35,.11,.08,.14,0,.28,0);
+      sb.box(0x8e95a0,.38,.07,.36,.11,.08,.14,0,-.32,0);
+      // 折放的裤腿与登月靴
+      sb.box(0xe4e9f0,-.13,.11,.46,.16,.15,.44,.06,.12,0);
+      sb.box(0xe4e9f0,.14,.11,.44,.16,.15,.42,.04,-.18,0);
+      sb.box(0x7c828c,-.16,.09,.70,.17,.16,.24,0,.14,0);
+      sb.box(0x7c828c,.19,.09,.68,.17,.16,.24,0,-.22,0);
+      // 放在一旁的宇航员头盔 + 金色反光面罩
+      sb.add("sphere",0xf2f5fa,.48,.19,.12,.20,.19,.20);
+      sb.add("sphere",0xd99b26,.49,.19,.22,.15,.13,.13);
+      sb.box(0x7c828c,.48,.06,.12,.26,.06,.26);
+      const grp=new THREE.Group();
+      grp.position.set(x,Math.max(-.01,gy),z);grp.rotation.y=rotY;grp.name=name;
+      const mesh=sb.finish(grp,name+"Mesh");
+      if(mesh){mesh.castShadow=true;mesh.receiveShadow=true;}
+      s.root.add(grp);
+      return grp;
+    };
+    const suit1=makeSuit("lunarSuit1",-9.1,-3.2,1.15,0xd94f30);
+    const suit2=makeSuit("lunarSuit2",9.1,-1.6,-1.25,0x2d6fd6);
+    suit2.visible=(typeof G!=="undefined"&&G&&G.mode==="battle");
+
     // 3. 漆黑宇宙星空
     const starCount=s.mobile?520:980,sPos=new Float32Array(starCount*3),sCol=new Float32Array(starCount*3);
     for(let i=0;i<starCount;i++){
@@ -444,12 +481,16 @@
     const earth=new THREE.Mesh(new THREE.PlaneGeometry(16.5,16.5),earthMat);
     earth.position.set(7.5,18.5,-78);earth.name="lunarEarth";earth.frustumCulled=false;
     s.root.add(earth);
-    s.wonder={kind:"lunar",earth};
+    s.wonder={kind:"lunar",earth,suit1,suit2};
   }
   function build(s,b,helpers){if(s.name==="arcticSnow")arctic(s,b,helpers);else if(s.name==="spanishQuarter")spanish(s,b,helpers);else if(s.name==="lunarCrater")lunar(s,b,helpers);}
   function update(s){
     const w=s.wonder;if(!w)return;
-    if(w.kind==="lunar"){w.earth.material.uniforms.uTime.value=s.time;return;}
+    if(w.kind==="lunar"){
+      w.earth.material.uniforms.uTime.value=s.time;
+      if(w.suit2)w.suit2.visible=(typeof G!=="undefined"&&!!G&&G.mode==="battle");
+      return;
+    }
     if(w.kind!=="arctic")return;
     w.auroras.forEach(mesh=>{mesh.material.uniforms.time.value=s.time;});
     const a=w.snow.geometry.attributes.position.array;
