@@ -1289,6 +1289,7 @@ function buildCrowd(seats){
 
   seats.forEach((s,i)=>{
     const t=(s.t==null?1:s.t);
+    if(IS_COARSE_JUMBO&&((t>=2&&(i%2)===1)||(t===1&&(i%3)===2)))return;
     s.team=i%9===0?-1:(s.x>0?i%6===0?0:1:i%6===0?1:0);
     s.responseStart=-100;s.responseDuration=0;s.responseLinger=0;s.responsePower=0;s.responseSign=0;
 

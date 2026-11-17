@@ -8,7 +8,7 @@ const AA_COARSE_POINTER=(()=>{
   }catch(e){return false;}
 })();
 const HI_MOBILE_DPR=AA_COARSE_POINTER&&Math.min(window.devicePixelRatio||1,3)>=2.5;
-const renderer=new THREE.WebGLRenderer({canvas:$("c"),antialias:!AA_COARSE_POINTER||HI_MOBILE_DPR,powerPreference:"high-performance"});
+const renderer=new THREE.WebGLRenderer({canvas:$("c"),antialias:!AA_COARSE_POINTER,powerPreference:"high-performance"});
 renderer.setPixelRatio(1);
 if(THREE.sRGBEncoding)renderer.outputEncoding=THREE.sRGBEncoding;
 /* 色调映射。之前完全没开(默认 NoToneMapping),意味着亮度超过 1 的部分被**硬切**成白 ——

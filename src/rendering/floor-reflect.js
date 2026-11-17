@@ -117,6 +117,8 @@
     }
     return hiddenBuf;
   }
+  const IS_COARSE=(()=>{try{return typeof matchMedia==="function"&&matchMedia("(pointer:coarse)").matches;}catch(e){return false;}})();
+  let _reflFrame=0;
   function render(dt){
     if(!enabled||!ensure())return;
     // 只在室内木地板看得见时工作；户外球场是别的地面
@@ -124,6 +126,7 @@
       uniforms.aibaReflStrength.value=0;return;
     }
     uniforms.aibaReflStrength.value=STRENGTH;
+    if(IS_COARSE&&((++_reflFrame)&1)===1)return;
     tagAcc+=Number(dt)||0;if(tagAcc>.5){tagAcc=0;tagAll();}
     // 球每帧补标（新出手的球）
     try{if(typeof balls!=="undefined")for(const b of balls)if(b.mesh)b.mesh.layers.enable(LAYER);}catch(e){}

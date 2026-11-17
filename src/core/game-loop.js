@@ -1,7 +1,7 @@
 /* ---------------- main loop ---------------- */
 const clock=new THREE.Clock();
 let jumboAcc=0,lowBeep=0,menuFrameAcc=0,visionAmbienceAcc=0,visionAmbiencePhase=0,lastI18nState=null;
-let pausePresentationT=0,pauseAmbienceAcc=0,pauseWasOn=false;
+let pausePresentationT=0,pauseAmbienceAcc=0,pauseWasOn=false,_shadowTick=0;
 const pauseLook=V3(0,0,0);
 /* 暂停时压低场馆声。这里只在进入/退出那一帧拨开关：暂停分支会直接 return，
    逐帧的 updateSceneAudio 根本不跑，靠它自愈是等不到的。 */
@@ -137,6 +137,10 @@ function animate(){
   if(window.AIBASpine)AIBASpine.apply(realDt);
   // 地板倒影要在主渲染之前画好（主渲染时地板采样它），并且要带上胸腔叠加层的姿势
   if(window.AIBAFloorReflect)AIBAFloorReflect.render(realDt);
+  if(renderer&&renderer.shadowMap){
+    const coarse=typeof AA_COARSE_POINTER!=="undefined"&&AA_COARSE_POINTER;
+    renderer.shadowMap.autoUpdate=!coarse||((++_shadowTick&1)===0);
+  }
   renderer.render(scene,camera);
   if(window.AIBASpine)AIBASpine.restore();
   if(window.AIBARecorder)AIBARecorder.tick({canvas:renderer.domElement});
