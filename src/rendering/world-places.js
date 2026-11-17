@@ -251,17 +251,26 @@
     setPlaceHoops(false);
   }
   function themeHoops(s,b){
-    const lunar=s.name==="lunarCrater",wood=s.name==="flowerCourt",rain=s.name==="rainyCourt",color=lunar?0x727882:wood?0x5c5139:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
+    const lunar=s.name==="lunarCrater",wood=s.name==="flowerCourt",rain=s.name==="rainyCourt",color=lunar?0xeef1f5:wood?0x5c5139:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
     [[-8.62,1],[COURT.farBaseline-.96,-1]].forEach(([z,dir])=>{
       const base=z-dir*1.55;
       b.box(color,0,1.75,base,.24,3.5,.24);b.box(color,0,3.46,z-dir*.76,.22,.22,1.55);
-      b.box(color,0,2.955,base+dir*.505,.13,1.48,.13,dir*Math.PI/4);b.box(lunar?0x585e68:wood?0x66513b:0x757b76,0,.1,base,.75,.2,.75);
-      b.box(lunar?0x9ea7b4:wood?0xad8054:rain?0xc5c1a9:s.name==="spanishQuarter"?0x91988c:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
+      b.box(lunar?0xcfd5de:color,0,2.955,base+dir*.505,.13,1.48,.13,dir*Math.PI/4);b.box(lunar?0xc4cad4:wood?0x66513b:0x757b76,0,.1,base,.75,.2,.75);
+      b.box(lunar?0xdce2ea:wood?0xad8054:rain?0xc5c1a9:s.name==="spanishQuarter"?0x91988c:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
       for(let j=-2;j<=2;j++)if(wood)b.box(0x694c34,j*.34,3.5,z+dir*.062,.018,1.07,.006);
-      const ink=lunar?0xf0f4fa:wood?0xe4cca0:rain?0x704f40:0x384f56;
+      const ink=lunar?0xc83228:wood?0xe4cca0:rain?0x704f40:0x384f56;
       [-1,1].forEach(a=>{b.box(ink,0,3.5+a*.51,z+dir*.066,1.86,.035,.012);b.box(ink,a*.915,3.5,z+dir*.066,.035,1.05,.012);
         b.box(ink,a*.3,3.25,z+dir*.069,.035,.36,.014);b.box(ink,0,3.25+a*.18,z+dir*.069,.63,.035,.014);});
-      for(let x of [-.84,.84])for(let y of [3.04,3.96])b.box(0x494640,x,y,z+dir*.073,.035,.035,.025);
+      for(let x of [-.84,.84])for(let y of [3.04,3.96])b.box(lunar?0x22262e:0x494640,x,y,z+dir*.073,.035,.035,.025);
+      if(lunar){
+        // NASA 土星五号白黑滚转涂装 + 金色 Kapton 隔热环 + 钛合金连接件
+        b.box(0x1b1f26,0,.55,base,.255,.32,.255);
+        b.box(0x1b1f26,0,2.15,base,.255,.26,.255);
+        b.box(0xd6a026,0,.95,base,.26,.16,.26);
+        b.box(0xc83228,0,3.46,z-dir*.35,.23,.23,.18);
+        b.box(0x8c94a0,0,3.46,base,.27,.27,.27);
+        for(const bx of [-.28,.28])for(const bz of [-.28,.28])b.box(0x282c34,bx,.21,base+bz,.07,.04,.07);
+      }
       if(wood)for(let j=0;j<6;j++)b.box(0xc3a976,0,1.3+j*.065,base,.26,.025,.27);
       if(s.name==="spanishQuarter"||s.name==="beachSunset"){
         const rr=rng(s.name==="spanishQuarter"?197:239);
@@ -1557,7 +1566,11 @@
     if(name==="lunarCrater"){
       const hb=batch();themeHoops(s,hb);
       const hm=hb.finish(root,`placeHoop:${name}`);
-      if(hm){hm.castShadow=true;hm.receiveShadow=true;}
+      if(hm){
+        if(hm.material&&hm.material.dispose)hm.material.dispose();
+        hm.material=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.32,metalness:.45});
+        hm.castShadow=true;hm.receiveShadow=true;
+      }
     }else{
       themeHoops(s,b);
     }
