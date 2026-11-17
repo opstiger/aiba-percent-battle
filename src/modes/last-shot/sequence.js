@@ -853,6 +853,7 @@
     LS.cfg.shotSpotName=st.shotSpotName;
     LS.cfg.liveDur=st.liveDur;
     LS.cfg.passAt=st.passAt;
+    LS.cfg.selfDribble=!!st.selfDribble;
     LS.cfg.gameClock=st.clockStart;
     LS.cfg.playerCut=st.playerCut;
     G.seq=[{rack:3,ball:0,val:3,money:false,deep:null,p:st.shotSpot.p,lastShot:true}];
@@ -866,9 +867,21 @@
       LS.cutFrom=LS.spot.clone();LS.cutDur=0;P.pos.copy(LS.spot);P.walking=false;
     }
     squadApi.place(0);
-    squadApi.setHandlerBall(true);
-    const handler=squadApi.handler();
-    P.face=faceTo(P.pos,handler?handler.pos:HOOP);
+    if(st.selfDribble){
+      LS.passed=true;
+      squadApi.setHandlerBall(false);
+      if(!LS.dribbleBall){
+        LS.dribbleBall=new THREE.Mesh(ballGeo,matBall);
+        scene.add(LS.dribbleBall);
+      }
+      LS.dribbleBall.visible=true;
+      P.face=faceTo(P.pos,LS.spot);
+    }else{
+      if(LS.dribbleBall)LS.dribbleBall.visible=false;
+      squadApi.setHandlerBall(true);
+      const handler=squadApi.handler();
+      P.face=faceTo(P.pos,handler?handler.pos:HOOP);
+    }
     LS.lookYaw=P.face;
     if(player&&player.g){
       player.g.visible=(CAM.mode!==0);
@@ -1203,6 +1216,27 @@
     // 共用递球员在本模式全程不出现(applyCamMode 会按 inPlay 打开它们)
     passer.g.visible=false;oppPasser.g.visible=false;
 
+    if(cfg.selfDribble&&!LS.released&&!G.canShoot){
+      const cd=LS.cutDur||0;
+      if(LS.t<cd){
+        if(LS.dribbleBall){
+          LS.dribbleBall.visible=true;
+          const fx=Math.sin(P.face),fz=Math.cos(P.face),rx=fz,rz=-fx;
+          const bounce=Math.abs(Math.sin(LS.t*10.5));
+          LS.dribbleBall.position.set(P.pos.x+fx*0.42+rx*0.24,0.16+bounce*0.52,P.pos.z+fz*0.42+rz*0.24);
+          LS.dribbleBall.rotation.x-=dt*12;
+        }
+      }else if(LS.phase==="live"){
+        if(LS.dribbleBall)LS.dribbleBall.visible=false;
+        const wantHoop=faceTo(P.pos,HOOP);LS.lookYaw=wantHoop;P.face=wantHoop;
+        if(player&&player.g){player.g.rotation.y=P.face;player.g.updateMatrixWorld(true);}
+        G.canShoot=true;
+        if(typeof global.setHandBall==="function")global.setHandBall();
+        updPowerUI();updDotsUI();
+        LS.phase="shoot";
+        toast("急停拔起 · 出手!","#ffd23f");
+      }
+    }
     if(!LS.passed&&LS.t>=cfg.passAt)startHandlerPass();
     if(LS.pass)updHandlerPass(dt);
 
@@ -1434,8 +1468,9 @@
        "看持球人"，身体会转回左路的核心，投篮手直接被甩出画面左侧(实测腕 NDC
        x=-1.27、球 -1.50，全部出画)。squared up 之后只认篮筐。 */
     const inHand=G.canShoot&&!LS.released;
+    const dribbling=!!(LS.cfg&&LS.cfg.selfDribble&&!inHand&&!LS.shooting);
     const target=(inHand||!handler)?V3(HOOP.x,HOOP.y+0.15,HOOP.z)
-      :V3(handler.pos.x,1.5,handler.pos.z);
+      :(dribbling?(LS.t<(LS.cutDur||0)*0.78?LS.spot:V3(HOOP.x,HOOP.y+0.15,HOOP.z)):V3(handler.pos.x,1.5,handler.pos.z));
     if(LS.pass){
       /* 球一出手就开始把视线摆向篮筐,接到球时已经squared up。
          这一段不能等球落地才转:扑防的人正是这零点几秒里横穿视线的,
