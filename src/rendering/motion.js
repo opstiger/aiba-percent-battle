@@ -2138,7 +2138,7 @@ function updPass(dt){
     k=Math.min(1,(p.t-delay)/Math.max(0.05,p.dur));
     p.kb=k;
     p.mesh.position.lerpVectors(p.from,p.to,k);
-    p.mesh.position.y+=Math.sin(k*Math.PI)*0.36;
+    p.mesh.position.y+=Math.sin(k*Math.PI)*(p.from.y>=1.6?0.16:0.32);
     G.pickupTurn=0;G.pickupReach=0;
   }
   if(G.passCatch){G.passCatch.active=k<1;G.passCatch.progress=k;G.passCatch.target.copy(p.mesh.position);}

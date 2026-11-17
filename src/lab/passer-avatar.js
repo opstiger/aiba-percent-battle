@@ -13,7 +13,7 @@
   const LOADER_URL = "vendor/GLTFLoader.r128.js";
 
   const THROW_START_TIME = 0.20;
-  const THROW_RELEASE_TIME = 0.835;
+  const THROW_RELEASE_TIME = 0.765;
   const THROW_TIME_SCALE = 2.0;
 
   const state = {

@@ -1208,6 +1208,8 @@
 
     if(!LS.released&&G.shotIdx>0){
       LS.released=true;LS.phase="flight";G.running=false;
+      const wantHoop=faceTo(P.pos,HOOP);LS.lookYaw=wantHoop;P.face=wantHoop;
+      if(player&&player.g){player.g.rotation.y=P.face;player.g.updateMatrixWorld(true);}
       squadApi.startPostShot();
       /* 记下这一投的诊断数据，供结算时告诉玩家"下次该怎么调"。
          err = 实际力度 - 理想力度；contest = 出手瞬间的干扰强度。 */
@@ -1346,6 +1348,7 @@
     P.jump=hopY;
     P.eyeDip=c.made?0:-.05;
     P.face=LS.lookYaw+(c.made?Math.sin(c.t*.85+c.phase)*.12:.02)+c.bump*c.bumpDir*.20;
+    if(player&&player.g)player.g.rotation.y=P.face;
   }
   /* 庆祝阶段自己接管第一人称镜头：共用的 updPlayCam 会把视线死锁在篮筐上，
      庆祝时人是转着头蹦的，锁筐等于站着不动只有手在抖。 */
@@ -1395,6 +1398,14 @@
     if(!LS.on||!LS.spot)return;
     if(LS.phase==="reaction")return;
     if(LS.released||LS.phase==="flight"){
+      // 出手与飞行阶段：始终确保身体与朝向正对篮筐，绝不侧身/背身投篮
+      const wantHoop=faceTo(P.pos,HOOP);
+      LS.lookYaw=wantHoop;
+      P.face=wantHoop;
+      if(player&&player.g){
+        player.g.rotation.y=P.face;
+        player.g.updateMatrixWorld(true);
+      }
       // 出手后飞行阶段：保持压腕跟随动作（Follow-through Hold）与向前专注凝视
       /* 出手那一刻手臂还在 shot-motion 的跟随里(伸展→定格→收手)，这里直接写死
          会让持球点一帧从 2.59 掉到 2.26。改成跟随收手时才渐入定格姿势，之前全交给跟随，

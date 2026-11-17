@@ -388,7 +388,11 @@ function pregameIdle(actor,t,seg){
     if(smp){
       const hasRig=pregameHasSkinnedRig(guy),clipInfo=AIBADance.clips[actor._idleClip];
       if(!hasRig&&clipInfo&&clipInfo.vox_ok)AIBADance.applyVox(guy,smp.vox,0.78);
-      if(hasRig||pregameSkinned(guy,actor))guy.pregameDance={q:smp.q,hy:smp.hy,w:0.78};
+      if(hasRig||pregameSkinned(guy,actor)){
+        if(!guy._danceQ)guy._danceQ=new Float32Array(smp.q.length);
+        guy._danceQ.set(smp.q);
+        guy.pregameDance={q:guy._danceQ,hy:smp.hy,w:0.78};
+      }
       return;
     }
   }
@@ -532,7 +536,11 @@ function pregameAnimate(actor,action,u,seg){
       const w=smoothRange(0,.10,u)*(1-smoothRange(.90,1,u));
       const hasRig=pregameHasSkinnedRig(guy),skinned=pregameSkinned(guy,actor),clipInfo=AIBADance.clips[clipId];
       if(!hasRig&&clipInfo&&clipInfo.vox_ok)AIBADance.applyVox(guy,smp.vox,w);   // 写实皮套走骨骼,方块人才走关节参数
-      if(hasRig||skinned)guy.pregameDance={q:smp.q,hy:smp.hy,w};
+      if(hasRig||skinned){
+        if(!guy._danceQ)guy._danceQ=new Float32Array(smp.q.length);
+        guy._danceQ.set(smp.q);
+        guy.pregameDance={q:guy._danceQ,hy:smp.hy,w};
+      }
     }else{
       const groove=Math.sin(t*8.5);
       guy.g.position.y=Math.abs(groove)*0.07;guy.g.rotation.z=groove*0.06;
