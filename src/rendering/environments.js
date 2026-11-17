@@ -439,6 +439,7 @@ function applyScenePreset(name,opts){
   currentWeather=preset.weather;
   indoorRoot.visible=!outdoor;
   rainState=null;
+  sun.castShadow=false;
   if(window.AIBAWorldPlaces)AIBAWorldPlaces.restore();
   disposeEnvironmentRoot(environmentRoot);disposeEnvironmentRoot(weatherRoot);if(outdoor&&window.AIBAVisual)environmentRoot.add(AIBAVisual.makeSkyDome(THREE,name,COURT.midZ));
   resetStreetCrowd();
@@ -460,6 +461,23 @@ function applyScenePreset(name,opts){
       hemi.color.setHex(0x9fbcd5);hemi.groundColor.setHex(0xc3d5da);hemi.intensity=.58;
       sun.color.setHex(0xb9cfe5);sun.intensity=.42;sun.position.set(-14,20,-4);spot.intensity=0;camFill.intensity=.24;
       arenaLights.forEach(l=>{l.intensity=0;});
+    }else if(name==="lunarCrater"){
+      /* 月球真空：漆黑宇宙背景、极远雾（几乎不遮挡）、低角度强烈日光拉出长影。 */
+      scene.background.setHex(0x010205);scene.fog.color.setHex(0x020307);scene.fog.near=160;scene.fog.far=380;
+      ambient.color.setHex(0x8892a4);ambient.intensity=.15;
+      hemi.color.setHex(0x98a8c4);hemi.groundColor.setHex(0x1b1d22);hemi.intensity=.18;
+      sun.color.setHex(0xf6f8ff);sun.intensity=1.65;sun.position.set(-22,10.5,-4);
+      spot.intensity=0;camFill.intensity=.12;
+      arenaLights.forEach(l=>{l.intensity=0;});
+      if(renderer.shadowMap&&renderer.shadowMap.enabled){
+        sun.castShadow=true;
+        sun.shadow.mapSize.setScalar(AA_COARSE_POINTER?1024:2048);
+        sun.shadow.camera.left=-24;sun.shadow.camera.right=24;
+        sun.shadow.camera.top=24;sun.shadow.camera.bottom=-24;
+        sun.shadow.camera.near=1;sun.shadow.camera.far=75;
+        sun.shadow.bias=-0.0005;sun.shadow.normalBias=0.03;sun.shadow.radius=1.1;
+        sun.shadow.camera.updateProjectionMatrix();
+      }
     }else if(name==="spanishQuarter"){
       scene.background.setHex(0x6093af);scene.fog.color.setHex(0xcdbb9e);scene.fog.near=48;scene.fog.far=135;
       ambient.color.setHex(0xd5dce0);ambient.intensity=.3;

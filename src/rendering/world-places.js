@@ -45,10 +45,93 @@
       const mesh=new THREE.Mesh(geo,basic?new THREE.MeshBasicMaterial({vertexColors:true}):new THREE.MeshLambertMaterial({vertexColors:true}));mesh.name=name;mesh.receiveShadow=true;parent.add(mesh);return mesh;
     }};
   }
+  function lunarSurface(g,cv,p,r,D){
+    const near=COURT.nearBaseline,far=COURT.farBaseline,Z0=COURT.floorMinZ;
+    // 原始月尘底色：不画色块球场或油漆区，整片沙地自然衔接
+    for(let i=0;i<360;i++){
+      const x=(r()-.5)*32,z=Z0+r()*D,rad=.4+r()*2.4;
+      const tone=i%3===0?"#63666b":i%3===1?"#7f8287":"#6d7075";
+      const grad=g.createRadialGradient(x,z,0,x,z,rad);
+      grad.addColorStop(0,tone);grad.addColorStop(1,tone+"00");
+      g.fillStyle=grad;g.globalAlpha=.28+r()*.32;
+      g.fillRect(x-rad,z-rad,rad*2,rad*2);
+    }
+    // 大小不一的浅陨石坑印记（暗坑底 + 向阳亮边）
+    for(let i=0;i<42;i++){
+      const cx=(r()-.5)*30,cz=Z0+r()*D,cr=.22+r()*.95;
+      g.globalAlpha=.16+r()*.16;
+      const pit=g.createRadialGradient(cx,cz,0,cx,cz,cr);
+      pit.addColorStop(0,"#4b4e54");pit.addColorStop(.75,"#585b61");pit.addColorStop(1,"rgba(90,93,99,0)");
+      g.fillStyle=pit;g.fillRect(cx-cr,cz-cr,cr*2,cr*2);
+      g.strokeStyle="rgba(162,166,174,.32)";g.lineWidth=.04+cr*.05;
+      g.beginPath();g.arc(cx+.04*cr,cz+.02*cr,cr*.88,-Math.PI*.35,Math.PI*.55);g.stroke();
+    }
+    // 看不清的球场划线：低透明度灰白粉线 + 断续缺口
+    g.globalAlpha=.22;g.strokeStyle=p.line;g.lineWidth=.052;
+    g.setLineDash([.42,.18,.26,.14,.55,.22]);
+    g.strokeRect(-COURT.halfWidth,near,COURT.width,COURT.length);
+    g.beginPath();g.moveTo(-COURT.halfWidth,COURT.midZ);g.lineTo(COURT.halfWidth,COURT.midZ);g.stroke();
+    const circle=(x,z,rad,a=0,b=Math.PI*2)=>{g.beginPath();g.arc(x,z,rad,a,b);g.stroke();};
+    circle(0,COURT.midZ,1.8);
+    [1,-1].forEach(dir=>{
+      const base=dir===1?near:far,hz=dir===1?COURT.nearHoopZ:COURT.farHoopZ;
+      g.strokeRect(-2.45,dir===1?base:base-5.8,4.9,5.8);
+      circle(0,base+dir*5.8,1.8);
+      circle(0,hz,1.25,dir===1?0:Math.PI,dir===1?Math.PI:Math.PI*2);
+      circle(0,hz,6.75,dir===1?.12:Math.PI+.12,dir===1?Math.PI-.12:Math.PI*2-.12);
+      [-1,1].forEach(side=>{g.beginPath();g.moveTo(side*6.7,base);g.lineTo(side*6.7,hz+dir*.82);g.stroke();});
+    });
+    g.setLineDash([]);
+    // 沙尘覆盖在划线上：让线条若隐若现
+    for(let i=0;i<240;i++){
+      const x=(r()-.5)*17,z=near-1+r()*(COURT.length+2),rad=.22+r()*.85;
+      const dust=i%2?"#707378":"#66696e";
+      const grad=g.createRadialGradient(x,z,0,x,z,rad);
+      grad.addColorStop(0,dust);grad.addColorStop(1,dust+"00");
+      g.fillStyle=grad;g.globalAlpha=.35+r()*.42;
+      g.fillRect(x-rad,z-rad,rad*2,rad*2);
+    }
+    // 细沙砾与碎石颗粒（柔和圆形沙粒，避免方格感）
+    g.globalAlpha=1;
+    for(let i=0;i<9000;i++){
+      const x=r()*32-16,z=Z0+r()*D,rad=.008+r()*.022;
+      g.fillStyle=r()>.5?"rgba(218,220,226,.09)":"rgba(32,34,38,.11)";
+      g.beginPath();g.arc(x,z,rad,0,Math.PI*2);g.fill();
+    }
+    const tex=new THREE.CanvasTexture(cv);tex.name="placeSurface:lunarCrater";
+    tex.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
+    if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;
+    return tex;
+  }
+  function lunarBump(){
+    const cv=document.createElement("canvas");cv.width=1024;cv.height=1024;
+    const g=cv.getContext("2d"),r=rng(44891);
+    g.fillStyle="#808080";g.fillRect(0,0,1024,1024);
+    // 柔和起伏沙丘与浅坑高度图
+    for(let i=0;i<220;i++){
+      const x=r()*1024,y=r()*1024,rad=18+r()*56;
+      const grad=g.createRadialGradient(x,y,0,x,y,rad);
+      const dark=r()<.55;
+      grad.addColorStop(0,dark?"#585858":"#a4a4a4");
+      grad.addColorStop(.72,dark?"#8e8e8e":"#7a7a7a");
+      grad.addColorStop(1,"rgba(128,128,128,0)");
+      g.fillStyle=grad;g.fillRect(x-rad,y-rad,rad*2,rad*2);
+    }
+    // 细沙微颗粒
+    for(let i=0;i<6000;i++){
+      const x=r()*1024,y=r()*1024,rad=1+r()*2.2;
+      g.fillStyle=r()>.5?"rgba(220,220,220,.14)":"rgba(40,40,40,.14)";
+      g.beginPath();g.arc(x,y,rad,0,Math.PI*2);g.fill();
+    }
+    const tex=new THREE.CanvasTexture(cv);tex.name="placeBump:lunarCrater";
+    tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(2,2);
+    return tex;
+  }
   function surface(name){
     const cv=document.createElement("canvas");cv.width=1536;cv.height=1728;
     const g=cv.getContext("2d"),p=palettes[name],r=rng(91271),D=COURT.floorMaxZ-COURT.floorMinZ;
     g.scale(cv.width/32,cv.height/D);g.translate(16,-COURT.floorMinZ);g.fillStyle=p.ground;g.fillRect(-16,COURT.floorMinZ,32,D);
+    if(name==="lunarCrater")return lunarSurface(g,cv,p,r,D);
     g.fillStyle=p.field;g.fillRect(-COURT.halfWidth,COURT.nearBaseline,COURT.width,COURT.length);
     const near=COURT.nearBaseline,far=COURT.farBaseline;
     g.fillStyle=p.key;g.fillRect(-2.45,near,4.9,5.8);g.fillRect(-2.45,far-5.8,4.9,5.8);
@@ -151,18 +234,19 @@
   }
   function restore(){
     if(courtFloor?.userData.placeTexture){courtFloor.userData.placeTexture.dispose();delete courtFloor.userData.placeTexture;}
+    if(courtFloor?.userData.placeBumpTexture){courtFloor.userData.placeBumpTexture.dispose();delete courtFloor.userData.placeBumpTexture;courtFloor.material.bumpMap=null;courtFloor.material.bumpScale=0;}
     scene.traverse(o=>{if(o.userData.placeHidden!==undefined){o.visible=o.userData.placeHidden;delete o.userData.placeHidden;}});
     setPlaceHoops(false);
   }
   function themeHoops(s,b){
-    const wood=s.name==="flowerCourt",rain=s.name==="rainyCourt",color=wood?0x5c5139:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
+    const lunar=s.name==="lunarCrater",wood=s.name==="flowerCourt",rain=s.name==="rainyCourt",color=lunar?0x727882:wood?0x5c5139:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
     [[-8.62,1],[COURT.farBaseline-.96,-1]].forEach(([z,dir])=>{
       const base=z-dir*1.55;
       b.box(color,0,1.75,base,.24,3.5,.24);b.box(color,0,3.46,z-dir*.76,.22,.22,1.55);
-      b.box(color,0,2.9,base+dir*.45,.14,1.45,.14,-dir*.6);b.box(wood?0x66513b:0x757b76,0,.1,base,.75,.2,.75);
-      b.box(wood?0xad8054:rain?0xc5c1a9:s.name==="spanishQuarter"?0x91988c:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
+      b.box(color,0,2.9,base+dir*.45,.14,1.45,.14,-dir*.6);b.box(lunar?0x585e68:wood?0x66513b:0x757b76,0,.1,base,.75,.2,.75);
+      b.box(lunar?0x9ea7b4:wood?0xad8054:rain?0xc5c1a9:s.name==="spanishQuarter"?0x91988c:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
       for(let j=-2;j<=2;j++)if(wood)b.box(0x694c34,j*.34,3.5,z+dir*.062,.018,1.07,.006);
-      const ink=wood?0xe4cca0:rain?0x704f40:0x384f56;
+      const ink=lunar?0xf0f4fa:wood?0xe4cca0:rain?0x704f40:0x384f56;
       [-1,1].forEach(a=>{b.box(ink,0,3.5+a*.51,z+dir*.066,1.86,.035,.012);b.box(ink,a*.915,3.5,z+dir*.066,.035,1.05,.012);
         b.box(ink,a*.3,3.25,z+dir*.069,.035,.36,.014);b.box(ink,0,3.25+a*.18,z+dir*.069,.63,.035,.014);});
       for(let x of [-.84,.84])for(let y of [3.04,3.96])b.box(0x494640,x,y,z+dir*.073,.035,.035,.025);
@@ -1457,10 +1541,19 @@
     const b=batch(),builder=({outdoorSunny:city,rainyCourt:rainTown,flowerCourt:village,shonanCoast:shonan,medCliff:med,beachSunset:coast})[name];
     if(builder)builder(s,b);else AIBAWorldWonders.build(s,b,{batch,tree,facing});
     AIBAWorldLife.build(s,b,{batch,rng});
-    themeHoops(s,b);b.finish(root,`placeArchitecture:${name}`);clouds(s);makeBirdPool(s);
+    if(name==="lunarCrater"){
+      const hb=batch();themeHoops(s,hb);
+      const hm=hb.finish(root,`placeHoop:${name}`);
+      if(hm){hm.castShadow=true;hm.receiveShadow=true;}
+    }else{
+      themeHoops(s,b);
+    }
+    b.finish(root,`placeArchitecture:${name}`);
+    if(name!=="lunarCrater"){clouds(s);makeBirdPool(s);}
     if(name==="outdoorSunny"){scene.fog.near=52;scene.fog.far=145;}
     if(name==="shonanCoast"){scene.fog.near=58;scene.fog.far=190;}
     if(name==="medCliff"){scene.fog.near=95;scene.fog.far=330;}
+    if(name==="lunarCrater"){scene.fog.near=160;scene.fog.far=380;}
     if(name==="flowerCourt"){
       /* 峡谷顶部开口漏下的**自然天光**,不是人工灯。
          谷底照度低于露天,但必须读得出"光是从上方开口下来的":所以抬高太阳的
@@ -1476,11 +1569,15 @@
     }
     /* Rain has a water film; forest soil stays rough, with only a faint damp sheen. */
     const tex=surface(name),m=courtFloor.material;courtFloor.userData.placeTexture=tex;m.map=tex;m.color.setHex(0xffffff);m.roughnessMap=null;
+    if(name==="lunarCrater"){
+      const bump=lunarBump();courtFloor.userData.placeBumpTexture=bump;
+      m.bumpMap=bump;m.bumpScale=0.045;
+    }
     /* 湘南是旧水泥外场:干、亚光、几乎不反光(文档"偏旧但干净") */
-    m.roughness=name==="rainyCourt"?.62:(name==="flowerCourt"?.91:(name==="shonanCoast"?.92:(name==="medCliff"?.88:.95)));
+    m.roughness=name==="rainyCourt"?.62:(name==="flowerCourt"?.91:(name==="shonanCoast"?.92:(name==="medCliff"?.88:(name==="lunarCrater"?.98:.95))));
     m.clearcoat=name==="rainyCourt"?.12:(name==="flowerCourt"?.06:0);
     if(m.clearcoatRoughness!==undefined)m.clearcoatRoughness=(name==="rainyCourt"||name==="flowerCourt")?.22:.5;
-    m.envMapIntensity=.04;m.needsUpdate=true;
+    m.envMapIntensity=name==="lunarCrater"?.02:.04;m.needsUpdate=true;
     scene.traverse(o=>{if(["courtZone","courtLine","courtMark","nearCourtCrowdRoot"].includes(o.name)){o.userData.placeHidden=o.visible;o.visible=false;}});
     document.documentElement.dataset.worldPlace=name;return s;
   }

@@ -1141,7 +1141,9 @@ function makeStreetPerson(parent,cube,cfg,materials){
 }
 function buildStreetCrowd(opts){
   resetStreetCrowd();
-  const place=opts&&opts.place,localRandom=place?AIBAWorldPlaces.rng(831771+Object.keys(AIBAWorldPlaces.palettes).indexOf(place)*97):null;
+  const place=opts&&opts.place;
+  if(place==="lunarCrater")return;
+  const localRandom=place?AIBAWorldPlaces.rng(831771+Object.keys(AIBAWorldPlaces.palettes).indexOf(place)*97):null;
   const srnd=(a,b)=>localRandom?a+localRandom()*(b-a):rnd(a,b);
   const mobile=(window.matchMedia&&window.matchMedia("(pointer:coarse)").matches)||Math.min(innerWidth,innerHeight)<700;
   const root=new THREE.Group();root.name="streetCrowdRoot";environmentRoot.add(root);streetCrowd.root=root;

@@ -3,7 +3,8 @@
 (()=>{
   const palettes={
     arcticSnow:{ground:"#becbd0",field:"#35464f",key:"#2a3945",line:"#dddeda",shirts:[0x40556a,0xb57351,0x667c76,0xd4c7aa,0x444756,0x864f46,0x6e818d,0xb5b9af]},
-    spanishQuarter:{ground:"#a6947b",field:"#ad6248",key:"#944c39",line:"#e9d9af",shirts:[0xe2d6bb,0x8a4638,0x75877e,0xc09d6a,0x3f5665,0xede4ce,0xad7654,0x648690]}
+    spanishQuarter:{ground:"#a6947b",field:"#ad6248",key:"#944c39",line:"#e9d9af",shirts:[0xe2d6bb,0x8a4638,0x75877e,0xc09d6a,0x3f5665,0xede4ce,0xad7654,0x648690]},
+    lunarCrater:{ground:"#717479",field:"#717479",key:"#717479",line:"#cfd3d9",shirts:[0xe6e8ec,0xc7ccd4,0x3b82f6,0x9aa0a8]}
   };
   function arctic(s,b,{batch}){
     // A real vertical separation prevents the grading RT's 16-bit depth from
@@ -287,9 +288,173 @@
     if(glow){glow.material.color.setScalar(.55);s.lights.push({mesh:glow,threshold:.5});}
     s.wonder={kind:"spanish"};
   }
-  function build(s,b,helpers){if(s.name==="arcticSnow")arctic(s,b,helpers);else if(s.name==="spanishQuarter")spanish(s,b,helpers);}
+  function lunar(s,b,{batch}){
+    // 1. 不平整的月球沙地与环形山、远景月山
+    const craters=[
+      [-14,-15,4.2,0.55,0.28],[15,-12,5.4,0.68,0.34],[-18,10,6.2,0.72,0.38],[19,14,4.8,0.6,0.3],
+      [-28,-28,11,1.3,0.65],[26,-34,13,1.5,0.72],[4,-32,8.5,0.95,0.48],[-32,4,9.5,1.1,0.55],
+      [34,-2,10.5,1.2,0.58],[-22,30,12,1.35,0.62],[24,32,10,1.15,0.52],[0,42,15,1.7,0.8]
+    ];
+    const smoothstep=(e0,e1,x)=>{const t=Math.max(0,Math.min(1,(x-e0)/(e1-e0)));return t*t*(3-2*t);};
+    const minZ=typeof COURT!=="undefined"?COURT.floorMinZ:-13.5,maxZ=typeof COURT!=="undefined"?COURT.floorMaxZ:22.5;
+    const terrainY=(vx,vz)=>{
+      const dx=Math.max(0,Math.abs(vx)-15.8);
+      const dz=Math.max(0,vz<minZ+.2?minZ+.2-vz:(vz>maxZ-.2?vz-(maxZ-.2):0));
+      const blend=smoothstep(0,4.5,Math.hypot(dx,dz));
+      if(blend<=0)return -0.028;
+      const wave=Math.sin(vx*.19+vz*.13)*.22+Math.cos(vx*.44-vz*.37)*.11+Math.sin(vx*.88+vz*.76)*.05;
+      let cy=0;
+      for(let i=0;i<craters.length;i++){
+        const [cx,cz,cr,cd,rh]=craters[i],d=Math.hypot(vx-cx,vz-cz)/cr;
+        if(d<1.45){
+          if(d<1)cy-=cd*(1-d*d);
+          const rim=Math.exp(-Math.pow((d-1.02)/.18,2));
+          cy+=rh*rim;
+        }
+      }
+      const dist=Math.hypot(vx,vz-4),ang=Math.atan2(vz-4,vx);
+      let my=0;
+      if(dist>50){
+        const t=Math.min(1,(dist-50)/62);
+        const p1=1-Math.abs(Math.sin(ang*3.5+.6));
+        const p2=1-Math.abs(Math.cos(ang*7.2-1.1));
+        const p3=Math.abs(Math.sin(ang*13.0+dist*.08));
+        const ridge=p1*.55+p2*.32+p3*.18+.12;
+        my=Math.pow(t,1.25)*15*ridge;
+      }
+      return -0.028+blend*(wave+cy+my);
+    };
+    const tGeo=new THREE.PlaneGeometry(230,230,96,96);tGeo.rotateX(-Math.PI/2);
+    const tPos=tGeo.attributes.position,tCol=new Float32Array(tPos.count*3),c=new THREE.Color();
+    for(let i=0;i<tPos.count;i++){
+      const vx=tPos.getX(i),vz=tPos.getZ(i)+4,y=terrainY(vx,vz);
+      tPos.setXYZ(i,vx,y,vz);
+      const n=Math.sin(vx*.55+vz*.45)*.035+Math.cos(vx*1.1-vz*.9)*.02;
+      const shade=Math.max(.30,Math.min(.58,.44+Math.min(.1,y*.006)+n));
+      c.setRGB(shade*.95,shade*.97,shade).convertSRGBToLinear();
+      tCol[i*3]=c.r;tCol[i*3+1]=c.g;tCol[i*3+2]=c.b;
+    }
+    tGeo.setAttribute("color",new THREE.BufferAttribute(tCol,3));
+    tGeo.computeVertexNormals();
+    const terrain=new THREE.Mesh(tGeo,new THREE.MeshLambertMaterial({vertexColors:true,flatShading:true}));
+    terrain.name="lunarTerrain";terrain.receiveShadow=true;s.root.add(terrain);
+
+    // 2. 月球岩石与前景巨石（投射清晰长影）
+    const rocks=batch();
+    const heroRocks=[
+      [-9.8,-11.5,1.35,.72,1.15,0x6e7177],[-11.4,4.2,1.6,.85,1.3,0x767980],
+      [10.6,-6.8,1.45,.78,1.2,0x6b6e74],[11.5,11.8,1.25,.68,1.05,0x74777d],
+      [-5.6,-15.2,1.8,.95,1.4,0x696c72],[7.4,-17.5,1.5,.8,1.25,0x777a80]
+    ];
+    heroRocks.forEach(([x,z,w,h,d,col],idx)=>{
+      rocks.add("rock",col,x,terrainY(x,z)+h*.36,z,w,h,d,idx*.2,idx*1.1,idx*.15);
+    });
+    const rockCount=s.mobile?48:78;
+    for(let i=0;i<rockCount;i++){
+      const a=s.r()*Math.PI*2,rad=9.2+Math.pow(s.r(),1.2)*38;
+      let rx=Math.cos(a)*rad,rz=4+Math.sin(a)*rad;
+      if(Math.abs(rx)<8.2&&rz>-11&&rz<20)rx+=(rx<0?-1:1)*8.5;
+      const sc=.22+Math.pow(s.r(),2)*1.05,ry=terrainY(rx,rz);
+      const col=i%3===0?0x63666c:i%3===1?0x7a7d84:0x6d7076;
+      rocks.add("rock",col,rx,ry+sc*.32,rz,sc*(.9+s.r()*.6),sc*(.55+s.r()*.5),sc*(.85+s.r()*.6),s.r()*.4,s.r()*6.28,s.r()*.4);
+    }
+    const rockMesh=rocks.finish(s.root,"lunarRocks");
+    if(rockMesh){rockMesh.castShadow=true;rockMesh.receiveShadow=true;}
+
+    // 3. 漆黑宇宙星空
+    const starCount=s.mobile?520:980,sPos=new Float32Array(starCount*3),sCol=new Float32Array(starCount*3);
+    for(let i=0;i<starCount;i++){
+      const theta=s.r()*Math.PI*2,phi=Math.acos(0.03+s.r()*0.97),R=146;
+      sPos[i*3]=R*Math.sin(phi)*Math.cos(theta);
+      sPos[i*3+1]=R*Math.cos(phi);
+      sPos[i*3+2]=4+R*Math.sin(phi)*Math.sin(theta);
+      const b=.55+s.r()*.45,tint=s.r();
+      sCol[i*3]=b*(tint<.2?.82:1);sCol[i*3+1]=b*(tint<.2?.9:1);sCol[i*3+2]=b*(tint>.82?.85:1);
+    }
+    const starGeo=new THREE.BufferGeometry();
+    starGeo.setAttribute("position",new THREE.BufferAttribute(sPos,3));
+    starGeo.setAttribute("color",new THREE.BufferAttribute(sCol,3));
+    const stars=new THREE.Points(starGeo,new THREE.PointsMaterial({size:.72,vertexColors:true,fog:false,transparent:true,opacity:.92,depthWrite:false}));
+    stars.name="lunarStars";stars.frustumCulled=false;s.root.add(stars);
+
+    // 4. 远处挂在漆黑宇宙中的蓝色地球（带昼夜晨昏线与大气蓝晕）
+    const eCv=document.createElement("canvas");eCv.width=512;eCv.height=256;
+    const eg=eCv.getContext("2d");
+    const ocean=eg.createLinearGradient(0,0,0,256);
+    ocean.addColorStop(0,"#0f478e");ocean.addColorStop(.5,"#0a326b");ocean.addColorStop(1,"#0f478e");
+    eg.fillStyle=ocean;eg.fillRect(0,0,512,256);
+    // 深浅海域变化
+    for(let i=0;i<60;i++){
+      const gx=s.r()*512,gy=25+s.r()*206,gr=18+s.r()*45;
+      const g=eg.createRadialGradient(gx,gy,0,gx,gy,gr);
+      g.addColorStop(0,"rgba(30,115,200,.24)");g.addColorStop(1,"rgba(15,65,135,0)");
+      eg.fillStyle=g;eg.fillRect(gx-gr,gy-gr,gr*2,gr*2);
+    }
+    // 极地冰盖
+    eg.fillStyle="#dce9f7";eg.fillRect(0,0,512,12);eg.fillRect(0,244,512,12);
+    // 碎裂自然的大陆轮廓（多团块叠加）
+    const landClusters=[[90,88,28],[125,112,22],[148,148,26],[252,72,34],[280,104,28],[295,148,24],[385,84,36],[420,122,22],[430,168,18]];
+    landClusters.forEach(([cx,cy,rad])=>{
+      for(let k=0;k<14;k++){
+        const lx=cx+(s.r()-.5)*rad*1.7,ly=cy+(s.r()-.5)*rad*1.4,lr=rad*(.25+s.r()*.42);
+        eg.fillStyle=k%3===0?"#6f7b4c":k%3===1?"#3f6d45":"#8c8258";
+        eg.beginPath();eg.arc(lx,ly,lr,0,Math.PI*2);eg.fill();
+      }
+    });
+    // 柔和半透明卷云带（避免生硬椭圆）
+    for(let i=0;i<260;i++){
+      const cx=s.r()*512,cy=20+s.r()*216,cw=10+s.r()*38,ch=2+s.r()*5.5;
+      const cg=eg.createRadialGradient(cx,cy,0,cx,cy,cw);
+      cg.addColorStop(0,`rgba(255,255,255,${.12+s.r()*.28})`);
+      cg.addColorStop(1,"rgba(255,255,255,0)");
+      eg.save();eg.translate(cx,cy);eg.rotate((s.r()-.5)*.35);eg.scale(1,ch/cw);
+      eg.fillStyle=cg;eg.beginPath();eg.arc(0,0,cw,0,Math.PI*2);eg.fill();eg.restore();
+    }
+    const earthTex=new THREE.CanvasTexture(eCv);
+    if(THREE.sRGBEncoding)earthTex.encoding=THREE.sRGBEncoding;
+    const earthMat=new THREE.ShaderMaterial({
+      fog:false,
+      uniforms:{
+        uMap:{value:earthTex},
+        uSunDir:{value:new THREE.Vector3(-22,10.5,-4).normalize()},
+        uTime:{value:0}
+      },
+      vertexShader:`varying vec2 vUv;varying vec3 vNorm;varying vec3 vView;
+        void main(){
+          vUv=uv;
+          vec4 mv=modelViewMatrix*vec4(position,1.0);
+          vNorm=normalize(normalMatrix*normal);
+          vView=normalize(-mv.xyz);
+          gl_Position=projectionMatrix*mv;
+        }`,
+      fragmentShader:`uniform sampler2D uMap;uniform vec3 uSunDir;uniform float uTime;
+        varying vec2 vUv;varying vec3 vNorm;varying vec3 vView;
+        void main(){
+          vec2 uv=vec2(fract(vUv.x+uTime*0.004),vUv.y);
+          vec3 albedo=texture2D(uMap,uv).rgb;
+          vec3 N=normalize(vNorm);
+          vec3 L=normalize((viewMatrix*vec4(uSunDir,0.0)).xyz);
+          float ndl=dot(N,L);
+          float lit=smoothstep(-0.08,0.22,ndl);
+          float fres=pow(1.0-max(dot(N,normalize(vView)),0.0),3.0);
+          vec3 atmo=vec3(0.28,0.65,1.0)*fres*(0.18+0.88*lit);
+          vec3 col=albedo*(0.02+1.15*lit)+atmo;
+          gl_FragColor=vec4(col,1.0);
+          #include <tonemapping_fragment>
+          #include <encodings_fragment>
+        }`
+    });
+    earthMat.map=earthTex;
+    const earth=new THREE.Mesh(new THREE.SphereGeometry(7.8,36,26),earthMat);
+    earth.position.set(16,22.5,-72);earth.name="lunarEarth";earth.frustumCulled=false;
+    s.root.add(earth);
+    s.wonder={kind:"lunar",earth};
+  }
+  function build(s,b,helpers){if(s.name==="arcticSnow")arctic(s,b,helpers);else if(s.name==="spanishQuarter")spanish(s,b,helpers);else if(s.name==="lunarCrater")lunar(s,b,helpers);}
   function update(s){
-    const w=s.wonder;if(w?.kind!=="arctic")return;
+    const w=s.wonder;if(!w)return;
+    if(w.kind==="lunar"){w.earth.material.uniforms.uTime.value=s.time;return;}
+    if(w.kind!=="arctic")return;
     w.auroras.forEach(mesh=>{mesh.material.uniforms.time.value=s.time;});
     const a=w.snow.geometry.attributes.position.array;
     for(let i=0;i<w.speed.length;i++){const j=i*3;a[j]=w.base[j]+Math.sin(s.time*.15+i)*.65;a[j+1]=((w.base[j+1]-s.time*w.speed[i])%15+15)%15;a[j+2]=w.base[j+2]+Math.sin(s.time*.1+i*.7)*.25;}

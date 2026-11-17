@@ -13,7 +13,8 @@
     /* 下午 4~5 点的地中海:天顶还很蓝,近地平线泛暖白 —— 不是日落。 */
     medCliff:{top:0x1f6fa8,horizon:0x9fd0e0,lower:0xe7dcc4},
     arcticSnow:{top:0x020911,horizon:0x101f31,lower:0x334859},
-    spanishQuarter:{top:0x3c7898,horizon:0xb8c9c0,lower:0xdac8a8}
+    spanishQuarter:{top:0x3c7898,horizon:0xb8c9c0,lower:0xdac8a8},
+    lunarCrater:{top:0x000002,horizon:0x020307,lower:0x06070a}
   });
 
   function makeSkyDome(THREE,name,centerZ){
@@ -87,6 +88,8 @@
       mat.color.setHex(0xa9b7bb);mat.specular&&mat.specular.setHex(0x9ec7d1);mat.shininess=52;
     }else if(name==="beachSunset"){
       mat.color.setHex(0xc7b0a4);mat.specular&&mat.specular.setHex(0x6c5246);mat.shininess=9;
+    }else if(name==="lunarCrater"){
+      mat.color.setHex(0xebedf0);mat.specular&&mat.specular.setHex(0x2a2c30);mat.shininess=2;
     }else{
       mat.color.setHex(0xd8e0dc);mat.specular&&mat.specular.setHex(0x384b52);mat.shininess=6;
     }
