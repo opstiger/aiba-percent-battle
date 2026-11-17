@@ -562,7 +562,6 @@ function applyScenePreset(name,opts){
     updJumbo();
   }
   document.documentElement.dataset.scenePreset=name;
-  if(typeof syncLunarBallMode==="function")syncLunarBallMode(name==="lunarCrater");
   document.documentElement.dataset.weather=currentWeather;
   document.documentElement.dataset.progression=preset.progression;
   if(!flower){delete document.documentElement.dataset.flowerCount;delete document.documentElement.dataset.flowerGround;delete document.documentElement.dataset.flowerStructure;delete document.documentElement.dataset.weedCount;}
