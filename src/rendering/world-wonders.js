@@ -298,10 +298,10 @@
     const smoothstep=(e0,e1,x)=>{const t=Math.max(0,Math.min(1,(x-e0)/(e1-e0)));return t*t*(3-2*t);};
     const minZ=typeof COURT!=="undefined"?COURT.floorMinZ:-13.5,maxZ=typeof COURT!=="undefined"?COURT.floorMaxZ:22.5;
     const terrainY=(vx,vz)=>{
-      const dx=Math.max(0,Math.abs(vx)-15.8);
-      const dz=Math.max(0,vz<minZ+.2?minZ+.2-vz:(vz>maxZ-.2?vz-(maxZ-.2):0));
-      const blend=smoothstep(0,4.5,Math.hypot(dx,dz));
-      if(blend<=0)return -0.028;
+      const dx=Math.max(0,Math.abs(vx)-10.4);
+      const dz=Math.max(0,vz<minZ+2.2?minZ+2.2-vz:(vz>maxZ-2.2?vz-(maxZ-2.2):0));
+      const blend=smoothstep(0,6.5,Math.hypot(dx,dz));
+      if(blend<=0)return -0.022;
       const wave=Math.sin(vx*.19+vz*.13)*.22+Math.cos(vx*.44-vz*.37)*.11+Math.sin(vx*.88+vz*.76)*.05;
       let cy=0;
       for(let i=0;i<craters.length;i++){
@@ -322,21 +322,41 @@
         const ridge=p1*.55+p2*.32+p3*.18+.12;
         my=Math.pow(t,1.25)*15*ridge;
       }
-      return -0.028+blend*(wave+cy+my);
+      return -0.022+blend*(wave+cy+my);
     };
+    // 无缝衔接的地表沙砾纹理（与球场底色一致，消除矩形边界感）
+    const sandCv=document.createElement("canvas");sandCv.width=512;sandCv.height=512;
+    const sg=sandCv.getContext("2d");
+    sg.fillStyle="#717479";sg.fillRect(0,0,512,512);
+    for(let i=0;i<140;i++){
+      const sx=s.r()*512,sy=s.r()*512,sr=10+s.r()*38;
+      const gr=sg.createRadialGradient(sx,sy,0,sx,sy,sr);
+      const col=i%2?"rgba(95,98,104,.24)":"rgba(130,133,140,.20)";
+      gr.addColorStop(0,col);gr.addColorStop(1,"rgba(113,116,121,0)");
+      sg.fillStyle=gr;sg.fillRect(sx-sr,sy-sr,sr*2,sr*2);
+    }
+    for(let i=0;i<4500;i++){
+      const sx=s.r()*512,sy=s.r()*512,sr=.6+s.r()*1.4;
+      sg.fillStyle=i%2?"rgba(220,222,228,.08)":"rgba(30,32,36,.10)";
+      sg.beginPath();sg.arc(sx,sy,sr,0,Math.PI*2);sg.fill();
+    }
+    const sandTex=new THREE.CanvasTexture(sandCv);
+    sandTex.wrapS=sandTex.wrapT=THREE.RepeatWrapping;sandTex.repeat.set(16,16);
+    if(THREE.sRGBEncoding)sandTex.encoding=THREE.sRGBEncoding;
+
     const tGeo=new THREE.PlaneGeometry(230,230,96,96);tGeo.rotateX(-Math.PI/2);
     const tPos=tGeo.attributes.position,tCol=new Float32Array(tPos.count*3),c=new THREE.Color();
     for(let i=0;i<tPos.count;i++){
       const vx=tPos.getX(i),vz=tPos.getZ(i)+4,y=terrainY(vx,vz);
       tPos.setXYZ(i,vx,y,vz);
-      const n=Math.sin(vx*.55+vz*.45)*.035+Math.cos(vx*1.1-vz*.9)*.02;
-      const shade=Math.max(.30,Math.min(.58,.44+Math.min(.1,y*.006)+n));
-      c.setRGB(shade*.95,shade*.97,shade).convertSRGBToLinear();
+      const n=Math.sin(vx*.55+vz*.45)*.04+Math.cos(vx*1.1-vz*.9)*.025;
+      const shade=Math.max(.68,Math.min(1.0,.92+Math.min(.08,y*.004)+n));
+      c.setRGB(shade,shade,shade).convertSRGBToLinear();
       tCol[i*3]=c.r;tCol[i*3+1]=c.g;tCol[i*3+2]=c.b;
     }
     tGeo.setAttribute("color",new THREE.BufferAttribute(tCol,3));
     tGeo.computeVertexNormals();
-    const terrain=new THREE.Mesh(tGeo,new THREE.MeshLambertMaterial({vertexColors:true,flatShading:true}));
+    const terrain=new THREE.Mesh(tGeo,new THREE.MeshLambertMaterial({map:sandTex,vertexColors:true,flatShading:true}));
     terrain.name="lunarTerrain";terrain.receiveShadow=true;s.root.add(terrain);
 
     // 2. 月球岩石与前景巨石（投射清晰长影）
@@ -375,78 +395,63 @@
     starGeo.setAttribute("position",new THREE.BufferAttribute(sPos,3));
     starGeo.setAttribute("color",new THREE.BufferAttribute(sCol,3));
     const stars=new THREE.Points(starGeo,new THREE.PointsMaterial({size:.72,vertexColors:true,fog:false,transparent:true,opacity:.92,depthWrite:false}));
-    stars.name="lunarStars";stars.frustumCulled=false;s.root.add(stars);
+    stars.name="lunarStars";stars.renderOrder=-10;stars.frustumCulled=false;s.root.add(stars);
 
-    // 4. 远处挂在漆黑宇宙中的蓝色地球（带昼夜晨昏线与大气蓝晕）
-    const eCv=document.createElement("canvas");eCv.width=512;eCv.height=256;
-    const eg=eCv.getContext("2d");
-    const ocean=eg.createLinearGradient(0,0,0,256);
-    ocean.addColorStop(0,"#0f478e");ocean.addColorStop(.5,"#0a326b");ocean.addColorStop(1,"#0f478e");
-    eg.fillStyle=ocean;eg.fillRect(0,0,512,256);
-    // 深浅海域变化
-    for(let i=0;i<60;i++){
-      const gx=s.r()*512,gy=25+s.r()*206,gr=18+s.r()*45;
-      const g=eg.createRadialGradient(gx,gy,0,gx,gy,gr);
-      g.addColorStop(0,"rgba(30,115,200,.24)");g.addColorStop(1,"rgba(15,65,135,0)");
-      eg.fillStyle=g;eg.fillRect(gx-gr,gy-gr,gr*2,gr*2);
-    }
-    // 极地冰盖
-    eg.fillStyle="#dce9f7";eg.fillRect(0,0,512,12);eg.fillRect(0,244,512,12);
-    // 碎裂自然的大陆轮廓（多团块叠加）
-    const landClusters=[[90,88,28],[125,112,22],[148,148,26],[252,72,34],[280,104,28],[295,148,24],[385,84,36],[420,122,22],[430,168,18]];
-    landClusters.forEach(([cx,cy,rad])=>{
-      for(let k=0;k<14;k++){
-        const lx=cx+(s.r()-.5)*rad*1.7,ly=cy+(s.r()-.5)*rad*1.4,lr=rad*(.25+s.r()*.42);
-        eg.fillStyle=k%3===0?"#6f7b4c":k%3===1?"#3f6d45":"#8c8258";
-        eg.beginPath();eg.arc(lx,ly,lr,0,Math.PI*2);eg.fill();
-      }
-    });
-    // 柔和半透明卷云带（避免生硬椭圆）
-    for(let i=0;i<260;i++){
-      const cx=s.r()*512,cy=20+s.r()*216,cw=10+s.r()*38,ch=2+s.r()*5.5;
-      const cg=eg.createRadialGradient(cx,cy,0,cx,cy,cw);
-      cg.addColorStop(0,`rgba(255,255,255,${.12+s.r()*.28})`);
-      cg.addColorStop(1,"rgba(255,255,255,0)");
-      eg.save();eg.translate(cx,cy);eg.rotate((s.r()-.5)*.35);eg.scale(1,ch/cw);
-      eg.fillStyle=cg;eg.beginPath();eg.arc(0,0,cw,0,Math.PI*2);eg.fill();eg.restore();
-    }
-    const earthTex=new THREE.CanvasTexture(eCv);
+    // 4. 远处挂在漆黑宇宙中的蓝色地球（射线球体公告板：永不拉扁、柔和大气晕、大半阴影）
+    const earthTex=new THREE.TextureLoader().load("assets/lunar/earth.jpg");
+    earthTex.wrapS=THREE.RepeatWrapping;
     if(THREE.sRGBEncoding)earthTex.encoding=THREE.sRGBEncoding;
     const earthMat=new THREE.ShaderMaterial({
+      transparent:true,
+      depthWrite:false,
       fog:false,
       uniforms:{
         uMap:{value:earthTex},
-        uSunDir:{value:new THREE.Vector3(-22,10.5,-4).normalize()},
+        uSunDir:{value:new THREE.Vector3(-0.78,0.28,-0.56).normalize()},
         uTime:{value:0}
       },
-      vertexShader:`varying vec2 vUv;varying vec3 vNorm;varying vec3 vView;
+      vertexShader:`varying vec2 vUv;
         void main(){
           vUv=uv;
-          vec4 mv=modelViewMatrix*vec4(position,1.0);
-          vNorm=normalize(normalMatrix*normal);
-          vView=normalize(-mv.xyz);
-          gl_Position=projectionMatrix*mv;
+          vec4 mvPos=viewMatrix*modelMatrix*vec4(0.0,0.0,0.0,1.0);
+          mvPos.xy+=position.xy;
+          gl_Position=projectionMatrix*mvPos;
         }`,
       fragmentShader:`uniform sampler2D uMap;uniform vec3 uSunDir;uniform float uTime;
-        varying vec2 vUv;varying vec3 vNorm;varying vec3 vView;
+        varying vec2 vUv;
         void main(){
-          vec2 uv=vec2(fract(vUv.x+uTime*0.004),vUv.y);
-          vec3 albedo=texture2D(uMap,uv).rgb;
-          vec3 N=normalize(vNorm);
-          vec3 L=normalize((viewMatrix*vec4(uSunDir,0.0)).xyz);
+          vec2 p=(vUv*2.0-1.0)/0.72;
+          float r2=dot(p,p);
+          float r=sqrt(r2);
+          float outerDist=max(0.0,r-1.0);
+          float halo=exp(-outerDist*8.5)*smoothstep(1.38,1.0,r);
+          vec3 N=vec3(p,sqrt(max(0.0,1.0-r2)));
+          vec3 L=normalize(uSunDir);
           float ndl=dot(N,L);
-          float lit=smoothstep(-0.08,0.22,ndl);
-          float fres=pow(1.0-max(dot(N,normalize(vView)),0.0),3.0);
-          vec3 atmo=vec3(0.28,0.65,1.0)*fres*(0.18+0.88*lit);
-          vec3 col=albedo*(0.02+1.15*lit)+atmo;
-          gl_FragColor=vec4(col,1.0);
+          float lit=smoothstep(-0.18,0.34,ndl);
+          float rim=pow(1.0-N.z,2.6);
+          if(r>1.0){
+            float sunSide=smoothstep(-0.45,0.55,dot(normalize(vec3(p,0.0)),L));
+            vec3 haloCol=vec3(0.24,0.62,1.0)*halo*(0.06+0.78*sunSide);
+            gl_FragColor=vec4(haloCol,halo*(0.08+0.72*sunSide));
+            return;
+          }
+          float lon=atan(N.x,N.z)/6.2831853+0.5+uTime*0.003;
+          float lat=asin(clamp(N.y,-0.999,0.999))/3.14159265+0.5;
+          vec3 albedo=texture2D(uMap,vec2(fract(lon),lat)).rgb;
+          float edgeFade=smoothstep(1.0,0.955,r);
+          vec3 atmo=vec3(0.28,0.68,1.0)*rim*(0.06+0.94*lit);
+          vec3 surface=albedo*(0.008+1.24*lit)+atmo;
+          vec3 col=mix(vec3(0.24,0.62,1.0)*(0.06+0.75*lit),surface,edgeFade);
+          float alpha=max(edgeFade,halo*0.85);
+          gl_FragColor=vec4(col,clamp(alpha,0.0,1.0));
           #include <tonemapping_fragment>
           #include <encodings_fragment>
         }`
     });
     earthMat.map=earthTex;
-    const earth=new THREE.Mesh(new THREE.SphereGeometry(7.8,36,26),earthMat);
-    earth.position.set(16,22.5,-72);earth.name="lunarEarth";earth.frustumCulled=false;
+    const earth=new THREE.Mesh(new THREE.PlaneGeometry(16.5,16.5),earthMat);
+    earth.position.set(7.5,18.5,-78);earth.name="lunarEarth";earth.frustumCulled=false;
     s.root.add(earth);
     s.wonder={kind:"lunar",earth};
   }

@@ -98,6 +98,17 @@
       g.fillStyle=r()>.5?"rgba(218,220,226,.09)":"rgba(32,34,38,.11)";
       g.beginPath();g.arc(x,z,rad,0,Math.PI*2);g.fill();
     }
+    // 边缘柔化羽化遮罩：让场地四周透明过渡到下方的月球3D沙地，彻底消除矩形边界
+    g.save();
+    g.globalCompositeOperation="destination-in";
+    const midZ=COURT.midZ,rx=15.6,rz=D*.49;
+    g.translate(0,midZ);g.scale(1,rz/rx);
+    const edgeMask=g.createRadialGradient(0,0,rx*.52,0,0,rx*.96);
+    edgeMask.addColorStop(0,"rgba(255,255,255,1)");
+    edgeMask.addColorStop(.62,"rgba(255,255,255,.88)");
+    edgeMask.addColorStop(1,"rgba(255,255,255,0)");
+    g.fillStyle=edgeMask;g.fillRect(-rx*1.2,-rx*1.2,rx*2.4,rx*2.4);
+    g.restore();
     const tex=new THREE.CanvasTexture(cv);tex.name="placeSurface:lunarCrater";
     tex.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
     if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;
@@ -235,6 +246,7 @@
   function restore(){
     if(courtFloor?.userData.placeTexture){courtFloor.userData.placeTexture.dispose();delete courtFloor.userData.placeTexture;}
     if(courtFloor?.userData.placeBumpTexture){courtFloor.userData.placeBumpTexture.dispose();delete courtFloor.userData.placeBumpTexture;courtFloor.material.bumpMap=null;courtFloor.material.bumpScale=0;}
+    if(courtFloor?.material)courtFloor.material.transparent=false;
     scene.traverse(o=>{if(o.userData.placeHidden!==undefined){o.visible=o.userData.placeHidden;delete o.userData.placeHidden;}});
     setPlaceHoops(false);
   }
@@ -1518,6 +1530,7 @@
     }
   }
   function birds(s,dt){
+    if(!s.birdPool)return;
     s.nextBird-=dt;if(s.nextBird<=0&&s.birds.length===0){
       s.nextBird=22+s.r()*26;const a=s.r()*Math.PI*2,count=1+Math.floor(s.r()*3);
       for(let i=0;i<count;i++){
@@ -1569,6 +1582,7 @@
     }
     /* Rain has a water film; forest soil stays rough, with only a faint damp sheen. */
     const tex=surface(name),m=courtFloor.material;courtFloor.userData.placeTexture=tex;m.map=tex;m.color.setHex(0xffffff);m.roughnessMap=null;
+    m.transparent=(name==="lunarCrater");
     if(name==="lunarCrater"){
       const bump=lunarBump();courtFloor.userData.placeBumpTexture=bump;
       m.bumpMap=bump;m.bumpScale=0.045;
