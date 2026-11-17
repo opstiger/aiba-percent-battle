@@ -17,7 +17,7 @@
   /* 用游戏时钟（updFire 按 dt 累加），不用墙钟：暂停时尾迹定住，掉帧时粗细也不乱 */
   let clock=0;const now=()=>clock;
 
-  /* ---------- 彗星尾：每条尾迹一张动态三角带 ---------- */
+  /* ---------- 彗星尾：柔和低亮度的渐隐飘带（头尾双向平滑收尖，绝不硬切） ---------- */
   const trailMat=new T.ShaderMaterial({
     transparent:true,depthWrite:false,blending:T.AdditiveBlending,side:T.DoubleSide,
     uniforms:{uRainbow:{value:0},uTime:{value:0}},
@@ -25,16 +25,17 @@
       void main(){vT=aT;vSide=aSide;vFade=aFade;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
     fragmentShader:`uniform float uRainbow,uTime;varying float vT;varying float vSide;varying float vFade;
       vec3 ramp(float t){
-        vec3 c0=vec3(1.,.98,.9),c1=vec3(1.,.83,.35),c2=vec3(1.,.47,.12),c3=vec3(1.,.24,.5),c4=vec3(.48,.36,1.);
-        if(t<.08)return mix(c0,c1,t/.08);if(t<.3)return mix(c1,c2,(t-.08)/.22);
-        if(t<.62)return mix(c2,c3,(t-.3)/.32);return mix(c3,c4,(t-.62)/.38);}
+        vec3 c0=vec3(1.,.94,.76),c1=vec3(1.,.76,.34),c2=vec3(1.,.48,.22),c3=vec3(.96,.32,.58),c4=vec3(.48,.42,1.);
+        if(t<.12)return mix(c0,c1,t/.12);if(t<.36)return mix(c1,c2,(t-.12)/.24);
+        if(t<.68)return mix(c2,c3,(t-.36)/.32);return mix(c3,c4,(t-.68)/.32);}
       vec3 rainbow(float t){return .55+.45*cos(6.2832*(t*1.3-uTime*.9+vec3(0.,.33,.67)));}
       void main(){
-        float edge=1.-vSide*vSide;edge=edge*edge;                  // 横向：中间亮、边缘柔
-        float core=exp(-vSide*vSide*18.)*(1.-smoothstep(0.,.35,vT)); // 头部白热细芯
-        vec3 c=mix(ramp(vT),rainbow(vT),uRainbow*smoothstep(.05,.3,vT));
-        float a=min(1.,pow(1.-vT,1.3)*edge*1.35)*vFade;
-        gl_FragColor=vec4(c*a*1.25+vec3(1.,.95,.85)*core*vFade,a);}`
+        float edge=1.-vSide*vSide;edge=edge*edge*edge;             // 横向更柔和
+        float headIn=smoothstep(0.,.14,vT);                        // 头部渐入，避免平头硬切
+        float tailOut=pow(1.-vT,1.85);                             // 尾部平滑渐隐
+        vec3 c=mix(ramp(vT),rainbow(vT),uRainbow*smoothstep(.08,.35,vT));
+        float a=clamp(headIn*tailOut*edge*.46,0.,1.)*vFade;
+        gl_FragColor=vec4(c*a*.85,a);}`
   });
   const trails=[];
   function makeTrail(p){
@@ -46,22 +47,23 @@
     const idx=[];for(let i=0;i<MAX_PTS-1;i++){const a=i*2;idx.push(a,a+1,a+2,a+1,a+3,a+2);}
     g.setIndex(idx);g.setDrawRange(0,0);
     const mesh=new T.Mesh(g,trailMat);mesh.frustumCulled=false;mesh.renderOrder=20;scene.add(mesh);
-    const tr={mesh,pts:[],last:now(),ended:false,fade:1,level:hotLevel()};
+    const tr={mesh,pts:[],last:now(),ended:false,fade:1,level:hotLevel(),starAcc:0};
     trails.push(tr);return tr;
   }
   const _cam=new T.Vector3(),_tan=new T.Vector3(),_side=new T.Vector3(),_to=new T.Vector3();
   function rebuild(tr,t){
     const g=tr.mesh.geometry,P=g.attributes.position.array,A=g.attributes.aT.array,S=g.attributes.aSide.array,F=g.attributes.aFade.array;
     const pts=tr.pts,n=pts.length;if(n<2){g.setDrawRange(0,0);return;}
-    const lvl=tr.level,age=TRAIL_AGE*(1+.22*lvl),W=.19*(1+.16*lvl);   // 头部半宽 ≈ 球半径（.16），尾巴收成尖
+    const lvl=tr.level,age=TRAIL_AGE*(1+.18*lvl),W=.13*(1+.12*lvl);
     if(typeof camera!=="undefined")camera.getWorldPosition(_cam);
     for(let i=0;i<n;i++){
-      const p=pts[n-1-i],k=Math.min(1,(t-p.t)/age);             // 0 = 球头，1 = 尾尖
+      const p=pts[n-1-i],u=i/(n-1),k=Math.max(u,Math.min(1,(t-p.t)/age)); // 0=球头，1=尾尖（无论轨迹多短尾尖必收成 0）
       const a=pts[Math.max(0,n-2-i)],b=pts[Math.min(n-1,n-i)];
       _tan.set(b.x-a.x,b.y-a.y,b.z-a.z);if(_tan.lengthSq()<1e-8)_tan.set(0,1,0);_tan.normalize();
       _to.set(_cam.x-p.x,_cam.y-p.y,_cam.z-p.z).normalize();
       _side.crossVectors(_tan,_to);if(_side.lengthSq()<1e-8)_side.set(1,0,0);_side.normalize();
-      const w=W*Math.pow(1-k,1.5)*(k<.04?.75+6*k:1);              // 头部略收圆，往后收成尖
+      const headTaper=u<.12?u/.12:1;
+      const w=W*Math.pow(1-k,1.6)*(.25+.75*headTaper);
       for(const sd of [-1,1]){const j=(i*2+(sd>0?1:0));
         P[j*3]=p.x+_side.x*w*sd;P[j*3+1]=p.y+_side.y*w*sd;P[j*3+2]=p.z+_side.z*w*sd;
         A[j]=k;S[j]=sd;F[j]=tr.fade;}
@@ -70,8 +72,8 @@
     g.setDrawRange(0,(n-1)*6);
   }
 
-  /* ---------- 星星：一池点精灵，片元里画四角星 ---------- */
-  const STAR_N=220;
+  /* ---------- 五角星颗粒：分散、大小错落、柔和闪烁 ---------- */
+  const STAR_N=160;
   const sPos=new Float32Array(STAR_N*3),sCol=new Float32Array(STAR_N*3),sSize=new Float32Array(STAR_N),sLife=new Float32Array(STAR_N),
     sMax=new Float32Array(STAR_N),sSeed=new Float32Array(STAR_N),sVel=new Float32Array(STAR_N*3);
   const starGeo=new T.BufferGeometry();
@@ -85,27 +87,43 @@
       void main(){vCol=aCol;vSeed=aSeed;vec4 mv=modelViewMatrix*vec4(position,1.);vA=step(.0001,aSize);
         gl_PointSize=aSize*uScale/max(.1,-mv.z);gl_Position=projectionMatrix*mv;}`,
     fragmentShader:`uniform float uTime;varying vec3 vCol;varying float vSeed;varying float vA;
+      float sdStar5(vec2 p,float r,float rf){
+        const vec2 k1=vec2(.809016994375,-.587785252292);
+        const vec2 k2=vec2(-k1.x,k1.y);
+        p.x=abs(p.x);
+        p-=2.*max(dot(k1,p),0.)*k1;
+        p-=2.*max(dot(k2,p),0.)*k2;
+        p.x=abs(p.x);p.y-=r;
+        vec2 ba=rf*vec2(-k1.y,k1.x)-vec2(0.,1.);
+        float h=clamp(dot(p,ba)/dot(ba,ba),0.,r);
+        return length(p-ba*h)*sign(p.y*ba.x-p.x*ba.y);
+      }
       void main(){if(vA<.5)discard;
-        vec2 d=gl_PointCoord-.5;float r=vSeed*6.2832+uTime*1.7*(fract(vSeed*7.)-.5);
-        float cs=cos(r),sn=sin(r);d=vec2(cs*d.x-sn*d.y,sn*d.x+cs*d.y);vec2 q=abs(d);
-        float ray=max(exp(-q.x*38.)*exp(-q.y*7.),exp(-q.y*38.)*exp(-q.x*7.));   // 四角星的十字光芒
-        float glow=exp(-dot(d,d)*60.);                                        // 中心亮点
-        float tw=.75+.25*sin(uTime*18.+vSeed*40.);                           // 闪烁
-        float a=clamp((ray+glow)*tw,0.,1.);if(a<.02)discard;
-        gl_FragColor=vec4(mix(vCol,vec3(1.),glow*.6)*a,a);}`
+        vec2 d=gl_PointCoord-.5;float rot=vSeed*6.2832+uTime*2.1*(fract(vSeed*7.)-.5);
+        float cs=cos(rot),sn=sin(rot);d=vec2(cs*d.x-sn*d.y,sn*d.x+cs*d.y);
+        float sd=sdStar5(d,.42,.44);
+        float starShape=smoothstep(.035,-.025,sd);
+        float halo=exp(-dot(d,d)*22.)*.28;
+        float tw=.72+.28*sin(uTime*12.+vSeed*40.);
+        float a=clamp((starShape*.82+halo)*tw,0.,1.);if(a<.02)discard;
+        gl_FragColor=vec4(mix(vCol,vec3(1.),starShape*.25)*a,a);}`
   });
   const stars=new T.Points(starGeo,starMat);stars.frustumCulled=false;stars.renderOrder=21;scene.add(stars);
-  const PALETTE=[[1,.84,.35],[1,1,1],[.45,.92,1],[1,.5,.78],[.72,.6,1],[1,.66,.25]];
+  const PALETTE=[[1,.86,.38],[1,.98,.9],[.52,.9,1],[1,.58,.8],[.75,.65,1],[1,.7,.32]];
   let sIdx=0;
   function emitStar(p,v,lvl){
     const i=sIdx;sIdx=(sIdx+1)%STAR_N;
-    sPos[i*3]=p.x+(Math.random()-.5)*.12;sPos[i*3+1]=p.y+(Math.random()-.5)*.12;sPos[i*3+2]=p.z+(Math.random()-.5)*.12;
-    // 往尾后方 + 四周散开一点
-    sVel[i*3]=-v.x*.12+(Math.random()-.5)*.55;sVel[i*3+1]=-v.y*.12+(Math.random()-.5)*.55;sVel[i*3+2]=-v.z*.12+(Math.random()-.5)*.55;
+    const spread=.26;
+    sPos[i*3]=p.x+(Math.random()-.5)*spread;sPos[i*3+1]=p.y+(Math.random()-.5)*spread;sPos[i*3+2]=p.z+(Math.random()-.5)*spread;
+    // 分散飘散，不挤成一团
+    sVel[i*3]=-v.x*.08+(Math.random()-.5)*.95;sVel[i*3+1]=-v.y*.08+(Math.random()-.5)*.85+.18;sVel[i*3+2]=-v.z*.08+(Math.random()-.5)*.95;
     const c=PALETTE[(Math.random()*(lvl>=2?PALETTE.length:4))|0];
     sCol[i*3]=c[0];sCol[i*3+1]=c[1];sCol[i*3+2]=c[2];
-    sMax[i]=.45+Math.random()*.4;sLife[i]=sMax[i];sSeed[i]=Math.random();
-    sSize[i]=(.12+Math.random()*.1)*(1+.15*lvl);
+    sMax[i]=.55+Math.random()*.45;sLife[i]=sMax[i];sSeed[i]=Math.random();
+    // 大小错落：小星尘 ~0.11、中星 ~0.18、大五角星 ~0.28
+    const tier=Math.random();
+    const baseSize=tier<.55?.11+Math.random()*.05:(tier<.88?.17+Math.random()*.06:.25+Math.random()*.07);
+    sSize[i]=baseSize*(1+.1*lvl);
   }
 
   /* ---------- 对外接口：沿用 emitFire / updFire ---------- */
@@ -121,10 +139,12 @@
     const last=tr.pts[tr.pts.length-1];
     tr.pts.push({x:p.x,y:p.y,z:p.z,t});if(tr.pts.length>MAX_PTS)tr.pts.shift();
     tr.last=t;tr.level=Math.max(tr.level,hotLevel());
-    // 星星：每帧 1~2 颗，热手档位越高越多
-    if(last){_v.set(p.x-last.x,p.y-last.y,p.z-last.z).multiplyScalar(60);
-      const n=1+(Math.random()<.35?1:0)+(Math.random()<.25*tr.level?1:0)+(tr.level>=2?1:0);
-      for(let k=0;k<n;k++)emitStar(p,_v,tr.level);}
+    // 分散五角星：按节奏稀疏洒出，不密集堆叠
+    if(last){
+      _v.set(p.x-last.x,p.y-last.y,p.z-last.z).multiplyScalar(60);
+      tr.starAcc+=(.42+.14*tr.level);
+      if(tr.starAcc>=1){tr.starAcc-=1;emitStar(p,_v,tr.level);}
+    }
   }
   emitFire.__aibaHotHand=true;   // 热手模块看到这个标记就不再往里补随机火点
   function updFire(dt){
