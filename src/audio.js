@@ -566,7 +566,7 @@ function setPauseAudioDuck(on){
 function externalMediaDuckActive(){
   return Date.now()<mediaDuckUntil;
 }
-const QUIET_CROWD_SCENES=new Set(["lunarCrater","beachSunset","arcticSnow","flowerCourt","medCliff","rainyCourt","spanishQuarter"]);
+const QUIET_CROWD_SCENES=new Set(["lunarCrater","beachSunset","arcticSnow","flowerCourt","medCliff","rainyCourt","spanishQuarter","tokyoRooftop"]);
 function isCrowdQuietScene(){
   const s=(typeof currentScenePreset==="string"&&currentScenePreset)||document.documentElement.dataset.scenePreset||"indoor";
   return QUIET_CROWD_SCENES.has(s);
@@ -613,10 +613,10 @@ function syncSceneAmbience(){
   const arenaLike=sceneAudioArenaLike(),allowed=G.state==="diff"||arenaLike;
   applyExternalMediaMix();
   if(!AC||MUTED||AC.state==="suspended"||!allowed){extStop("rain");extStop("ocean");syncCoastalWind(false);syncAudioDebug();return;}
-  const rainy=currentWeather==="rain",beach=currentScenePreset==="beachSunset";
+  const rainy=currentWeather==="rain",beach=currentScenePreset==="beachSunset",rooftop=currentScenePreset==="tokyoRooftop";
   applyExternalMediaMix();
   if(rainy)extPlay("rain");else extStop("rain");
-  if(beach){extPlay("ocean");syncCoastalWind(arenaLike);}else{extStop("ocean");syncCoastalWind(false);}
+  if(beach){extPlay("ocean");syncCoastalWind(arenaLike);}else{extStop("ocean");syncCoastalWind(rooftop&&arenaLike);}
   setCrowdHeat(crowdHeat);
   syncAudioDebug();
 }

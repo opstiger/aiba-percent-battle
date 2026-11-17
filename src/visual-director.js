@@ -14,7 +14,8 @@
     medCliff:{top:0x1f6fa8,horizon:0x9fd0e0,lower:0xe7dcc4},
     arcticSnow:{top:0x020911,horizon:0x101f31,lower:0x334859},
     spanishQuarter:{top:0x3c7898,horizon:0xb8c9c0,lower:0xdac8a8},
-    lunarCrater:{top:0x000002,horizon:0x020307,lower:0x06070a}
+    lunarCrater:{top:0x000002,horizon:0x020307,lower:0x06070a},
+    tokyoRooftop:{top:0x02050d,horizon:0x13203d,lower:0x0a0f1c}
   });
 
   function makeSkyDome(THREE,name,centerZ){
@@ -90,6 +91,8 @@
       mat.color.setHex(0xc7b0a4);mat.specular&&mat.specular.setHex(0x6c5246);mat.shininess=9;
     }else if(name==="lunarCrater"){
       mat.color.setHex(0xebedf0);mat.specular&&mat.specular.setHex(0x2a2c30);mat.shininess=2;
+    }else if(name==="tokyoRooftop"){
+      mat.color.setHex(0xd4dce8);mat.specular&&mat.specular.setHex(0x7a94ba);mat.shininess=26;
     }else{
       mat.color.setHex(0xd8e0dc);mat.specular&&mat.specular.setHex(0x384b52);mat.shininess=6;
     }

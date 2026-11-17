@@ -478,6 +478,23 @@ function applyScenePreset(name,opts){
         sun.shadow.bias=-0.0005;sun.shadow.normalBias=0.03;sun.shadow.radius=1.1;
         sun.shadow.camera.updateProjectionMatrix();
       }
+    }else if(name==="tokyoRooftop"){
+      /* 东京摩天楼顶夜场：深蓝都市夜空 + 天台球场 LED 泛光灯主照明 + 清晰远景铁塔与灯海。 */
+      scene.background.setHex(0x040812);scene.fog.color.setHex(0x0c1428);scene.fog.near=95;scene.fog.far=360;
+      ambient.color.setHex(0x8498bd);ambient.intensity=.38;
+      hemi.color.setHex(0x6d89bd);hemi.groundColor.setHex(0x23293a);hemi.intensity=.48;
+      sun.color.setHex(0xffe8c8);sun.intensity=1.12;sun.position.set(-14,21,8);
+      spot.intensity=0;camFill.intensity=.24;
+      arenaLights.forEach(l=>{l.intensity=0;});
+      if(renderer.shadowMap&&renderer.shadowMap.enabled){
+        sun.castShadow=true;
+        sun.shadow.mapSize.setScalar(AA_COARSE_POINTER?1024:2048);
+        sun.shadow.camera.left=-20;sun.shadow.camera.right=20;
+        sun.shadow.camera.top=20;sun.shadow.camera.bottom=-20;
+        sun.shadow.camera.near=1;sun.shadow.camera.far=70;
+        sun.shadow.bias=-0.0005;sun.shadow.normalBias=0.03;sun.shadow.radius=1.4;
+        sun.shadow.camera.updateProjectionMatrix();
+      }
     }else if(name==="spanishQuarter"){
       scene.background.setHex(0x6093af);scene.fog.color.setHex(0xcdbb9e);scene.fog.near=48;scene.fog.far=135;
       ambient.color.setHex(0xd5dce0);ambient.intensity=.3;

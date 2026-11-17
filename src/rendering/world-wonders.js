@@ -4,7 +4,8 @@
   const palettes={
     arcticSnow:{ground:"#becbd0",field:"#35464f",key:"#2a3945",line:"#dddeda",shirts:[0x40556a,0xb57351,0x667c76,0xd4c7aa,0x444756,0x864f46,0x6e818d,0xb5b9af]},
     spanishQuarter:{ground:"#a6947b",field:"#ad6248",key:"#944c39",line:"#e9d9af",shirts:[0xe2d6bb,0x8a4638,0x75877e,0xc09d6a,0x3f5665,0xede4ce,0xad7654,0x648690]},
-    lunarCrater:{ground:"#717479",field:"#717479",key:"#717479",line:"#cfd3d9",shirts:[0xe6e8ec,0xc7ccd4,0x3b82f6,0x9aa0a8]}
+    lunarCrater:{ground:"#717479",field:"#717479",key:"#717479",line:"#cfd3d9",shirts:[0xe6e8ec,0xc7ccd4,0x3b82f6,0x9aa0a8]},
+    tokyoRooftop:{ground:"#1d222b",field:"#252c38",key:"#b8382c",line:"#eef2f8",shirts:[0xf4f4f6,0x1e293b,0xe11d48,0x38bdf8,0xf59e0b,0x94a3b8]}
   };
   function arctic(s,b,{batch}){
     // A real vertical separation prevents the grading RT's 16-bit depth from
@@ -541,9 +542,208 @@
     s.root.add(earth);
     s.wonder={kind:"lunar",earth,suit1,suit2};
   }
-  function build(s,b,helpers){if(s.name==="arcticSnow")arctic(s,b,helpers);else if(s.name==="spanishQuarter")spanish(s,b,helpers);else if(s.name==="lunarCrater")lunar(s,b,helpers);}
+  function tokyo(s,b,{batch}){
+    // 1. 摩天大楼主体结构（从天台下方延伸至 -68m 深渊）
+    b.box(0x161b24,0,-34.25,6,31.6,68.1,38.0);
+    // 天台边缘混凝土女儿墙与金属压顶
+    const px=15.6,zMin=-12.8,zMax=24.8,zMid=(zMin+zMax)*.5,zLen=zMax-zMin;
+    b.box(0x28303d,0,.11,zMin,px*2+.4,.24,.38);
+    b.box(0x28303d,0,.11,zMax,px*2+.4,.24,.38);
+    b.box(0x28303d,-px,.11,zMid,.38,.24,zLen+.4);
+    b.box(0x28303d,px,.11,zMid,.38,.24,zLen+.4);
+    // 无框强化玻璃护栏（立柱 + 顶部扶手 + 半透明玻璃板）
+    const railH=1.18;
+    for(let x=-px;x<=px+.01;x+=3.9){
+      b.box(0x3a4454,x,.68,zMin,.07,.96,.07);
+      b.box(0x3a4454,x,.68,zMax,.07,.96,.07);
+    }
+    for(let z=zMin+3.8;z<zMax-.5;z+=3.8){
+      b.box(0x3a4454,-px,.68,z,.07,.96,.07);
+      b.box(0x3a4454,px,.68,z,.07,.96,.07);
+    }
+    b.box(0x4c586b,0,railH,zMin,px*2+.16,.055,.09);
+    b.box(0x4c586b,0,railH,zMax,px*2+.16,.055,.09);
+    b.box(0x4c586b,-px,railH,zMid,.09,.055,zLen+.16);
+    b.box(0x4c586b,px,railH,zMid,.09,.055,zLen+.16);
+    const glassMat=new THREE.MeshBasicMaterial({color:0x7eb8f0,transparent:true,opacity:0.17,depthWrite:false,side:THREE.DoubleSide});
+    const addGlass=(w,h,d,x,y,z)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),glassMat);m.position.set(x,y,z);s.root.add(m);};
+    addGlass(px*2-.1,.9,0.03,0,.68,zMin);
+    addGlass(px*2-.1,.9,0.03,0,.68,zMax);
+    addGlass(0.03,.9,zLen-.1,-px,.68,zMid);
+    addGlass(0.03,.9,zLen-.1,px,.68,zMid);
+
+    // 2. 四角专业球场夜间 LED 泛光灯柱 + 天台空调外机/通道间
+    const lampGlow=batch();
+    for(const sx of [-1,1])for(const sz of [1,-1]){
+      const lx=sx*13.6,lz=sz<0?-11.2:22.8;
+      b.box(0x242b38,lx,3.8,lz,.22,7.6,.22);
+      b.box(0x1b202b,lx,7.55,lz,sx*-.45,.18,.65,0,sx*.42,0);
+      lampGlow.box(0xfff6e5,lx-sx*.14,7.46,lz,.18,.38,.78,0,sx*.42,0);
+    }
+    // 场外远端设备间（不遮挡前向铁塔视野）
+    b.box(0x232a36,12.6,1.15,21.5,3.4,2.3,3.8);
+    b.box(0x313a4a,12.6,2.35,21.5,3.6,.14,4.0);
+    lampGlow.box(0x7dd3fc,10.88,1.5,21.5,.04,.5,.9);
+
+    // 四角红色航空警示灯（呼吸闪烁）
+    const beacons=[];
+    const beaconGeo=new THREE.SphereGeometry(.16,8,6);
+    const makeBeacon=(x,y,z,phase,size=1)=>{
+      const mat=new THREE.MeshBasicMaterial({color:0xff2820});
+      const m=new THREE.Mesh(beaconGeo,mat);m.position.set(x,y,z);m.scale.setScalar(size);
+      s.root.add(m);beacons.push({m,mat,phase});
+    };
+    for(const sx of [-1,1])for(const sz of [-1,1])makeBeacon(sx*(px-.1),1.38,sz<0?zMin:zMax,sx+sz,.95);
+
+    // 3. 东京夜景摩天楼群 + 程序化霓虹窗格贴图
+    const winCv=document.createElement("canvas");winCv.width=256;winCv.height=512;
+    const wg=winCv.getContext("2d");
+    wg.fillStyle="#070b14";wg.fillRect(0,0,256,512);
+    for(let row=6;row<504;row+=10){
+      const floorLit=s.r();
+      if(floorLit<.16)continue;
+      for(let col=6;col<248;col+=8){
+        const lit=s.r();
+        if(lit<.44)continue;
+        wg.fillStyle=lit>.93?"#7dd3fc":lit>.83?"#fb7185":lit>.62?"#fde68a":"#fff7ed";
+        wg.fillRect(col,row,5,6);
+      }
+    }
+    const winTex=new THREE.CanvasTexture(winCv);
+    winTex.wrapS=THREE.RepeatWrapping;winTex.wrapT=THREE.RepeatWrapping;
+    winTex.repeat.set(1.5,2.2);
+    if(THREE.sRGBEncoding)winTex.encoding=THREE.sRGBEncoding;
+    const skyMat=new THREE.MeshBasicMaterial({map:winTex,color:0xdbeafe});
+
+    // 暗色都市大地基底（夜色东京街道底面）
+    b.box(0x050811,0,-68,0,520,1,520);
+
+    // 围绕四周的摩天大楼（正前方留出开阔走廊给东京铁塔，两侧与远景高低错落耸立于地平线之上）
+    const bldCount=s.mobile?52:84;
+    const neonCols=[0x38bdf8,0xf43f5e,0xfbbf24,0x22d3ee];
+    for(let i=0;i<bldCount;i++){
+      let bx,bz,topY;
+      if(i<28){
+        // 铁塔左右两侧纵深天际线（高出天台地平线 -2m ~ +24m，形成壮观都市峡谷）
+        const side=i%2?1:-1;
+        bx=side*(30+s.r()*95);
+        bz=-24-s.r()*115;
+        topY=-2+s.r()*26;
+      }else if(i<56){
+        // 球场左右侧高楼群
+        const side=i%2?1:-1;
+        bx=side*(28+s.r()*90);
+        bz=-20+s.r()*68;
+        topY=-4+s.r()*22;
+      }else{
+        // 极远景铁塔背景天际线与后方楼群
+        bx=(s.r()-.5)*240;
+        bz=i<72?(-118-s.r()*48):(34+s.r()*65);
+        topY=-6+s.r()*18;
+      }
+      const bw=10+s.r()*14,bd=10+s.r()*14,bh=topY+68;
+      const bm=new THREE.Mesh(new THREE.BoxGeometry(bw,bh,bd),skyMat);
+      bm.position.set(bx,-68+bh*.5,bz);
+      s.root.add(bm);
+      // 楼顶航空灯或霓虹冠饰
+      if(topY>4){
+        makeBeacon(bx+bw*.38,topY+.4,bz+bd*.38,i*.7,1.45);
+        if(i%4===0){
+          const nc=neonCols[i%neonCols.length];
+          lampGlow.box(nc,bx,topY-.35,bz+bd*.5+.08,bw*.72,.28,.12);
+        }
+      }
+    }
+    lampGlow.finish(s.root,"tokyoRooftopFloods",true);
+
+    // 4. 标志性地标：东京铁塔（偏右构图，不被篮筐遮挡，红白钢架 + 暖金/橙红夜间照明 + 展望台 + 塔尖）
+    const tx=19.5,tz=-82,tBase=-48;
+    const towerGlow=batch();
+    const tiers=13,H=86;
+    const halfAt=u=>13.0*Math.pow(1-u,1.52)+1.15;
+    for(let k=0;k<tiers;k++){
+      const u0=k/tiers,u1=(k+1)/tiers,um=(u0+u1)*.5;
+      const y0=tBase+u0*H,y1=tBase+u1*H,ym=(y0+y1)*.5;
+      const w0=halfAt(u0),w1=halfAt(u1),wm=(w0+w1)*.5;
+      const red=k%2===0;
+      const col=red?0xeb3f25:0xf3f5f8;
+      const segH=(y1-y0)+.25,tilt=Math.atan2(w0-w1,y1-y0);
+      // 四根倾斜钢骨主腿
+      for(const sx of [-1,1])for(const sz of [-1,1]){
+        b.box(col,tx+sx*wm,ym,tz+sz*wm,.48,segH,.48,sz*tilt,0,-sx*tilt);
+        // 内侧暖橙夜间投光高亮筋
+        towerGlow.box(red?0xff6e30:0xffbe76,tx+sx*(wm-.22),ym,tz+sz*(wm-.22),.2,segH*.94,.2,sz*tilt,0,-sx*tilt);
+      }
+      // 水平横梁与交叉斜撑
+      b.box(col,tx,y1,tz-w1,w1*2,.34,.34);
+      b.box(col,tx,y1,tz+w1,w1*2,.34,.34);
+      b.box(col,tx-w1,y1,tz,.34,.34,w1*2);
+      b.box(col,tx+w1,y1,tz,.34,.34,w1*2);
+      if(k<tiers-1){
+        const diag=Math.hypot(wm*1.9,y1-y0),ang=Math.atan2(wm*1.9,y1-y0);
+        b.box(col,tx,ym,tz+wm,.18,diag,.18,0,0,ang);
+        b.box(col,tx,ym,tz+wm,.18,diag,.18,0,0,-ang);
+      }
+    }
+    // 大展望台 (Main Deck) & 特别展望台 (Top Deck)
+    const mainY=tBase+52,topY=tBase+71;
+    b.box(0x28303e,tx,mainY,tz,8.0,3.2,8.0);
+    towerGlow.box(0xffc966,tx,mainY,tz,8.25,1.5,8.25);
+    towerGlow.box(0x7dd3fc,tx,mainY+1.0,tz,8.15,.35,8.15);
+    b.box(0x28303e,tx,topY,tz,4.2,2.4,4.2);
+    towerGlow.box(0xffd27a,tx,topY,tz,4.45,1.0,4.45);
+    // 顶部红白避雷针天线 + 塔尖航空红灯
+    for(let a=0;a<4;a++){
+      const ay=tBase+H+a*5.5+2.75;
+      b.box(a%2?0xf3f5f8:0xeb3f25,tx,ay,tz,.55-.08*a,5.6,.55-.08*a);
+      towerGlow.box(0xff8c42,tx,ay,tz,.6-.08*a,5.2,.6-.08*a);
+    }
+    towerGlow.finish(s.root,"tokyoTowerGlow",true);
+    makeBeacon(tx,tBase+H+22.4,tz,0,2.1);
+
+    // 5. 首都高架桥 + 流动红白车流光轨
+    b.box(0x131822,0,-46.5,-44,240,.8,5.2);
+    const traffic=[];
+    const tCount=s.mobile?18:32;
+    for(let i=0;i<tCount;i++){
+      const dir=i%2?1:-1;
+      const tm=new THREE.Mesh(
+        new THREE.BoxGeometry(1.7,.22,.32),
+        new THREE.MeshBasicMaterial({color:dir>0?0xff3b30:0xf8fafc})
+      );
+      const startX=-115+i*(230/tCount);
+      tm.position.set(startX,-45.95,dir>0?-42.8:-45.2);
+      s.root.add(tm);
+      traffic.push({m:tm,baseX:startX,dir,speed:14+(i%5)*3.2});
+    }
+
+    // 6. 远方东京湾与彩虹大桥剪影（左远景）
+    b.box(0x061020,-75,-56,-145,140,.4,40);
+    b.box(0x1f2a3c,-75,-46,-145,84,.55,1.4);
+    for(const pxOff of [-22,22]){
+      b.box(0xdbeafe,-75+pxOff,-43,-145,1.1,16,1.1);
+    }
+    const bridgeGlow=batch();
+    bridgeGlow.box(0xe0f2fe,-75,-45.6,-145,84,.25,1.5);
+    bridgeGlow.finish(s.root,"tokyoRainbowBridge",true);
+
+    s.wonder={kind:"tokyo",beacons,traffic};
+  }
+  function build(s,b,helpers){if(s.name==="arcticSnow")arctic(s,b,helpers);else if(s.name==="spanishQuarter")spanish(s,b,helpers);else if(s.name==="lunarCrater")lunar(s,b,helpers);else if(s.name==="tokyoRooftop")tokyo(s,b,helpers);}
   function update(s){
     const w=s.wonder;if(!w)return;
+    if(w.kind==="tokyo"){
+      const t=s.time;
+      w.beacons.forEach(b=>{
+        const p=.22+.78*(.5+.5*Math.sin(t*3.1+b.phase));
+        b.mat.color.setRGB(1.0*p,.16*p,.12*p);
+      });
+      w.traffic.forEach(tr=>{
+        const span=236;
+        tr.m.position.x=((tr.baseX+tr.dir*tr.speed*t+118)%span+span)%span-118;
+      });
+      return;
+    }
     if(w.kind==="lunar"){
       w.earth.material.uniforms.uTime.value=s.time;
       if(w.suit2)w.suit2.visible=(typeof G!=="undefined"&&!!G&&G.mode==="battle");

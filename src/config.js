@@ -31,7 +31,8 @@
     beachSunset:{name:"夕阳 · 西海岸",type:"outdoor",weather:"sunny",progression:"sunsetToNight",desc:"开放海滨旧街场，日落后酒店与路灯渐次点亮"},
     arcticSnow:{name:"极光 · 雪原冰湖",type:"outdoor",weather:"none",progression:"none",desc:"扫雪硬场与冰湖林线，静夜极光在头顶缓慢舒展"},
     spanishQuarter:{name:"红土 · 西班牙老街",type:"outdoor",weather:"sunny",progression:"none",desc:"陶土红街场嵌入老城住宅，百叶窗、阳台与巷口都是生活"},
-    lunarCrater:{name:"静海 · 月球陨石坑",type:"outdoor",weather:"none",progression:"none",desc:"原始月尘沙地与隐约球场线，无观众，头顶漆黑宇宙与蓝色地球"}
+    lunarCrater:{name:"静海 · 月球陨石坑",type:"outdoor",weather:"none",progression:"none",desc:"原始月尘沙地与隐约球场线，无观众，头顶漆黑宇宙与蓝色地球"},
+    tokyoRooftop:{name:"东京 · 摩天楼顶夜场",type:"outdoor",weather:"none",progression:"none",desc:"300米高空摩天楼顶夜景球场，透明玻璃护栏外直面东京铁塔与璀璨灯海"}
   });
 
   const WEATHER_SHOT_MODIFIERS=Object.freeze({
