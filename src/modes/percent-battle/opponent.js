@@ -292,35 +292,69 @@
         sBounce();oppBeginLoad();
       }
     }else if(OPP.phase==="load"){
-      const phase=Math.min(1.05,OPP.t/OPP.shootDur*1.05),curve=shotCurves(phase,guy&&guy.shotStyle);
+      const style=guy&&guy.shotStyle||null;
+      const phase=Math.min(1.05,OPP.t/OPP.shootDur*1.05),curve=shotCurves(phase,style);
+      OPP.lastCurve=curve;
       const groundLift=poseGuy(guy,curve,0);
       const stance=shotStanceBlend(curve,true);
-      guy.g.position.set(OPP.pos.x,groundLift+Math.max(0,curve.jmp*0.55-curve.over*0.28),OPP.pos.z);
-      guy.g.rotation.y=faceTo(OPP.pos,HOOP)+(guy&&guy.lefty?-1:1)*(SHOT_STANCE_YAW+(guy&&guy.shotStyle&&Number(guy.shotStyle.turn)||0))*stance;
-      // poseGuy 内部已由 applyShotSetPose 统一写入与玩家相同的松手前姿势。
-      /* fired 先置位、再调 oppFireBall,一旦它抛异常就永远停在 load:
-         守卫是 `!OPP.fired`,而 phase="land" 那一步已经被异常跳过 —— 对手会僵在
-         出手姿势里,整场比赛不再动也不再得分,玩家只看到"电脑不动了",没有任何报错。
-         排查时用空的 G.battleOpp 复现过一次(OPP.o 为 null,aiProb(opponent.r) 抛错)。
-         正常流程不会走到,但出手这一步牵扯球、音效、录制,不该由它决定状态机能否推进。 */
+      const jumpAmp=0.55*(style&&style.flow?1.12:1);
+      const jump=Math.max(0,curve.jmp*jumpAmp-curve.over*0.28);
+      guy.g.position.set(OPP.pos.x,groundLift+jump,OPP.pos.z);
+      if(style&&style.drift&&curve.jmp>0){
+        const dx=HOOP.x-OPP.pos.x,dz=HOOP.z-OPP.pos.z,L=Math.hypot(dx,dz)||1;
+        const k=Number(style.drift)*curve.jmp;
+        guy.g.position.x+=dx/L*k;guy.g.position.z+=dz/L*k;
+      }
+      guy.g.rotation.y=faceTo(OPP.pos,HOOP)+(guy&&guy.lefty?-1:1)*(SHOT_STANCE_YAW+(style&&Number(style.turn)||0))*stance;
+      if(curve.jmp>0.03&&motion&&typeof motion.applyReleaseFeetPose==="function"){
+        const lean=guy.g&&guy.g.rotation?guy.g.rotation.x:0;
+        const baseFootY=motion.poseFootBottomY?(motion.poseFootBottomY(guy.legs[0].rotation.x+lean,guy.knees[0].rotation.x,guy.ankles[0].rotation.x)+motion.poseFootBottomY(guy.legs[1].rotation.x+lean,guy.knees[1].rotation.x,guy.ankles[1].rotation.x))*.5:0;
+        motion.applyReleaseFeetPose(guy,{released:true,airborne:true,kickWeight:ease01(curve.jmp)*0.42,landBlend:0,recover:0,ground:1-clamp(jump/0.12,0,1)},baseFootY);
+      }
       if(phase>=1.02&&!OPP.fired){
         OPP.fired=true;
+        OPP.airPeakJmp=Math.max(0.45,curve.jmp||1);
+        OPP.airDur=style&&style.flow?0.34:0.26;
         try{oppFireBall();}catch(err){if(global.console)console.error("oppFireBall failed",err);}
         OPP.phase="land";OPP.t=0;
       }
     }else if(OPP.phase==="land"){
-      const progress=Math.min(1,OPP.t/.36),settle=progress*progress;
-      const curve=shotCurves(1.02*(1-settle),guy&&guy.shotStyle);
-      const landing=progress>.72?Math.sin((progress-.72)/.28*Math.PI)*.12:0;
+      const style=guy&&guy.shotStyle||null;
+      const airDur=OPP.airDur||0.28,landDur=0.30,totalDur=airDur+landDur;
+      const airborne=OPP.t<airDur;
+      const airT=airborne?OPP.t/airDur:1;
+      const landT=airborne?0:Math.min(1,(OPP.t-airDur)/landDur);
+      const peakJmp=OPP.airPeakJmp||1;
+      const jmpNow=airborne?peakJmp*Math.max(0,1-airT*airT):0;
+      const jumpAmp=0.55*(style&&style.flow?1.12:1);
+      const jump=jmpNow*jumpAmp;
+      const relHold=airborne?1:1-ease01(landT);
+      const curve={dip:0,lift:relHold,rise:relHold,jmp:jmpNow,over:0};
+      const landing=airborne?0:Math.sin(landT*Math.PI)*0.13;
       const poseY=poseGuy(guy,curve,landing);
-      const jump=Math.max(0,curve.jmp*0.55-curve.over*0.28);
+      const lean=guy.g&&guy.g.rotation?guy.g.rotation.x:0;
+      const baseFootY=motion&&motion.poseFootBottomY?(motion.poseFootBottomY(guy.legs[0].rotation.x+lean,guy.knees[0].rotation.x,guy.ankles[0].rotation.x)+motion.poseFootBottomY(guy.legs[1].rotation.x+lean,guy.knees[1].rotation.x,guy.ankles[1].rotation.x))*.5:0;
       guy.g.position.set(OPP.pos.x,poseY+jump,OPP.pos.z);
-      guy.g.rotation.y=faceTo(OPP.pos,HOOP)+(guy&&guy.lefty?-1:1)*(SHOT_STANCE_YAW+(guy&&guy.shotStyle&&Number(guy.shotStyle.turn)||0))*shotStanceBlend(curve,false);
-      const extend=ease01(OPP.t/.105),recover=ease01((OPP.t-.105-.24)/.38);
-      const followState={active:OPP.t<.105+.24+.38,extend,follow:extend*(1-recover),recover};
+      if(style&&style.drift&&jmpNow>0){
+        const dx=HOOP.x-OPP.pos.x,dz=HOOP.z-OPP.pos.z,L=Math.hypot(dx,dz)||1;
+        const k=Number(style.drift)*jmpNow;
+        guy.g.position.x+=dx/L*k;guy.g.position.z+=dz/L*k;
+      }
+      guy.g.rotation.y=faceTo(OPP.pos,HOOP)+(guy&&guy.lefty?-1:1)*(SHOT_STANCE_YAW+(style&&Number(style.turn)||0))*shotStanceBlend(curve,false);
+      const extend=ease01(OPP.t/0.105),recover=ease01((OPP.t-0.105-0.24)/0.34);
+      const followState={active:OPP.t<0.105+0.24+0.34,extend,follow:extend*(1-recover),recover};
       if(global.AIBAShotMotion&&OPP.shotPose)global.AIBAShotMotion.applyFollowThroughPose(guy,followState,OPP.shotPose);
       else oppFollowThroughPose(guy,followState.follow);
-      if(progress>=1){
+      if(motion&&typeof motion.applyReleaseFeetPose==="function"){
+        const kickRise=Math.max(0.42,ease01(OPP.t/0.12))*0.85;
+        const landBlend=airborne?0:ease01((OPP.t-airDur)/0.12);
+        const footRecover=airborne?0:ease01(Math.max(0,OPP.t-airDur-0.08)/0.22);
+        motion.applyReleaseFeetPose(guy,{
+          released:true,airborne:true,kickWeight:kickRise*(1-0.24*(1-jmpNow/peakJmp)),
+          landBlend,recover:footRecover,ground:1-clamp(jump/0.12,0,1)
+        },baseFootY);
+      }
+      if(OPP.t>=totalDur){
         OPP.fired=false;OPP.shotPose=null;poseGuy(guy,shotCurves(0),0);guy.g.position.set(OPP.pos.x,0,OPP.pos.z);guy.g.rotation.x=0;
         oppMarkSpotUse();OPP.phase="cool";OPP.t=0;
         const baseCool=clamp(0.5-(OPP.o.r-85)*0.01,0.25,0.55)+rnd(0,0.2);OPP.coolDur=OPP.forceMove?Math.max(0.2,baseCool*0.55):baseCool;
