@@ -155,6 +155,24 @@ function paintBallLeather(g,w,h,base,dark,palette){
     }
   }
   g.globalAlpha=1;paintBasketballChannels(g,w,h,false);
+  // 日常篮球造型 aiBA 徽标（印在前后两个主球瓣中央）
+  for(const cx of [w*0.5,0,w]){
+    g.save();
+    g.translate(cx,h*0.36);
+    g.transform(1,0,-0.22,1,0,0);
+    g.font="900 "+Math.round(h*0.125)+"px Orbitron,Arial Black,sans-serif";
+    g.textAlign="center";g.textBaseline="middle";
+    g.lineWidth=Math.max(2,h*0.018);
+    g.strokeStyle=palette?"#0d1524":"#1c0a04";
+    g.strokeText("aiBA",0,0);
+    g.fillStyle=palette?"#ffd23f":"#fff2d6";
+    g.fillText("aiBA",0,0);
+    // 下方造型弧线
+    g.strokeStyle=palette?"#ffd23f":"#ffb84d";
+    g.lineWidth=Math.max(1.5,h*0.01);
+    g.beginPath();g.moveTo(-w*0.065,h*0.075);g.quadraticCurveTo(0,h*0.105,w*0.065,h*0.075);g.stroke();
+    g.restore();
+  }
 }
 
 function realBallTex(base,dark){
@@ -213,7 +231,75 @@ function rollSuperBallSkin(){
   return Math.floor(roll*SUPER_BALL_SKINS.length)%SUPER_BALL_SKINS.length;
 }
 
+/* ---------------- 月球透明宇航头盔球（含太空/地球/月面环境反射） ---------------- */
+let lunarEnvMapCache=null;
+const lunarBallMats={std:null,gold:null,deep:null};
+function makeLunarBallEnvMap(){
+  if(lunarEnvMapCache)return lunarEnvMapCache;
+  lunarEnvMapCache=pixTex(512,256,(g,w,h)=>{
+    // 上半球：漆黑宇宙；下半球：月面沙地与环形山影
+    const sky=g.createLinearGradient(0,0,0,h*0.54);
+    sky.addColorStop(0,"#010206");sky.addColorStop(1,"#0a0d14");
+    g.fillStyle=sky;g.fillRect(0,0,w,h*0.54);
+    const ground=g.createLinearGradient(0,h*0.54,0,h);
+    ground.addColorStop(0,"#7e8289");ground.addColorStop(0.3,"#585b62");ground.addColorStop(1,"#33363c");
+    g.fillStyle=ground;g.fillRect(0,h*0.54,w,h*0.46);
+    // 月面山脊剪影
+    g.fillStyle="#64686f";g.beginPath();g.moveTo(0,h*0.54);
+    for(let x=0;x<=w;x+=16)g.lineTo(x,h*(0.52-0.05*Math.abs(Math.sin(x*0.028))-0.025*Math.cos(x*0.07)));
+    g.lineTo(w,h*0.56);g.closePath();g.fill();
+    // 星空反光点
+    const r=ballTextureRng(0x104a7);
+    for(let i=0;i<160;i++){
+      g.fillStyle=`rgba(235,245,255,${0.4+r()*0.6})`;
+      g.fillRect(r()*w,r()*h*0.48,1.5,1.5);
+    }
+    // 太阳高光反射（左侧低角度强光）
+    const sunG=g.createRadialGradient(w*0.22,h*0.34,2,w*0.22,h*0.34,36);
+    sunG.addColorStop(0,"rgba(255,255,255,1)");sunG.addColorStop(0.25,"rgba(220,235,255,0.75)");sunG.addColorStop(1,"rgba(200,220,255,0)");
+    g.fillStyle=sunG;g.fillRect(w*0.22-36,h*0.34-36,72,72);
+    // 蓝色地球反射
+    const eG=g.createRadialGradient(w*0.72,h*0.24,4,w*0.72,h*0.24,26);
+    eG.addColorStop(0,"#64b5ff");eG.addColorStop(0.55,"#1a65c7");eG.addColorStop(1,"rgba(20,80,170,0)");
+    g.fillStyle=eG;g.beginPath();g.arc(w*0.72,h*0.24,26,0,Math.PI*2);g.fill();
+  },{smooth:true,mipmaps:true});
+  lunarEnvMapCache.mapping=THREE.EquirectangularReflectionMapping;
+  return lunarEnvMapCache;
+}
+function getLunarBallMat(kind){
+  const k=kind==="gold"||kind==="deep"?kind:"std";
+  if(!lunarBallMats[k]){
+    const tint=k==="gold"?0xffe6a3:(k==="deep"?0xa8ffcb:0xdcf0ff);
+    const Mat=(typeof THREE.MeshPhysicalMaterial==="function")?THREE.MeshPhysicalMaterial:THREE.MeshPhongMaterial;
+    const opts=Mat===THREE.MeshPhysicalMaterial
+      ?{color:tint,transparent:true,opacity:0.44,roughness:0.05,metalness:0.10,clearcoat:1.0,clearcoatRoughness:0.03,reflectivity:1.0,envMap:makeLunarBallEnvMap(),envMapIntensity:1.55,depthWrite:false}
+      :{color:tint,transparent:true,opacity:0.46,shininess:120,specular:0xffffff,envMap:makeLunarBallEnvMap(),reflectivity:0.95,depthWrite:false};
+    lunarBallMats[k]=new Mat(opts);
+  }
+  return lunarBallMats[k];
+}
+function lunarBallFor(shot){
+  if(!shot)return getLunarBallMat("std");
+  if(shot.super||shot.deep!=null)return getLunarBallMat("deep");
+  if(shot.money)return getLunarBallMat("gold");
+  return getLunarBallMat("std");
+}
+function syncLunarBallMode(isLunar){
+  if(typeof scene==="undefined"||!scene)return;
+  scene.traverse(o=>{
+    if(!o.isMesh||o.geometry!==ballGeo)return;
+    if(!o.userData.origBallMat)o.userData.origBallMat=o.material;
+    if(isLunar){
+      const orig=o.userData.origBallMat;
+      const kind=orig===matGold?"gold":(orig===matDeep?"deep":"std");
+      o.material=getLunarBallMat(kind);
+    }else if(o.userData.origBallMat){
+      o.material=o.userData.origBallMat;
+    }
+  });
+}
+
 window.AIBA.runtime.register("rendering:materials",Object.freeze({
   pixTex,realBallTex,triBallTex,texBall,texGold,texDeep,texBallRelief,matBall,matGold,matDeep,ballGeo,
-  SUPER_BALL_SKINS,superBallMaterial,rollSuperBallSkin
+  SUPER_BALL_SKINS,superBallMaterial,rollSuperBallSkin,lunarBallFor,getLunarBallMat,syncLunarBallMode
 }));

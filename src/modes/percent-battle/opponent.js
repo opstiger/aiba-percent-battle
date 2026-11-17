@@ -148,7 +148,7 @@
     oppPasserBall.visible=false;
     const from=V3(oppPasser.g.position.x,1.25,oppPasser.g.position.z);
     const to=OPP.pos.clone();to.y=1.38;
-    const mesh=new global.THREE.Mesh(ballGeo,spot.super?superBallMat():(spot.deep!=null?matDeep:matBall));
+    const mesh=new global.THREE.Mesh(ballGeo,oppBallMat(spot));
     mesh.position.copy(from);scene.add(mesh);
     OPP.ballOut={mesh,from,to,t:0,dur:clamp(.3+from.distanceTo(to)*.045,.42,.78)};
     OPP.phase="receive";OPP.t=0;OPP.fired=false;
@@ -158,7 +158,7 @@
   function oppBeginLoad(){
     const spot=BATTLE_SPOTS[OPP.spotIdx],guy=OPP.guy;
     attachOppBall();
-    guy.ball.visible=true;guy.ball.material=spot.super?superBallMat():(spot.deep!=null?matDeep:matBall);
+    guy.ball.visible=true;guy.ball.material=oppBallMat(spot);
     OPP.phase="load";OPP.t=0;OPP.fired=false;OPP.shotPose=null;
     OPP.shootDur=clamp((0.9-DIFFS[G.diff].ai*0.5)/shotProfileFor(G.myStar||OPP.o).speed,0.5,1.08);
   }
@@ -181,7 +181,7 @@
     OPP.guy.g.position.copy(start);OPP.guy.g.rotation.y=faceTo(start,HOOP);
     OPP.gait={phase:0,idleT:0,lean:0};
     OPP.pos=start.clone();OPP.from=start.clone();OPP.to=start.clone();
-    OPP.guy.ball.visible=false;OPP.guy.ball.material=matBall;oppPasser.g.visible=true;oppPasserBall.visible=true;ctx.refreshBench();
+    OPP.guy.ball.visible=false;OPP.guy.ball.material=oppBallMat(null);oppPasser.g.visible=true;oppPasserBall.visible=true;ctx.refreshBench();
   }
   function oppPickSpot(){
     const current=OPP.spotIdx,needsBig=G.battleOppScore+10>=BATTLE_TARGET||G.battleOppScore+15<G.score;
@@ -216,7 +216,7 @@
       const dist=Math.hypot(HOOP.x-sim.x,HOOP.z-sim.z);
       const tf=shotFlightTime(0.78+dist*0.062,G.myStar||opponent,spot);
       OPP.shotPose=captureShotPose?captureShotPose(OPP.guy):null;
-      const material=spot.super?superBallMat():(spot.deep!=null?matDeep:matBall);
+      const material=oppBallMat(spot);
       balls.push(physicsBallForOutcome(start,sim,tf,made,aibaRoll,material,{
         val:spot.val,money:false,deep:spot.deep!=null,super:!!spot.super,life:1.6,
         silent:true,opp:true,sp:spot,collided:false,superChanceId:OPP.possessionSuperChanceId||0,
@@ -234,7 +234,7 @@
     const flightTime=shotFlightTime(0.78+distance*0.062,G.myStar||opponent,spot);
     const velocity=V3((target.x-start.x)/flightTime,(target.y-start.y)/flightTime+4.9*flightTime,(target.z-start.z)/flightTime);
     OPP.shotPose=captureShotPose?captureShotPose(OPP.guy):null;
-    const mesh=new global.THREE.Mesh(ballGeo,spot.super?superBallMat():(spot.deep!=null?matDeep:matBall));
+    const mesh=new global.THREE.Mesh(ballGeo,oppBallMat(spot));
     mesh.position.copy(start);scene.add(mesh);
     const blob=new global.THREE.Mesh(blobGeo,blobMat.clone());blob.rotation.x=-Math.PI/2;blob.position.set(start.x,0.02,start.z);scene.add(blob);
     balls.push({mesh,blob,p0:start.clone(),v0:velocity,tf:flightTime,t:0,phase:"fly",outcome:made?"swish":"rimout",
@@ -243,6 +243,11 @@
     OPP.guy.ball.visible=false;
   }
   /* 对手的 10 分球也用本次机会的随机色,和玩家看到的是同一颗球。 */
+  function oppBallMat(spot){
+    const mats=runtime&&runtime.service("rendering:materials");
+    if(document.documentElement.dataset.scenePreset==="lunarCrater"&&mats&&mats.lunarBallFor)return mats.lunarBallFor(spot);
+    return spot&&spot.super?superBallMat():(spot&&spot.deep!=null?matDeep:matBall);
+  }
   function superBallMat(){
     const mats=runtime&&runtime.service("rendering:materials");
     return mats&&mats.superBallMaterial?mats.superBallMaterial(G.superSkin||0):matGold;

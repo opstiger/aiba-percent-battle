@@ -90,6 +90,7 @@ function shotBase(shot){
   return RACKS[shot.rack].p;
 }
 function shotMat(shot){
+  if(typeof currentScenePreset!=="undefined"&&currentScenePreset==="lunarCrater"&&typeof lunarBallFor==="function")return lunarBallFor(shot);
   if(!shot)return matBall;
   /* 10 分球用本次机会随机到的颜色;深远球仍是原来的绿色。
      原来两者共用 matDeep,10 分球在画面上和普通深远球分不开。 */
