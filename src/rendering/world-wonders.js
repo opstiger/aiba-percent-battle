@@ -409,20 +409,26 @@
     const suit2=makeSuit("lunarSuit2",9.1,-1.6,-1.25,0x2d6fd6);
     suit2.visible=(typeof G!=="undefined"&&G&&G.mode==="battle");
 
-    // 3. 漆黑宇宙星空
-    const starCount=s.mobile?520:980,sPos=new Float32Array(starCount*3),sCol=new Float32Array(starCount*3);
+    // 3. 阿波罗实拍感漆黑宇宙星空（稀疏、微弱、柔和圆点星光，不抢主画面）
+    const starCount=s.mobile?110:190,sPos=new Float32Array(starCount*3),sCol=new Float32Array(starCount*3);
     for(let i=0;i<starCount;i++){
-      const theta=s.r()*Math.PI*2,phi=Math.acos(0.03+s.r()*0.97),R=146;
+      const theta=s.r()*Math.PI*2,phi=Math.acos(0.06+s.r()*0.94),R=146;
       sPos[i*3]=R*Math.sin(phi)*Math.cos(theta);
       sPos[i*3+1]=R*Math.cos(phi);
       sPos[i*3+2]=4+R*Math.sin(phi)*Math.sin(theta);
-      const b=.55+s.r()*.45,tint=s.r();
-      sCol[i*3]=b*(tint<.2?.82:1);sCol[i*3+1]=b*(tint<.2?.9:1);sCol[i*3+2]=b*(tint>.82?.85:1);
+      const bright=Math.pow(s.r(),2.4);
+      const b=.14+bright*.62,tint=s.r();
+      sCol[i*3]=b*(tint<.2?.84:1);sCol[i*3+1]=b*(tint<.2?.92:1);sCol[i*3+2]=b*(tint>.82?.86:1);
     }
     const starGeo=new THREE.BufferGeometry();
     starGeo.setAttribute("position",new THREE.BufferAttribute(sPos,3));
     starGeo.setAttribute("color",new THREE.BufferAttribute(sCol,3));
-    const stars=new THREE.Points(starGeo,new THREE.PointsMaterial({size:.72,vertexColors:true,fog:false,transparent:true,opacity:.92,depthWrite:false}));
+    const starMat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,fog:false,vertexColors:true,
+      vertexShader:`varying vec3 vCol;void main(){vCol=color;vec4 mv=modelViewMatrix*vec4(position,1.0);gl_PointSize=clamp(220.0/max(1.0,-mv.z),1.2,2.6);gl_Position=projectionMatrix*mv;}`,
+      fragmentShader:`varying vec3 vCol;void main(){vec2 d=gl_PointCoord-.5;float a=smoothstep(.5,.05,length(d));if(a<.02)discard;gl_FragColor=vec4(vCol,a*.72);}`
+    });
+    const stars=new THREE.Points(starGeo,starMat);
     stars.name="lunarStars";stars.renderOrder=-10;stars.frustumCulled=false;s.root.add(stars);
 
     // 4. 远处挂在漆黑宇宙中的蓝色地球（射线球体公告板：永不拉扁、柔和大气晕、大半阴影）

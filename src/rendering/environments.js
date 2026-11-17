@@ -462,12 +462,12 @@ function applyScenePreset(name,opts){
       sun.color.setHex(0xb9cfe5);sun.intensity=.42;sun.position.set(-14,20,-4);spot.intensity=0;camFill.intensity=.24;
       arenaLights.forEach(l=>{l.intensity=0;});
     }else if(name==="lunarCrater"){
-      /* 月球真空：漆黑宇宙背景、极远雾（几乎不遮挡）、低角度强烈日光拉出长影。 */
-      scene.background.setHex(0x010205);scene.fog.color.setHex(0x020307);scene.fog.near=160;scene.fog.far=380;
-      ambient.color.setHex(0x8892a4);ambient.intensity=.15;
-      hemi.color.setHex(0x98a8c4);hemi.groundColor.setHex(0x1b1d22);hemi.intensity=.18;
-      sun.color.setHex(0xf6f8ff);sun.intensity=1.65;sun.position.set(-22,10.5,-4);
-      spot.intensity=0;camFill.intensity=.12;
+      /* 月球真空（阿波罗实拍质感）：无大气散射、极低环境填光、高反差炽白低角度日光、远山锐利无雾。 */
+      scene.background.setHex(0x010103);scene.fog.color.setHex(0x010103);scene.fog.near=260;scene.fog.far=520;
+      ambient.color.setHex(0x7d8696);ambient.intensity=.10;
+      hemi.color.setHex(0x8c9ab2);hemi.groundColor.setHex(0x121418);hemi.intensity=.12;
+      sun.color.setHex(0xfffdf8);sun.intensity=1.88;sun.position.set(-22,10.0,-4);
+      spot.intensity=0;camFill.intensity=.10;
       arenaLights.forEach(l=>{l.intensity=0;});
       if(renderer.shadowMap&&renderer.shadowMap.enabled){
         sun.castShadow=true;
