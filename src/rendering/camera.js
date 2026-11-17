@@ -429,6 +429,11 @@ function updPlayCam(dt){
       dampRig(dt,5);
     }
   }
+  const aimCamLat=window.AIBAVisionAim&&typeof window.AIBAVisionAim.camLat==="function"?window.AIBAVisionAim.camLat():0;
+  if(aimCamLat){
+    const dx=HOOP.x-rig.pos.x,dz=HOOP.z-rig.pos.z,L=Math.hypot(dx,dz)||1;
+    rig.look.x+=(dz/L)*aimCamLat;rig.look.z+=(-dx/L)*aimCamLat;
+  }
 }
 /* CameraDirector：所有镜头的唯一调度入口。镜头优先级固定为
    调试编辑器 > 回放/胜利/英雄演出 > 过场接管 > 模式专属镜头 > 常规跟随。

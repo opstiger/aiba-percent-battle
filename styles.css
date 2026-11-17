@@ -164,7 +164,7 @@ html[data-scan-overlay="menu"] #scan{opacity:.018}
 .visionTrack{display:none}
 .visionTrack:before{content:"";position:absolute;left:0;right:0;bottom:55%;height:17%;background:rgba(110,255,110,.28);border-top:1px solid #6eff6e;border-bottom:1px solid #6eff6e;z-index:1}
 .visionTrack i{position:absolute;left:0;right:0;bottom:0;width:100%;height:0;background:linear-gradient(0deg,#2e8bff,#39d3ff 55%,#ffd23f 78%,#ff4040);transition:height .08s linear}
-.visionMode{width:88%;margin:10px auto 4px;display:grid;grid-template-columns:minmax(0,1fr) repeat(2,minmax(82px,112px));align-items:stretch;
+.visionMode{width:88%;margin:10px auto 4px;display:grid;grid-template-columns:minmax(0,1fr) repeat(3,minmax(64px,96px));align-items:stretch;
   background:#0e141e;border:2px solid #354356;box-shadow:inset 0 0 0 1px rgba(255,255,255,.04)}
 .visionModeLabel{padding:9px 11px;text-align:left}.visionModeLabel small{display:block;color:#778fa4;font-size:8px;letter-spacing:2px}.visionModeLabel b{font-size:12px;color:#eef7ff}
 .visionMode button{position:relative;display:grid;place-content:center;gap:3px;padding:6px 4px;border:0;border-left:1px solid #354356;background:#161f2b;color:#8ea3b8;font-family:"Orbitron","Courier New",monospace;font-size:10px;line-height:1.2;font-weight:bold;cursor:pointer}
@@ -467,7 +467,7 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 @media (max-width:430px){.dnaCompare{grid-template-columns:1fr}.dnaRef,.dnaDrop,.dnaDrop span{min-height:250px}.dnaActions .btn{width:100%;margin-left:0;margin-right:0}}
 @media (max-width:600px){#finalRun{gap:10px;padding-left:14px;padding-right:14px}#finalRun b{font-size:30px}#finalRun small{letter-spacing:2px}.sceneOption{grid-template-columns:72px minmax(0,1fr) auto;padding:9px 10px}.sceneOption .sceneSwatch{width:70px;height:46px}.sceneOption em{font-size:9px}}
 @media (max-width:600px){#visionPreview:not([data-context="setup"]):not([data-dock]){left:max(10px,env(safe-area-inset-left));right:auto;top:auto;bottom:max(122px,calc(env(safe-area-inset-bottom) + 112px));transform:none;width:142px}}
-@media (max-width:600px){#visionPreview[data-context="setup"]:not([data-dock]){left:max(10px,env(safe-area-inset-left));right:auto;top:auto;bottom:max(12px,env(safe-area-inset-bottom));transform:none;width:142px}.visionMode{grid-template-columns:minmax(0,1fr) repeat(2,minmax(72px,1fr))}}
+@media (max-width:600px){#visionPreview[data-context="setup"]:not([data-dock]){left:max(10px,env(safe-area-inset-left));right:auto;top:auto;bottom:max(12px,env(safe-area-inset-bottom));transform:none;width:142px}.visionMode{grid-template-columns:minmax(0,1fr) repeat(3,minmax(56px,1fr))}}
 @media (max-width:600px){
   #hudRound{top:max(8px,env(safe-area-inset-top));left:max(10px,env(safe-area-inset-left));width:88px;max-width:88px;font-size:10px;line-height:1.4;color:#9fd1ff;opacity:.86}
   #hudTimer{top:max(12px,env(safe-area-inset-top));width:calc(100vw - 230px);max-width:170px;font-size:28px;letter-spacing:1px;text-align:center;white-space:nowrap;overflow:hidden}

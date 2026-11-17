@@ -349,8 +349,9 @@ function releaseShot(power,shot){
   /* r 决定这一球是 swish / rattle / bank / miss —— 全游戏最关键的一次随机,
      走可复现通道(?seed=N 固定)。演出用的随机不动。 */
   const err=power-ideal, a=Math.abs(err), r=aibaRoll();
-  // lateral error = device tilt + hand noise
-  const tl=tiltDeg()*DIFFS[G.diff].latK;
+  // lateral error = device tilt + vision face aim (when visionAim mode active) + hand noise
+  const faceAim=(window.AIBAVisionAim&&typeof window.AIBAVisionAim.shotLat==="function")?window.AIBAVisionAim.shotLat():0;
+  const tl=tiltDeg()*DIFFS[G.diff].latK+faceAim;
   const latErr=tl+aibaRollRange(-0.035,0.035);   // 手抖也影响结果,一并可复现
   const al=Math.abs(latErr);
   let outcome;

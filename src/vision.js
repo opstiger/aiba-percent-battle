@@ -23,19 +23,23 @@ function visionRecordCaptureSettings(stream){
   }catch(e){}
 }
 function loadVisionControlPreference(){
-  try{return localStorage.getItem(VISION_CONTROL_STORAGE)==="vision"?"vision":"touch";}catch(e){return "touch";}
+  try{
+    const v=localStorage.getItem(VISION_CONTROL_STORAGE);
+    return (v==="vision"||v==="visionAim")?v:"touch";
+  }catch(e){return "touch";}
 }
 let VISION_CONTROL_PREFERENCE=loadVisionControlPreference();
 let visionPreferenceQueued=false;
 function saveVisionControlPreference(value){
-  VISION_CONTROL_PREFERENCE=value==="vision"?"vision":"touch";
+  VISION_CONTROL_PREFERENCE=(value==="vision"||value==="visionAim")?value:"touch";
+  if(typeof VISION!=="undefined")VISION.aimMode=VISION_CONTROL_PREFERENCE==="visionAim";
   try{localStorage.setItem(VISION_CONTROL_STORAGE,VISION_CONTROL_PREFERENCE);}catch(e){}
 }
 /* 能自动恢复体感的入口状态。原来只认 "diff"(难度选择界面)，
    而绝杀时刻是从主菜单直接进 "lastshot" 的——整个模式永远等不到体感启动。 */
 const VISION_AUTO_STATES={diff:true,lastshot:true};
 function visionCanAutoStart(){
-  return VISION_CONTROL_PREFERENCE==="vision"&&VISION.supported
+  return (VISION_CONTROL_PREFERENCE==="vision"||VISION_CONTROL_PREFERENCE==="visionAim")&&VISION.supported
     &&!VISION.desired&&!VISION.enabled&&!VISION.loading&&!!VISION_AUTO_STATES[G.state];
 }
 function restoreVisionControlPreference(){
@@ -43,11 +47,12 @@ function restoreVisionControlPreference(){
   visionPreferenceQueued=true;
   setTimeout(()=>{
     visionPreferenceQueued=false;
-    if(visionCanAutoStart())enableVisionControl();
-  },0);
+    if(visionCanAutoStart())enableVisionControl(null,VISION_CONTROL_PREFERENCE);
+  },30);
 }
 const VISION={
   supported:!!(navigator.mediaDevices&&navigator.mediaDevices.getUserMedia),desired:false,enabled:false,loading:false,liveControl:true,
+  aimMode:VISION_CONTROL_PREFERENCE==="visionAim",faceAim:0,
   stream:null,landmarker:null,modelPromise:null,lastPose:null,lastHands:[],lastPoseAt:0,lastHandAt:0,lastDraw:0,lastVideoTime:-1,raf:0,ownsCharge:false,lastSample:null,inferAvg:0,
   machine:{phase:"idle",holdStart:0,chargeStart:0,lastSeen:0,cooldownUntil:0,releaseFlashUntil:0,chargeBaseY:0,releaseLineY:.32,power:0,lastPowerAt:0},
   body:{samples:[],startedAt:0,ready:false,noseY:.23,shoulderY:.39,hipY:.66,centerX:.5,shoulderW:.22,bodyH:.27,releaseLineY:.32,hipVisible:false,lastAt:0},
@@ -609,6 +614,35 @@ function noteVisionInference(start){
   VISION.inferAvg=VISION.inferAvg?VISION.inferAvg*.82+cost*.18:cost;
   document.documentElement.dataset.visionInferenceMs=VISION.inferAvg.toFixed(1);
 }
+function visionUpdateFaceAim(lm){
+  if(!VISION.aimMode||!lm){VISION.faceAim=(VISION.faceAim||0)*.82;return VISION.faceAim;}
+  const nose=visionGoodPoint(lm,0,.28),eyeL=visionGoodPoint(lm,2,.25),eyeR=visionGoodPoint(lm,5,.25),
+    earL=visionGoodPoint(lm,7,.25),earR=visionGoodPoint(lm,8,.25),sL=visionGoodPoint(lm,11,.28),sR=visionGoodPoint(lm,12,.28);
+  if(!nose)return VISION.faceAim||0;
+  let headYaw=0,hasHead=false;
+  if(earL&&earR){
+    const hw=Math.max(.04,Math.abs(earL.x-earR.x));
+    headYaw=clamp((nose.x-(earL.x+earR.x)*.5)/(hw*.5),-1.5,1.5);hasHead=true;
+  }else if(eyeL&&eyeR){
+    const hw=Math.max(.03,Math.abs(eyeL.x-eyeR.x));
+    headYaw=clamp((nose.x-(eyeL.x+eyeR.x)*.5)/(hw*.7),-1.5,1.5);hasHead=true;
+  }
+  let bodyOff=0,hasBody=false;
+  if(sL&&sR){
+    const sw=Math.max(.08,Math.abs(sL.x-sR.x));
+    bodyOff=clamp((nose.x-(sL.x+sR.x)*.5)/(sw*.45),-1.5,1.5);hasBody=true;
+  }
+  if(!hasHead&&!hasBody)return VISION.faceAim||0;
+  const rawYaw=hasHead&&hasBody?(headYaw*.6+bodyOff*.4):(hasHead?headYaw:bodyOff);
+  // 右手投篮天然朝左侧（辅助手侧）略转一点，左手投篮天然朝右侧略转一点
+  const lefty=typeof player!=="undefined"&&player&&!!player.lefty;
+  const stanceBias=lefty?-.12:.12;
+  const centered=rawYaw-stanceBias,dead=.06;
+  const adj=Math.abs(centered)<dead?0:(centered-Math.sign(centered)*dead)/(1-dead);
+  const target=clamp(adj*1.15,-1,1);
+  VISION.faceAim=(VISION.faceAim||0)*.78+target*.22;
+  return VISION.faceAim;
+}
 function visionFrame(now){
   if(!VISION.desired)return;VISION.raf=requestAnimationFrame(visionFrame);
   if(!VISION.enabled||!VISION.landmarker)return;
@@ -633,6 +667,7 @@ function visionFrame(now){
     if(task)noteVisionInference(started);
   }
   catch(e){visionSetUI("error","识别暂时中断",0);return;}
+  visionUpdateFaceAim(VISION.lastPose);
   const sample=visionLandmarkSample(VISION.lastPose,VISION.lastHands,now);
   const canAdvance=G.state==="diff"||G.state==="menu"||visionGameActive();
   if(!canAdvance){resetVisionGesture(VISION.machine);cancelVisionOwnedCharge();}
@@ -693,11 +728,18 @@ function refreshControlPanel(){
   if(G.mode==="lastshot"&&typeof openLastShot==="function"){openLastShot();return;}
   if(typeof goDiff==="function")goDiff(G.mode,true);
 }
-async function enableVisionControl(event){
+async function enableVisionControl(event,mode){
   if(event){event.stopPropagation();event.preventDefault();}
   if(!VISION.supported){toast("此浏览器不支持体感控制","#ff8d7a");return;}
-  if(VISION.loading||VISION.enabled)return;
-  saveVisionControlPreference("vision");
+  const targetMode=mode==="visionAim"?"visionAim":"vision";
+  if(VISION.loading){saveVisionControlPreference(targetMode);return;}
+  if(VISION.enabled){
+    saveVisionControlPreference(targetMode);
+    if(!VISION.aimMode)VISION.faceAim=0;
+    refreshControlPanel();
+    return;
+  }
+  saveVisionControlPreference(targetMode);
   VISION.desired=true;VISION.loading=true;visionSyncPreviewVisibility($("visionPreview"));visionSetUI("align","正在启动本地识别",.08);
   try{
     const modelPromise=loadVisionModel();
@@ -705,7 +747,7 @@ async function enableVisionControl(event){
     const streamPromise=navigator.mediaDevices.getUserMedia({audio:false,video:visionCaptureConstraints()});
     const results=await Promise.all([modelPromise,streamPromise]);VISION.stream=results[1];visionRecordCaptureSettings(VISION.stream);
     const video=$("visionVideo");video.srcObject=VISION.stream;await video.play();visionSyncFrameGeometry(video);
-    VISION.enabled=true;VISION.lastSample=null;VISION.lastPose=null;VISION.lastHands=[];VISION.lastPoseAt=0;VISION.lastHandAt=0;VISION.lastDraw=0;VISION.lastVideoTime=-1;VISION.inferAvg=0;visionResetTracking(true);resetVisionGesture(VISION.machine);visionSetUI("idle","双手放入下方蓄力框",0);
+    VISION.enabled=true;VISION.lastSample=null;VISION.lastPose=null;VISION.lastHands=[];VISION.lastPoseAt=0;VISION.lastHandAt=0;VISION.lastDraw=0;VISION.lastVideoTime=-1;VISION.inferAvg=0;VISION.faceAim=0;visionResetTracking(true);resetVisionGesture(VISION.machine);visionSetUI("idle","双手放入下方蓄力框",0);
     cancelAnimationFrame(VISION.raf);VISION.raf=requestAnimationFrame(visionFrame);
     document.documentElement.dataset.visionControl="ready";
     refreshControlPanel();
@@ -722,20 +764,30 @@ function disableVisionControl(event){
   refreshControlPanel();
 }
 function suspendVisionControl(){
-  VISION.desired=false;VISION.enabled=false;VISION.loading=false;cancelAnimationFrame(VISION.raf);cancelVisionOwnedCharge();
+  VISION.desired=false;VISION.enabled=false;VISION.loading=false;VISION.faceAim=0;cancelAnimationFrame(VISION.raf);cancelVisionOwnedCharge();
   if(VISION.stream)VISION.stream.getTracks().forEach(t=>t.stop());VISION.stream=null;const video=$("visionVideo");if(video)video.srcObject=null;
   visionResetTracking(true);resetVisionGesture(VISION.machine);VISION.lastSample=null;VISION.lastPose=null;VISION.lastHands=[];VISION.lastPoseAt=0;VISION.lastHandAt=0;VISION.lastDraw=0;VISION.lastVideoTime=-1;VISION.inferAvg=0;$("visionPreview").style.display="none";
   VISION.orientationBlocked=false;document.documentElement.dataset.visionControl="off";delete document.documentElement.dataset.visionPhase;delete document.documentElement.dataset.visionReady;delete document.documentElement.dataset.visionHands;delete document.documentElement.dataset.visionFrame;
 }
 function visionModeMarkup(){
   const active=VISION.desired||VISION.enabled;
+  const aimActive=active&&!!VISION.aimMode;
+  const stdActive=active&&!VISION.aimMode;
   restoreVisionControlPreference();
   return `<div class="visionMode"><span class="visionModeLabel"><small>CONTROL MODE</small><b>操作模式</b></span>
     <button class="${active?"":"active"}" onclick="disableVisionControl(event)"><span>触屏控制</span></button>
-    <button class="${active?"active":""}" onclick="enableVisionControl(event)" ${VISION.supported?"":"disabled"}><span>体感控制</span><em class="controlRecommend">推荐</em></button></div>`;
+    <button class="${stdActive?"active":""}" onclick="enableVisionControl(event,'vision')" ${VISION.supported?"":"disabled"}><span>体感控制</span><em class="controlRecommend">推荐</em></button>
+    <button class="${aimActive?"active":""}" onclick="enableVisionControl(event,'visionAim')" ${VISION.supported?"":"disabled"}><span>体感瞄准</span><em class="controlRecommend">测试</em></button></div>`;
 }
 VISION.fold.on=visionFoldLoad();
 Object.assign(window,{toggleVisionFold,setVisionFold});
+window.AIBAVisionAim=Object.freeze({
+  active:()=>!!(VISION.enabled&&VISION.aimMode),
+  raw:()=>VISION.faceAim||0,
+  shotLat:()=>(VISION.enabled&&VISION.aimMode)?(VISION.faceAim||0)*0.26:0,
+  camLat:()=>(VISION.enabled&&VISION.aimMode)?(VISION.faceAim||0)*0.65:0,
+  updateFromLandmarks:lm=>visionUpdateFaceAim(lm)
+});
 window.AIBAVisionFold=Object.freeze({
   isOn:()=>!!VISION.fold.on,
   isActive:()=>visionFoldActive(),
