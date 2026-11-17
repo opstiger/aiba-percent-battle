@@ -324,7 +324,7 @@ function resimPhysicsBall(b,p,v,w,t0){
   applyPhysicsResult(b,res,t0);
   return res;
 }
-function spawnPhysicsBall(shot,err,latErr,zone,isDeep){
+function spawnPhysicsBall(shot,err,latErr,zone,isDeep,faceAim,faceYawRad){
   const PHYS=globalThis.AIBABallPhysics;
   const p0=new THREE.Vector3();ballWorldPos(p0);
   handBall.visible=false;pBall.visible=false;
@@ -332,7 +332,11 @@ function spawnPhysicsBall(shot,err,latErr,zone,isDeep){
   const dist=Math.hypot(HOOP.x-sim.x,HOOP.z-sim.z);
   const tf0=shotFlightTime(0.78+dist*0.062,G.myStar,shot);
   const u=err/Math.max(.5,zone);
-  const L=PHYS.launch([sim.x,sim.y,sim.z],physicsLaunchOpts({tf:tf0,u,lat:latErr,noise:aibaGauss(),luck:aibaRoll()}));
+  const lOpts=physicsLaunchOpts({tf:tf0,u,lat:latErr,noise:aibaGauss(),luck:aibaRoll()});
+  const latM=(lOpts.map&&lOpts.map.latMeters)||0.9;
+  // ball-physics.js 里 +ang 往 +X(右)偏，而视觉/相机/player.rotation.y 里 +yawRad 往 -X(左)转，故取反并按弧度换算
+  if(faceYawRad)lOpts.lat=(latErr-(faceAim||0))-(faceYawRad*dist)/latM;
+  const L=PHYS.launch([sim.x,sim.y,sim.z],lOpts);
   const res=PHYS.simulate(L,{colliders:physicsColliders(),tuning:physicsTuning()});
   L.tf=tf0;L.u=u;
   return newPhysicsBall(p0,L,res,shotMat(shot),{
@@ -352,6 +356,7 @@ function releaseShot(power,shot){
   // lateral error = device tilt + vision face aim (when visionAim mode active) + hand noise
   const aimDist=Math.max(.5,Math.hypot(HOOP.x-P.pos.x,HOOP.z-P.pos.z));
   const faceAim=(window.AIBAVisionAim&&typeof window.AIBAVisionAim.shotLat==="function")?window.AIBAVisionAim.shotLat(aimDist):0;
+  const faceYawRad=(window.AIBAVisionAim&&typeof window.AIBAVisionAim.yawRad==="function")?window.AIBAVisionAim.yawRad():0;
   const tl=tiltDeg()*DIFFS[G.diff].latK+faceAim;
   const latErr=tl+aibaRollRange(-0.035,0.035);   // 手抖也影响结果,一并可复现
   const al=Math.abs(latErr);
@@ -393,7 +398,7 @@ function releaseShot(power,shot){
   if(!isBattle&&!isRush&&shot.deep!=null)deepBalls[shot.deep].visible=false;
   /* 真实物理（?physics=real）：上面的 outcome 只是旧判定的参考值，不再生效——
      误差映射成出手速度，结果交给 ball-physics.js 的碰撞模拟。 */
-  if(physicsShotsOn())return afterBallSpawn(spawnPhysicsBall(shot,err,latErr,zone,isDeep),shot,err,isBattle,isRush,isDeep);
+  if(physicsShotsOn())return afterBallSpawn(spawnPhysicsBall(shot,err,latErr,zone,isDeep,faceAim,faceYawRad),shot,err,isBattle,isRush,isDeep);
   // spawn from the hands (any camera mode)
   const p0=new THREE.Vector3();ballWorldPos(p0);
   handBall.visible=false;pBall.visible=false;
