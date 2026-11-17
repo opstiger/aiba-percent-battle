@@ -384,7 +384,8 @@
        pickupTurn 不在这里取反:它的方向已经由球架侧(rackSideFor)决定过一次了,
        再反一次就会转向反方向、背对球架。 */
     const mir=player.lefty?-1:1;
-    player.g.rotation.y=P.face+pickupTurn+(P.walking?0:mir*(SHOT_STANCE_YAW+styleTurn)*stance);
+    const aimYaw=(!P.walking&&global.AIBAVisionAim&&typeof global.AIBAVisionAim.yawRad==="function")?global.AIBAVisionAim.yawRad():0;
+    player.g.rotation.y=P.face+pickupTurn+aimYaw+(P.walking?0:mir*(SHOT_STANCE_YAW+styleTurn)*stance);
     /* 出手后的前后位移。沿"球员→篮筐"的水平方向偏移,所以正值永远是"向篮筐",
        和球员站在哪个点无关。只在离地后(c.jmp)生效,站定时位置一个字没动。 */
     const styleDrift=style&&Number(style.drift)||0;

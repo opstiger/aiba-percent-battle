@@ -350,7 +350,8 @@ function releaseShot(power,shot){
      走可复现通道(?seed=N 固定)。演出用的随机不动。 */
   const err=power-ideal, a=Math.abs(err), r=aibaRoll();
   // lateral error = device tilt + vision face aim (when visionAim mode active) + hand noise
-  const faceAim=(window.AIBAVisionAim&&typeof window.AIBAVisionAim.shotLat==="function")?window.AIBAVisionAim.shotLat():0;
+  const aimDist=Math.max(.5,Math.hypot(HOOP.x-P.pos.x,HOOP.z-P.pos.z));
+  const faceAim=(window.AIBAVisionAim&&typeof window.AIBAVisionAim.shotLat==="function")?window.AIBAVisionAim.shotLat(aimDist):0;
   const tl=tiltDeg()*DIFFS[G.diff].latK+faceAim;
   const latErr=tl+aibaRollRange(-0.035,0.035);   // 手抖也影响结果,一并可复现
   const al=Math.abs(latErr);
@@ -403,8 +404,8 @@ function releaseShot(power,shot){
   else if(outcome==="rattle"||outcome==="rattleout"){depth=0.17*Math.sign(err||1);lat=clamp(latErr,-0.12,0.12)+rnd(-0.05,0.05);}
   else if(outcome==="bank"){depth=0.55;lat=clamp(latErr*0.5,-0.1,0.1);}
   else if(outcome==="rimout"){depth=0.27*Math.sign(err||1);lat=clamp(latErr*1.2,-Math.max(.08,SHOT_RIM_RADIUS-SHOT_BALL_RADIUS*.58),Math.max(.08,SHOT_RIM_RADIUS-SHOT_BALL_RADIUS*.58))+rnd(-0.07,0.07);}
-  else if(dramaticMiss){depth=0.16*Math.sign(err||1);lat=clamp(latErr*1.12,-.42,.42)+rnd(-.05,.05);}
-  else{depth=err>0?0.58:clamp(err*0.055,-1.5,-0.55);lat=clamp(latErr*2,-0.9,0.9)+rnd(-0.2,0.2);}
+  else if(dramaticMiss){depth=0.16*Math.sign(err||1);lat=Math.abs(faceAim)>0.35?(latErr+rnd(-.08,.08)):(clamp(latErr*1.12,-.42,.42)+rnd(-.05,.05));}
+  else{depth=err>0?0.58:clamp(err*0.055,-1.5,-0.55);lat=Math.abs(faceAim)>0.35?(latErr+rnd(-.1,.1)):(clamp(latErr*2,-0.9,0.9)+rnd(-0.2,0.2));}
   let T;
   if(outcome==="bank")T=V3(clamp(lat*4,-0.55,0.55)+rnd(-0.08,0.08),3.45+rnd(0,0.25),-8.42);
   else T=HOOP.clone().addScaledVector(dirH,depth).addScaledVector(perp,lat);

@@ -646,10 +646,10 @@ function visionUpdateFaceAim(lm){
   // 右手投篮天然朝左侧（辅助手侧）略转一点，左手投篮天然朝右侧略转一点
   const lefty=typeof player!=="undefined"&&player&&!!player.lefty;
   const stanceBias=lefty?-.12:.12;
-  const centered=rawYaw-stanceBias,dead=.09;
+  const centered=rawYaw-stanceBias,dead=.08;
   const adj=Math.abs(centered)<dead?0:(centered-Math.sign(centered)*dead)/(1-dead);
-  const target=clamp(adj*.78,-1,1);
-  VISION.faceAim=(VISION.faceAim||0)*.86+target*.14;
+  const target=clamp(adj*1.05,-1,1);
+  VISION.faceAim=(VISION.faceAim||0)*.84+target*.16;
   return VISION.faceAim;
 }
 function visionFrame(now){
@@ -809,7 +809,8 @@ function updateAimArc(){
   else _aimP0.set(P.pos.x,2.05,P.pos.z);
   const dx=HOOP.x-_aimP0.x,dz=HOOP.z-_aimP0.z,dist=Math.max(.5,Math.hypot(dx,dz));
   const dirX=dx/dist,dirZ=dz/dist,perpX=dirZ,perpZ=-dirX;
-  const lat=(VISION.faceAim||0)*0.22;
+  const yaw=(VISION.faceAim||0)*(Math.PI/4);
+  const lat=dist*Math.tan(yaw);
   const tx=HOOP.x+perpX*lat,ty=HOOP.y,tz=HOOP.z+perpZ*lat;
   const shot=typeof curShot==="function"?curShot():null;
   const tf=typeof shotFlightTime==="function"?shotFlightTime(0.78+dist*0.062,typeof G!=="undefined"?G.myStar:null,shot):0.95;
@@ -828,8 +829,8 @@ function updateAimArc(){
 window.AIBAVisionAim=Object.freeze({
   active:()=>!!(VISION.enabled&&VISION.aimMode),
   raw:()=>VISION.faceAim||0,
-  shotLat:()=>(VISION.enabled&&VISION.aimMode)?(VISION.faceAim||0)*0.22:0,
-  yawRad:()=>(VISION.enabled&&VISION.aimMode)?(VISION.faceAim||0)*0.075:0,
+  yawRad:()=>(VISION.enabled&&VISION.aimMode)?(VISION.faceAim||0)*(Math.PI/4):0,
+  shotLat:(dist)=>(VISION.enabled&&VISION.aimMode)?(dist||6.75)*Math.tan((VISION.faceAim||0)*(Math.PI/4)):0,
   canTurn:()=>visionCanTurnAim(),
   updateArc:updateAimArc,
   updateFromLandmarks:lm=>visionUpdateFaceAim(lm)
