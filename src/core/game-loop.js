@@ -124,7 +124,8 @@ function animate(){
   }else hidePlayerPowerUI();
   // CameraDirector 统一拥有镜头，演出模块只通过它获得本帧写入权。
   // Last Shot 的 updateLastShotCam 失败时仍由 CameraDirector 回退到 updPlayCam(dt)。
-  updateCameraDirector(dt);
+  const cameraOwner=updateCameraDirector(dt);
+  camera.userData.firstPerson=cameraOwner==="play"&&CAM.mode===0&&G.state!=="resultbeat";
   updateRenderQuality(realDt);
   if(window.AIBACameraFov&&AIBACameraFov.apply)AIBACameraFov.apply();
   camera.position.copy(rig.pos);

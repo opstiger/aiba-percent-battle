@@ -1,6 +1,6 @@
 "use strict";
 
-const GAME_VERSION="v2.31.0";
+const GAME_VERSION="v2.33.0";
 const GAME_NAME="aiBA·百分大战";
 const CONFIG=window.AIBA_CONFIG||{};
 const COURT={
@@ -115,7 +115,10 @@ function playerSweetZone(){
   const base=DIFFS[G.diff].zone*playerShotProfile().window;
   return base*((G.practice||G.tutorial||G.interactiveTutorial)?1.5:1);
 }
-function playerChargeRate(){return DIFFS[G.diff].fill*playerShotProfile().speed;}
+function playerChargeRate(){
+  const wetness=G.charging?G.chargeWetness||0:meadowBallWetness();
+  return DIFFS[G.diff].fill*playerShotProfile().speed*(1-.12*wetness);
+}
 function shotFlightTime(baseTf,star,shot){
   return CONFIG.shotFlightTime?CONFIG.shotFlightTime(baseTf,star,{deep:!!(shot&&(shot.deep!=null||shot.super))}):baseTf;
 }

@@ -186,6 +186,7 @@ function startCharge(){
     if(!battleAutoMoveIfNeeded())toast(battleSpotStatus(G.battleSpot).label,"#9fd1ff");
     return false;
   }
+  G.chargeWetness=meadowBallWetness();
   G.charging=true;G.power=0;G.apexed=false;
   const chargeShot=curShot();
   /* 这一球的姿势微扰用“模式 + 球序”作 key：同一个 ?seed 的重试/回放保持一致，
@@ -654,7 +655,8 @@ function physicsBallEvent(b,e){
       if(fx)fx.impact(e.type,e);
       sfx("board",sBoard);haptic(b,e.impulse);break;
     case "support":case "scenery":sfx("floor",sBounce);break;
-    case "floor":b.bounces++;sfx("floor",sBounce);break;
+    case "floor":
+      b.bounces++;splashMeadowBall(e.x,e.z,e.impulse);sfx("floor",sBounce);break;
     case "made":
       if(b.made)break;
       if(b.opp){oppScore(b);b.made=true;}
@@ -779,6 +781,7 @@ function updBalls(dt){
       // floor
       if(p.y<BALL_FLOOR_PHYSICS.y&&b.vel.y<0){
         p.y=BALL_FLOOR_PHYSICS.y;
+        splashMeadowBall(p.x,p.z,-b.vel.y);
         if(resolveFloorBounce(b))sBounce();
       }
       b.life-=dt;

@@ -31,8 +31,8 @@ function releaseCameraFov(owner){
   applyCameraFovStack();return true;
 }
 /* 机位 5:转播过肩。排在自定义视角(3、4)之后编号,这样已保存的自定义机位编号不变 */
-const CAM_SHOULDER=5;
-const CAM={mode:0,names:CAM_BASE_NAMES.concat(["自定义视角 1","自定义视角 2","转播过肩"])};
+const CAM_SHOULDER=5,CAM_MEADOW_LOW=6;
+const CAM={mode:0,names:CAM_BASE_NAMES.concat(["自定义视角 1","自定义视角 2","转播过肩","草甸低机位"])};
 function cameraInPlay(){
   return G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||
     G.state==="rushintro"||G.state==="rushbetween"||G.state==="pregame"||G.state==="lastshot"||
@@ -78,12 +78,13 @@ function activeCustomCameraView(mode){
 function availableCameraModes(){
   if(typeof window!=="undefined"&&window.AIBAVisionAim&&window.AIBAVisionAim.active())return [0,1];
   const modes=[0,1,2,CAM_SHOULDER];
+  if(currentScenePreset==="flowerCourt")modes.push(CAM_MEADOW_LOW);
   customCameraSlots.forEach((v,i)=>{if(v||cameraEditor&&cameraEditor.slot===i)modes.push(3+i);});
   return modes;
 }
 function cameraModeLabel(mode){
   const i=customCameraSlotIndex(mode);
-  if(mode===CAM_SHOULDER)return CAM.names[CAM_SHOULDER];
+  if(mode===CAM_SHOULDER||mode===CAM_MEADOW_LOW)return CAM.names[mode];
   return i>=0?"自定义视角 "+(i+1):(CAM_BASE_NAMES[mode]||CAM_BASE_NAMES[1]);
 }
 function setCameraIcon(){
@@ -372,6 +373,9 @@ function updPlayCam(dt){
   const aimYaw=aimOn&&typeof window.AIBAVisionAim.yawRad==="function"?window.AIBAVisionAim.yawRad():0;
   if(aimOn&&CAM.mode!==0&&CAM.mode!==1){CAM.mode=1;setCameraIcon();applyCamMode();}
   const isContest=G.mode==="contest";
+  if(CAM.mode===CAM_MEADOW_LOW&&currentScenePreset!=="flowerCourt"){
+    CAM.mode=1;setCameraIcon();applyCamMode();
+  }
   if(CAM.mode===0){
     // 第一人称:略微后拉抬高(身体网格在本视角隐藏,不会入画);
     // 球出手后镜头随球高度平滑抬升,保证高弧线在空中全程可见
@@ -430,6 +434,18 @@ function updPlayCam(dt){
     }
   }else if(CAM.mode===CAM_SHOULDER){
     updateShoulderCamera(dt);
+  }else if(CAM.mode===CAM_MEADOW_LOW){
+    const dx=HOOP.x-P.pos.x,dz=HOOP.z-P.pos.z;
+    const distance=Math.max(1,Math.hypot(dx,dz)),back=4.55;
+    const smooth=THREE.MathUtils.smoothstep;
+    // At the corners, approach from the baseline side to clear the sideline spectators.
+    const side=2.65*(1-2*smooth(P.pos.x,1.8,4.3))*(1-2*smooth(Math.abs(P.pos.x),6.05,7.18));
+    const x=P.pos.x-(dx*back+dz*side)/distance,z=P.pos.z+(-dz*back+dx*side)/distance;
+    const field=environmentRoot.userData.placeState?.meadow?.court;
+    camTarget.pos.set(x,(field?.heightAt(x,z)||0)+.42,z);
+    camTarget.look.copy(P.pos).lerp(HOOP,.36);
+    camTarget.look.y=1.75+P.jump*.14;
+    dampRig(dt,6.6);
   }else if(CAM.mode>=3&&CAM.mode<3+CUSTOM_CAMERA_COUNT&&activeCustomCameraView(CAM.mode)){
     updateCustomCamera(dt);
   }else{
@@ -480,7 +496,7 @@ function updateCameraDirector(dt){
   if((G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||G.state==="bootshot"||G.state==="resultbeat")&&!G.glideCam){
     updPlayCam(dt);return "play";
   }
-  if(G.state==="lastshot")updPlayCam(dt);
+  if(G.state==="lastshot"){updPlayCam(dt);return "play";}
   return "idle";
 }
 function ballWorldPos(out){

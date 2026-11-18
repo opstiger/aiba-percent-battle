@@ -26,27 +26,12 @@
 
   const qs=new URLSearchParams(location.search);
   const FORCED=qs.get("fx");
-  /* 桌面实测这一层多花 0.10ms/帧(721x1148,0.37ms → 0.46ms)。绝对值很小,但手机 GPU
-     的填充率大约慢一个数量级,同样的三趟在低端机上会变成 1ms 以上。
-     所以:显式 ?quality=low 或内存 ≤2GB 的机器直接不开;?fx=1 可以强制打开。
-     粗指针设备保留效果,但模糊链降到 1/8 分辨率(泛光和柔化都不需要细节)。 */
   const COARSE=(()=>{try{return typeof matchMedia==="function"&&matchMedia("(pointer:coarse)").matches;}catch(e){return false;}})();
   const WEAK=(navigator.deviceMemory||4)<=2||qs.get("quality")==="low";
   const BLUR_SHIFT=3;
-  /* 三档,不是开关两档。真正贵的是**全屏趟数**,不是 shader 里的算式:
-       完整档  场景→离屏 + 两趟 1/8 模糊 + 合成   (泛光 / 背景柔化 / 调色 / 暗角)
-       轻量档  场景→离屏 + 合成                   (只有调色 / 暗角)
-       关闭    直出
-     调色和暗角是"电影感"的主要来源,泛光和景深是锦上添花 —— 手机上砍掉后两者,
-     留住前两者,画面气质基本不掉,却省掉两趟模糊和一整套模糊贴图。
-     ?fx=full 可以在手机上强制完整档,?fx=1 等价于 full。 */
-  const FX_MODE=(()=>{
-    if(FORCED==="0")return "off";
-    if(FORCED==="full"||FORCED==="1")return "full";
-    if(WEAK||COARSE)return "off";
-    return "full";
-  })();
-  const LITE=FX_MODE==="lite";
+  // Mobile gets the depth-aware lens in first person only. The full color and bloom chain remains opt-in.
+  const FX_MODE=FORCED==="0"?"off":FORCED==="full"||FORCED==="1"||(!WEAK&&!COARSE)?"full":"off";
+  const FULL=FX_MODE==="full";
 
   /* 调参入口。想更亮/更暗、更虚/更实,改这里就够了,不用碰 shader。
 
@@ -67,18 +52,13 @@
          阈值已抬到 .84,白线本身进不来;这里再把强度压一档,
          让清漆高光"发光"但不"糊成一块白板"。 */
       bloomThreshold:0.84,bloomStrength:0.22,
-      /* dofNear 16→7:原来 16m 外才开始虚,而球员通常只在 3~8m,
-         结果整块背景都落在"完全清晰"区里,景深等于没开。
-         现在对焦区贴合球员距离,看台才会真的退到后面。
-         强度反而从 .45 降到 .30 —— gameplay 不该开重景深,这层只是补一点
-         空间层次,主力交给雾(core.js)和照明分层。 */
-      vignette:0.26,dof:0.30,dofNear:7,dofFar:38
+      vignette:0.26,dof:0.39,dofNear:12,dofFar:39
     },
     outdoor:{
       contrast:1.06,saturation:1.03,lift:-0.002,
       warmR:1.0,warmG:1.0,warmB:1.0,
       bloomThreshold:0.84,bloomStrength:0.26,
-      vignette:0.16,dof:0.26,dofNear:24,dofFar:64
+      vignette:0.16,dof:0.39,dofNear:19,dofFar:59
     },
     /* 真实球馆/转播观感。和 indoor 是**相反**的两个方向,不是强弱之分:
          indoor —— 舞台聚光:压暗角、拉对比,把主体从暗背景里抠出来。
@@ -96,11 +76,11 @@
       contrast:1.14,saturation:1.02,lift:-0.003,
       warmR:1.0,warmG:1.0,warmB:1.0,
       bloomThreshold:0.84,bloomStrength:0.22,
-      vignette:0.14,dof:0.20,dofNear:22,dofFar:58
+      vignette:0.14,dof:0.35,dofNear:20,dofFar:58
     }
   };
   const P={
-    enabled:FX_MODE!=="off",
+    enabled:FORCED!=="0",
     exposure:1.0,        // 总体曝光
     contrast:1.16,       // 对比,>1 拉开明暗
     saturation:1.06,     // 饱和,>1 更艳(不要超过 1.15,方块色本来就纯)
@@ -160,9 +140,50 @@
     depthTest:false,depthWrite:false
   });
 
+  const focusMat=new THREE.ShaderMaterial({
+    uniforms:{
+      tScene:{value:null},tDepth:{value:null},camNear:{value:0.1},camFar:{value:160},
+      clearRange:{value:new THREE.Vector2()},radius:{value:new THREE.Vector2()},foreground:{value:0}
+    },
+    vertexShader:VERT,
+    fragmentShader:`
+      uniform sampler2D tScene,tDepth;
+      uniform float camNear,camFar;
+      uniform vec2 clearRange,radius;
+      uniform float foreground;
+      varying vec2 vUv;
+      float depthAt(vec2 uv){
+        float z=texture2D(tDepth,uv).r;
+        return camNear*camFar/mix(camFar,camNear,z);
+      }
+      void main(){
+        float depth=depthAt(vUv),blur=smoothstep(clearRange.x,clearRange.y,depth);
+        float mask=smoothstep(clearRange.x-1.6,clearRange.x+2.4,depth);
+        if(foreground>.5)blur=mask=1.0-smoothstep(clearRange.x,clearRange.y,depth);
+        if(mask<.002){gl_FragColor=vec4(0.0);return;}
+        vec3 color=texture2D(tScene,vUv).rgb*1.45;
+        float weight=1.45;
+        float reject=max(clearRange.x-1.0,depth-max(3.0,depth*.17));
+        vec2 spread=radius*mix(.40,1.0,blur);
+        for(int i=0;i<8;i++){
+          float angle=float(i)*2.399963;
+          float r=sqrt((float(i)+.65)/8.0);
+          vec2 uv=vUv+vec2(cos(angle),sin(angle))*spread*r;
+          float tap=depthAt(uv);
+          float w=foreground>.5?1.0-smoothstep(clearRange.x,clearRange.y,tap):
+            smoothstep(reject-1.5,reject+2.0,tap);
+          color+=texture2D(tScene,uv).rgb*w;
+          weight+=w;
+        }
+        // Premultiply coverage so bilinear upsampling can't drag a sharply focused foreground into the blur.
+        gl_FragColor=vec4(color/weight*mask,mask);
+      }`,
+    depthTest:false,depthWrite:false
+  });
+
   const compMat=new THREE.ShaderMaterial({
     uniforms:{
-      tScene:{value:null},tBlur:{value:null},tDepth:{value:null},
+      tScene:{value:null},tBlur:{value:null},tDepth:{value:null},tFocus:{value:null},
       tMeadowAir:{value:null},useMeadowAir:{value:0},
       useDepth:{value:0},camNear:{value:0.1},camFar:{value:120},
       exposure:{value:1},contrast:{value:1},saturation:{value:1},lift:{value:0},
@@ -170,18 +191,18 @@
       bloomThreshold:{value:.7},bloomStrength:{value:.35},
       shadowKeep:{value:.32},toeEnd:{value:.26},
       vigStrength:{value:.3},vigInner:{value:.45},vigOuter:{value:1.1},aspect:{value:1},
-      dofStrength:{value:.4},dofNear:{value:16},dofFar:{value:46}
+      dofStrength:{value:.4},dofNear:{value:16},dofFar:{value:46},dofForeground:{value:0}
     },
     vertexShader:VERT,
     fragmentShader:`
-      uniform sampler2D tScene,tBlur,tDepth,tMeadowAir;
+      uniform sampler2D tScene,tBlur,tDepth,tFocus,tMeadowAir;
       uniform float useDepth,useMeadowAir,camNear,camFar;
       uniform float exposure,contrast,saturation,lift;
       uniform vec3 warm;
       uniform float bloomThreshold,bloomStrength;
       uniform float shadowKeep,toeEnd;
       uniform float vigStrength,vigInner,vigOuter,aspect;
-      uniform float dofStrength,dofNear,dofFar;
+      uniform float dofStrength,dofNear,dofFar,dofForeground;
       varying vec2 vUv;
       float luma(vec3 c){return dot(c,vec3(0.2126,0.7152,0.0722));}
       void main(){
@@ -194,9 +215,14 @@
         if(useDepth>0.5||useMeadowAir>0.5){
           float z=texture2D(tDepth,vUv).x*2.0-1.0;
           lin=2.0*camNear*camFar/(camFar+camNear-z*(camFar-camNear));
-          coc=smoothstep(dofNear,dofFar,lin)*dofStrength*useDepth;
+          float blurAmount=smoothstep(dofNear,dofFar,lin);
+          coc=mix(blurAmount,1.0-blurAmount,dofForeground)*dofStrength*useDepth;
         }
-        vec3 col=mix(base,blur,coc);
+        vec3 col=base;
+        if(coc>.001){
+          vec4 lens=texture2D(tFocus,vUv);
+          col=mix(base,lens.rgb/max(.001,lens.a),lens.a*coc);
+        }
 
         col+=max(blur-bloomThreshold,0.0)*bloomStrength;
         if(useMeadowAir>0.5){
@@ -222,17 +248,14 @@
     depthTest:false,depthWrite:false
   });
 
-  let rtScene=null,rtA=null,rtB=null,rtAir=null,rtW=0,rtH=0;
+  let rtScene=null,rtA=null,rtB=null,rtAir=null,rtFocus=null,rtW=0,rtH=0;
+  let focusActive=false;
+  const focusDirection=new THREE.Vector3(),focusOffset=new THREE.Vector3();
+  const focus={near:0,far:0,strength:0,foreground:false};
+  const foregroundRange=new THREE.Vector2();
   const size=new THREE.Vector2();
 
-  /* opts.depthBuffer —— 真正的 Z-buffer,**画场景的 RT 必须有**;
-     opts.depthTexture —— 只为景深读深度用,可有可无。
-     ⚠ 这两件事以前是同一个开关,踩过一个只在手机上出现的坑:
-       FX_MODE 在 pointer:coarse 下是 "lite",而 lite 档建 rtScene 时传的是 false,
-       于是整个 3D 场景被画进一个**没有深度缓冲**的 RT —— 没有 Z-buffer 就没有遮挡,
-       观众躯干被座椅盖掉、架上的球被箱体盖掉、球员的腿被地板盖掉,
-       表现出来就是"各种透明、球不见了",而桌面走 full 档一切正常。
-       所以这里拆成两个字段,depthBuffer 恒为 true。 */
+  // The main render target always has a Z-buffer, independently of whether we read its depth texture.
   function makeRT(w,h,opts){
     const wantDepthTex=!!(opts&&opts.depthTexture);
     const rt=new THREE.WebGLRenderTarget(w,h,{
@@ -257,12 +280,11 @@
     renderer.getDrawingBufferSize(size);
     const w=Math.max(2,size.x|0),h=Math.max(2,size.y|0);
     if(w===rtW&&h===rtH&&rtScene)return;
-    disposeRT(rtScene);disposeRT(rtA);disposeRT(rtB);disposeRT(rtAir);rtAir=null;
+    disposeRT(rtScene);disposeRT(rtA);disposeRT(rtB);disposeRT(rtAir);disposeRT(rtFocus);
+    rtAir=rtFocus=null;
     rtW=w;rtH=h;
-    /* 场景 RT:Z-buffer 恒开(轻量档也得有,否则整场没有遮挡);
-       深度贴图只有 full 档跑景深时才需要。 */
-    rtScene=makeRT(w,h,{depthBuffer:true,depthTexture:!LITE});
-    if(LITE){rtA=rtB=null;return;}
+    rtScene=makeRT(w,h,{depthBuffer:true,depthTexture:hasDepth});
+    if(!FULL){rtA=rtB=null;return;}
     /* 模糊链跑在 1/8 分辨率上:泛光和柔化都不需要细节,却省掉 63/64 的填充率。
        这两张只画全屏四边形,不需要任何深度。 */
     const bw=Math.max(2,w>>BLUR_SHIFT),bh=Math.max(2,h>>BLUR_SHIFT);
@@ -294,25 +316,69 @@
     return rtAir.texture;
   }
 
-  function composite(air){
-    const u=compMat.uniforms;
-    u.tMeadowAir.value=air;
-    u.useMeadowAir.value=air?1:0;
-    u.tScene.value=rtScene.texture;
-    /* 轻量档没有模糊图:把泛光/景深的输入接回场景本身并把强度置零,
-       shader 里 max(blur-1.0,0)=0、coc=0,等于只跑调色和暗角那几行。 */
-    u.tBlur.value=(rtB||rtScene).texture;
-    u.tDepth.value=rtScene.depthTexture||null;
-    u.useDepth.value=(!LITE&&hasDepth&&rtScene.depthTexture&&P.dof>0.001)?1:0;
+  function lowMeadowFocus(weather){
+    if(!weather?.court||camera.userData.firstPerson||camera.position.y>2.25)return 0;
+    const height=camera.position.y-weather.court.heightAt(camera.position.x,camera.position.z);
+    if(height<.08||height>=1.24)return 0;
+    camera.getWorldDirection(focusDirection);
+    if(Math.abs(focusDirection.y)>.48)return 0;
+    const hoop=focusOffset.copy(HOOP).sub(camera.position).dot(focusDirection);
+    if(hoop<1.2)return 0;
+    focusOffset.copy(player.g.position);
+    focusOffset.y+=1.05;
+    const playerDepth=player.g.visible?focusOffset.sub(camera.position).dot(focusDirection):0;
+    const protectedDepth=playerDepth>.35?Math.min(hoop,playerDepth):hoop;
+    const end=Math.min(3.65,protectedDepth-.63);
+    if(end<.66)return 0;
+    foregroundRange.set(Math.min(1.04,end*.43),end);
+    return .93*(1-THREE.MathUtils.smoothstep(height,.55,1.24));
+  }
+
+  function drawFocus(weather,foreground){
+    if(!rtFocus){
+      rtFocus=makeRT(Math.max(2,rtW>>2),Math.max(2,rtH>>2),{depthBuffer:false});
+      rtFocus.texture.encoding=THREE.LinearEncoding;
+    }
+    camera.getWorldDirection(focusDirection);
+    const rimDepth=focusOffset.copy(HOOP).sub(camera.position).dot(focusDirection);
+    const meadow=weather&&!lookLocked;
+    // The sharp zone includes ball, shooter and rim. Looking around or following a shot doesn't rack the lens.
+    focus.near=Math.max(P.dofNear,Math.max(0,rimDepth)+7,meadow?23:12);
+    focus.far=Math.max(P.dofFar,focus.near+(meadow?57:30));
+    focus.strength=(meadow?.53:P.dof)*(COARSE?.83:1);
+    focus.foreground=foreground>.001;
+    if(focus.foreground){
+      focus.near=foregroundRange.x;
+      focus.far=foregroundRange.y;
+      focus.strength=foreground*(COARSE?.87:1);
+    }
+    const u=focusMat.uniforms,pixels=focus.foreground?34:meadow?13.5:9.0;
+    u.foreground.value=focus.foreground?1:0;
+    const scale=rtH/Math.max(1,renderer.domElement.clientHeight);
+    u.tScene.value=rtScene.texture;u.tDepth.value=rtScene.depthTexture;
     u.camNear.value=camera.near;u.camFar.value=camera.far;
-    u.exposure.value=P.exposure;u.contrast.value=P.contrast;
-    u.saturation.value=P.saturation;u.lift.value=P.lift;
-    u.warm.value.set(P.warmR,P.warmG,P.warmB);
-    u.bloomThreshold.value=LITE?1.0:P.bloomThreshold;u.bloomStrength.value=LITE?0:P.bloomStrength;
+    u.clearRange.value.set(focus.near,focus.far);
+    u.radius.value.set(pixels*scale/rtW,pixels*scale/rtH);
+    drawPass(focusMat,rtFocus);
+    return rtFocus.texture;
+  }
+
+  function composite(air,lens){
+    const u=compMat.uniforms;
+    u.tMeadowAir.value=air;u.useMeadowAir.value=air?1:0;
+    u.tScene.value=rtScene.texture;u.tBlur.value=(rtB||rtScene).texture;
+    u.tDepth.value=rtScene.depthTexture||null;
+    u.tFocus.value=lens;u.useDepth.value=lens?1:0;
+    u.camNear.value=camera.near;u.camFar.value=camera.far;
+    u.exposure.value=FULL?P.exposure:1;u.contrast.value=FULL?P.contrast:1;
+    u.saturation.value=FULL?P.saturation:1;u.lift.value=FULL?P.lift:0;
+    u.warm.value.set(FULL?P.warmR:1,FULL?P.warmG:1,FULL?P.warmB:1);
+    u.bloomThreshold.value=FULL?P.bloomThreshold:1;u.bloomStrength.value=FULL?P.bloomStrength:0;
     u.shadowKeep.value=P.shadowKeep;u.toeEnd.value=P.toeEnd;
-    u.vigStrength.value=P.vignette;u.vigInner.value=P.vignetteInner;u.vigOuter.value=P.vignetteOuter;
+    u.vigStrength.value=FULL?P.vignette:0;u.vigInner.value=P.vignetteInner;u.vigOuter.value=P.vignetteOuter;
     u.aspect.value=rtW/Math.max(1,rtH);
-    u.dofStrength.value=P.dof;u.dofNear.value=P.dofNear;u.dofFar.value=P.dofFar;
+    u.dofStrength.value=lens?focus.strength:0;u.dofNear.value=focus.near;u.dofFar.value=focus.far;
+    u.dofForeground.value=focus.foreground?1:0;
     drawPass(compMat,null);
   }
 
@@ -322,7 +388,10 @@
     /* 只接管主场景。装备预览等自带 scene/camera 的离屏渲染原样放行。 */
     if(sc!==scene||cam!==camera)return baseRender(sc,cam);
     const weather=RT_SVC.environmentRoot.userData.placeState?.meadow;
-    if(failed||!P.enabled){
+    const foreground=hasDepth&&P.dof>.001?lowMeadowFocus(weather):0;
+    const wantsFocus=hasDepth&&P.dof>.001&&(camera.userData.firstPerson===true||foreground>.001);
+    focusActive=false;
+    if(failed||!P.enabled||(!FULL&&!wantsFocus)){
       if(weather)weather.fallback.visible=true;
       if(rtAir){disposeRT(rtAir);rtAir=null;}
       return baseRender(sc,cam);
@@ -335,7 +404,7 @@
       renderer.setRenderTarget(rtScene);
       baseRender(sc,cam);
 
-      if(!LITE){
+      if(FULL){
         const bd=blurMat.uniforms.dir.value,bw=Math.max(2,rtW>>BLUR_SHIFT),bh=Math.max(2,rtH>>BLUR_SHIFT);
         blurMat.uniforms.tDiffuse.value=rtScene.texture;
         bd.set(P.blurSpread/bw,0);drawPass(blurMat,rtA);
@@ -343,11 +412,14 @@
         bd.set(0,P.blurSpread/bh);drawPass(blurMat,rtB);
       }
 
-      composite(useAir?drawMeadowAir(weather):null);
+      const air=useAir?drawMeadowAir(weather):null;
+      const lens=wantsFocus&&rtScene.depthTexture?drawFocus(weather,foreground):null;
+      focusActive=!!lens;
+      composite(air,lens);
       renderer.setRenderTarget(null);
     }catch(e){
       /* 后期挂了不能连累游戏:退回直出,并且不再重试。 */
-      failed=true;
+      failed=true;focusActive=false;
       if(weather)weather.fallback.visible=true;
       try{renderer.setRenderTarget(null);}catch(e2){}
       if(window.console&&console.warn)console.warn("[AIBAGrade] post pass disabled:",e);
@@ -376,7 +448,8 @@
     unlock(){lookLocked=false;applyLook();return Object.assign({},P);},
     get(){return Object.assign({},P);},
     setEnabled(on){P.enabled=!!on;},
-    isActive(){return P.enabled&&!failed;},
+    isActive(){return P.enabled&&!failed&&(FULL||focusActive);},
+    focusInfo(){return focusActive?{...focus}:null;},
     hasDepth,coarse:COARSE,weak:WEAK,mode:FX_MODE,
     /* 给回归测试用:场景 RT 到底有没有 Z-buffer。
        没有的话整场就没有遮挡判定 —— 这条只在 pointer:coarse 的 lite 档翻过车,

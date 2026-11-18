@@ -1,16 +1,5 @@
-/* 后期渲染目标的深度缓冲验收。跑:node scripts/fx-depth.test.mjs
-   非零退出码 = 验收不通过。
-
-   背景(只在触屏设备上翻车):
-     grade.js 的 FX_MODE = COARSE ? "lite" : "full",也就是**所有触屏设备**都走 lite。
-     而 lite 档建 rtScene 时把同一个开关同时接到了 depthBuffer 上:
-       rtScene=makeRT(w,h,LITE?false:true)   →   depthBuffer:false
-     整个 3D 场景于是被画进一个**没有 Z-buffer** 的渲染目标 —— 没有深度就没有遮挡判定,
-     观众躯干被座椅盖掉、架上的球被箱体盖掉、球员的腿被地板盖掉,
-     表现出来正是用户报的"各种透明、球不见了",而桌面走 full 档一切正常。
-     那个 flag 的本意只是"要不要深度**贴图**做景深",两件事必须分开。
-
-   断言顺序有讲究:先证明手机上下文确实走 lite 档,否则"lite 档有深度"会退化成空断言。 */
+/* Validates the actual camera owner's depth-of-field state on desktop and touch.
+   Run with node scripts/fx-depth.test.mjs. Pass AIBA_CHROMIUM for an alternate executable. */
 import fs from "node:fs";import path from "node:path";import http from "node:http";
 import {fileURLToPath} from "node:url";import {createRequire} from "node:module";
 const ROOT=path.resolve(path.dirname(fileURLToPath(import.meta.url)),"..");
@@ -29,7 +18,8 @@ for(const base of [import.meta.url,"/opt/homebrew/lib/node_modules/"].concat(
       return fs.readdirSync(n).map(d=>path.join(n,d,"node_modules")+"/");}catch(e){return [];}})())){
   for(const pkg of ["playwright","playwright-core"]){
     let m;try{m=createRequire(base)(pkg);}catch(e){continue;}
-    try{B=await m.chromium.launch({args:["--mute-audio","--disable-background-timer-throttling","--disable-renderer-backgrounding"]});break;}catch(e){}
+    try{B=await m.chromium.launch({executablePath:process.env.AIBA_CHROMIUM||undefined,
+      args:["--mute-audio","--enable-unsafe-swiftshader","--disable-background-timer-throttling","--disable-renderer-backgrounding"]});break;}catch(e){}
   }
   if(B)break;
 }
@@ -37,43 +27,64 @@ if(!B){console.error("需要 Playwright: npx playwright install chromium");serve
 
 const MOBILE_UA="Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/152.0.0.0 Mobile Safari/537.36";
 async function probe(kind){
-  const opts=kind==="mobile"
-    ? {viewport:{width:390,height:844},deviceScaleFactor:2,isMobile:true,hasTouch:true,userAgent:MOBILE_UA}
-    : {viewport:{width:1280,height:800},deviceScaleFactor:1};
+  const mobile=kind==="mobile";
+  const opts=mobile
+    ? {viewport:{width:390,height:760},deviceScaleFactor:1,isMobile:true,hasTouch:true,userAgent:MOBILE_UA}
+    : {viewport:{width:960,height:640},deviceScaleFactor:1};
   const ctx=await B.newContext(opts);
-  try{await ctx.addInitScript({path:path.join(ROOT,"scripts/silence-browser.js")});}catch(e){}
-  const page=await ctx.newPage();
-  await page.goto(`http://127.0.0.1:${port}/index.html?intro=0&seed=8801`,{waitUntil:"load",timeout:60000});
-  await page.waitForFunction("typeof AIBAGrade!=='undefined'&&typeof renderer!=='undefined'",{timeout:30000});
-  /* rtInfo 要等 ensureTargets 跑过一次才有值,先逼一帧真实渲染 */
-  await page.evaluate(()=>{renderer.render(scene,camera);});
-  const r=await page.evaluate(()=>({
-    coarse:matchMedia("(pointer:coarse)").matches,
-    mode:AIBAGrade.mode,active:AIBAGrade.isActive(),
-    rt:AIBAGrade.rtInfo?AIBAGrade.rtInfo():"no-rtInfo"
-  }));
-  await ctx.close();
-  return r;
+  try{
+    await ctx.addInitScript({path:path.join(ROOT,"scripts/silence-browser.js")});
+    const page=await ctx.newPage();
+    const origin=`http://127.0.0.1:${port}`;
+    await page.route("**/*",route=>new URL(route.request().url()).origin===origin?route.continue():route.abort());
+    await page.goto(`http://127.0.0.1:${port}/index.html?intro=0&seed=8801`,{waitUntil:"domcontentloaded",timeout:45000});
+    await page.waitForFunction(()=>typeof AIBAGrade!=="undefined"&&typeof startPractice==="function"&&player?.g,null,{timeout:30000});
+    await page.evaluate(()=>{
+      unlockBoot();applyScenePreset("indoor",{persist:false});startPractice();
+    });
+    await page.waitForFunction(()=>G.state==="round"&&!G.glideCam,null,{timeout:45000});
+    const capture=async (preset,mode,state)=>{
+      await page.evaluate(({preset,mode,state})=>{
+        if(preset)applyScenePreset(preset,{persist:false});
+        G.state=state;G.glideCam=null;CAM.mode=mode;applyCamMode();
+      },{preset,mode,state});
+      await page.waitForFunction(enabled=>camera.userData.firstPerson===enabled&&!!AIBAGrade.focusInfo()===enabled,
+        state==="round"&&mode===0,{timeout:20000});
+      return page.evaluate(()=>({focus:AIBAGrade.focusInfo(),rt:AIBAGrade.rtInfo(),
+        rimDistance:camera.position.distanceTo(HOOP),firstPerson:camera.userData.firstPerson}));
+    };
+    const indoor=await capture(null,0,"round");
+    const meadow=await capture("flowerCourt",0,"round");
+    await page.evaluate(()=>setCameraMode(CAM_MEADOW_LOW,{silent:true}));
+    await page.waitForFunction(()=>AIBAGrade.focusInfo()?.foreground===true,null,{timeout:20000});
+    const low=await page.evaluate(()=>({
+      firstPerson:camera.userData.firstPerson,focus:AIBAGrade.focusInfo(),height:camera.position.y,
+      subjectDistance:camera.position.distanceTo(player.g.position)
+    }));
+    const meadowThird=await capture(null,1,"round");
+    const lunar=await capture("lunarCrater",0,"round");
+    const third=await capture(null,1,"round");
+    const cinematic=await capture(null,0,"pregame");
+    return {coarse:await page.evaluate(()=>matchMedia("(pointer:coarse)").matches),indoor,meadow,meadowThird,low,lunar,third,cinematic};
+  }finally{await ctx.close();}
 }
 
-const M=await probe("mobile"),D=await probe("desktop");
-await B.close();server.close();
-
-let bad=false;
-const say=(ok,txt)=>{console.log((ok?"  PASS  ":"  FAIL  ")+txt);if(!ok)bad=true;};
-console.log("手机 "+JSON.stringify(M)+"\n桌面 "+JSON.stringify(D)+"\n");
-
-say(M.coarse===true,"手机上下文确实是 pointer:coarse(不成立则整份测试空跑)");
-say(M.mode==="lite","手机确实走 lite 档(不成立则下面那条是空断言)");
-say(D.mode==="full","桌面走 full 档");
-say(!!M.rt&&M.rt!=="no-rtInfo","拿得到 rtInfo");
-say(!!M.rt&&M.rt.depthBuffer===true,
-  "【关键】手机 lite 档的场景 RT 必须有 Z-buffer(实测 depthBuffer="+(M.rt&&M.rt.depthBuffer)+")");
-say(!!D.rt&&D.rt.depthBuffer===true,"桌面 full 档也有 Z-buffer");
-say(!!M.rt&&M.rt.depthTexture===false,"lite 档不该浪费一张深度贴图(景深本就关着)");
-say(!!D.rt&&D.rt.depthTexture===true,"full 档要有深度贴图给景深用");
-
-console.log("");
-if(bad){console.log("❌ 验收不通过");process.exit(1);}
-console.log("✅ 两档的场景渲染目标都有深度缓冲");
-process.exit(0);
+try{
+  for(const kind of ["desktop","mobile"]){
+    const result=await probe(kind);
+    console.log(kind,JSON.stringify(result));
+    if(result.coarse!==(kind==="mobile"))throw Error("Incorrect input profile");
+    for(const venue of ["indoor","meadow","lunar"]){
+      const shot=result[venue];
+      if(!shot.focus||!shot.rt?.depthBuffer||!shot.rt.depthTexture||shot.focus.near<shot.rimDistance)
+        throw Error(`${kind} ${venue} did not preserve a sharp court and a depth-aware lens`);
+    }
+    if(result.meadow.focus.strength<=result.indoor.focus.strength)throw Error("Meadow focus should be stronger than the indoor look");
+    if(result.third.focus||result.meadowThird.focus||result.cinematic.focus)throw Error("Focus leaked into a standard third-person or cinematic camera");
+    if(result.low.firstPerson||!result.low.focus?.foreground||result.low.focus.far>=result.low.subjectDistance)
+      throw Error("The meadow's low camera must soften only the foreground, preserving the player and hoop");
+  }
+}finally{
+  await B.close();
+  server.close();
+}

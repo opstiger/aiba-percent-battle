@@ -301,6 +301,17 @@ function buildFlowerCourt(){
     attached("rim",HOOP.x+.315*dx,HOOP.y,HOOP.z+.315*dz,
       new THREE.Vector3(dx*.68,-.22,dz*.68),r(.092,.20),r(.052,.088));
   }
+  // Small, staggered flower breaks in the grass close to the low sideline sightline.
+  const foreground=[[-6.9,-2.9],[-3.7,.1],[2.45,1.15],[4.10,2.30],[5.95,4.45],
+    [-3.15,5.9],[1.4,9.4],[-5.5,12.2],[4.85,13.8],[-2.2,18.8]];
+  for(const [cx,cz] of foreground){
+    const count=mobile?10:16,main=pick(FLOWER_FORMS);
+    for(let i=0;i<count;i++){
+      const x=cx+(rng()+rng()-1)*1.16,z=cz+(rng()+rng()-1)*1.34;
+      if(BATTLE_SPOTS.some(spot=>Math.hypot(x-spot.p.x,z-spot.p.z)<.77))continue;
+      ambient.push(flower(x,heightAt(x,z),z,r(.22,.60),r(.08,.14),i%3?main:pick(FLOWER_FORMS)));
+    }
+  }
   state.ambient=makeFlowerLayer(state,ambient,"ambient");
   state.ground=makeFlowerLayer(state,ground,"ground");
   state.structure=makeFlowerLayer(state,structure,"structure");
@@ -444,14 +455,14 @@ function updateFlowerCourt(progress,dt){
   const state=environmentRoot.userData.flowerState;
   if(!state)return;
   state.revealProgress=Math.max(state.revealProgress,Math.pow(clamp(progress,0,1),.88));
-  state.visualProgress+=(state.revealProgress-state.visualProgress)*(1-Math.exp(-2.2*dt));
+  state.visualProgress+=(state.revealProgress-state.visualProgress)*(1-Math.exp(-.99*dt));
   const meadow=environmentRoot.userData.placeState?.meadow;
   if(meadow){
     meadow.flowerProgress=state.visualProgress;
     meadow.score=clamp(progress,0,1);
     state.wind=meadow.wind.value;
   }
-  const groundT=clamp(state.revealProgress/.96,0,1),structureT=smoothRange(.16,.91,state.revealProgress);
+  const groundT=clamp(state.visualProgress/.96,0,1),structureT=smoothRange(.16,.91,state.visualProgress);
   setFlowerLayerTarget(state,state.ground,Math.floor(groundT*state.ground.total));
   setFlowerLayerTarget(state,state.structure,Math.floor(structureT*state.structure.total));
   state.time+=dt;state.elapsed+=dt;
@@ -465,14 +476,21 @@ function updateFlowerCourt(progress,dt){
   document.documentElement.dataset.flowerGround=String(state.visible);
   document.documentElement.dataset.flowerStructure=String(state.structureVisible);
   state.pulse=Math.max(0,state.pulse-dt*2.5);
-  state.petalMat.emissiveIntensity=.038+state.pulse*.09;
-  state.coreMat.emissiveIntensity=.025+state.pulse*.07;
+  state.petalMat.emissiveIntensity=.038+state.pulse*.022;
+  state.coreMat.emissiveIntensity=.025+state.pulse*.018;
 }
 function bloomOnScore(points){
   const state=environmentRoot.userData.flowerState;
   if(!state)return;
   const value=Math.max(1,points||3),bump=value>=10?.055:(value>=5?.032:.019);
   state.revealProgress=clamp(state.revealProgress+bump,0,1);state.pulse=1;
+}
+function meadowBallWetness(){
+  return environmentRoot.userData.placeState?.meadow?.ballWetness||0;
+}
+function splashMeadowBall(x,z,force){
+  const court=environmentRoot.userData.placeState?.meadow?.court;
+  if(court)AIBAMeadowCourt.ballImpact(court,x,z,force);
 }
 function weatherAdjustedIdeal(shot,withNoise){
   const mod=WEATHER_SHOT_MODIFIERS[currentWeather]||WEATHER_SHOT_MODIFIERS.none;

@@ -263,7 +263,7 @@
     setPlaceHoops(false);
   }
   function themeHoops(s,b,faceMarks=b){
-    const beach=s.name==="beachSunset",lunar=s.name==="lunarCrater",tokyo=s.name==="tokyoRooftop",wood=s.name==="flowerCourt",rain=s.name==="rainyCourt",color=beach?0x8e969e:lunar?0xeef1f5:tokyo?0x1f2530:wood?0x5c5139:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
+    const beach=s.name==="beachSunset",lunar=s.name==="lunarCrater",tokyo=s.name==="tokyoRooftop",rain=s.name==="rainyCourt",color=beach?0x8e969e:lunar?0xeef1f5:tokyo?0x1f2530:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
     hoopSupports().forEach(([z,dir])=>{
       const base=z-dir*1.55;
       if(beach){
@@ -288,10 +288,9 @@
         return;
       }
       b.box(color,0,1.75,base,.24,3.5,.24);b.box(color,0,3.46,z-dir*.76,.22,.22,1.55);
-      b.box(lunar?0xcfd5de:color,0,2.955,base+dir*.505,.13,1.48,.13,dir*Math.PI/4);b.box(lunar?0xa9a8a6:wood?0x66513b:0x757b76,0,.1,base,.75,.2,.75);
-      b.box(lunar?0xdce2ea:tokyo?0x283242:wood?0xad8054:rain?0xc5c1a9:s.name==="spanishQuarter"?0x91988c:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
-      for(let j=-2;j<=2;j++)if(wood)b.box(0x694c34,j*.34,3.5,z+dir*.062,.018,1.07,.006);
-      const ink=lunar?0xc68059:tokyo?0xff4d32:wood?0xe4cca0:rain?0x704f40:0x384f56;
+      b.box(lunar?0xcfd5de:color,0,2.955,base+dir*.505,.13,1.48,.13,dir*Math.PI/4);b.box(lunar?0xa9a8a6:0x757b76,0,.1,base,.75,.2,.75);
+      b.box(lunar?0xdce2ea:tokyo?0x283242:rain?0xc5c1a9:s.name==="spanishQuarter"?0x91988c:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
+      const ink=lunar?0xc68059:tokyo?0xff4d32:rain?0x704f40:0x384f56;
       const aimInk=lunar?0xf5d18d:ink,aimWidth=lunar?.042:.035;
       for(const a of [-1,1]){
         faceMarks.box(ink,0,3.5+a*.51,z+dir*.066,1.86,.035,.012);
@@ -309,7 +308,6 @@
         b.box(0x8c94a0,0,3.46,base,.27,.27,.27);
         for(const bx of [-.28,.28])for(const bz of [-.28,.28])b.box(0x282c34,bx,.21,base+bz,.07,.04,.07);
       }
-      if(wood)for(let j=0;j<6;j++)b.box(0xc3a976,0,1.3+j*.065,base,.26,.025,.27);
       if(s.name==="spanishQuarter"||s.name==="beachSunset"){
         const rr=rng(s.name==="spanishQuarter"?197:239);
         for(let j=0;j<32;j++){
@@ -1199,7 +1197,10 @@
     const b=batch(),builder=({outdoorSunny:city,rainyCourt:rainTown,shonanCoast:shonan,medCliff:med,beachSunset:coast})[name];
     if(builder)builder(s,b);else AIBAWorldWonders.build(s,b,{batch,tree,facing,lunarMarkings});
     AIBAWorldLife.build(s,b,{batch,rng});
-    if(name==="lunarCrater"){
+    if(name==="flowerCourt"){
+      s.meadow.court=AIBAMeadowCourt.build(s,hoopSupports(),batch);
+      setPlaceHoops(true);
+    }else if(name==="lunarCrater"){
       const hb=batch(),marks=batch();themeHoops(s,hb,marks);
       const hm=hb.finish(root,`placeHoop:${name}`);
       if(hm){
