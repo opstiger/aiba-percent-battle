@@ -123,10 +123,24 @@
     const FINGERS=["Index","Middle","Ring","Pinky"],FEET=["LeftFoot","RightFoot","LeftToeBase","RightToeBase","LeftToe_End","RightToe_End"];
     const footMin=()=>{let m=Infinity;for(const n of FEET)if(B[n]){wpos(n,_v);if(_v.y<m)m=_v.y;}return m;};
     function resetPose(){for(const n in B){B[n].quaternion.copy(restL[n]);}B.Hips.position.copy(restP.Hips);}
+    const FINGER_CASCADE={Index:0.86,Middle:1.0,Ring:1.14,Pinky:1.28};
+    const JOINT_WEIGHTS=[0.78,1.18,0.85];
     function curlFingers(sideName,L,rad){
-      _q.setFromAxisAngle(L.curlAxis,rad);
-      for(const fn of FINGERS)for(let i=1;i<=3;i++){const n=sideName+"Hand"+fn+i,b=B[n];if(!b)continue;
-        b.quaternion.copy(restL[n]).multiply(restWinv[n]).multiply(_q).multiply(restW[n]);}
+      for(const fn of FINGERS){
+        const fRad=rad*(FINGER_CASCADE[fn]||1);
+        for(let i=1;i<=3;i++){
+          const n=sideName+"Hand"+fn+i,b=B[n];if(!b)continue;
+          _q.setFromAxisAngle(L.curlAxis,fRad*JOINT_WEIGHTS[i-1]);
+          b.quaternion.copy(restL[n]).multiply(restWinv[n]).multiply(_q).multiply(restW[n]);
+        }
+      }
+      // 拇指自然内收微曲，避免像僵直木板
+      const tRad=rad*0.52;
+      _q.setFromAxisAngle(L.curlAxis,tRad);
+      for(let i=2;i<=3;i++){
+        const tb=B[sideName+"HandThumb"+i];if(!tb)continue;
+        tb.quaternion.copy(restL[sideName+"HandThumb"+i]).multiply(restWinv[sideName+"HandThumb"+i]).multiply(_q).multiply(restW[sideName+"HandThumb"+i]);
+      }
       const hb=B[sideName+"Hand"];
       if(hb)hb.updateMatrixWorld(true);
     }
@@ -395,6 +409,12 @@
       if(loadK>.001&&tilt>.02){
         const ct=Math.max(0,tilt-.04)*loadK,ax=k=>TQ().setFromAxisAngle(Xax,-ct*k);
         qPel.multiply(ax(.4));qSp.multiply(ax(.45));qCh.multiply(ax(.15));
+      }
+      const shotTurnY=(!moving&&Number(ud.shotTurnY))||0;
+      if(Math.abs(shotTurnY)>1e-4){
+        qPel.premultiply(TQ().setFromAxisAngle(Yax,shotTurnY*0.62));
+        qSp.premultiply(TQ().setFromAxisAngle(Yax,shotTurnY*0.82));
+        qCh.premultiply(TQ().setFromAxisAngle(Yax,shotTurnY));
       }
       const qH=guy.headRoot?rot(guy.headRoot):TQ().copy(qCh);
       const put=(n,q)=>{if(B[n])setW(B[n],TQ().copy(q).multiply(restW[n]));};

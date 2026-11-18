@@ -364,9 +364,11 @@ function poseHandJoints(o,c){
     hand.rotation.z=(index===0?-.025:0)*lift;
   });
   (o.fingerJoints||[]).forEach((fingers,handIndex)=>fingers.forEach((finger,fingerIndex)=>{
-    setFingerTarget(o,handIndex,fingerIndex,HAND_FINGER_REST,0);
+    const cascade=[-0.08,0,0.09,0.18][fingerIndex]||0;
+    const splay=[0.05,0.012,-0.018,-0.05][fingerIndex]||0;
+    setFingerTarget(o,handIndex,fingerIndex,HAND_FINGER_REST+cascade,splay);
   }));
-  poseThumbJoints(o,0);
+  poseThumbJoints(o,0.22);
 }
 /* ---------------- T台 animation clips ----------------
    T台负责可编辑的上肢极限姿势，游戏负责位移、脚底、球和状态切换。
@@ -1626,6 +1628,10 @@ function poseGuy(o,c,lk,landingImpact){
     setFootRoll(o,0,hang,hang*.34);
     setFootRoll(o,1,hang*.88,hang*.30);
   }
+  const shotTurnK=clamp((c.lift||0)*0.65+(c.jmp||0)*0.55-(land||0)*0.85,0,1);
+  const shotTurnY=0.175*shotTurnK;
+  if(o.torso)o.torso.rotation.y=shotTurnY*0.55;
+  if(o.headRoot)o.headRoot.rotation.y=-shotTurnY*0.45;
   if(o.g){
     o.g.userData.readyAnklePitch=[o.ankles[0].rotation.x,o.ankles[1].rotation.x];
     o.g.userData.readyFootRoll=readyPulse?READY_FOOT_ROLL:0;
@@ -1637,6 +1643,7 @@ function poseGuy(o,c,lk,landingImpact){
     o.g.userData.shotReadyLowerBlend=loadBlend;
     o.g.userData.shotLoad=load;
     o.g.userData.shotDip=c.dip||0;
+    o.g.userData.shotTurnY=shotTurnY;
   }
   /* 待机呼吸:站定时人不该是一尊雕像。用 G.tNow 驱动,不需要额外状态。
      **只在完全没有投篮动作时生效**:蓄力/举球/起跳/跟随/落地任何一项一介入就退到 0。
