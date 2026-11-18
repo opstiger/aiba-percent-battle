@@ -29,7 +29,7 @@
   const COARSE=(()=>{try{return typeof matchMedia==="function"&&matchMedia("(pointer:coarse)").matches;}catch(e){return false;}})();
   const WEAK=(navigator.deviceMemory||4)<=2||qs.get("quality")==="low";
   const BLUR_SHIFT=3;
-  // Mobile gets the depth-aware lens in first person only. The full color and bloom chain remains opt-in.
+  // Mobile uses the depth-aware lens and venue atmosphere without the full color and bloom chain.
   const FX_MODE=FORCED==="0"?"off":FORCED==="full"||FORCED==="1"||(!WEAK&&!COARSE)?"full":"off";
   const FULL=FX_MODE==="full";
 
@@ -59,6 +59,12 @@
       warmR:1.0,warmG:1.0,warmB:1.0,
       bloomThreshold:0.84,bloomStrength:0.26,
       vignette:0.16,dof:0.39,dofNear:19,dofFar:59
+    },
+    rainforest:{
+      contrast:1.038,saturation:1.03,lift:.003,
+      warmR:1.021,warmG:1.003,warmB:.96,
+      bloomThreshold:.79,bloomStrength:.25,
+      vignette:.13,dof:.42,dofNear:15,dofFar:49
     },
     /* 真实球馆/转播观感。和 indoor 是**相反**的两个方向,不是强弱之分:
          indoor —— 舞台聚光:压暗角、拉对比,把主体从暗背景里抠出来。
@@ -109,8 +115,8 @@
   function applyLook(){
     if(LOOK_FORCE&&LOOKS[LOOK_FORCE]){Object.assign(P,LOOKS[LOOK_FORCE]);return;}
     if(lookLocked)return;
-    const indoor=(document.documentElement.dataset.scenePreset||"indoor")==="indoor";
-    Object.assign(P,indoor?LOOKS.indoor:LOOKS.outdoor);
+    const sceneLook=document.documentElement.dataset.scenePreset||"indoor";
+    Object.assign(P,LOOKS[sceneLook]||LOOKS.outdoor);
   }
 
   const hasDepth=!!(renderer.capabilities.isWebGL2||renderer.extensions.has("WEBGL_depth_texture"));
@@ -184,7 +190,8 @@
   const compMat=new THREE.ShaderMaterial({
     uniforms:{
       tScene:{value:null},tBlur:{value:null},tDepth:{value:null},tFocus:{value:null},
-      tMeadowAir:{value:null},useMeadowAir:{value:0},
+      tVenueAir:{value:null},useVenueAir:{value:0},airStart:{value:15},airEnd:{value:30},
+      lensBall:{value:new THREE.Vector4()},
       useDepth:{value:0},camNear:{value:0.1},camFar:{value:120},
       exposure:{value:1},contrast:{value:1},saturation:{value:1},lift:{value:0},
       warm:{value:new THREE.Vector3(1,1,1)},
@@ -195,8 +202,9 @@
     },
     vertexShader:VERT,
     fragmentShader:`
-      uniform sampler2D tScene,tBlur,tDepth,tFocus,tMeadowAir;
-      uniform float useDepth,useMeadowAir,camNear,camFar;
+      uniform sampler2D tScene,tBlur,tDepth,tFocus,tVenueAir;
+      uniform float useDepth,useVenueAir,airStart,airEnd,camNear,camFar;
+      uniform vec4 lensBall;
       uniform float exposure,contrast,saturation,lift;
       uniform vec3 warm;
       uniform float bloomThreshold,bloomStrength;
@@ -212,11 +220,17 @@
         /* 背景柔化:按真实深度,不是按半径 —— 按半径糊会把边角的主角也糊掉 */
         float coc=0.0;
         float lin=0.0;
-        if(useDepth>0.5||useMeadowAir>0.5){
+        if(useDepth>0.5||useVenueAir>0.5){
           float z=texture2D(tDepth,vUv).x*2.0-1.0;
           lin=2.0*camNear*camFar/(camFar+camNear-z*(camFar-camNear));
           float blurAmount=smoothstep(dofNear,dofFar,lin);
           coc=mix(blurAmount,1.0-blurAmount,dofForeground)*dofStrength*useDepth;
+          if(lensBall.w>.5){
+            vec2 screen=(vUv*2.0-1.0)*vec2(aspect,1.0);
+            float inBall=(1.0-smoothstep(.10,.23,length(screen-lensBall.xy)))*
+              (1.0-smoothstep(.13,.37,abs(lin-lensBall.z)));
+            coc*=1.0-inBall;
+          }
         }
         vec3 col=base;
         if(coc>.001){
@@ -225,9 +239,9 @@
         }
 
         col+=max(blur-bloomThreshold,0.0)*bloomStrength;
-        if(useMeadowAir>0.5){
-          vec4 air=texture2D(tMeadowAir,vUv);
-          col=mix(col,air.rgb,air.a*smoothstep(15.0,30.0,lin));
+        if(useVenueAir>0.5){
+          vec4 air=texture2D(tVenueAir,vUv);
+          col=mix(col,air.rgb,air.a*smoothstep(airStart,airEnd,lin));
         }
 
         col*=exposure;
@@ -298,7 +312,7 @@
     baseRender(fsScene,fsCam);
   }
 
-  function drawMeadowAir(weather){
+  function drawVenueAir(weather){
     if(!rtAir){
       // Fog has no sharp structure; the final full-resolution depth sample keeps it off the court.
       rtAir=makeRT(Math.max(2,rtW>>2),Math.max(2,rtH>>2),{depthBuffer:false});
@@ -308,9 +322,11 @@
     u.sceneDepth.value=rtScene.depthTexture;
     u.invProjection.value.copy(camera.projectionMatrixInverse);
     u.cameraWorld.value.copy(camera.matrixWorld);
-    u.airViewProjection.value.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);
-    u.cameraClip.value.set(camera.near,camera.far);
-    u.airAspect.value=camera.aspect;
+    if(u.airViewProjection){
+      u.airViewProjection.value.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);
+      u.cameraClip.value.set(camera.near,camera.far);
+      u.airAspect.value=camera.aspect;
+    }
     drawPass(mat,rtAir);
     u.sceneDepth.value=null;
     return rtAir.texture;
@@ -334,7 +350,16 @@
     return .93*(1-THREE.MathUtils.smoothstep(height,.55,1.24));
   }
 
-  function drawFocus(weather,foreground){
+  function rainforestFocus(forest){
+    const u=forest.uniforms,subject=u.subjectScreen.value,hoop=u.hoopScreen.value;
+    const clearDepth=Math.min(subject.w?subject.z:100,hoop.w?hoop.z:100);
+    const end=Math.min(3.95,clearDepth-.70);
+    if(end<.57)return 0;
+    foregroundRange.set(Math.min(1.41,end*.58),end);
+    return .88;
+  }
+
+  function drawFocus(weather,foreground,forest){
     if(!rtFocus){
       rtFocus=makeRT(Math.max(2,rtW>>2),Math.max(2,rtH>>2),{depthBuffer:false});
       rtFocus.texture.encoding=THREE.LinearEncoding;
@@ -352,7 +377,7 @@
       focus.far=foregroundRange.y;
       focus.strength=foreground*(COARSE?.87:1);
     }
-    const u=focusMat.uniforms,pixels=focus.foreground?34:meadow?13.5:9.0;
+    const u=focusMat.uniforms,pixels=focus.foreground?(forest?38:34):meadow?13.5:9.0;
     u.foreground.value=focus.foreground?1:0;
     const scale=rtH/Math.max(1,renderer.domElement.clientHeight);
     u.tScene.value=rtScene.texture;u.tDepth.value=rtScene.depthTexture;
@@ -363,9 +388,12 @@
     return rtFocus.texture;
   }
 
-  function composite(air,lens){
+  function composite(air,lens,forest){
     const u=compMat.uniforms;
-    u.tMeadowAir.value=air;u.useMeadowAir.value=air?1:0;
+    u.tVenueAir.value=air;u.useVenueAir.value=air?1:0;
+    u.airStart.value=forest?4.0:15.0;u.airEnd.value=forest?17.0:30.0;
+    if(forest)u.lensBall.value.copy(forest.uniforms.ballScreen.value);
+    else u.lensBall.value.w=0;
     u.tScene.value=rtScene.texture;u.tBlur.value=(rtB||rtScene).texture;
     u.tDepth.value=rtScene.depthTexture||null;
     u.tFocus.value=lens;u.useDepth.value=lens?1:0;
@@ -387,19 +415,24 @@
   renderer.render=function(sc,cam){
     /* 只接管主场景。装备预览等自带 scene/camera 的离屏渲染原样放行。 */
     if(sc!==scene||cam!==camera)return baseRender(sc,cam);
-    const weather=RT_SVC.environmentRoot.userData.placeState?.meadow;
-    const foreground=hasDepth&&P.dof>.001?lowMeadowFocus(weather):0;
+    const place=RT_SVC.environmentRoot.userData.placeState;
+    const weather=place?.meadow,forest=place?.rainforest,atmosphere=forest||weather;
+    if(forest){
+      renderer.getDrawingBufferSize(size);
+      AIBARainforest.trackCamera(forest,camera,size.x,size.y);
+    }
+    const foreground=hasDepth&&P.dof>.001?(forest?rainforestFocus(forest):lowMeadowFocus(weather)):0;
     const wantsFocus=hasDepth&&P.dof>.001&&(camera.userData.firstPerson===true||foreground>.001);
     focusActive=false;
-    if(failed||!P.enabled||(!FULL&&!wantsFocus)){
-      if(weather)weather.fallback.visible=true;
+    if(failed||!P.enabled||(!FULL&&!wantsFocus&&!(forest&&hasDepth))){
+      if(atmosphere)atmosphere.fallback.visible=true;
       if(rtAir){disposeRT(rtAir);rtAir=null;}
       return baseRender(sc,cam);
     }
     try{
       ensureTargets();
-      const useAir=!!(weather&&rtScene.depthTexture&&!COARSE&&!WEAK);
-      if(weather)weather.fallback.visible=!useAir;
+      const useAir=!!(atmosphere&&rtScene.depthTexture&&(forest||(!COARSE&&!WEAK)));
+      if(atmosphere)atmosphere.fallback.visible=!useAir;
       if(!useAir&&rtAir){disposeRT(rtAir);rtAir=null;}
       renderer.setRenderTarget(rtScene);
       baseRender(sc,cam);
@@ -412,15 +445,15 @@
         bd.set(0,P.blurSpread/bh);drawPass(blurMat,rtB);
       }
 
-      const air=useAir?drawMeadowAir(weather):null;
-      const lens=wantsFocus&&rtScene.depthTexture?drawFocus(weather,foreground):null;
+      const air=useAir?drawVenueAir(atmosphere):null;
+      const lens=wantsFocus&&rtScene.depthTexture?drawFocus(weather,foreground,forest):null;
       focusActive=!!lens;
-      composite(air,lens);
+      composite(air,lens,forest);
       renderer.setRenderTarget(null);
     }catch(e){
       /* 后期挂了不能连累游戏:退回直出,并且不再重试。 */
       failed=true;focusActive=false;
-      if(weather)weather.fallback.visible=true;
+      if(atmosphere)atmosphere.fallback.visible=true;
       try{renderer.setRenderTarget(null);}catch(e2){}
       if(window.console&&console.warn)console.warn("[AIBAGrade] post pass disabled:",e);
       baseRender(sc,cam);

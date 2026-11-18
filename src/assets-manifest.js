@@ -20,6 +20,7 @@
     crowdCheer:"assets/aiba-audio/crowd-cheer-stadium.mp3",
     rain:"assets/aiba-audio/rain-light-loop.mp3",
     ocean:"assets/aiba-audio/ocean-waves-loop.mp3",
+    rainforest:"assets/rainforest/dusk-ambience.mp3",
     gull:"assets/aiba-audio/gull-call.mp3",
     voiceBase:"assets/aiba-audio/voices/",
     applause:"assets/aiba-audio/sfx/crowd-cheer-indoor-01.mp3",

@@ -267,7 +267,7 @@ let AC=null,master=null,crowdBus=null,crowdGain=null,musicBus=null,arenaBus=null
 let musicTimer=null,arenaTimer=null,ambTimer=null,duckTimer=null,mediaDuckTimer=null,mediaDuckUntil=0;
 const CROWD_BASE=0.16;
 const EXT_DEFAULT_VOLUME=Object.freeze({
-  bgm:.58,crowd:.25,crowdCheer:.23,rain:.19,ocean:.17,gull:.26,
+  bgm:.58,crowd:.25,crowdCheer:.23,rain:.19,ocean:.17,rainforest:.36,gull:.26,
   applause:.5,boo:.42,buzzer:.86,startWhistle:.72,shoeSqueak:.62,
   bounce:.72,bounce2:.72,bounceSequence:.52,swish:.92,swish2:.92,swish3:.92,clank:.86,clank2:.86,rimMake:.9,
   crowdFinalMake:.88,crowdFinalMiss:.88
@@ -451,13 +451,13 @@ function extInit(){
       /* 先配好 preload/loop 再赋 src:构造函数传 URL 会立刻开始下载。
          同源资源不需要 crossOrigin,带上反而会让 <audio> 走 CORS 模式。 */
       const a=new Audio();
-      const looped=k==="bgm"||k==="crowd"||k==="crowdCheer"||k==="rain"||k==="ocean";
+      const looped=k==="bgm"||k==="crowd"||k==="crowdCheer"||k==="rain"||k==="ocean"||k==="rainforest";
       a.preload="auto";a.loop=looped;
       /* 启动音轨等 blob；游戏音效走 WebAudio 解码(decodeGameplaySfx 会自己 fetch)，
          这里再赋一次 src 就是同一个文件下载两遍 —— 实测 crowd-boo-01 和
          bounce-sequence-indoor-01 各被拉了两次，约 325KB 白付。
          解码失败时 extPlay 会懒赋 src 兜底，所以这里不赋不影响出声。 */
-      const lazySrc=EXT_BOOT_KEYS.indexOf(k)>=0||GAMEPLAY_SFX_KEYS.indexOf(k)>=0;
+      const lazySrc=k==="rainforest"||EXT_BOOT_KEYS.indexOf(k)>=0||GAMEPLAY_SFX_KEYS.indexOf(k)>=0;
       if(!lazySrc)a.src=u;
       a.volume=EXT_DEFAULT_VOLUME[k]||0.85;
       a.onerror=()=>{delete extA[k];};
@@ -569,7 +569,7 @@ function setPauseAudioDuck(on){
 function externalMediaDuckActive(){
   return Date.now()<mediaDuckUntil;
 }
-const QUIET_CROWD_SCENES=new Set(["lunarCrater","beachSunset","arcticSnow","flowerCourt","medCliff","rainyCourt","spanishQuarter","tokyoRooftop"]);
+const QUIET_CROWD_SCENES=new Set(["lunarCrater","beachSunset","arcticSnow","flowerCourt","rainforest","medCliff","rainyCourt","spanishQuarter","tokyoRooftop"]);
 function isCrowdQuietScene(){
   const s=(typeof currentScenePreset==="string"&&currentScenePreset)||document.documentElement.dataset.scenePreset||"indoor";
   return QUIET_CROWD_SCENES.has(s);
@@ -602,6 +602,7 @@ function applyExternalMediaMix(){
   const rainGain=currentScenePreset==="flowerCourt"?meadowRainLevel()*.75:1;
   set("rain",(arenaLike?0.2:0.11)*(duck?0.82:1)*pd*rainGain);
   set("ocean",(G.finalRun?0.26:(arenaLike?0.24:0.12))*(duck?0.82:1)*pd);
+  set("rainforest",(arenaLike?EXT_DEFAULT_VOLUME.rainforest:.22)*(duck?.71:1)*pd);
 }
 function setCrowdHeat(level){
   crowdHeat=Math.max(0,Math.min(1,Number(level)||0));
@@ -619,10 +620,11 @@ function meadowRainLevel(){
 function syncSceneAmbience(){
   const arenaLike=sceneAudioArenaLike(),allowed=G.state==="diff"||arenaLike;
   applyExternalMediaMix();
-  if(!AC||MUTED||AC.state==="suspended"||!allowed){extStop("rain");extStop("ocean");syncCoastalWind(false);syncAudioDebug();return;}
+  if(!AC||MUTED||AC.state==="suspended"||!allowed){extStop("rain");extStop("ocean");extStop("rainforest");syncCoastalWind(false);syncAudioDebug();return;}
   const rainy=currentWeather==="rain"||meadowRainLevel()>.06,beach=currentScenePreset==="beachSunset",rooftop=currentScenePreset==="tokyoRooftop";
   applyExternalMediaMix();
   if(rainy)extPlay("rain");else extStop("rain");
+  if(currentScenePreset==="rainforest")extPlay("rainforest");else extStop("rainforest");
   if(beach){extPlay("ocean");syncCoastalWind(arenaLike);}else{extStop("ocean");syncCoastalWind(rooftop&&arenaLike);}
   setCrowdHeat(crowdHeat);
   syncAudioDebug();
@@ -861,7 +863,8 @@ function audioState(){
     menuMusic:!!musicTimer||!!(extA.bgm&&!extA.bgm.paused),arenaMusic:!!arenaTimer,crowd:!!crowdBus,
     bgmExternal:!!extA.bgm,bgmPlaying:!!(extA.bgm&&!extA.bgm.paused),crowdExternal:!!(extA.crowd||extA.crowdCheer),
     crowdPlaying:!!(extA.crowd&&!extA.crowd.paused),crowdCheerPlaying:!!(extA.crowdCheer&&!extA.crowdCheer.paused),
-    rainPlaying:!!(extA.rain&&!extA.rain.paused),oceanPlaying:!!(extA.ocean&&!extA.ocean.paused),gullReady:!!extA.gull,
+    rainPlaying:!!(extA.rain&&!extA.rain.paused),oceanPlaying:!!(extA.ocean&&!extA.ocean.paused),
+    rainforestPlaying:!!(extA.rainforest&&!extA.rainforest.paused),gullReady:!!extA.gull,
     /* 混音实况。总线增益和元素音量只活在闭包里,没有这几项就没法从外面
        验证"暂停是压低不是停掉"、"淡出真的在淡"。 */
     pauseDuck,fading:Object.keys(extFade),voiceEls:Object.keys(voiceEls).length,musicBase,arenaBase,
@@ -1166,6 +1169,7 @@ function leaveArenaAudio(){
   extStop("crowdCheer",260);
   extStop("rain",320);
   extStop("ocean",320);
+  extStop("rainforest",320);
   syncAudioDebug();
 }
 let shoeSqueakAt=0;
@@ -1422,7 +1426,7 @@ function toggleMute(){
       if(AC)AC.suspend();
       if(window.speechSynthesis)speechSynthesis.cancel();
       clearTimeout(SPK.timer);SPK.queue.length=0;SPK.speaking=false;
-      extStop("bgm");extStop("crowd");extStop("crowdCheer");extStop("rain");extStop("ocean");extStop("gull");
+      extStop("bgm");extStop("crowd");extStop("crowdCheer");extStop("rain");extStop("ocean");extStop("rainforest",0);extStop("gull");
       syncAudioDebug();
       return;
     }

@@ -502,17 +502,18 @@ function applyScenePreset(name,opts){
   if(!SCENE_PRESETS[name])name="indoor";
   currentScenePreset=name;
   if(typeof camera!=="undefined"&&camera){
-    const wantFar=name==="tokyoRooftop"?920:name==="flowerCourt"?630:160;
+    const wantFar=name==="tokyoRooftop"?920:name==="flowerCourt"?630:name==="rainforest"?290:160;
     if(camera.far!==wantFar){camera.far=wantFar;camera.updateProjectionMatrix();}
   }
   if(typeof syncBallVenue==="function")syncBallVenue(name);
+  const rainforest=name==="rainforest";
   const preset=SCENE_PRESETS[name],outdoor=preset.type==="outdoor",rainy=preset.weather==="rain",flower=preset.progression==="flowerBloom",beach=preset.progression==="sunsetToNight";
   currentWeather=preset.weather;
   indoorRoot.visible=!outdoor;
   rainState=null;
   sun.castShadow=false;
   if(window.AIBAWorldPlaces)AIBAWorldPlaces.restore();
-  disposeEnvironmentRoot(environmentRoot);disposeEnvironmentRoot(weatherRoot);if(outdoor&&window.AIBAVisual)environmentRoot.add(AIBAVisual.makeSkyDome(THREE,name,COURT.midZ));
+  disposeEnvironmentRoot(environmentRoot);disposeEnvironmentRoot(weatherRoot);if(outdoor&&!rainforest&&window.AIBAVisual)environmentRoot.add(AIBAVisual.makeSkyDome(THREE,name,COURT.midZ));
   resetStreetCrowd();
   if(courtFloor){
     if(outdoor&&!courtOutdoorTexture)courtOutdoorTexture=makeCourtTexture("outdoorSunny");
@@ -526,6 +527,20 @@ function applyScenePreset(name,opts){
       hemi.color.setHex(0xffb47c);hemi.groundColor.setHex(0x463d44);hemi.intensity=.52;
       sun.color.setHex(0xffbe78);sun.intensity=1.25;sun.position.set(-22,8.5,-36);spot.intensity=0;camFill.intensity=.2;
       arenaLights.forEach(l=>{l.intensity=0;});
+    }else if(rainforest){
+      scene.background.setHex(0x737353);scene.fog.color.setHex(0x998c64);scene.fog.near=20;scene.fog.far=139;
+      ambient.color.setHex(0xd3d8b8);ambient.intensity=.47;
+      hemi.color.setHex(0xdce2bd);hemi.groundColor.setHex(0x4c4f30);hemi.intensity=.61;
+      sun.color.setHex(0xffcd79);sun.intensity=1.68;sun.position.copy(AIBARainforest.light).multiplyScalar(45);
+      spot.intensity=0;camFill.intensity=.17;
+      arenaLights.forEach(l=>{l.intensity=0;});
+      if(renderer.shadowMap?.enabled){
+        sun.castShadow=true;
+        const shadow=sun.shadow;
+        shadow.mapSize.setScalar(AA_COARSE_POINTER?1024:2048);
+        Object.assign(shadow.camera,{left:-23,right:23,top:26,bottom:-26,near:1,far:105});
+        shadow.bias=-.00045;shadow.normalBias=.029;shadow.radius=2.5;shadow.camera.updateProjectionMatrix();
+      }
     }else if(flower){
       scene.background.setHex(0x8cbacb);scene.fog.color.setHex(0xa8c4d0);scene.fog.near=64;scene.fog.far=925;
       ambient.color.setHex(0xe5ece9);ambient.intensity=.39;
@@ -620,7 +635,7 @@ function applyScenePreset(name,opts){
       sun.color.setHex(0xffe2a3);sun.intensity=.9;sun.position.set(-12,22,14);spot.intensity=0;camFill.intensity=.2;
       arenaLights.forEach(l=>{l.intensity=0;});
     }
-    const place=window.AIBAWorldPlaces&&(AIBAWorldPlaces.enabled||flower);
+    const place=window.AIBAWorldPlaces&&(AIBAWorldPlaces.enabled||flower||rainforest);
     if(place){
       AIBAWorldPlaces.build(environmentRoot,name);
       if(rainy)buildRainWeather();
@@ -630,7 +645,7 @@ function applyScenePreset(name,opts){
       else{buildOutdoorPark(rainy,flower);if(rainy)buildRainWeather();if(flower)buildFlowerCourt();}
       if(window.AIBAEnvironmentCraft)AIBAEnvironmentCraft.build(environmentRoot,name);
     }
-    buildStreetCrowd({beach,rainy,flower,place:place?name:null});
+    if(!rainforest)buildStreetCrowd({beach,rainy,flower,place:place?name:null});
   }else{
     /* 室内是唯一有"主光"的预设,四盏灯的分工见 rendering/core.js 顶部。
        这里必须把 core.js 的默认值逐项重写一遍 —— 切过一次户外场景再切回来,

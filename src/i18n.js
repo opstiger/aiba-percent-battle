@@ -39,6 +39,8 @@ const DICT={
 "鲜花球场":"Flower court",
 "鲜花 · 天山草甸":"Flowers · Tian Shan Meadow",
 "随比分穿过山雨与彩虹，野花开满草坡，终场暖光照亮雪峰":"Play through mountain rain and a rainbow as the meadow blooms and the final sunlight lights the peaks.",
+"热带雨林 · 森林峡谷":"Tropical Rainforest · Forest Gorge",
+"巨树板根围着林间球场，林雾和斜光一直延伸到峡谷深处":"Giant buttress-root trees frame a court in a misty forest ravine.",
 "西海岸夕阳":"West coast sunset",
 "百分竞速":"Speed 100",
 "对手决胜球":"Opponent’s winning shot",

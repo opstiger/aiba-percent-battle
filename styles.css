@@ -408,6 +408,7 @@ h2.sub{font-size:13px;color:#8fd0ff;margin-top:8px;text-shadow:2px 2px 0 #000;le
 .sceneSwatch.outdoorSunny{background:linear-gradient(#72c8f2 0 55%,#79a958 55% 72%,#59636d 72%)}
 .sceneSwatch.rainyCourt{background:repeating-linear-gradient(105deg,transparent 0 7px,rgba(205,231,244,.65) 7px 9px),linear-gradient(#566b7b 0 58%,#46564e 58% 72%,#3d474e 72%)}
 .sceneSwatch.flowerCourt{background:radial-gradient(circle at 22% 38%,#ff7fa7 0 3px,transparent 4px),radial-gradient(circle at 68% 48%,#ffe26d 0 3px,transparent 4px),radial-gradient(circle at 45% 72%,#9ad7ff 0 3px,transparent 4px),linear-gradient(#79cbe9 0 48%,#59924c 48%)}
+.sceneSwatch.rainforest{background:linear-gradient(118deg,transparent 33%,#b8b37c84 37% 43%,transparent 48%),repeating-linear-gradient(94deg,#1f3529 0 5px,#50624a 5px 7px,#364c37 7px 12px)}
 .sceneSwatch.beachSunset{background:radial-gradient(circle at 72% 42%,#ffe08a 0 5px,transparent 6px),linear-gradient(#915f92 0 42%,#ef8c5c 42% 58%,#4a7390 58% 76%,#304f67 76%)}
 .sceneSwatch.lunarCrater{background:radial-gradient(circle at 74% 34%,#4ea3ff 0 5px,#143d78 6px,transparent 7px),radial-gradient(circle at 22% 24%,#fff 0 1px,transparent 1.5px),radial-gradient(circle at 46% 18%,#cfe2ff 0 1px,transparent 1.5px),linear-gradient(#04060c 0 58%,#6e7176 58% 72%,#52555a 72%)}
 .sceneList{display:grid;gap:10px;margin:14px 0}.sceneOption{min-height:74px;width:100%;padding:10px 14px;display:grid;grid-template-columns:88px minmax(0,1fr) auto;align-items:center;gap:12px;
