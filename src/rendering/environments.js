@@ -435,6 +435,7 @@ function applyScenePreset(name,opts){
   opts=opts||{};
   if(!SCENE_PRESETS[name])name="indoor";
   currentScenePreset=name;
+  if(typeof syncBallVenue==="function")syncBallVenue(name);
   const preset=SCENE_PRESETS[name],outdoor=preset.type==="outdoor",rainy=preset.weather==="rain",flower=preset.progression==="flowerBloom",beach=preset.progression==="sunsetToNight";
   currentWeather=preset.weather;
   indoorRoot.visible=!outdoor;

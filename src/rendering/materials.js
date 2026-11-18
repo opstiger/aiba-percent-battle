@@ -40,25 +40,39 @@ function ensureBallLineDebugLegend(){
 }
 
 // Two orthogonal great circles and the sphere curve define the molded channel layout.
-function spaldingPanelCurve(samples){
-  const pts=[],radius=1.5;
+const spaldingPts3D=(()=>{
+  const pts=[],radius=1.5,samples=720;
   for(let i=0;i<=samples;i++){
     const a=i/samples*Math.PI*2,c=Math.cos(a),s=Math.sin(a);
     let lo=0,hi=2;
     for(let n=0;n<24;n++){
       const r=(lo+hi)*.5,u=r*c,v=r*s;
-      const x=u-u*u*u/3+u*v*v;
-      const y=v-v*v*v/3+v*u*u;
-      const z=u*u-v*v;
+      const x=u-u*u*u/3+u*v*v,y=v-v*v*v/3+v*u*u,z=u*u-v*v;
       if(Math.hypot(x,y,z)<radius)lo=r;else hi=r;
     }
     const r=(lo+hi)*.5,u=r*c,v=r*s;
-    const x=(u-u*u*u/3+u*v*v)/radius;
-    const y=(v-v*v*v/3+v*u*u)/radius;
-    const z=(u*u-v*v)/radius;
-    pts.push(ballUvPoint(x,y,z));
+    pts.push([(u-u*u*u/3+u*v*v)/radius,(v-v*v*v/3+v*u*u)/radius,(u*u-v*v)/radius]);
   }
   return pts;
+})();
+
+function channelDistance3D(nx,ny,nz){
+  let minD=Math.min(Math.abs(ny),Math.abs(nx));
+  let bestI=0,bestDot=-2;
+  for(let i=0;i<spaldingPts3D.length;i+=6){
+    const p=spaldingPts3D[i],dot=nx*p[0]+ny*p[1]+nz*p[2];
+    if(dot>bestDot){bestDot=dot;bestI=i;}
+  }
+  for(let j=bestI-6;j<=bestI+6;j++){
+    const idx=(j+spaldingPts3D.length)%spaldingPts3D.length;
+    const p=spaldingPts3D[idx],dot=nx*p[0]+ny*p[1]+nz*p[2];
+    if(dot>bestDot)bestDot=dot;
+  }
+  return Math.min(minD,Math.acos(Math.max(-1,Math.min(1,bestDot))));
+}
+
+function spaldingPanelCurve(){
+  return spaldingPts3D.map(p=>ballUvPoint(p[0],p[1],p[2]));
 }
 
 let basketballChannelPathCache=null;
@@ -101,8 +115,32 @@ function paintBasketballChannels(g,w,h,relief){
     for(const p of paths)strokeWrappedBallPath(g,p,w,h,6*scale,p.debugColor);
     return;
   }
-  for(const p of paths)strokeWrappedBallPath(g,p,w,h,8*scale,relief?"#303030":"#54250e");
-  for(const p of paths)strokeWrappedBallPath(g,p,w,h,4.4*scale,relief?"#090909":"#130905");
+  const img=g.getImageData(0,0,w,h),data=img.data;
+  const halfCore=0.0145,halfBevel=0.0245;
+  for(let py=0;py<h;py++){
+    const theta=(py+.5)/h*Math.PI,sinT=Math.sin(theta),ny=Math.cos(theta);
+    for(let px=0;px<w;px++){
+      const phi=(px+.5)/w*Math.PI*2,nx=-Math.cos(phi)*sinT,nz=Math.sin(phi)*sinT;
+      const d=channelDistance3D(nx,ny,nz);
+      if(d>=halfBevel)continue;
+      const idx=(py*w+px)*4;
+      if(relief){
+        const t=d<=halfCore?0:(d-halfCore)/(halfBevel-halfCore);
+        const v=Math.round(6+140*t*t);
+        data[idx]=Math.min(data[idx],v);
+        data[idx+1]=Math.min(data[idx+1],v);
+        data[idx+2]=Math.min(data[idx+2],v);
+      }else if(d<=halfCore){
+        data[idx]=16;data[idx+1]=10;data[idx+2]=8;
+      }else{
+        const t=(d-halfCore)/(halfBevel-halfCore),blend=1-t;
+        data[idx]=Math.round(data[idx]*(1-blend*.65)+28*blend*.65);
+        data[idx+1]=Math.round(data[idx+1]*(1-blend*.65)+15*blend*.65);
+        data[idx+2]=Math.round(data[idx+2]*(1-blend*.65)+10*blend*.65);
+      }
+    }
+  }
+  g.putImageData(img,0,0);
 }
 
 function rotatedTriColorIndex(px,py,w,h,colorCount){
@@ -144,64 +182,180 @@ function paintTriBallPanels(g,w,h,palette){
   g.putImageData(image,0,0);
 }
 
-function paintBallLeather(g,w,h,base,dark,palette){
-  if(palette)paintTriBallPanels(g,w,h,palette);else{g.fillStyle=base;g.fillRect(0,0,w,h);}
-  const rnd=ballTextureRng(palette?0x51f15e:0xba11c0de);
-  g.fillStyle=dark;g.globalAlpha=palette ? 0.15 : 0.24;
-  for(let y=2,row=0;y<h-1;y+=3,row++){
-    for(let x=2+(row&1)*1.5;x<w-1;x+=3){
-      const px=x+(rnd()-.5)*1.2,py=y+(rnd()-.5)*1.2,r=rnd()>.82?1.15:.72;
-      g.beginPath();g.arc(px,py,r,0,Math.PI*2);g.fill();
-    }
+function makeLunarBallSurfaceCanvas(w,h){
+  const lc=document.createElement("canvas");lc.width=w;lc.height=h;
+  const lg=lc.getContext("2d"),r=ballTextureRng(0x19690720);
+  lg.fillStyle="#aeb4be";lg.fillRect(0,0,w,h);
+  for(let i=0;i<55;i++){
+    const x=r()*w,y=r()*h,rad=(18+r()*55)*(h/256);
+    const gr=lg.createRadialGradient(x,y,rad*.1,x,y,rad);
+    gr.addColorStop(0,"rgba(92,98,110,0.42)");gr.addColorStop(1,"rgba(92,98,110,0)");
+    lg.fillStyle=gr;lg.beginPath();lg.arc(x,y,rad,0,Math.PI*2);lg.fill();
   }
-  g.globalAlpha=1;paintBasketballChannels(g,w,h,false);
-  // 日常篮球造型 aiBA 徽标（印在前后两个主球瓣中央）
-  for(const cx of [w*0.5,0,w]){
-    g.save();
-    g.translate(cx,h*0.36);
-    g.transform(1,0,-0.22,1,0,0);
-    g.font="900 "+Math.round(h*0.125)+"px Orbitron,Arial Black,sans-serif";
-    g.textAlign="center";g.textBaseline="middle";
-    g.lineWidth=Math.max(2,h*0.018);
-    g.strokeStyle=palette?"#0d1524":"#1c0a04";
-    g.strokeText("aiBA",0,0);
-    g.fillStyle=palette?"#ffd23f":"#fff2d6";
-    g.fillText("aiBA",0,0);
-    // 下方造型弧线
-    g.strokeStyle=palette?"#ffd23f":"#ffb84d";
-    g.lineWidth=Math.max(1.5,h*0.01);
-    g.beginPath();g.moveTo(-w*0.065,h*0.075);g.quadraticCurveTo(0,h*0.105,w*0.065,h*0.075);g.stroke();
-    g.restore();
+  for(let i=0;i<14000;i++){
+    lg.fillStyle=r()>.5?"rgba(235,240,248,0.16)":"rgba(48,52,60,0.18)";
+    const sz=1+r()*1.8;lg.fillRect(r()*w,r()*h,sz,sz);
   }
+  for(let i=0;i<140;i++){
+    const x=r()*w,y=r()*h;
+    const rad=(i<22?11+r()*15:(i<65?5+r()*7:2+r()*3.5))*(h/256);
+    lg.fillStyle="rgba(42,46,54,0.52)";lg.beginPath();lg.arc(x,y,rad,0,Math.PI*2);lg.fill();
+    lg.fillStyle="rgba(195,202,214,0.45)";lg.beginPath();lg.arc(x+rad*.16,y+rad*.16,rad*.76,0,Math.PI*2);lg.fill();
+    lg.strokeStyle="rgba(244,247,252,0.55)";lg.lineWidth=Math.max(1,rad*.16);
+    lg.beginPath();lg.arc(x,y,rad*.96,-Math.PI*.85,Math.PI*.25);lg.stroke();
+    lg.strokeStyle="rgba(38,42,48,0.48)";
+    lg.beginPath();lg.arc(x,y,rad*.96,Math.PI*.25,Math.PI*1.15);lg.stroke();
+  }
+  return lc;
 }
 
-function realBallTex(base,dark){
-  return pixTex(512,256,(g,w,h)=>paintBallLeather(g,w,h,base,dark,null),{smooth:true,mipmaps:true,anisotropy:8});
+function applyLunarHybridPanels(g,w,h){
+  const maskCanvas=document.createElement("canvas");maskCanvas.width=w;maskCanvas.height=h;
+  const mc=maskCanvas.getContext("2d");
+  for(const path of basketballChannelPaths())strokeWrappedBallPath(mc,path,w,h,4*h/256,"#000");
+  const mask=mc.getImageData(0,0,w,h).data,labels=new Int16Array(w*h),queue=new Int32Array(w*h),votes=[];
+  labels.fill(-1);let panel=0;
+  for(let seed=0;seed<w*h;seed++){
+    if(mask[seed*4+3]>32||labels[seed]>=0)continue;
+    const pv=[0,0];votes.push(pv);
+    let head=0,tail=0;queue[tail++]=seed;labels[seed]=panel;
+    while(head<tail){
+      const p=queue[head++],x=p%w,y=(p/w)|0;
+      pv[rotatedTriColorIndex(x,y,w,h,2)]++;
+      const left=y*w+(x?x-1:w-1),right=y*w+(x+1<w?x+1:0);
+      if(mask[left*4+3]<=32&&labels[left]<0){labels[left]=panel;queue[tail++]=left;}
+      if(mask[right*4+3]<=32&&labels[right]<0){labels[right]=panel;queue[tail++]=right;}
+      if(y){const up=p-w;if(mask[up*4+3]<=32&&labels[up]<0){labels[up]=panel;queue[tail++]=up;}}
+      if(y+1<h){const down=p+w;if(mask[down*4+3]<=32&&labels[down]<0){labels[down]=panel;queue[tail++]=down;}}
+    }
+    panel++;
+  }
+  const isLunar=votes.map(v=>v[1]>v[0]);
+  const lunarData=makeLunarBallSurfaceCanvas(w,h).getContext("2d").getImageData(0,0,w,h).data;
+  const outImg=g.getImageData(0,0,w,h);
+  for(let p=0;p<w*h;p++){
+    const lb=labels[p];
+    if(lb>=0&&isLunar[lb]){
+      const i=p*4,grain=0.92+0.12*((outImg.data[i]-160)/80);
+      outImg.data[i]=Math.max(0,Math.min(255,lunarData[i]*grain));
+      outImg.data[i+1]=Math.max(0,Math.min(255,lunarData[i+1]*grain));
+      outImg.data[i+2]=Math.max(0,Math.min(255,lunarData[i+2]*grain));
+      outImg.data[i+3]=255;
+    }
+  }
+  g.putImageData(outImg,0,0);
+}
+
+function paintBallLeather(g,w,h,base,dark,palette,lunarHybrid){
+  if(palette)paintTriBallPanels(g,w,h,palette);else{g.fillStyle=base;g.fillRect(0,0,w,h);}
+  const rnd=ballTextureRng(palette?0x51f15e:0xba11c0de),sc=h/256;
+  const step=3.2*sc;
+  for(let y=2,row=0;y<h-1;y+=step,row++){
+    for(let x=2+(row&1)*1.6*sc;x<w-1;x+=step){
+      const px=x+(rnd()-.5)*1.1*sc,py=y+(rnd()-.5)*1.1*sc,r=(1.1+rnd()*.55)*sc;
+      g.fillStyle=dark;g.globalAlpha=palette?0.18:0.30;
+      g.beginPath();g.arc(px+.4,py+.4,r,0,Math.PI*2);g.fill();
+      g.fillStyle="#ffffff";g.globalAlpha=palette?0.08:0.12;
+      g.beginPath();g.arc(px-.3,py-.3,r*.62,0,Math.PI*2);g.fill();
+    }
+  }
+  g.globalAlpha=1;
+  if(lunarHybrid)applyLunarHybridPanels(g,w,h);
+  // 轻微实战使用痕迹：细微磨砂划痕
+  const wr=ballTextureRng(0x5c0ff01);
+  g.lineCap="round";
+  for(let i=0;i<55;i++){
+    const sx=wr()*w,sy=wr()*h,ang=wr()*Math.PI*2,len=(10+wr()*34)*sc;
+    g.strokeStyle=wr()>.45?"rgba(245,240,232,0.11)":"rgba(35,28,24,0.13)";
+    g.lineWidth=(0.7+wr()*1.1)*sc;
+    g.beginPath();g.moveTo(sx,sy);
+    g.quadraticCurveTo(sx+Math.cos(ang+.2)*len*.5,sy+Math.sin(ang+.2)*len*.5,sx+Math.cos(ang)*len,sy+Math.sin(ang)*len);
+    g.stroke();
+  }
+  // 先印海报体 aiBA 徽标，再绘制黑色下凹胶缝，确保黑线绝不被遮盖
+  for(const cx of [w*0.5,0,w]){
+    g.save();
+    g.translate(cx,h*0.355);
+    g.transform(1.04,-0.03,-0.26,0.95,0,0);
+    const fsSm=Math.round(h*0.082),fsLg=Math.round(h*0.122);
+    g.font="900 "+fsSm+"px 'Arial Black',Impact,sans-serif";
+    const wAi=g.measureText("ai").width;
+    g.font="900 "+fsLg+"px 'Arial Black',Impact,sans-serif";
+    const wBa=g.measureText("BA").width;
+    const gap=w*0.003,tot=wAi+gap+wBa;
+    const xAi=-tot/2+wAi/2,xBa=tot/2-wBa/2;
+    g.textAlign="center";g.textBaseline="middle";g.lineJoin="round";
+    g.fillStyle="rgba(22,18,16,0.82)";
+    g.fillRect(-tot*.54,h*0.058,tot*1.08,h*0.01);
+    g.fillStyle="rgba(238,232,222,0.75)";
+    g.fillRect(-tot*.50,h*0.052,tot*0.62,h*0.005);
+    g.font="900 "+fsSm+"px 'Arial Black',Impact,sans-serif";
+    g.lineWidth=Math.max(2.5,h*0.017);g.strokeStyle="#181412";
+    g.strokeText("ai",xAi,-h*0.015);
+    g.fillStyle="#e8e2d7";g.fillText("ai",xAi,-h*0.015);
+    g.font="900 "+fsLg+"px 'Arial Black',Impact,sans-serif";
+    g.lineWidth=Math.max(3,h*0.02);g.strokeStyle="#181412";
+    g.strokeText("BA",xBa,h*0.003);
+    g.fillStyle="#f3efe6";g.fillText("BA",xBa,h*0.003);
+    g.fillStyle="rgba(40,32,28,0.12)";
+    for(let s=0;s<12;s++){
+      g.fillRect((s*17%100-50)/100*tot,((s*31%40)-20)/100*h*0.16,w*0.005,h*0.0035);
+    }
+    g.restore();
+  }
+  paintBasketballChannels(g,w,h,false);
+}
+
+function realBallTex(base,dark,lunarHybrid){
+  const W=lunarHybrid?1024:512,H=lunarHybrid?512:256;
+  return pixTex(W,H,(g,w,h)=>paintBallLeather(g,w,h,base,dark,null,!!lunarHybrid),{smooth:true,mipmaps:true,anisotropy:8});
 }
 
 function triBallTex(){
-  return pixTex(512,256,(g,w,h)=>paintBallLeather(g,w,h,"#e8771e","#1b1110",["#1f4fd8","#f2f2f2","#d8262e"]),{smooth:true,mipmaps:true,anisotropy:8});
+  return pixTex(512,256,(g,w,h)=>paintBallLeather(g,w,h,"#e8771e","#1b1110",["#1f4fd8","#f2f2f2","#d8262e"],false),{smooth:true,mipmaps:true,anisotropy:8});
 }
 
 function ballReliefTex(){
-  return pixTex(512,256,(g,w,h)=>{
-    g.fillStyle="#787878";g.fillRect(0,0,w,h);
-    const rnd=ballTextureRng(0x8badf00d);g.fillStyle="#a8a8a8";
-    for(let y=2,row=0;y<h-1;y+=3,row++)for(let x=2+(row&1)*1.5;x<w-1;x+=3){
-      const px=x+(rnd()-.5),py=y+(rnd()-.5);g.fillRect(px,py,1.4,1.4);
+  return pixTex(1024,512,(g,w,h)=>{
+    g.fillStyle="#929292";g.fillRect(0,0,w,h);
+    const rnd=ballTextureRng(0x8badf00d);g.fillStyle="#a6a6a6";
+    for(let y=3,row=0;y<h-3;y+=5.5,row++)for(let x=3+(row&1)*2.75;x<w-3;x+=5.5){
+      const px=x+(rnd()-.5)*1.4,py=y+(rnd()-.5)*1.4,r=1.5+rnd()*.7;
+      g.beginPath();g.arc(px,py,r,0,Math.PI*2);g.fill();
     }
     paintBasketballChannels(g,w,h,true);
   },{smooth:true,mipmaps:true,anisotropy:8,linear:true});
 }
 
-const texBall=realBallTex("#d66032","#77351c");
+const texBall=realBallTex("#c95a2e","#77351c",false);
+let texLunarBall=null;
 const texGold=triBallTex();
-const texDeep=realBallTex("#54e05a","#1f7a26");
+const texDeep=realBallTex("#54e05a","#1f7a26",false);
 const texBallRelief=ballReliefTex();
-const matBall=new THREE.MeshPhongMaterial({map:texBall,bumpMap:texBallRelief,bumpScale:.0018,shininess:5,specular:0x4a2a18});
-const matGold=new THREE.MeshPhongMaterial({map:texGold,bumpMap:texBallRelief,bumpScale:.0018,shininess:5,specular:0x303030});
-const matDeep=new THREE.MeshPhongMaterial({map:texDeep,bumpMap:texBallRelief,bumpScale:.0018,shininess:5,specular:0x183f1b});
-const ballGeo=new THREE.SphereGeometry(0.16,32,20);
+const matBall=new THREE.MeshPhongMaterial({map:texBall,bumpMap:texBallRelief,bumpScale:.003,shininess:2.2,specular:0x191513});
+const matGold=new THREE.MeshPhongMaterial({map:texGold,bumpMap:texBallRelief,bumpScale:.003,shininess:2.2,specular:0x222020});
+const matDeep=new THREE.MeshPhongMaterial({map:texDeep,bumpMap:texBallRelief,bumpScale:.003,shininess:2.2,specular:0x142c16});
+const ballGeo=(()=>{
+  const geo=new THREE.SphereGeometry(0.16,64,48);
+  const pos=geo.attributes.position,halfCore=0.0145,halfBevel=0.028;
+  for(let i=0;i<pos.count;i++){
+    const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i),len=Math.hypot(x,y,z)||1;
+    const nx=x/len,ny=y/len,nz=z/len,d=channelDistance3D(nx,ny,nz);
+    if(d<halfBevel){
+      const t=d<=halfCore?1:1-(d-halfCore)/(halfBevel-halfCore);
+      const r=0.16*(1-0.016*(t*t*(3-2*t)));
+      pos.setXYZ(i,nx*r,ny*r,nz*r);
+    }
+  }
+  pos.needsUpdate=true;geo.computeVertexNormals();
+  return geo;
+})();
+function syncBallVenue(name){
+  const wantLunar=name==="lunarCrater";
+  if(wantLunar&&!texLunarBall)texLunarBall=realBallTex("#c95a2e","#77351c",true);
+  const target=wantLunar?texLunarBall:texBall;
+  if(matBall.map!==target){matBall.map=target;matBall.needsUpdate=true;}
+}
 
 /* ---------------- 中场 10 分球配色 ----------------
    原来固定荧光绿。10 分机会是全场最稀有的事件,却和普通深远球共用一个外观,
@@ -221,7 +375,7 @@ function superBallMaterial(index){
   if(!superBallMats[i]){
     const c=SUPER_BALL_SKINS[i];
     superBallMats[i]=new THREE.MeshPhongMaterial({map:realBallTex(c.base,c.dark),
-      bumpMap:texBallRelief,bumpScale:.0018,shininess:5,specular:c.spec});
+      bumpMap:texBallRelief,bumpScale:.003,shininess:2.2,specular:c.spec});
   }
   return superBallMats[i];
 }
@@ -232,6 +386,6 @@ function rollSuperBallSkin(){
 }
 
 window.AIBA.runtime.register("rendering:materials",Object.freeze({
-  pixTex,realBallTex,triBallTex,texBall,texGold,texDeep,texBallRelief,matBall,matGold,matDeep,ballGeo,
+  pixTex,realBallTex,triBallTex,texBall,texGold,texDeep,texBallRelief,matBall,matGold,matDeep,ballGeo,syncBallVenue,
   SUPER_BALL_SKINS,superBallMaterial,rollSuperBallSkin
 }));

@@ -195,7 +195,7 @@ function refillRackBalls(ri){
   seatRackBalls(ri,0,false);
 }
 function buildRacks(){
-  const standM=new THREE.MeshLambertMaterial({color:0x2255aa});
+  const standM=new THREE.MeshLambertMaterial({color:0xe4e8ee});
   RACKS.forEach((r,ri)=>{
     const stand=window.AIBAModelDetail?.enabled?AIBAModelDetail.rack(standM):
       new THREE.Mesh(new THREE.BoxGeometry(1.5,0.55,0.5),standM);
@@ -210,7 +210,7 @@ function buildRacks(){
   });
   placeRacks(currentRackSide());
   DEEPS.forEach((d,i)=>{
-    const pedMat=new THREE.MeshLambertMaterial({color:0x1f7a28});
+    const pedMat=new THREE.MeshLambertMaterial({color:0xe6eaef});
     const ped=window.AIBAModelDetail?.enabled?AIBAModelDetail.pedestal(.45,.9,pedMat):
       new THREE.Mesh(new THREE.BoxGeometry(0.45,0.9,0.45),pedMat);
     const dir=HOOP.clone().sub(d.p);dir.y=0;dir.normalize();
@@ -222,7 +222,7 @@ function buildRacks(){
   });
   const hdir=HOOP.clone().sub(HALFCOURT.p);hdir.y=0;hdir.normalize();
   const hbase=HALFCOURT.p.clone().addScaledVector(hdir,-0.8);
-  const hpedMat=new THREE.MeshLambertMaterial({color:0x263b18});
+  const hpedMat=new THREE.MeshLambertMaterial({color:0xe6eaef});
   const hped=window.AIBAModelDetail?.enabled?AIBAModelDetail.pedestal(.62,1,hpedMat,1):
     new THREE.Mesh(new THREE.BoxGeometry(0.62,1.0,0.62),hpedMat);
   hped.position.set(hbase.x,0.5,hbase.z);hped.visible=false;scene.add(hped);
