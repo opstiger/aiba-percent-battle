@@ -260,19 +260,34 @@
     state.root.updateMatrixWorld(true);
   }
 
+  const _qChar = new THREE.Quaternion();
+  const _qTmp = new THREE.Quaternion();
+  const _eul2 = new THREE.Euler();
+  const _qOff2 = new THREE.Quaternion();
+
+  function setBoneCharDelta(bn, qCharDelta){
+    const bone = state.bones[bn], rw = state.restWorld[bn];
+    if(!bone || !rw || !bone.parent) return;
+    // 在角色世界空间叠加旋转（避开 Mixamo 骨骼局部轴翻转/T-pose 轴向差异）
+    _qTmp.copy(_qWorld).multiply(qCharDelta).multiply(rw);
+    bone.parent.getWorldQuaternion(_pq).invert();
+    bone.quaternion.copy(_pq).multiply(_qTmp);
+    bone.updateMatrix();
+    bone.matrixWorld.multiplyMatrices(bone.parent.matrixWorld, bone.matrix);
+  }
+
   function applyLimbMotion(guy){
-    const B = state.bones, RL = state.restLocal;
-    if(!B.RightArm || !B.LeftArm) return;
+    const B = state.bones;
+    if(!B.RightArm || !B.LeftArm || !state.root) return;
     restoreRestPose();
-    const rotBone = (bn, rx, ry, rz)=>{
-      const b = B[bn], r0 = RL[bn];
-      if(!b || !r0) return;
-      _eul.set(rx || 0, ry || 0, rz || 0, "XYZ");
-      _qOff.setFromEuler(_eul);
-      b.quaternion.copy(r0).multiply(_qOff);
-    };
+    state.root.position.y = 0;
+    state.root.updateMatrixWorld(true);
+    state.root.getWorldQuaternion(_qWorld);
+
     const lArmX = guy.arms && guy.arms[0] ? guy.arms[0].rotation.x : 0;
     const rArmX = guy.arms && guy.arms[1] ? guy.arms[1].rotation.x : 0;
+    const lArmZ = guy.arms && guy.arms[0] ? guy.arms[0].rotation.z : 0;
+    const rArmZ = guy.arms && guy.arms[1] ? guy.arms[1].rotation.z : 0;
     const lElbX = guy.elbows && guy.elbows[0] ? guy.elbows[0].rotation.x : 0;
     const rElbX = guy.elbows && guy.elbows[1] ? guy.elbows[1].rotation.x : 0;
     const lLegX = guy.legs && guy.legs[0] ? guy.legs[0].rotation.x : 0;
@@ -280,17 +295,42 @@
     const lKneeX = guy.knees && guy.knees[0] ? guy.knees[0].rotation.x : 0;
     const rKneeX = guy.knees && guy.knees[1] ? guy.knees[1].rotation.x : 0;
     const torsoX = guy.torso ? guy.torso.rotation.x : 0;
-    // Mixamo T-pose 手臂水平外展，从初始抱球姿叠加动作增量
-    rotBone("Spine1", torsoX * 0.5, 0, 0);
-    rotBone("LeftArm", (lArmX + 0.5) * 0.85, 0, 0);
-    rotBone("RightArm", (rArmX + 0.5) * 0.85, 0, 0);
-    rotBone("LeftForeArm", lElbX * 0.55, 0, 0);
-    rotBone("RightForeArm", rElbX * 0.55, 0, 0);
-    rotBone("LeftUpLeg", -lLegX * 0.85, 0, 0);
-    rotBone("RightUpLeg", -rLegX * 0.85, 0, 0);
-    rotBone("LeftLeg", Math.max(0, lKneeX) * 0.85, 0, 0);
-    rotBone("RightLeg", Math.max(0, rKneeX) * 0.85, 0, 0);
-    state.root.position.y = 0;
+
+    // 1. 躯干轻微前倾/后仰（角色空间 X 轴）
+    _eul.set(torsoX * 0.6, 0, 0, "XYZ");
+    setBoneCharDelta("Spine1", _qChar.setFromEuler(_eul));
+
+    // 2. 手臂：先从 Mixamo T-pose 水平外展放回自然垂立（左臂绕 Z -1.22，右臂 +1.22），再叠加前后摆臂
+    _eul.set(lArmX * 0.85, 0, 0, "XYZ");
+    _eul2.set(0, 0, -1.22 + lArmZ * 0.75, "XYZ");
+    _qChar.setFromEuler(_eul).multiply(_qOff2.setFromEuler(_eul2));
+    setBoneCharDelta("LeftArm", _qChar);
+
+    _eul.set(rArmX * 0.85, 0, 0, "XYZ");
+    _eul2.set(0, 0, 1.22 + rArmZ * 0.75, "XYZ");
+    _qChar.setFromEuler(_eul).multiply(_qOff2.setFromEuler(_eul2));
+    setBoneCharDelta("RightArm", _qChar);
+
+    // 3. 手肘：先跟大臂垂立，再按角色空间 X 轴向前屈肘
+    _eul.set((lArmX * 0.85) + (lElbX * 0.75) - 0.16, 0, -1.22 + lArmZ * 0.75, "XYZ");
+    setBoneCharDelta("LeftForeArm", _qChar.setFromEuler(_eul));
+
+    _eul.set((rArmX * 0.85) + (rElbX * 0.75) - 0.16, 0, 1.22 + rArmZ * 0.75, "XYZ");
+    setBoneCharDelta("RightForeArm", _qChar.setFromEuler(_eul));
+
+    // 4. 腿部：角色空间 X 轴直接对应前后抬腿与屈膝
+    _eul.set(lLegX * 0.85, 0, 0, "XYZ");
+    setBoneCharDelta("LeftUpLeg", _qChar.setFromEuler(_eul));
+
+    _eul.set(rLegX * 0.85, 0, 0, "XYZ");
+    setBoneCharDelta("RightUpLeg", _qChar.setFromEuler(_eul));
+
+    _eul.set(lLegX * 0.85 + Math.max(0, lKneeX) * 0.85, 0, 0, "XYZ");
+    setBoneCharDelta("LeftLeg", _qChar.setFromEuler(_eul));
+
+    _eul.set(rLegX * 0.85 + Math.max(0, rKneeX) * 0.85, 0, 0, "XYZ");
+    setBoneCharDelta("RightLeg", _qChar.setFromEuler(_eul));
+
     state.root.updateMatrixWorld(true);
   }
 
@@ -325,6 +365,8 @@
     }else if(inShow){
       applyLimbMotion(guy);
     }else if(state.mixer){
+      state.throwAction.enabled = true;
+      state.throwAction.setEffectiveWeight(1);
       state.throwAction.time = 0.033;
       state.mixer.update(0);
       state.throwAction.paused = true;
