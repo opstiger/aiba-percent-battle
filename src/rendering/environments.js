@@ -84,185 +84,198 @@ function buildRainWeather(){
   lines.frustumCulled=false;weatherRoot.add(lines);
   rainState={positions,geometry,count,reset,speed:mobile?12:15};
 }
-function writeFlowerInstance(state,layer,index,grow){
-  const d=layer.data[index],o=state.dummy,place=environmentRoot.userData.placeState;
-  const wind=place?Math.sin(place.time*.9+d.x*.7+d.z*.3)*.045+Math.sin(place.time*1.7+d.z)*.018:0;
-  const axis=state.axis.set(d.ax+wind,d.ay,d.az+wind*.5).normalize();
-  const eased=Math.pow(clamp(grow,0,1),.72),stemScale=Math.max(.001,eased),bloomScale=Math.max(.001,eased);
-  state.quat.setFromUnitVectors(state.up,axis);
-  o.position.set(d.x+axis.x*d.h*eased*.5,d.y+axis.y*d.h*eased*.5,d.z+axis.z*d.h*eased*.5);
-  o.quaternion.copy(state.quat);o.scale.set(d.stem*stemScale,d.h*eased,d.stem*stemScale);o.updateMatrix();layer.stems.setMatrixAt(index,o.matrix);
-  o.position.set(d.x+axis.x*d.h*eased,d.y+axis.y*d.h*eased,d.z+axis.z*d.h*eased);
-  /* 按 type 取花型:同一套几何靠 scale 与倾角组合出花骨朵/向日葵/雏菊/
-     霸王花/草叶。锥体长轴先在局部转到朝外(rotateX),再绕 Y 辐射;配合
-     PETAL_GEO 的底面已归到原点,花瓣是"从花心向外长出去",而不是以花心
-     为中心两侧各伸一半(后者看起来像一根穿过去的棍)。
-     换算:原几何 .13×.075×.31;锥体 radius/height 均为 .5(直径 1.0),
-     故 x=.13、y(长轴)=.31/.5=.62、z=.075。 */
-  const SH=FLOWER_SHAPES[d.type%FLOWER_SHAPES.length];
-  const pk=d.size*bloomScale*SH.petal;
-  /* ⚠ 花瓣必须**辐射一圈**,不能只放两片。原来是 petalsA/petalsB 两个
-     InstancedMesh 各一片、互成 90°,拼出来是个"十字",无论 tilt 怎么调都读作
-     花骨朵 —— 用户原话"花全部变成了花苞不打开了",根因就在这里,不是 tilt。
-     当时不敢加片数是怕多 InstancedMesh 多 draw call;其实把两个 mesh 合成
-     **一个 mesh、每朵 FLOWER_PETALS 个实例**,draw call 反而从 2 降到 1,
-     多出来的只是实例矩阵写入(而且 count 会随开花进度收敛)。 */
-  for(let pi=0;pi<FLOWER_PETALS;pi++){
-    o.quaternion.copy(state.quat);
-    o.rotateX(-Math.PI/2+SH.tilt);
-    o.rotateY(d.rot+pi*(Math.PI*2/FLOWER_PETALS));
-    o.scale.set(pk*.13,pk*.62,pk*.075);o.updateMatrix();
-    layer.petals.setMatrixAt(index*FLOWER_PETALS+pi,o.matrix);
-  }
-  const ck=d.core*bloomScale*SH.core;
-  o.quaternion.copy(state.quat);o.rotateY(d.rot*.5);
-  o.scale.set(ck*.12,ck*.105*SH.fat,ck*.12);o.updateMatrix();layer.centers.setMatrixAt(index,o.matrix);
-}
-/* 花型表:同一套低模几何,靠 scale 与倾角组合出不同形态 ——
-   刻意**不新增 InstancedMesh**,因为花海是按得分逐朵生长的,层数是 draw call
-   的硬成本;每加一种花型就多 4 个 InstancedMesh,花海层一多就很贵。
-     petal 瓣大小 / core 心大小 / tilt 瓣倾角(负=收拢朝上,正=外翻) / fat 心高矮 */
-const FLOWER_SHAPES=[
-  {petal:0.60,core:1.50,tilt:-1.15,fat:1.60},   // 0 花骨朵:瓣收拢贴梗、心拉成苞
-  {petal:1.30,core:1.00,tilt:-0.12,fat:0.55},   // 1 向日葵:大瓣平铺、扁而大的盘
-  {petal:0.90,core:0.62,tilt:-0.32,fat:0.70},   // 2 雏菊:小瓣小盘
-  {petal:1.55,core:1.10,tilt: 0.42,fat:1.00},   // 3 霸王花:大瓣外翻、粗心
-  {petal:0.42,core:0.30,tilt:-1.35,fat:1.20}    // 4 草叶:细长
-];
-/* 花瓣几何:锥体自带弧度;并把**底面平移到原点**,这样花瓣是"从花心向外",
-   而不是以花心为中心向两侧各伸一半(后者看起来像一根穿过去的棍)。
-   段数只用 4(6 三角形),不会把花海的三角形预算撑爆。 */
-const FLOWER_PETALS=6;                       // 每朵花的花瓣数,合并进同一个 InstancedMesh
-const PETAL_GEO=new THREE.ConeGeometry(.5,.5,4);PETAL_GEO.translate(0,.25,0);
-const CORE_GEO=new THREE.SphereGeometry(.5,5,4);
-function makeFlowerLayer(state,data,name){
-  const total=data.length;
-  const stemMat=new THREE.MeshLambertMaterial({color:0xffffff});
-  const petalMat=new THREE.MeshLambertMaterial({color:0xffffff,emissive:0x5a1d2d,emissiveIntensity:0});
-  const coreMat=new THREE.MeshLambertMaterial({color:0xffffff,emissive:0x5b390e,emissiveIntensity:0});
-  const layer={name,data,total,target:0,stems:new THREE.InstancedMesh(new THREE.BoxGeometry(.052,1,.052),stemMat,total),
-    /* 花瓣改低模锥体压扁后朝外辐射:原来是 .13×.075×.31 的**扁方块**,
-       两片交叉读起来就是"几块方块",不像花。锥体自带弧度且压扁后像一片有
-       厚度的花瓣,段数只用 4(6 个三角形),不会把花海的三角形预算撑爆。
-       花心同理改用低模球,不再是方块。
-       不同花型靠 SHAPES 的 scale/倾角组合出来,不新增 InstancedMesh
-       —— 花海是按得分逐朵生长的,层数是 draw call 的硬成本。 */
-    petals:new THREE.InstancedMesh(PETAL_GEO,petalMat,total*FLOWER_PETALS),
-    centers:new THREE.InstancedMesh(CORE_GEO,coreMat,total),stemMat,petalMat,coreMat};
-  const meshes=[layer.stems,layer.petals,layer.centers];
-  const _c=new THREE.Color();
-  data.forEach((d,i)=>{
-    layer.stems.setColorAt(i,new THREE.Color(state.stemPalette[d.stemColor%state.stemPalette.length]));
-    /* 同一朵的花瓣不给同一个颜色:交替取相邻色,边缘才有深浅,
-       否则六片同色又变成一块纯色饼。 */
-    for(let pi=0;pi<FLOWER_PETALS;pi++){
-      const ci=(d.color+(pi%2?1:0))%state.flowerPalette.length;
-      layer.petals.setColorAt(i*FLOWER_PETALS+pi,_c.set(state.flowerPalette[ci]));
+/* Thin petal surfaces are curled across their width and along the tip. */
+function flowerPetalGeometry(mobile){
+  const positions=[],colors=[],indices=[],uv=[],rows=mobile?7:9,columns=4;
+  for(let i=0;i<=rows;i++){
+    const t=(1-Math.cos(i/rows*Math.PI))*.5,width=.5*Math.pow(Math.sin(Math.PI*(.045+.955*t)),.52)*(.76+.24*t);
+    for(let j=0;j<=columns;j++){
+      const u=j/columns*2-1;
+      const cup=.20*t*t+.12*u*u*Math.sin(Math.PI*t)+.027*u*t;
+      positions.push(width*u*(1+.06*Math.sin(t*8+u)),cup,t);uv.push(j/columns,t);
+      const tint=.61+.39*Math.sin(t*Math.PI*.53)-.08*u*u;
+      colors.push(tint,tint*.98,tint*.92);
+      if(i<rows&&j<columns){
+        const k=i*(columns+1)+j,n=k+columns+1;
+        indices.push(k,n,k+1,k+1,n,n+1);
+      }
     }
-    layer.centers.setColorAt(i,new THREE.Color(state.corePalette[d.coreColor%state.corePalette.length]));
-  });
-  meshes.forEach(mesh=>{mesh.count=0;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;environmentRoot.add(mesh);});
-  state.bloomMaterials.push(petalMat,coreMat);return layer;
-}
-function setFlowerLayerTarget(state,layer,target){
-  target=clamp(target|0,0,layer.total);if(target<=layer.target)return;
-  const old=layer.target;layer.target=target;
-  layer.stems.count=target;layer.centers.count=target;
-  layer.petals.count=target*FLOWER_PETALS;      // 花瓣是每朵 N 个实例
-  for(let i=old;i<target;i++){
-    layer.data[i].grow=-Math.min(.62,(i-old)*.024);
-    writeFlowerInstance(state,layer,i,0);
   }
-  [layer.stems,layer.petals,layer.centers].forEach(mesh=>{mesh.instanceMatrix.needsUpdate=true;});
+  const geo=new THREE.BufferGeometry();geo.setIndex(indices);
+  geo.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+  geo.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));
+  geo.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));geo.computeVertexNormals();return geo;
+}
+
+function flowerVeinTexture(){
+  const canvas=document.createElement("canvas");canvas.width=128;canvas.height=256;
+  const g=canvas.getContext("2d"),tone=g.createLinearGradient(0,255,0,0);
+  tone.addColorStop(0,"#bbb2ac");tone.addColorStop(.53,"#f8f4ef");tone.addColorStop(1,"#fffbf7");
+  g.fillStyle=tone;g.fillRect(0,0,128,256);
+  for(let i=-8;i<=8;i++){
+    g.strokeStyle=`rgba(138,123,126,${i%3===0?.23:.13})`;g.lineWidth=i%3===0?1.25:.68;
+    g.beginPath();g.moveTo(64+i*.64,254);
+    g.bezierCurveTo(64+i*3.2,194,64+i*6.8,100+i*i*.5,64+i*6.35,12+i*i*.66);g.stroke();
+  }
+  const map=new THREE.CanvasTexture(canvas);map.encoding=THREE.sRGBEncoding;return map;
+}
+const FLOWER_FORMS=[
+  {petals:10,length:1,width:.37,lift:.02,center:.32,swatches:[0xf7ecd8,0xfff8e7,0xe9e3cf],pollen:0xe2ae41},
+  {petals:5,length:1.12,width:.83,lift:.13,center:.25,swatches:[0xbd6f9c,0xd887a7,0xd794b6],pollen:0xe9c779},
+  {petals:5,length:.83,width:.67,lift:.29,center:.30,swatches:[0xf2c63f,0xefb234,0xf8d457],pollen:0xba8233},
+  {petals:6,length:.93,width:.63,lift:.09,center:.24,swatches:[0xb49acb,0x9d83b5,0xc3add1],pollen:0xe4c471}
+];
+
+function makeFlowerLayer(state,data,name){
+  let petalCount=0;
+  for(const d of data){d.petalStart=petalCount;petalCount+=d.form.petals;}
+  const total=data.length;
+  const stems=new THREE.InstancedMesh(state.stemGeo,state.stemMat,total*2);
+  const leaves=new THREE.InstancedMesh(state.petalGeo,state.leafMat,total*2);
+  const petals=new THREE.InstancedMesh(state.petalGeo,state.petalMat,petalCount);
+  const centers=new THREE.InstancedMesh(state.centerGeo,state.coreMat,total);
+  const meshes=[stems,leaves,petals,centers],c=new THREE.Color();
+  data.forEach((d,i)=>{
+    for(let side=0;side<2;side++){
+      stems.setColorAt(i*2+side,c.set(d.green).convertSRGBToLinear());
+      leaves.setColorAt(i*2+side,c.set(d.green).convertSRGBToLinear().multiplyScalar(side?.86:1.12));
+    }
+    for(let j=0;j<d.form.petals;j++){
+      petals.setColorAt(d.petalStart+j,c.set(d.form.swatches[(d.shade+(j%3===0?1:0))%d.form.swatches.length]).convertSRGBToLinear()
+        .multiplyScalar(.89+.11*Math.cos(d.rot+j*3.41)**2));
+    }
+    centers.setColorAt(i,c.set(d.form.pollen).convertSRGBToLinear());
+  });
+  for(const mesh of meshes){
+    mesh.count=0;mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    mesh.instanceColor.needsUpdate=true;mesh.frustumCulled=false;mesh.name="meadowFlowers:"+name;
+    environmentRoot.add(mesh);
+  }
+  return {name,data,total,target:0,stems,leaves,petals,centers,meshes};
+}
+
+function writeFlowerInstance(state,layer,i,grow){
+  const d=layer.data[i],o=state.dummy,form=d.form;
+  const scale=Math.max(.001,Math.pow(grow,.76)),height=d.h*scale;
+  const phase=state.time*1.3-d.x*.23-d.z*.125;
+  const gust=Math.sin(phase)*.105+Math.sin(phase*.62+d.phase)*.053;
+  const flick=Math.sin(state.time*2.37+d.phase*1.7)*.033;
+  const arcX=(gust+flick+.037)*height,arcZ=(gust*.54-flick*.50)*height;
+  const at=(p,t)=>p.set(d.x+d.axis.x*height*t+arcX*t*t,d.y+d.axis.y*height*t,d.z+d.axis.z*height*t+arcZ*t*t);
+  at(state.root,0);at(state.mid,.5);at(state.tip,1);
+  const radius=d.stem*scale;
+  for(let part=0;part<2;part++){
+    const a=part===0?state.root:state.mid,b=part===0?state.mid:state.tip;
+    state.axis.subVectors(b,a);
+    o.position.copy(a).lerp(b,.5);
+    o.quaternion.setFromUnitVectors(state.up,state.axis.normalize());
+    o.scale.set(radius*(part?.7:1),a.distanceTo(b),radius*(part?.7:1));
+    o.updateMatrix();layer.stems.setMatrixAt(i*2+part,o.matrix);
+    at(o.position,part?.61:.30);
+    o.quaternion.identity();o.rotateY(d.rot+part*2.48+gust*.65);o.rotateX(-.39+(part?.2:0)+flick*1.3);
+    o.scale.set(d.size*.52*scale,d.size*.52*scale,d.size*(part?1.10:1.32)*scale);
+    o.updateMatrix();layer.leaves.setMatrixAt(i*2+part,o.matrix);
+  }
+  state.axis.set(d.axis.x*.80+d.faceX+gust*.95,d.axis.y*.85+.20,d.axis.z*.80+d.faceZ+flick).normalize();
+  state.head.setFromUnitVectors(state.up,state.axis);
+  o.position.copy(state.tip);
+  for(let j=0;j<form.petals;j++){
+    const angle=d.rot+j*Math.PI*2/form.petals+.065*Math.sin(j*4.2+d.phase);
+    const flex=.063*Math.sin(state.time*2.7+j*.84+d.phase);
+    const length=d.size*scale*form.length*(.91+.09*Math.cos(j*4.2+d.phase)**2);
+    o.quaternion.copy(state.head);o.rotateY(angle);o.rotateX(-form.lift+flex);
+    o.scale.set(length*form.width,length*(.64+form.lift),length);
+    o.updateMatrix();layer.petals.setMatrixAt(d.petalStart+j,o.matrix);
+  }
+  const center=d.size*scale*form.center;
+  o.position.addScaledVector(state.axis,center*.26);
+  o.quaternion.copy(state.head);o.scale.set(center*1.72,center*.54,center*1.72);
+  o.updateMatrix();layer.centers.setMatrixAt(i,o.matrix);
+}
+
+function setFlowerLayerTarget(state,layer,target,born=false){
+  target=clamp(target|0,0,layer.total);if(target<=layer.target)return;
+  const old=layer.target,last=layer.data[target-1];
+  layer.target=target;layer.stems.count=layer.leaves.count=target*2;
+  layer.centers.count=target;layer.petals.count=last.petalStart+last.form.petals;
+  for(let i=old;i<target;i++){
+    layer.data[i].grow=born?1:-Math.min(.60,(i-old)*.022);
+    writeFlowerInstance(state,layer,i,born?1:0);
+  }
+  for(const mesh of layer.meshes)mesh.instanceMatrix.needsUpdate=true;
 }
 function updateFlowerLayer(state,layer,dt){
-  let changed=false;
+  if(!layer.target)return;
   for(let i=0;i<layer.target;i++){
-    const d=layer.data[i];if(d.grow>=1&&!environmentRoot.userData.placeState)continue;
-    d.grow=Math.min(1,d.grow+dt*(1.75+d.speed));
-    writeFlowerInstance(state,layer,i,Math.max(0,d.grow));changed=true;
+    const d=layer.data[i];d.grow=Math.min(1,d.grow+dt*(1.8+d.speed));
+    writeFlowerInstance(state,layer,i,Math.max(0,d.grow));
   }
-  if(changed)[layer.stems,layer.petals,layer.centers].forEach(mesh=>{mesh.instanceMatrix.needsUpdate=true;});
+  for(const mesh of layer.meshes)mesh.instanceMatrix.needsUpdate=true;
 }
+
 function buildFlowerCourt(){
-  const mobile=(window.matchMedia&&window.matchMedia("(pointer:coarse)").matches)||Math.min(innerWidth,innerHeight)<700;
-  const flowerRng=mulberry32((GAME_SEED^0x46a3b27d)>>>0),frnd=(a,b)=>a+flowerRng()*(b-a),pick=n=>(flowerRng()*n)|0;
-  const state={dummy:new THREE.Object3D(),axis:new THREE.Vector3(),up:new THREE.Vector3(0,1,0),quat:new THREE.Quaternion(),
-    flowerPalette:[0xff315f,0xff7043,0xffc928,0xfff4d8,0x72d6ff,0x7d68ff,0xd85cff,0xff96bd,0xf4511e,0x8ce15c],
-    stemPalette:[0x286b38,0x3d8c47,0x547d35,0x1f5c3a],corePalette:[0xffdf4d,0x6b3518,0xfff2a3],bloomMaterials:[],pulse:0,revealProgress:0,
-    grassMat:environmentRoot.userData.grassMaterial,grassStart:new THREE.Color(0x626b55),grassEnd:new THREE.Color(0x4f9c4b)};
-
-  const weedTotal=mobile?96:176,weedGeo=new THREE.BoxGeometry(.032,1,.032),weedMat=new THREE.MeshLambertMaterial({color:0xffffff});
-  const weedsA=new THREE.InstancedMesh(weedGeo,weedMat,weedTotal),weedsB=new THREE.InstancedMesh(weedGeo,weedMat,weedTotal),weedDummy=new THREE.Object3D();
-  const weedColors=[0x465536,0x68633e,0x73533a,0x365b39];
-  for(let i=0;i<weedTotal;i++){
-    let x,z;
-    if(i<weedTotal*.58){
-      if(i%2){x=frnd(-13.2,-7.9);z=frnd(COURT.nearBaseline-3,COURT.farBaseline+5);}
-      else{x=frnd(7.9,13.2);z=frnd(COURT.nearBaseline-3,COURT.farBaseline+5);}
-    }else{x=frnd(-7.25,7.25);z=frnd(COURT.nearBaseline+.3,COURT.farBaseline-.3);}
-    const h=frnd(.1,.34),lean=frnd(-.22,.22),color=new THREE.Color(weedColors[pick(weedColors.length)]);
-    weedDummy.position.set(x,h*.5,z);weedDummy.scale.set(1,h,1);weedDummy.rotation.set(lean,frnd(0,Math.PI),lean*.55);weedDummy.updateMatrix();weedsA.setMatrixAt(i,weedDummy.matrix);
-    weedDummy.rotation.y+=Math.PI/2;weedDummy.position.x+=frnd(-.06,.06);weedDummy.position.z+=frnd(-.06,.06);weedDummy.scale.y*=frnd(.72,1.05);weedDummy.updateMatrix();weedsB.setMatrixAt(i,weedDummy.matrix);
-    weedsA.setColorAt(i,color);weedsB.setColorAt(i,color);
-  }
-  [weedsA,weedsB].forEach(mesh=>{mesh.instanceMatrix.needsUpdate=true;if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;environmentRoot.add(mesh);});
-  if(environmentRoot.userData.placeState)state.windWeeds=[weedsA,weedsB].map(mesh=>({mesh,base:mesh.instanceMatrix.array.slice()}));
-
-  const groundTotal=mobile?340:720,groundData=[];
-  const addGround=(x,z,zone)=>{
-    const h=zone===0?frnd(.3,.96):(zone===1?frnd(.2,.7):frnd(.13,.46));
-    groundData.push({x,y:.012,z,ax:frnd(-.08,.08),ay:1,az:frnd(-.08,.08),h,size:frnd(.7,1.42),core:frnd(.72,1.12),stem:frnd(.72,1.18),
-      rot:frnd(0,Math.PI),type:pick(FLOWER_SHAPES.length),color:pick(state.flowerPalette.length),stemColor:pick(state.stemPalette.length),coreColor:pick(state.corePalette.length),grow:0,speed:frnd(0,.7)});
+  const mobile=matchMedia("(pointer:coarse)").matches||Math.min(innerWidth,innerHeight)<700;
+  const rng=mulberry32((GAME_SEED^0x46a3b27d)>>>0),r=(a,b)=>a+rng()*(b-a),pick=list=>list[Math.floor(rng()*list.length)];
+  const place=environmentRoot.userData.placeState,heightAt=place?.heightAt||(()=>.012);
+  const state={
+    dummy:new THREE.Object3D(),root:new THREE.Vector3(),mid:new THREE.Vector3(),tip:new THREE.Vector3(),axis:new THREE.Vector3(),
+    up:new THREE.Vector3(0,1,0),head:new THREE.Quaternion(),time:0,elapsed:0,step:mobile?1/27:1/40,
+    stemGeo:new THREE.CylinderGeometry(1,1,1,5,1,true),petalGeo:flowerPetalGeometry(mobile),centerGeo:new THREE.SphereGeometry(.5,11,6),
+    stemMat:new THREE.MeshLambertMaterial({side:THREE.DoubleSide}),leafMat:new THREE.MeshLambertMaterial({side:THREE.DoubleSide,vertexColors:true}),
+    petalMat:new THREE.MeshLambertMaterial({side:THREE.DoubleSide,vertexColors:true,map:flowerVeinTexture(),emissive:0xffd7bc,emissiveIntensity:.038}),
+    coreMat:new THREE.MeshLambertMaterial({emissive:0xc29b41,emissiveIntensity:.025}),
+    pulse:0,revealProgress:0,visualProgress:0,visible:0,structureVisible:0,
+    weedTotal:place?.root.getObjectByName("alpineSwayingGrass")?.count||0
   };
-  const outerCount=Math.floor(groundTotal*.54),edgeCount=Math.floor(groundTotal*.2);
-  for(let i=0;i<outerCount;i++){
-    let x,z;
-    if(i%4===0){x=frnd(-14,14);z=frnd(COURT.farBaseline+.7,COURT.farBaseline+11);}
-    else if(i%4===1){x=frnd(-14,-8);z=frnd(COURT.nearBaseline-4,COURT.farBaseline+5);}
-    else if(i%4===2){x=frnd(8,14);z=frnd(COURT.nearBaseline-4,COURT.farBaseline+5);}
-    else{x=frnd(-14,14);z=frnd(COURT.nearBaseline-8,COURT.nearBaseline-.7);}
-    addGround(x,z,0);
-  }
-  for(let i=0;i<edgeCount;i++){
-    let x,z;
-    if(i%3===0){x=(i%2?1:-1)*frnd(6.45,7.45);z=frnd(COURT.nearBaseline+.2,COURT.farBaseline-.2);}
-    else if(i%3===1){x=frnd(-7.2,7.2);z=frnd(COURT.farBaseline-1.05,COURT.farBaseline-.18);}
-    else{x=frnd(-7.2,7.2);z=frnd(COURT.nearBaseline+.18,COURT.nearBaseline+1.05);}
-    addGround(x,z,1);
-  }
-  let guard=0;
-  while(groundData.length<groundTotal&&guard++<groundTotal*20){
-    const x=frnd(-7.15,7.15),z=frnd(COURT.nearBaseline+.45,COURT.farBaseline-.45);
-    const clear=BATTLE_SPOTS.every(spot=>(x-spot.p.x)*(x-spot.p.x)+(z-spot.p.z)*(z-spot.p.z)>.62*.62);
-    if(clear)addGround(x,z,2);
-  }
+  const greens=[0x4d733e,0x628d48,0x547e42,0x698e4d];
+  const flower=(x,y,z,h,size,form,axis=new THREE.Vector3(r(-.10,.10),1,r(-.11,.11)).normalize())=>({
+    x,y,z,h,size,axis,form,stem:r(.0045,.0079),phase:r(0,Math.PI*2),rot:r(0,Math.PI*2),
+    faceX:r(-.39,.32),faceZ:r(-.27,.50),shade:Math.floor(rng()*3),green:pick(greens),speed:r(0,.7),grow:0
+  });
 
-  const structureData=[],addStructure=(x,y,z,ax,ay,az,hMin,hMax,sizeMin,sizeMax)=>{
-    structureData.push({x,y,z,ax,ay,az,h:frnd(hMin,hMax),size:frnd(sizeMin,sizeMax),core:frnd(.78,1.2),stem:frnd(.72,1.15),rot:frnd(0,Math.PI),
-      type:pick(FLOWER_SHAPES.length),color:pick(state.flowerPalette.length),stemColor:pick(state.stemPalette.length),coreColor:pick(state.corePalette.length),grow:0,speed:frnd(.1,.9)});
-  };
-  const supportCount=mobile?24:44,boardCount=mobile?38:70,rimCount=mobile?22:38;
-  for(let i=0;i<supportCount;i++){
-    if(i<supportCount*.62){
-      const a=frnd(0,Math.PI*2);addStructure(Math.cos(a)*.22,frnd(.15,3.32),-10.2+Math.sin(a)*.22,Math.cos(a)*.7,frnd(.45,.9),Math.sin(a)*.7,.18,.52,.68,1.2);
-    }else addStructure(frnd(-.18,.18),3.56,frnd(-10.05,-8.78),frnd(-.35,.35),1,frnd(-.1,.45),.2,.58,.72,1.28);
-  }
-  for(let i=0;i<boardCount;i++){
-    if(i<boardCount*.48)addStructure(frnd(-1.02,1.02),4.08,-8.53,frnd(-.28,.28),1,frnd(.05,.32),.2,.7,.78,1.42);
-    else{
-      const side=i%2?1:-1;addStructure(side*1.01,frnd(3.02,4.02),-8.53,side*frnd(.55,.95),frnd(.35,.85),frnd(.08,.3),.16,.56,.72,1.32);
+  // Visible immediately. Clusters leave breaks alongside the play area and steps.
+  const ambient=[];
+  const clumps=[[-8.35,-6.6,1.7],[7.95,-7.8,1.4],[-8.9,-.6,2.7],[8.15,2.4,2.8],
+    [-8.45,9.1,2.6],[9.3,13,2.7],[-5.0,-11.6,1.9],[5.8,-11.9,2.4],[-7.5,20.2,2.2],[5.6,20.4,2.3]];
+  for(const [cx,cz,width] of clumps){
+    const main=pick(FLOWER_FORMS),count=mobile?12:21;
+    for(let i=0;i<count;i++){
+      const angle=r(0,Math.PI*2),rad=width*Math.sqrt(rng());
+      let x=cx+Math.cos(angle)*rad*.52,z=cz+Math.sin(angle)*rad;
+      if(Math.abs(x)<7.86&&z>-10.2&&z<19.75)x=Math.sign(x)*r(7.87,8.24);
+      ambient.push(flower(x,heightAt(x,z),z,r(.23,.71),r(.085,.168),rng()<.78?main:pick(FLOWER_FORMS)));
     }
   }
-  for(let i=0;i<rimCount;i++){
-    const a=i/rimCount*Math.PI*2+frnd(-.08,.08),rad=.39;
-    addStructure(HOOP.x+Math.cos(a)*rad,HOOP.y+.045,HOOP.z+Math.sin(a)*rad,Math.cos(a)*.58,frnd(.65,1),Math.sin(a)*.58,.14,.38,.68,1.18);
+  const ground=[];
+  const quantity=mobile?260:500;
+  for(let i=0;i<quantity;i++){
+    const rim=i<quantity*.59;
+    const x=(i%2?1:-1)*r(rim?7.85:.26,rim?14:7.23),z=r(COURT.nearBaseline-4,COURT.farBaseline+5);
+    if(!rim&&BATTLE_SPOTS.some(spot=>Math.hypot(x-spot.p.x,z-spot.p.z)<.68))continue;
+    const h=r(rim?.25:.13,rim?.66:.33),size=r(.074,rim?.159:.125);
+    const source=FLOWER_FORMS[Math.floor((Math.sin(z*.59+x*.54)+1)*1.84)];
+    ground.push(flower(x,heightAt(x,z),z,h,size,rng()<.66?source:pick(FLOWER_FORMS)));
   }
-  state.ground=makeFlowerLayer(state,groundData,"ground");state.structure=makeFlowerLayer(state,structureData,"structure");
-  state.total=groundData.length+structureData.length;state.weedTotal=weedTotal;state.visible=0;state.structureVisible=0;
+  const structure=[];
+  const scaffold=mobile?38:64;
+  for(let i=0;i<scaffold;i++){
+    const side=i%2?1:-1;
+    if(i<scaffold*.65){
+      const x=side*r(.22,.69),z=r(-10.47,-9.75);
+      structure.push(flower(x,heightAt(x,z),z,r(.39,.86),r(.09,.16),pick(FLOWER_FORMS)));
+    }else{
+      const x=side*r(.94,1.01),z=r(-8.69,-8.62),y=r(3.05,4.02);
+      structure.push(flower(x,y,z,r(.15,.34),r(.06,.105),pick(FLOWER_FORMS),new THREE.Vector3(side*.73,.65,-.21).normalize()));
+    }
+  }
+  state.ambient=makeFlowerLayer(state,ambient,"ambient");
+  state.ground=makeFlowerLayer(state,ground,"ground");
+  state.structure=makeFlowerLayer(state,structure,"structure");
+  state.total=ground.length+structure.length;
+  setFlowerLayerTarget(state,state.ambient,ambient.length,true);
   environmentRoot.userData.flowerState=state;
   document.documentElement.dataset.flowerCount="0";document.documentElement.dataset.flowerGround="0";
-  document.documentElement.dataset.flowerStructure="0";document.documentElement.dataset.weedCount=String(weedTotal);
+  document.documentElement.dataset.flowerStructure="0";document.documentElement.dataset.weedCount=String(state.weedTotal);
 }
 function buildBeachSunset(){
   const surround=new THREE.Mesh(new THREE.PlaneGeometry(90,46),new THREE.MeshLambertMaterial({color:0x66666a}));
@@ -398,27 +411,25 @@ function updateFlowerCourt(progress,dt){
   const state=environmentRoot.userData.flowerState;
   if(!state)return;
   state.revealProgress=Math.max(state.revealProgress,Math.pow(clamp(progress,0,1),.88));
+  state.visualProgress+=(state.revealProgress-state.visualProgress)*(1-Math.exp(-2.2*dt));
+  const meadow=environmentRoot.userData.placeState?.meadow;
+  if(meadow)meadow.progress=state.visualProgress;
   const groundT=clamp(state.revealProgress/.96,0,1),structureT=smoothRange(.38,1,state.revealProgress);
   setFlowerLayerTarget(state,state.ground,Math.floor(groundT*state.ground.total));
   setFlowerLayerTarget(state,state.structure,Math.floor(structureT*state.structure.total));
-  updateFlowerLayer(state,state.ground,dt);updateFlowerLayer(state,state.structure,dt);
-  if(state.windWeeds){
-    const time=environmentRoot.userData.placeState.time;
-    state.windWeeds.forEach(({mesh,base})=>{const a=mesh.instanceMatrix.array;
-      for(let i=0;i<mesh.count;i++){const j=i*16,wind=Math.sin(time*1.1+base[j+12]*.7+base[j+14])*.09;
-        // Bend each blade's local up column around its fixed root; no accumulated drift.
-        a[j+4]=base[j+4]+wind*base[j+5];a[j+6]=base[j+6]+wind*.5*base[j+5];a[j+12]=base[j+12]+wind*base[j+5]*.5;a[j+14]=base[j+14]+wind*base[j+5]*.25;
-      }mesh.instanceMatrix.needsUpdate=true;
-    });
+  state.time+=dt;state.elapsed+=dt;
+  if(state.elapsed>=state.step){
+    for(const layer of [state.ambient,state.ground,state.structure])updateFlowerLayer(state,layer,state.elapsed);
+    state.elapsed=0;
   }
   state.visible=state.ground.target;state.structureVisible=state.structure.target;
   const allVisible=state.visible+state.structureVisible;
   document.documentElement.dataset.flowerCount=String(allVisible);
   document.documentElement.dataset.flowerGround=String(state.visible);
   document.documentElement.dataset.flowerStructure=String(state.structureVisible);
-  if(state.grassMat)state.grassMat.color.copy(state.grassStart).lerp(state.grassEnd,state.revealProgress);
   state.pulse=Math.max(0,state.pulse-dt*2.5);
-  state.bloomMaterials.forEach((mat,i)=>{mat.emissiveIntensity=state.pulse*(i%2?.55:.32);});
+  state.petalMat.emissiveIntensity=.038+state.pulse*.09;
+  state.coreMat.emissiveIntensity=.025+state.pulse*.07;
 }
 function bloomOnScore(points){
   const state=environmentRoot.userData.flowerState;
@@ -436,7 +447,7 @@ function applyScenePreset(name,opts){
   if(!SCENE_PRESETS[name])name="indoor";
   currentScenePreset=name;
   if(typeof camera!=="undefined"&&camera){
-    const wantFar=name==="tokyoRooftop"?920:160;
+    const wantFar=name==="tokyoRooftop"?920:name==="flowerCourt"?630:160;
     if(camera.far!==wantFar){camera.far=wantFar;camera.updateProjectionMatrix();}
   }
   if(typeof syncBallVenue==="function")syncBallVenue(name);
@@ -460,6 +471,20 @@ function applyScenePreset(name,opts){
       hemi.color.setHex(0xffb47c);hemi.groundColor.setHex(0x463d44);hemi.intensity=.52;
       sun.color.setHex(0xffbe78);sun.intensity=1.25;sun.position.set(-22,8.5,-36);spot.intensity=0;camFill.intensity=.2;
       arenaLights.forEach(l=>{l.intensity=0;});
+    }else if(flower){
+      scene.background.setHex(0x8cbacb);scene.fog.color.setHex(0xa8c4d0);scene.fog.near=64;scene.fog.far=925;
+      ambient.color.setHex(0xe5ece9);ambient.intensity=.39;
+      hemi.color.setHex(0xc3e1ef);hemi.groundColor.setHex(0x6b7848);hemi.intensity=.50;
+      sun.color.setHex(0xffefcf);sun.intensity=1.12;sun.position.set(-22,32,14);
+      spot.intensity=0;camFill.intensity=.18;
+      arenaLights.forEach(l=>{l.intensity=0;});
+      if(renderer.shadowMap?.enabled){
+        sun.castShadow=true;sun.shadow.mapSize.setScalar(AA_COARSE_POINTER?1024:2048);
+        sun.shadow.camera.left=-21;sun.shadow.camera.right=21;sun.shadow.camera.top=24;sun.shadow.camera.bottom=-24;
+        sun.shadow.camera.near=1;sun.shadow.camera.far=83;
+        sun.shadow.bias=-.0005;sun.shadow.normalBias=.027;sun.shadow.radius=1.7;
+        sun.shadow.camera.updateProjectionMatrix();
+      }
     }else if(name==="arcticSnow"){
       scene.background.setHex(0x081524);scene.fog.color.setHex(0x536c7c);scene.fog.near=48;scene.fog.far=180;
       ambient.color.setHex(0xb8d1e5);ambient.intensity=.44;
@@ -540,7 +565,7 @@ function applyScenePreset(name,opts){
       sun.color.setHex(0xffe2a3);sun.intensity=.9;sun.position.set(-12,22,14);spot.intensity=0;camFill.intensity=.2;
       arenaLights.forEach(l=>{l.intensity=0;});
     }
-    const place=window.AIBAWorldPlaces?.enabled;
+    const place=window.AIBAWorldPlaces&&(AIBAWorldPlaces.enabled||flower);
     if(place){
       AIBAWorldPlaces.build(environmentRoot,name);
       if(rainy)buildRainWeather();
@@ -586,8 +611,8 @@ function applyScenePreset(name,opts){
   document.documentElement.dataset.scenePreset=name;
   document.documentElement.dataset.weather=currentWeather;
   document.documentElement.dataset.progression=preset.progression;
-  if(!flower){delete document.documentElement.dataset.flowerCount;delete document.documentElement.dataset.flowerGround;delete document.documentElement.dataset.flowerStructure;delete document.documentElement.dataset.weedCount;}
-  if(!beach)delete document.documentElement.dataset.environmentPhase;
+  if(!flower){delete document.documentElement.dataset.flowerCount;delete document.documentElement.dataset.flowerGround;delete document.documentElement.dataset.flowerStructure;delete document.documentElement.dataset.flowerMeadow;delete document.documentElement.dataset.weedCount;}
+  if(!beach&&!flower)delete document.documentElement.dataset.environmentPhase;
   if(opts.persist!==false)try{localStorage.setItem("aiba-scene-preset",name);}catch(e){}
   if(opts.announce){
     let rainHintSeen=false;

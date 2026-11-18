@@ -4,7 +4,7 @@
 
   const SKY_LOOKS=Object.freeze({
     outdoorSunny:{top:0x1e6091,horizon:0x7fb8c9,lower:0xc4d2c3},
-    flowerCourt:{top:0x2779a2,horizon:0x8bc6cc,lower:0xc9d8c3},
+    flowerCourt:{top:0x247eb5,horizon:0xa5cedb,lower:0xc8d7c4},
     rainyCourt:{top:0x304658,horizon:0x788b93,lower:0x596b63},
     beachSunset:{top:0x263f73,horizon:0xf47b42,lower:0xffc072},
     /* 夏末傍晚:上方仍是没退尽的蓝,近地平线才转金 —— 不要一整片橙,

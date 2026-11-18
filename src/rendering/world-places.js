@@ -5,8 +5,7 @@
   const palettes={
     outdoorSunny:{ground:"#626369",field:"#343e47",key:"#b95543",line:"#e2d5b4",shirts:[0xe3d4b9,0x344760,0xb95142,0x323239,0x769793,0xe0ab47,0xe5e1d4,0x657293]},
     rainyCourt:{ground:"#545d60",field:"#35565b",key:"#263f48",line:"#bcb99e",shirts:[0xc9ac65,0x384c52,0x9a6857,0x5e6b64,0xb6b9a4,0x313d50,0x826882,0x687b80]},
-    // Jungle soil and worn hand-marked arc are painted by world-life, not a PU slab.
-    flowerCourt:{ground:"#2f3a33",field:"#33513f",key:"#27402f",line:"#eef1e6",shirts:[0xe5c79a,0x3b6472,0xa04f36,0x7a7c47,0xc59356,0xeee2c1,0x514b70,0xc26f58]},
+    flowerCourt:{ground:"#718b49",field:"#757950",key:"#7c7d50",line:"#eee3bf",shirts:[0xe5c79a,0x3b6472,0xa04f36,0x7a7c47,0xc59356,0xeee2c1,0x514b70,0xc26f58]},
     /* 旧但干净的学校水泥外场:灰蓝 + 海盐绿,低饱和(文档 §4 球场设计)。
        刻意不用荧光街头配色。 */
     /* 浅灰蓝 / 海盐蓝 + 米白线(文档 §球场设计),不做荧光街头配色 */
@@ -344,11 +343,9 @@
     const a=batch();a.box(0xffdaa0,x+.8,h-.08,z,.38,.08,.28);const m=a.finish(s.root,"streetLamp",true);m.material.color.setScalar(.16);s.lights.push({mesh:m,threshold:.48+s.r()*.13});
   }
   function clouds(s){
-    /* 峡谷是谷底视角,天空只剩崖顶一线 —— 云给少、给高,
-       否则那几团卡通云会直接坐在崖顶,把"被森林包裹"的封闭感破掉。 */
-    const canyon=s.name==="flowerCourt",arctic=s.name==="arcticSnow";
-    for(let i=0;i<(arctic?2:canyon?(s.mobile?2:3):(s.mobile?6:10));i++){
-      const g=new THREE.Group(),b=batch(),rain=s.name==="rainyCourt";g.position.set(-43+s.r()*86,(s.name==="outdoorSunny"?64:rain?16:canyon?74:22)+s.r()*9,-45+s.r()*75);
+    const arctic=s.name==="arcticSnow";
+    for(let i=0;i<(arctic?2:(s.mobile?6:10));i++){
+      const g=new THREE.Group(),b=batch(),rain=s.name==="rainyCourt";g.position.set(-43+s.r()*86,(s.name==="outdoorSunny"?64:rain?16:22)+s.r()*9,-45+s.r()*75);
       for(let j=0;j<7;j++)b.add("sphere",rain?(j%2?0xa9b7ba:0x919fa4):(j%3?0xf5edda:0xdedfd5),(s.r()-.5)*5,(s.r()-.3)*1.1,(s.r()-.5)*2.3,1.7+s.r()*1.5,rain?.65:1+s.r()*.6,1+s.r());
       const cloud=b.finish(g,"organicCloud");if(arctic){cloud.material.color.setHex(0x556a7a);g.position.set(i?52:-47,28+i*5,-54);}
       s.root.add(g);s.clouds.push({g,speed:.15+s.r()*.15});
@@ -495,14 +492,6 @@
     };
     put.at=(lx,lz)=>[ox+lx*c+lz*sn,oz-lx*sn+lz*c];
     return put;
-  }
-  /* 某点到该场地菜单环绕椭圆的水平距离(米)。
-     ⚠ 别指望"随机摆出来的东西刚好不在轨道上":只要上游改了一次 R() 的调用次数,
-     整条随机序列就会平移,原本让开的树会重新长回轨道里 —— 瀑布换成水材质那一次
-     就是这样把雨林的菜单机位重新埋进树冠的。凡是可能长到机位高度的东西都要显式判。 */
-  function menuOrbitGap(s,x,z){
-    const o=s.menuOrbit||[18,20],a=Math.atan2((z-COURT.midZ)/o[1],x/o[0]);
-    return Math.hypot(x-Math.cos(a)*o[0],z-COURT.midZ-Math.sin(a)*o[1]);
   }
   /* 一间町屋。相邻两间**共墙、不留缝**,所以整排读起来是连续街区而不是一排独栋;
      变化只发生在开间宽度、有没有二层、屋脊高度和瓦色上。 */
@@ -673,382 +662,6 @@
     }
     const glow=warm.finish(s.root,"kyotoWarmGlow",true);
     if(glow){glow.material.color.setScalar(.9);s.lights.push({mesh:glow,threshold:.5});}
-  }
-  /* 立体花 —— 原来的写法是"细杆 + 压扁的球 + 方块叶",读起来就是几个方块,
-     不像花。这里按 type 给不同形态,关键是**有弧度和层次**,不是一片平板:
-       bud       花骨朵:锥形苞 + 萼片
-       sunflower 向日葵:大花盘 + 放射上翘花瓣
-       daisy     雏菊:小花盘 + 更细的瓣
-       rafflesia 霸王花:倒扣喇叭 + 花心
-       grass     草叶:几片斜伸的细叶                                        */
-  const PETAL=[0xffd54a,0xff8a65,0xfff0d0,0xe86a9a,0xb388ff,0xff6f61,0xffe082,0xf48fb1];
-  function flower3d(a,R,dx,dz,h,type){
-    if(type==="grass"){
-      for(let k=0;k<3;k++){
-        const ang=R()*6.283,len=.4+R()*.4;
-        a.box(0x5d8a4a,dx+Math.cos(ang)*.07,h*.5,dz+Math.sin(ang)*.07,.05,len,.022,0,ang,(R()-.5)*.6);
-      }
-      return;
-    }
-    a.box(0x4a6b42,dx,h*.5,dz,.028,h,.028);                     // 茎
-    if(type==="bud"){                                            // 花骨朵
-      a.add("cone",PETAL[(R()*PETAL.length)|0],dx,h+.14,dz,.08,.28,.08);
-      a.box(0x4a6b42,dx,h+.04,dz,.14,.05,.14);return;
-    }
-    if(type==="rafflesia"){                                      // 霸王花
-      a.add("cone",0xc2453f,dx,h+.18,dz,.26,.22,.26,Math.PI,0,0);
-      a.add("sphere",0x6d1f2a,dx,h+.24,dz,.11,.07,.11);return;
-    }
-    const big=type==="sunflower",n=big?9:7,pr=big?.2:.135;
-    a.add("sphere",big?0x5a4326:0xf2c14e,dx,h,dz,pr,.05,pr);    // 花盘
-    const pc=PETAL[(R()*PETAL.length)|0];
-    for(let k=0;k<n;k++){                                        // 放射花瓣,略上翘
-      const ang=k*6.283/n+R()*.25;
-      a.box(pc,dx+Math.cos(ang)*pr*.92,h+.02,dz+Math.sin(ang)*pr*.92,big?.18:.14,.035,.08,-.4,ang,0);
-    }
-  }
-  /* ---------------- 热带雨林峡谷球场 ----------------
-     构图目标(按需求 §12):玩家 → 球场 → 篮筐 → 峡谷 → 瀑布。
-     篮筐在 (0,3.05,-8),玩家从 z≈-6~0 朝 -z 出手,所以:
-       · ±x 与 +z 三面用崖壁+密林**围死**,不留天际线;
-       · -z 方向**开一条通道**,崖壁在 z<-34 向外张开成 V,
-         远景瀑布落在通道尽头,成为唯一的亮部与视觉中心。
-     植被按到球场的距离分四层(§2/§3),越远越暗越灰,配合雾拉开空气纵深(§9)。
-     全部走 b.box/b.add 合批 —— 加块数不加 draw call,只加三角形。 */
-  const CANYON={
-    /* 叶色谱:深绿/黄绿/墨绿/少量枯叶棕(§10)。刻意不给"塑料绿"。 */
-    leaf:[0x2f5138,0x3c6b41,0x4a7d45,0x5b8c46,0x6d9a4a,0x27432f,0x1f3a2b,0x7d8f43],
-    dead:[0x7a6b3e,0x6b5733,0x8a7746],
-    bark:[0x4a3d31,0x554639,0x3d332a,0x5f5044],
-    rock:[0x4a534d,0x3f4842,0x565f57,0x37403b],
-    moss:[0x365c3a,0x406b40,0x2c4d31]
-  };
-  function village(s,b){
-    const R=s.r,M=s.mobile;
-    const pick=a=>a[(R()*a.length)|0];
-    /* 谷底:向 -z 铺很远,通道尽头才是瀑布潭 */
-    b.box(0x3b4238,0,-.12,-14,150,.12,190);
-
-    /* ---- 巨型叶片(§2 前景 / §12 framing)----
-       一片"叶"= 一把压扁的长方体呈扇形排开,再整体倾斜。
-       比球形叶簇更像龟背竹/芭蕉,也不会读成蘑菇。 */
-    const bigLeaf=(bb,x,y,z,scale,yaw,tilt,tone)=>{
-      const n=5+((R()*3)|0);
-      for(let i=0;i<n;i++){
-        const a=(i/(n-1)-.5)*1.15,len=(.85+R()*.65)*scale;
-        bb.box(tone!==undefined?tone:pick(CANYON.leaf),
-          x+Math.sin(yaw+a)*len*.5,y+Math.cos(a*1.6)*scale*.16,z+Math.cos(yaw+a)*len*.5,
-          len,.055*scale,(.30+R()*.22)*scale,
-          tilt+(R()-.5)*.22,yaw+a,(R()-.5)*.3);
-      }
-      /* 叶柄 */
-      bb.box(0x4d6b3e,x,y-scale*.28,z,.07*scale,scale*.62,.07*scale,tilt*.4,yaw,0);
-    };
-    /* 蕨:一丛细长羽片 */
-    const fern=(bb,x,y,z,sc)=>{
-      for(let i=0;i<7;i++){const a=i*.92+R();
-        bb.box(pick(CANYON.leaf),x+Math.sin(a)*.34*sc,y+.22*sc,z+Math.cos(a)*.34*sc,
-          .13*sc,.06*sc,(.8+R()*.5)*sc,-.5-R()*.4,a,0);}
-    };
-    /* 雨林乔木。⚠ 叶团**不要用 box**:用户原话"树也是方块叶子很奇怪" ——
-       立方体在任何角度都露出三条硬边和一个尖角,一眼就是积木。
-       改用压扁的**球体**当叶团(有机块面、边缘是圆的),再加几片薄长条当外缘叶尖,
-       两者都走同一个合批,draw call 一点没多。
-       palm=true 时换成棕榈:细高干 + 顶部一圈放射状长叶(§3 要求的高大棕榈)。 */
-    const canopy=(bb,x,z,h,rad,dim,palm)=>{
-      const bark=pick(CANYON.bark);
-      const tint=t=>dim?mix(t,0x63756e,.5):t;
-      if(palm){
-        const lean=(R()-.5)*.09;
-        for(let seg=0;seg<6;seg++){                                  // 分段主干,带一点弯
-          const sy=h*(seg+.5)/6;
-          bb.box(tint(bark),x+lean*sy,sy,z,.30-seg*.022,h/6*1.06,.30-seg*.022,0,0,lean);
-        }
-        const fronds=7+((R()*3)|0);
-        for(let f=0;f<fronds;f++){
-          const a=f*6.283/fronds+R()*.3,droop=-.30-R()*.45;
-          for(let k=0;k<3;k++){
-            const d=(k*.8+.7)*rad*.62;
-            bb.box(tint(pick(CANYON.leaf)),
-              x+lean*h+Math.cos(a)*d,h-k*k*.16*rad,z+Math.sin(a)*d,
-              rad*.62,.07,rad*(.34-k*.06),droop+k*.14,a,(R()-.5)*.2);
-          }
-        }
-        bb.add("blob",tint(0x5a4a38),x+lean*h,h+.06,z,.32,.28,.32);
-        return;
-      }
-      bb.box(tint(bark),x,h*.5,z,.42+R()*.3,h,.42+R()*.3,(R()-.5)*.03,0,(R()-.5)*.03);
-      for(let i=0;i<4;i++){const a=R()*6.283;                       // 板根
-        bb.box(tint(bark),x+Math.cos(a)*.5,.35,z+Math.sin(a)*.5,.26,.75,.9,.35,a,0);}
-      const layers=3+((R()*3)|0);
-      for(let L=0;L<layers;L++){
-        const ly=h*(.55+L*.16)+R()*.5,lr=rad*(1-L*.13);
-        for(let k=0;k<5+((R()*4)|0);k++){
-          const a=R()*6.283,d=lr*(.35+R()*.75);
-          const tone=tint(R()<.07?pick(CANYON.dead):pick(CANYON.leaf));
-          const w=(1.1+R()*1.5)*rad*.42;
-          bb.add("blob",tone,
-            x+Math.cos(a)*d,ly+(R()-.5)*1.1,z+Math.sin(a)*d,
-            w,(.34+R()*.5),w*(.8+R()*.4),
-            (R()-.5)*.9,a,(R()-.5)*.9);
-          /* 外缘薄叶尖:打断球体的圆轮廓,免得整棵读成一堆气球 */
-          if(R()<.5)bb.box(tone,
-            x+Math.cos(a)*d*1.28,ly+(R()-.5)*.9,z+Math.sin(a)*d*1.28,
-            w*1.15,.055,w*.34,(R()-.5)*.8,a+(R()-.5)*.5,(R()-.5)*.8);
-        }
-      }
-    };
-    /* 两色混合,用于远景整体压灰(§9 空气透视) */
-    function mix(a,c,t){
-      const ar=(a>>16)&255,ag=(a>>8)&255,ab=a&255,cr=(c>>16)&255,cg=(c>>8)&255,cb=c&255;
-      return (((ar+(cr-ar)*t)|0)<<16)|(((ag+(cg-ag)*t)|0)<<8)|((ab+(cb-ab)*t)|0);
-    }
-
-    /* ---- 峡谷崖壁(§4)----
-       side: -1/+1 = 左右;back = 身后。-z 不建,留出通道。
-       岩壁 50~70% 被藤蔓/苔藓/蕨覆盖,不裸露。 */
-    const cliffCol=(bb,x,z,baseW,topY,depth)=>{
-      const steps=6;
-      for(let i=0;i<steps;i++){
-        const y0=i*topY/steps,hh=topY/steps*1.25,w=baseW*(1-i*.09);
-        const stone=pick(CANYON.rock),xx=x+(R()-.5)*1.8,zz=z+(R()-.5)*2.4,rx=(R()-.5)*.05,ry=(R()-.5)*.2,rz=(R()-.5)*.06;
-        // Consume the old random stream, but build a single eroded column instead of six slabs.
-        if(i===0)bb.add("rock",stone,xx,topY*.51,zz,baseW,topY*1.08,depth,rx,ry,rz);
-        /* 覆盖层:苔藓块 + 垂落藤蔓 + 岩缝蕨 */
-        if(R()<.82){bb.add("rock",pick(CANYON.moss),x+(R()-.5)*w*.6,y0+hh*.62,z+(R()-.5)*2.2,w*(.4+R()*.5),hh*(.35+R()*.4),depth*.14);}
-        if(R()<.7){const vl=2.5+R()*5;bb.box(pick(CANYON.leaf),x+(R()-.5)*w*.7,y0+hh-vl*.5,z+(R()-.5)*2,.16+R()*.2,vl,.16);}
-        if(R()<.55)fern(bb,x+(R()-.5)*w*.6,y0+hh*.9,z+(R()-.5)*2,.9+R()*.7);
-      }
-    };
-    for(const side of [-1,1]){
-      /* 近段:紧贴球场两侧,把左右视野封死 */
-      for(let z=-30;z<=34;z+=7.5)cliffCol(b,side*(26+R()*4),z,13,30+R()*16,11);
-      /* 通道段:向 -z 逐渐外扩成 V,把视线导向瀑布 */
-      for(let i=0;i<(M?5:6);i++){
-        const z=-38-i*11,x=side*(30+i*5.5+R()*3);
-        cliffCol(b,x,z,15,34+i*4+R()*10,13);
-      }
-    }
-    /* 身后崖壁:把 +z 也封住,减少天空(§4) */
-    for(let x=-34;x<=34;x+=8)cliffCol(b,x+(R()-.5)*3,38+R()*4,14,30+R()*14,12);
-
-    /* ---- 远景瀑布(§5)----
-       通道尽头。连续:顶部主瀑 → 谷底水潭。
-       位置沿"相机→篮筐"的视轴延长线偏一点,使它在画面里紧邻篮板上方而不重叠。 */
-    /* 距离取 §5 允许区间(50~150m)的近端:相机在 z≈+1.5,z=-64 约 66m。
-       第一版放在 -86(≈89m),在 near34/far150 的雾里被吃掉 47%,
-       水幕和它背后的暗崖差不到一档,探针说"在屏幕上"但肉眼一片都看不到。 */
-    const WF={x:-13,z:-64,top:38,pool:2.2};
-    /* 瀑布所在的崖体。这一段是整张图唯一的亮部,必须**先把背景压暗**再谈水色:
-       实测第一版水体已经在正确的屏幕位置(篮板上方偏右),但 86m 处被雾吃掉 68%,
-       而它背后的崖壁又是浅灰岩色 —— 白水叠在灰岩上,等于没画。
-       所以这里侧翼崖体单独用深色,并给一整面加宽加高的暗背板当剪影底。 */
-    const darkRock=[0x232e2e,0x1c2726,0x2a3634];
-    const cliffDark=(bb,x,z,baseW,topY,depth)=>{
-      for(let i=0;i<6;i++){
-        const y0=i*topY/6,hh=topY/6*1.25,w=baseW*(1-i*.09);
-        const tone=darkRock[(R()*3)|0],xx=x+(R()-.5)*1.8,zz=z+(R()-.5)*2.4,rot=(R()-.5)*.2;
-        if(i===0)bb.add("rock",tone,xx,topY*.51,zz-3,baseW,topY*1.08,depth,0,rot,0);
-        if(R()<.7)bb.add("rock",0x25412c,x+(R()-.5)*w*.6,y0+hh*.62,z+(R()-.5)*2.2,w*(.4+R()*.5),hh*(.4+R()*.4),depth*.14);
-      }
-    };
-    for(let i=-3;i<=3;i++)cliffDark(b,WF.x+i*15+(R()-.5)*4,WF.z-7+(R()-.5)*6,18,50+R()*20,16);
-    b.add("rock",0x182223,WF.x,WF.top*.55,WF.z-2,34,WF.top*1.15,8);
-    // Continuous fall: no projecting mid-cliff shelf cutting through the water.
-    b.box(0x2b4547,WF.x,WF.pool*.5,WF.z+16,26,WF.pool,14);            // 水潭
-    /* ⚠ 必须站在暗背板**前面**。背板是 b.box(...,WF.z-1,34,...,8),深度 8,
-       z 跨 WF.z-5 ~ WF.z+3。第一版把水组放在 WF.z+1.2 —— 整片水幕埋在不透明
-       背板内部,一个像素都出不来;而水雾因为自带 +3/+13 的 z 偏移刚好在板前,
-       所以画面上"只有雾没有水",看起来像水根本没建出来。 */
-    const wf=new THREE.Group();wf.position.set(WF.x,0,WF.z+5.5);
-    /* ---- 水体:一整片流动的水,不是一排方块 ----
-       旧版是"3 条静止竖带 + 5 股 ×3 段循环平移的长方体"。在 86m 外看过去,
-       柱与柱之间的缝比柱本身还显眼,读起来是几道白色雨丝,不是瀑布;
-       而且 18 个 clone 材质 = 18 个 draw call。
-       现在换成**真的水材质**:一张 ShaderMaterial 水幕,
-         · 三层不同频率、不同下落速度的竖向拉伸噪声 → 水股与速度差(§5 明确要求);
-         · 中心厚两侧薄、顶端从岩唇翻出、底部炸成白沫;
-         · 顶点着色器让水幕越往下越宽并带极慢横摆,轮廓不是一块死板;
-         · fog:false —— 瀑布是 §9 明度阶梯的白端,吃雾就没有端点了。
-       连续水幕一张,落水白沫一张,合计 2 个 draw call。 */
-    const WATER_VS=`varying vec2 vUv;uniform float time;uniform float sway;
-      void main(){vUv=uv;vec3 p=position;float d=1.0-uv.y;
-        p.x*=1.0+d*0.17;
-        p.x+=sin(uv.y*3.1+time*0.5)*sway*d;
-        p.z+=sin(uv.y*5.0+time*0.7)*0.3*d;
-        gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);}`;
-    const WATER_FS=`varying vec2 vUv;uniform float time;uniform float speed;uniform vec3 tint;uniform float alpha;
-      float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453123);}
-      float vnoise(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
-        return mix(mix(hash(i),hash(i+vec2(1.0,0.0)),f.x),
-                   mix(hash(i+vec2(0.0,1.0)),hash(i+vec2(1.0,1.0)),f.x),f.y);}
-      void main(){
-        float y=vUv.y;
-        // Flight-time coordinate: t=(sqrt(v0*v0+2*g*d)-v0)/g.
-        // A constant phase moves down with v=sqrt(v0*v0+2*g*d), not a slow UV scroll.
-        float distance=(1.0-y)*35.8;
-        float flight=(sqrt(9.0+19.62*distance)-3.0)/9.81;
-        float flow=flight-time*speed;
-        float s1=vnoise(vec2(vUv.x*13.0,flow*2.8));
-        float s2=vnoise(vec2(vUv.x*31.0+13.0,flow*6.0));
-        float s3=vnoise(vec2(vUv.x*61.0+41.0,flow*10.0));
-        float streak=smoothstep(0.10,0.88,0.40*s1+0.34*s2+0.26*s3);
-        float edge=smoothstep(0.0,0.13,vUv.x)*(1.0-smoothstep(0.87,1.0,vUv.x));
-        float lip=1.0-smoothstep(0.985,1.0,y);
-        float foam=1.0-smoothstep(0.0,0.10,y);
-        vec3 col=mix(tint*0.70,vec3(1.0),streak);
-        col=mix(col,vec3(1.0),foam*0.8);
-        float a=(edge*lip*(0.40+0.52*streak)+foam*edge*0.45)*alpha;
-        gl_FragColor=vec4(col,clamp(a,0.0,1.0));
-        #include <tonemapping_fragment>
-        #include <encodings_fragment>
-      }`;
-    const waterMats=[];
-    const curtain=(cx,base,height,width,speed,alpha,sway,splash)=>{
-      const mat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,side:THREE.DoubleSide,fog:false,
-        uniforms:{time:{value:0},speed:{value:speed},sway:{value:sway},alpha:{value:alpha},
-                  tint:{value:new THREE.Color(0xcfeef2).convertSRGBToLinear()}},
-        vertexShader:WATER_VS,fragmentShader:WATER_FS});
-      const m=new THREE.Mesh(new THREE.PlaneGeometry(width,height,10,20),mat);
-      m.position.set(cx,base+height*.5,-.4);m.name="canyonWaterfall";m.frustumCulled=false;wf.add(m);
-      waterMats.push(mat);
-      // Impact spray belongs only at the bottom of the continuous drop.
-      if(!splash)return;
-      const sp=new THREE.Mesh(new THREE.PlaneGeometry(width*1.1,height*.14,8,4),mat.clone());
-      sp.material.uniforms.alpha.value=alpha*.42;sp.material.uniforms.speed.value=speed*1.7;
-      sp.position.set(cx,base+height*.035,.9);sp.name="canyonWaterSplash";sp.frustumCulled=false;wf.add(sp);
-      waterMats.push(sp.material);
-    };
-    curtain(0,WF.pool,WF.top-WF.pool,13,1.0,.95,.22,true); // Single continuous drop to the pool
-    s.root.add(wf);s.waterfall=waterMats;
-    // Low, diffuse spray at the pool; never an opaque band halfway up the fall.
-    const mistG=new THREE.Group();mistG.position.set(WF.x,0,WF.z+7);
-    const mb=batch();
-    for(let i=0;i<(M?9:16);i++){
-      const y=WF.pool+.2+R()*1.8,r=1.2+R()*1.5;
-      mb.add("sphere",0xf4fcfb,(R()-.5)*13,y,(R()-.5)*7+12,r,r*(.72+R()*.34),r*(.85+R()*.3));
-    }
-    const mist=mb.finish(mistG,"canyonMist");
-    if(mist){mist.material.transparent=true;mist.material.opacity=.075;mist.material.depthWrite=false;mist.material.fog=false;}
-    s.root.add(mistG);s.mist={g:mistG,mesh:mist};
-
-    /* ---- 中景森林(§3):3~5 层深度,越远越灰 ---- */
-    const ringCount=M?[13,16,14,11]:[16,20,18,14];
-    const rings=[{r0:15,r1:23,h:[7,11],rad:[2.2,3.2],dim:false},
-                 {r0:23,r1:33,h:[10,16],rad:[2.8,4.2],dim:false},
-                 {r0:33,r1:46,h:[14,22],rad:[3.4,5],dim:true},
-                 {r0:46,r1:64,h:[18,28],rad:[4,6],dim:true}];
-    rings.forEach((ring,ri)=>{
-      for(let i=0;i<ringCount[ri];i++){
-        const a=R()*6.283,rad=ring.r0+R()*(ring.r1-ring.r0);
-        const x=Math.cos(a)*rad,z=Math.sin(a)*rad*.85-6;
-        /* 视觉通道(§1):必须沿**真实视线**留空,不能拍脑袋取个 x 区间。
-           投篮机位在 (3.8,2.3,1.5),瀑布在 (-15,37,-85),这条线在
-           z=-20 处 x≈+0.1、z=-60 处 x≈-9.6 —— 第一版按 x≈-5.25 固定中心
-           开走廊,结果中景环带的树正好戳在视线上,把 15×30m 的水幕整片挡死
-           (探针显示水幕在屏幕 (747,187) 且 onScreen,但画面上一片都看不到)。
-           走廊半宽随距离张开,远处才留得出瀑布两侧的轮廓。 */
-        if(z<-12){
-          const t=(1.5-z)/65.5,cx=3.8-16.8*t,halfW=9+t*7;
-          if(Math.abs(x-cx)<halfW)continue;
-        }
-        if(Math.abs(x)<11&&z>-14&&z<24)continue;                    // 不侵占球场
-        let h=ring.h[0]+R()*(ring.h[1]-ring.h[0]),tx=x,tz=z;
-        const gap=menuOrbitGap(s,tx,tz);
-        if(gap<ring.rad[1]*2.4){
-          /* 落在菜单环绕带上的树改成"高干高冠":树冠底(h*0.55)抬到机位以上,
-             只剩树干经过机位高度;树干再压在轨道上的,沿径向推开。 */
-          h=Math.max(h,17+R()*4);
-          if(gap<1.6){const push=1+(Math.hypot(tx,tz)<14?-.22:.22);tx*=push;tz=(tz+6)*push-6;}
-        }
-        canopy(b,tx,tz,h,ring.rad[0]+R()*(ring.rad[1]-ring.rad[0]),ring.dim,R()<.26);
-      }
-    });
-
-    /* 走廊**两侧**的远景树影:填住谷底不让崖面裸露(§13)。
-       ⚠ 必须放在视锥**外**。第一版是 cx+(R()-.5)*22 —— 以视线 x 为中心只抖 ±11m,
-       等于直接种在视线上;射线在 22.8m 处高度已到 12.9m,一棵 13m 的树就把
-       整片水幕挡死(射线探针:placeArchitecture 命中距离 22.8m)。
-       现在按 |x-cx| ∈ [15,29] 分居两侧,既补满谷底又不进通道。 */
-    for(let i=0;i<(M?12:16);i++){
-      const t=.25+R()*.75,z=1.5-t*65.5,cx=3.8-16.8*t;
-      const side=i%2?1:-1,off=15+R()*14;
-      canopy(b,cx+side*off,z,7+R()*9,2.8+R()*2,true);
-    }
-    /* ---- 近景灌木/蕨/苔藓(§2):填满球场到崖壁的过渡带 ----
-       ⚠ 侵入判定必须按每株的**实际外扩半径**,不能只判圆心。
-       原来写的是 `if(Math.abs(x)<9.4) continue`,但巨叶的叶片长度可到 1.5×scale
-       (scale 最大 2.6 → 外扩 3.9m),灌木叶团也能外扩 1.9m —— 于是种在 |x|=9.5 的
-       一株巨叶实际长到了 x≈-7.5,正好把 45° 架的跟随机位 (-7.64, 2.18, -0.36)
-       埋在叶子里,连投篮抛物线前半段一起挡掉。
-       扩展后的 world-wonders-camera.test.mjs 就是拿这条抓出来的。
-       生产机位实测包络是 |x|≤9.96 / z∈[-5.9,2.8],所以出手点一带留到 10.9m;
-       底线以外仍按球场边线放行,免得整圈植被被推远、过渡带变秃。 */
-    const near=M?104:140;
-    const intrudes=(x,z,spread)=>{
-      if(z<-14.5||z>24)return false;
-      return Math.abs(x)-spread<((z>-7.5&&z<5.5)?10.9:9.6);
-    };
-    for(let i=0;i<near;i++){
-      const a=R()*6.283,rad=10+R()*16,x=Math.cos(a)*rad,z=Math.sin(a)*rad*.9-4;
-      const k=R();
-      if(k<.42){const sc=1.1+R()*1.1;if(intrudes(x,z,1.05*sc))continue;fern(b,x,.2+R()*.4,z,sc);}
-      else if(k<.72){const h=.6+R()*1.5;                            // 灌木:压扁的叶团,不是圆球
-        if(intrudes(x,z,1.9))continue;
-        for(let j=0;j<4;j++)b.box(pick(CANYON.leaf),x+(R()-.5)*1.3,h*(.4+R()*.7),z+(R()-.5)*1.3,
-          1+R()*1.5,.3+R()*.35,1+R()*1.5,(R()-.5)*.5,R()*3,(R()-.5)*.5);}
-      else if(k<.88){const sc=1.5+R()*1.1;if(intrudes(x,z,1.55*sc))continue;
-        bigLeaf(b,x,.7+R()*1.1,z,sc,R()*6.283,-.5-R()*.5);}
-      else{const rr=.9+R()*1.2;if(intrudes(x,z,rr))continue;
-        b.add("blob",pick(CANYON.moss),x,.12,z,rr,.2,rr);}          // 苔藓斑
-    }
-    /* 地表杂草与落叶,压低天空以外的裸地 */
-    for(let i=0;i<(M?88:120);i++){
-      const x=(R()-.5)*70,z=-30+R()*70;
-      if(Math.abs(x)<9.2&&z>-13.2&&z<22.8)continue;
-      b.box(R()<.12?pick(CANYON.dead):pick(CANYON.leaf),x,.1+R()*.25,z,.2+R()*.5,.25+R()*.5,.2+R()*.5,(R()-.5)*.6,R()*3,(R()-.5)*.6);
-    }
-
-    /* ---- 前景巨叶(§2/§12/§13)----
-       球场左右两侧紧邻处的大叶,进入镜头边缘形成天然 framing 与遮挡纵深。
-       只在 |x|>9.2 且高度压在 4.2m 以下 —— 不侵入投篮与人物活动区。
-       其中一部分挂到风摆 pivot 上(§11:只让少量大叶片轻摆)。 */
-    const windLeaves=M?4:7;
-    for(let i=0;i<(M?26:34);i++){
-      const side=i%2?1:-1,z=-12+R()*26;
-      const sc=1.9+R()*1.9,y=.9+R()*2.1;
-      /* ⚠ 叶扇必须**朝外**开。bigLeaf 的叶片从中心沿 yaw 铺开、单片长度可到 1.5×scale,
-         yaw 随机时叶尖会伸进场内 4~5m:底角架的跟随机位 (-9.96, 2.18, -5.44)
-         直接被埋进叶子里,连球员头部都射不到。
-         锁死 yaw≈±90° 之后内侧只剩叶柄和叶背,外扩全部落在场外;
-         再按机位包络(|x|≤9.96)给出手点一带留到 11.3m。 */
-      const yaw=side*Math.PI/2+(R()-.5)*.5;
-      const x=side*(((z>-7.5&&z<5.5)?11.3:10)+R()*4.6);
-      if(i<windLeaves){
-        const g=new THREE.Group();g.position.set(x,y,z);
-        const lb=batch();bigLeaf(lb,0,0,0,sc,yaw,-.55-R()*.5);
-        lb.finish(g,"canyonWindLeaf");s.root.add(g);
-        s.plants.push({pivot:g,phase:R()*6.28,amp:.055});
-      }else{
-        bigLeaf(b,x,y,z,sc,yaw,-.5-R()*.55);
-      }
-    }
-    /* 藤蔓:从高处垂下,进一步遮挡镜头上缘 */
-    for(let i=0;i<(M?15:20);i++){
-      // 藤蔓也要让开机位包络:原来 |x| 起点 10m,垂到底时几乎贴着 45° 架的跟随机位。
-      const side=i%2?1:-1,x=side*(11.2+R()*8),z=-16+R()*30,top=7+R()*9,len=3+R()*7;
-      if(menuOrbitGap(s,x,z)<1.9)continue;      // 垂到菜单机位高度的藤会把整屏糊住
-      b.box(pick(CANYON.leaf),x,top-len*.5,z,.13+R()*.12,len,.13+R()*.12,(R()-.5)*.12,0,(R()-.5)*.12);
-      for(let k=0;k<3;k++)b.box(pick(CANYON.leaf),x+(R()-.5)*.6,top-len*(.3+k*.22),z+(R()-.5)*.6,.5+R()*.5,.09,.3+R()*.3,(R()-.5)*.5,R()*3,(R()-.5)*.5);
-    }
-    /* 苔石:球场外圈散布,兼作视觉边界(§13 用岩石+植物藏住地图边界) */
-    for(let i=0;i<(M?20:26);i++){
-      const a=R()*6.283,rad=13+R()*20,x=Math.cos(a)*rad,z=Math.sin(a)*rad*.9-5;
-      const w=1+R()*2.6;
-      if(Math.abs(x)-w<((z>-7.5&&z<5.5)?10.9:9.6)&&z>-14.5&&z<24)continue;
-      b.add("blob",pick(CANYON.rock),x,w*.28,z,w,w*.55,w*.9,(R()-.5)*.3,R()*3,(R()-.5)*.3);
-      if(R()<.7)b.add("blob",pick(CANYON.moss),x,w*.5,z,w*.8,w*.2,w*.7);
-    }
   }
   /* ---------------- 湘南海岸高校球场 ----------------
      ⚠ 2026-09-10 重构:海岸带从"球场左侧(-x)"整体转到**篮筐正后方**,沿 x 横着铺。
@@ -1576,16 +1189,14 @@
   }
   function build(root,name){
     const s={root,name,r:rng(72191+Object.keys(palettes).indexOf(name)*173),time:0,mobile:matchMedia("(pointer:coarse)").matches,plants:[],clouds:[],vehicles:[],lights:[],realLights:[],birds:[],nextBird:24};root.userData.placeState=s;
-    /* 菜单环绕椭圆的场地覆盖(camera.js 读 placeState.menuOrbit)。
-       雨林是谷底封闭空间,默认 18×20/y=8 的椭圆正好落在第一层树冠里,
-       菜单会被一团叶子糊满 —— 收到球场周围的空地上绕。 */
-    if(name==="flowerCourt")s.menuOrbit=[12.6,15.4,6.2,2.4];
+    /* Keep the meadow horizon in the menu's wider orbit. */
+    if(name==="flowerCourt")s.menuOrbit=[18,22,7.5,2.5];
     /* 湘南:校舍在 SCH_X=20、宽 13,占住 x 13.5~26.5,默认椭圆的 x=18 直接在楼里面;
        校舍拉远会掉进雾里(作者原注)。改成从校园树冠之上、外走廊之外绕过去:
        x 11.4 卡在校园树(冠顶约 7.3m)与外走廊楼板(x≥12.25)之间,机位抬到 10.4m
        从树冠上方掠过;椭圆拉长到 20,让长轴两端的俯角回到正常。 */
     if(name==="shonanCoast")s.menuOrbit=[11.4,20,10.4,2.6];
-    const b=batch(),builder=({outdoorSunny:city,rainyCourt:rainTown,flowerCourt:village,shonanCoast:shonan,medCliff:med,beachSunset:coast})[name];
+    const b=batch(),builder=({outdoorSunny:city,rainyCourt:rainTown,shonanCoast:shonan,medCliff:med,beachSunset:coast})[name];
     if(builder)builder(s,b);else AIBAWorldWonders.build(s,b,{batch,tree,facing,lunarMarkings});
     AIBAWorldLife.build(s,b,{batch,rng});
     if(name==="lunarCrater"){
@@ -1605,36 +1216,23 @@
       themeHoops(s,b);
     }
     b.finish(root,`placeArchitecture:${name}`);
-    if(name!=="lunarCrater"&&name!=="beachSunset"&&name!=="tokyoRooftop"){clouds(s);}
+    if(name!=="lunarCrater"&&name!=="beachSunset"&&name!=="tokyoRooftop"&&name!=="flowerCourt"){clouds(s);}
     if(name!=="lunarCrater"&&name!=="tokyoRooftop"){makeBirdPool(s);}
     if(name==="outdoorSunny"){scene.fog.near=52;scene.fog.far=145;}
     if(name==="shonanCoast"){scene.fog.near=58;scene.fog.far=190;}
     if(name==="medCliff"){scene.fog.near=95;scene.fog.far=330;}
     if(name==="lunarCrater"){scene.fog.near=160;scene.fog.far=380;}
     if(name==="tokyoRooftop"){scene.fog.near=210;scene.fog.far=820;}
-    if(name==="flowerCourt"){
-      /* 峡谷顶部开口漏下的**自然天光**,不是人工灯。
-         谷底照度低于露天,但必须读得出"光是从上方开口下来的":所以抬高太阳的
-         y(俯角变大、更接近垂直),环境光与半球光压低,雾调成湿润的冷绿 ——
-         峡谷的纵深和湿气才出得来。各场景预设都会重设这几个光,不会泄漏到室内。 */
-      /* 雾拉远:瀑布在 86m,near40/far108 会把它吃掉 68%,唯一的亮部就糊没了。
-         far 拉到 150 后约 40%,既保留空气纵深又让瀑布读得出来(§9)。 */
-      scene.fog.near=34;scene.fog.far=150;
-      if(scene.fog.color)scene.fog.color.setHex(0x93a89b);
-      ambient.color.setHex(0xd8e6dc);ambient.intensity=.38;
-      hemi.color.setHex(0xbcd0c4);hemi.groundColor.setHex(0x3c4a42);hemi.intensity=.5;
-      sun.color.setHex(0xfff4dd);sun.intensity=1.15;sun.position.set(-6,26,-4);
-    }
-    if(name!=="lunarCrater"){
+    if(name!=="lunarCrater"&&name!=="flowerCourt"){
       const tex=surface(name),m=courtFloor.material;courtFloor.userData.placeTexture=tex;m.map=tex;m.color.setHex(0xffffff);m.roughnessMap=null;
       /* Rain has a water film; forest soil stays rough, with only a faint damp sheen. */
-      m.roughness=name==="rainyCourt"?.62:(name==="tokyoRooftop"?.46:(name==="flowerCourt"?.91:(name==="shonanCoast"?.92:(name==="medCliff"?.88:.95))));
-      m.clearcoat=name==="rainyCourt"?.12:(name==="tokyoRooftop"?.22:(name==="flowerCourt"?.06:0));
-      if(m.clearcoatRoughness!==undefined)m.clearcoatRoughness=(name==="rainyCourt"||name==="flowerCourt"||name==="tokyoRooftop")?.24:.5;
+      m.roughness=name==="rainyCourt"?.62:(name==="tokyoRooftop"?.46:(name==="shonanCoast"?.92:(name==="medCliff"?.88:.95)));
+      m.clearcoat=name==="rainyCourt"?.12:(name==="tokyoRooftop"?.22:0);
+      if(m.clearcoatRoughness!==undefined)m.clearcoatRoughness=(name==="rainyCourt"||name==="tokyoRooftop")?.24:.5;
       m.envMapIntensity=name==="tokyoRooftop"?.18:.04;m.needsUpdate=true;
     }
     const hidden=["courtZone","courtLine","courtMark","nearCourtCrowdRoot"];
-    if(name==="lunarCrater")hidden.push("courtFloor");
+    if(name==="lunarCrater"||name==="flowerCourt")hidden.push("courtFloor");
     scene.traverse(o=>{if(hidden.includes(o.name)){o.userData.placeHidden=o.visible;o.visible=false;}});
     document.documentElement.dataset.worldPlace=name;return s;
   }
@@ -1642,16 +1240,7 @@
     const s=environmentRoot.userData.placeState;if(!s)return;s.time+=dt;
     AIBAWorldWonders.update(s);
     s.plants.forEach(p=>{const t=s.time,phase=p.phase;p.pivot.rotation.z=(Math.sin(t*.8+phase)+.32*Math.sin(t*1.73+phase*2))*p.amp;p.pivot.rotation.x=Math.sin(t*.61+phase)*p.amp*.55;});
-    // Advect a continuous curtain in flight-time coordinates; gravity stretches the falling streaks.
-    if(s.waterfall)s.waterfall.forEach(m=>{if(m.uniforms&&m.uniforms.time)m.uniforms.time.value=s.time;});
-    /* 水雾:整团缓慢起伏 + 轻微横移。只读 s.time,不碰 Math.random —— 
-       world-places.test.mjs 断言环境动画消耗的玩法随机数必须是 0。 */
-    if(s.mist&&s.mist.g){
-      const t=s.time;
-      s.mist.g.position.y=Math.sin(t*.23)*.9+Math.sin(t*.37)*.4;
-      s.mist.g.scale.setScalar(1+Math.sin(t*.19)*.09);
-      if(s.mist.mesh)s.mist.mesh.material.opacity=.24+.09*(Math.sin(t*.31)*.5+.5);
-    }
+    if(s.meadowWind)s.meadowWind.value=s.time;
     /* 湘南的浪:整片泡沫缓慢向岸推移,循环 —— 和 beachSunset 的 s.wave 同机制,
        但那边由日落进度驱动,这里只跟时间。 */
     if(s.name==="shonanCoast"&&s.wave)s.wave.position.z=(s.time*.5)%11;

@@ -37,7 +37,8 @@ try{
   for(const t of [0,.25,.5,1]){
    await page.evaluate(t=>{const s=environmentRoot.userData.placeState;s.time=t;AIBAWorldPlaces.update(0,0);player.g.visible=false;camera.fov=58;camera.aspect=1;camera.updateProjectionMatrix();camera.position.set(3.8,2.3,1.5);camera.lookAt(0,3,-9);renderer.render(scene,camera);},t);await save(sceneName+'-'+t);
   }
-  report[sceneName]=await page.evaluate(()=>{const s=environmentRoot.userData.placeState,wire=s.root.getObjectByName('shonanCables');return{water:s.waterfall?.length,cables:wire?.userData,calls:renderer.info.render.calls};});
+  report[sceneName]=await page.evaluate(()=>{const s=environmentRoot.userData.placeState,wire=s.root.getObjectByName('shonanCables');return{snowPeaks:['alpineNearRidges','alpineFarSnowPeaks'].filter(n=>s.root.getObjectByName(n)).length,
+   swayingGrass:!!s.root.getObjectByName('alpineSwayingGrass'),cables:wire?.userData,calls:renderer.info.render.calls};});
  }
  if(stage==='after'){
   await page.evaluate(()=>{applyScenePreset('indoor',{persist:false});player.g.visible=true;passer.g.visible=false;oppPasser.g.visible=false;player.g.position.set(0,0,0);player.g.scale.set(1,1,1);player.g.rotation.set(0,.42,0);dressGuy(player,0x263e52,0xc5a86c,'24');setHair(player,'fade',0x36261e);player.headband.visible=false;player.sleeves.forEach(s=>s.visible=false);player.wrists.forEach(s=>s.visible=false);camera.fov=32;camera.position.set(1.3,1.5,3.5);camera.lookAt(0,.95,0);camera.updateProjectionMatrix();});
@@ -60,7 +61,8 @@ try{
   const restored=await page.evaluate(()=>{AIBAEquipmentVisuals.applyHead(player,null);renderer.render(scene,camera);return [player.hairBase,player.hairGrp,player.hairTail,player.jerseyHem].every(g=>g.visible);});assert(restored,'hoodie removal restores layers');await save('game-restored');
  }
  if(stage==='after'){
-  assert.equal(report.flowerCourt.water,2,'one continuous curtain plus impact spray');
+  assert.equal(report.flowerCourt.snowPeaks,2,'near and far meadow ridges');
+  assert(report.flowerCourt.swayingGrass,'meadow has flexible grass');
   assert(report.shonanCoast.cables?.spans>0,'connected cable spans');
   const previous=JSON.parse(fs.readFileSync(path.join(out,'../before/report.json'),'utf8'));
   assert.deepEqual(report.rig,previous.rig,'rig attachment coordinates changed');

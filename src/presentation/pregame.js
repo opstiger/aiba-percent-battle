@@ -322,9 +322,11 @@ function pregameBuildShots(opts){
   const shots=[],actors=PREGAME.actors;
   const hero=actors[0],rival=actors[1]||actors[0];
   /* 5幕电影级转播热身秀(~11.4s):每一幕都有明确主角(球员或吉祥物),主打街舞/定格炫舞+飞跃暴扣+子弹时间环绕跟拍 */
-  const dunkActor=actors.length>1&&Math.random()<0.45?rival:hero;
+  const canRivalDunk=rival!==hero&&rival.role!=="teammate"&&(!rival.guy||rival.guy!==passer);
+  const dunkActor=canRivalDunk&&Math.random()<0.45?rival:hero;
   const showcaseActor=dunkActor===hero?rival:hero;
-  const showcaseAction=pregamePick(["dance","dance","dance","chalk","shoot"]);
+  const isTeammate=showcaseActor&&(showcaseActor.role==="teammate"||showcaseActor.guy===passer);
+  const showcaseAction=isTeammate?pregamePick(["dance","dance","shoot"]):pregamePick(["dance","dance","dance","chalk","shoot"]);
   const plan=[
     {actor:hero,action:"dance",cam:"bulletOrbit",dur:rnd(2.25,2.45),side:1,group:false},
     {actor:rival,action:"dance",cam:"whipPush",dur:rnd(2.20,2.40),side:-1,group:false},

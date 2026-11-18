@@ -20,9 +20,8 @@
     indoor:{name:"室内经典",type:"indoor",weather:"none",progression:"none",desc:"木地板、看台与球馆灯光"},
     outdoorSunny:{name:"晴天 · 都会街头",type:"outdoor",weather:"sunny",progression:"none",desc:"摩天楼之间，城市车流从街场旁经过"},
     rainyCourt:{name:"雨天 · 京都雨巷",type:"outdoor",weather:"rain",progression:"none",desc:"木屋瓦檐、暖灯与雨中的石板巷"},
-    /* preset ID 保持 flowerCourt 不动(存档与进度依赖它),只更新用户可见的
-       名称与说明:场景已从"赭土村落"改为峡谷雨林,旧名会误导。 */
-    flowerCourt:{name:"鲜花 · 峡谷雨林",type:"outdoor",weather:"sunny",progression:"flowerBloom",desc:"瀑布与巨树环绕的峡谷石场，天光自崖顶洒落，得分唤醒花海"},
+    // Stable preset ID preserves saved selections and the score-driven bloom.
+    flowerCourt:{name:"鲜花 · 天山草甸",type:"outdoor",weather:"sunny",progression:"flowerBloom",desc:"得分唤醒整片草甸的野花，云开后暖光逐渐照亮雪峰"},
     /* 湘南海岸高校:一侧校舍铁丝网、一侧防波堤与大海,远景电线杆与架空线。
        progression 用 none —— 夜转场是 beachSunset 的招牌,两张都做会撞。 */
     /* 地中海半岛:锚点是蓝海+白建筑。主篮筐朝海湾,所以海在篮筐后方而不是侧面。 */

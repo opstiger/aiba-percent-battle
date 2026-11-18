@@ -37,6 +37,8 @@ const DICT={
 "晴天街头":"Sunny street",
 "雨天街头":"Rainy street",
 "鲜花球场":"Flower court",
+"鲜花 · 天山草甸":"Flowers · Tian Shan Meadow",
+"得分唤醒整片草甸的野花，云开后暖光逐渐照亮雪峰":"Score to bring the meadow into bloom and watch the clouds part over the glowing peaks.",
 "西海岸夕阳":"West coast sunset",
 "百分竞速":"Speed 100",
 "彩球架":"Money rack",

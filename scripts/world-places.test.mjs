@@ -32,12 +32,12 @@ try{
     for(const name of names){
       const data=await page.evaluate(name=>{
         applyScenePreset(name,{persist:false});const s=environmentRoot.userData.placeState;
-        const start={cloud:s.clouds[0].g.position.x,plant:s.plants[0].pivot.rotation.z,cars:s.vehicles.map(v=>v.g.position.z)};
+        const start={cloud:s.clouds[0]?.g.position.x??s.meadow?.time.value,plant:s.plants[0]?.pivot.rotation.z??s.meadowWind?.value,cars:s.vehicles.map(v=>v.g.position.z)};
         const snowStart=s.wonder?.snow?Array.from(s.wonder.snow.geometry.attributes.position.array.slice(0,9)):null;
         const oldRandom=Math.random;let randomCalls=0;Math.random=()=>{randomCalls++;return oldRandom();};
         for(let i=0;i<180;i++){AIBAWorldPlaces.update(1/30,.35);if(name==='flowerCourt')updateFlowerCourt(.5,1/30);updStreetCrowd(i/30,1/30);}
         Math.random=oldRandom;
-        const end={cloud:s.clouds[0].g.position.x,plant:s.plants[0].pivot.rotation.z,cars:s.vehicles.map(v=>v.g.position.z)};
+        const end={cloud:s.clouds[0]?.g.position.x??s.meadow?.time.value,plant:s.plants[0]?.pivot.rotation.z??s.meadowWind?.value,cars:s.vehicles.map(v=>v.g.position.z)};
         const people=streetCrowd.people,idle=people.map(p=>+(p.g.position.y-(p.origin?p.origin.y:0)).toFixed(4)),crowdLayout=people.map(p=>[p.kind,...p.origin.toArray()]);triggerStreetCrowdReaction('final',10);
         for(let i=0;i<45;i++)updStreetCrowd(6+i/30,1/30);
         const response=people.map(p=>p.response);
@@ -46,16 +46,19 @@ try{
         let flowerWind=null;if(name==='flowerCourt'){const f=environmentRoot.userData.flowerState,old=Array.from(f.ground.petals.instanceMatrix.array.slice(0,16));AIBAWorldPlaces.update(.5,.35);updateFlowerCourt(.5,.5);flowerWind={before:old,after:Array.from(f.ground.petals.instanceMatrix.array.slice(0,16)),count:f.ground.target};}
         const wonder=s.wonder?.kind==='arctic'?{snowStart,snowEnd:Array.from(s.wonder.snow.geometry.attributes.position.array.slice(0,9)),snowCount:s.wonder.speed.length,auroraTimes:s.wonder.auroras.map(m=>m.material.uniforms.time.value)}:s.wonder?.kind==='spanish'?{laundry:s.plants.filter(p=>p.pivot.getObjectByName('hangingLaundry')).length}:null;
         return {start,end,randomCalls,idle,response,crowdLayout,wonder,nearCrowdHidden:!nearCourtCrowd.root.visible,birdCount,birdStart,birdEnd,birdsRecycled,flowerWind,
-          vehicles:s.vehicles.map(v=>({type:v.type,x:v.g.position.x,z:v.g.position.z})),surface:courtFloor.material.map.name,roughness:courtFloor.material.roughness,clearcoat:courtFloor.material.clearcoat,
+          vehicles:s.vehicles.map(v=>({type:v.type,x:v.g.position.x,z:v.g.position.z})),surface:(s.meadowGround?.material.map||courtFloor.material.map).name,roughness:courtFloor.material.roughness,clearcoat:courtFloor.material.clearcoat,
           hoop:HOOP.toArray(),nearNet:netMesh.position.toArray(),farNet:farNet.position.toArray(),originalHidden:courtHoopRigs.every(r=>r.children.every(c=>c.userData.keepOutdoor||!c.visible)),
-          cloudGeometry:s.clouds[0].g.children[0].geometry.attributes.position.count,plants:s.plants.length};
+          cloudGeometry:(s.clouds[0]?.g.children[0]||s.root.getObjectByName('alpineCloudSky')).geometry.attributes.position.count,plants:s.plants.length};
       },name);
       assert.notEqual(data.start.cloud,data.end.cloud);assert.notEqual(data.start.plant,data.end.plant);assert.equal(data.randomCalls,0,'environment animation must not consume gameplay randomness');
       assert.ok(data.originalHidden&&data.nearCrowdHidden);assert.deepEqual(data.hoop,[0,3.05,-8]);assert.equal(data.nearNet[2],-8);assert.equal(data.farNet[2],17.49);
       assert.ok(data.birdCount>0&&data.birdCount<=3);assert.notDeepEqual(data.birdStart,data.birdEnd);assert.ok(data.birdsRecycled);
       assert.ok(data.idle.filter(y=>y===0).length>=data.idle.length/2,'majority are grounded at idle (measured against the surface each person stands on)');assert.ok(data.response.some(x=>x===0)&&data.response.some(x=>x>0));
       if(name==='outdoorSunny'){assert.notDeepEqual(data.start.cars,data.end.cars);assert.ok(data.vehicles.every(v=>Math.abs(v.x)>=19&&Math.abs(v.x)<=27));assert.ok(data.vehicles.some(v=>v.type==='schoolbus'));assert.ok(data.vehicles.some(v=>v.type==='bus'));}
-      if(data.flowerWind)assert.notDeepEqual(data.flowerWind.before,data.flowerWind.after);
+      if(data.flowerWind){
+        assert.notDeepEqual(data.flowerWind.before,data.flowerWind.after);
+        assert.equal(data.surface,'placeSurface:flowerCourt');
+      }
       if(name==='arcticSnow'){assert.notDeepEqual(data.wonder.snowStart,data.wonder.snowEnd);assert.ok(data.wonder.snowCount<=112);assert.ok(data.wonder.auroraTimes.every(t=>t>0));}
       if(name==='spanishQuarter')assert.ok(data.wonder.laundry>=4);
       report.scenes[(mobile?'mobile-':'')+name]=data;await save(name,'play');if(!mobile){await save(name,'wide');await save(name,'reverse');}
@@ -68,7 +71,7 @@ try{
     report[mobile?'mobileRecovery':'recovery']=await page.evaluate(names=>{
       const originalMaps=new Set(),disposed=[];let baseline;
       for(let i=0;i<3;i++){
-        for(const name of names){applyScenePreset(name,{persist:false});const tex=courtFloor.material.map;originalMaps.add(tex);tex.addEventListener('dispose',()=>disposed.push(tex.uuid));renderer.render(scene,camera);}
+        for(const name of names){applyScenePreset(name,{persist:false});const tex=environmentRoot.userData.placeState?.meadowGround?.material.map||courtFloor.material.map;originalMaps.add(tex);tex.addEventListener('dispose',()=>disposed.push(tex.uuid));renderer.render(scene,camera);}
         applyScenePreset('indoor',{persist:false});renderer.render(scene,camera);if(i===0)baseline={...renderer.info.memory};
       }
       return {baseline,after:{...renderer.info.memory},disposed:disposed.length,textures:originalMaps.size,indoorMap:courtFloor.material.map===courtIndoorTexture,roughnessMap:courtFloor.material.roughnessMap===courtRoughTexture,hoops: courtHoopRigs.every(r=>r.children.every(c=>c.visible))&&nearCourtCrowd.root.visible,place:!!environmentRoot.userData.placeState};

@@ -16,6 +16,8 @@
   const THROW_RELEASE_TIME = 0.765;
   const THROW_TIME_SCALE = 2.0;
 
+  const DANCE_BONES=["Hips","Spine","Spine1","Spine2","Neck","Head","LeftShoulder","LeftArm","LeftForeArm","LeftHand","RightShoulder","RightArm","RightForeArm","RightHand","LeftUpLeg","LeftLeg","LeftFoot","LeftToeBase","RightUpLeg","RightLeg","RightFoot","RightToeBase"];
+
   const state = {
     loading: false,
     ready: false,
@@ -23,6 +25,10 @@
     mesh: null,
     mixer: null,
     throwAction: null,
+    bones: {},
+    restLocal: {},
+    restWorld: {},
+    hipY: 0.95,
     rHand: null,
     rPalm: null,
     lHand: null,
@@ -39,6 +45,11 @@
   const _vMid = new THREE.Vector3();
   const _vFwd = new THREE.Vector3();
   const _qWorld = new THREE.Quaternion();
+  const _dq = new THREE.Quaternion();
+  const _dc = new THREE.Quaternion();
+  const _pq = new THREE.Quaternion();
+  const _eul = new THREE.Euler();
+  const _qOff = new THREE.Quaternion();
 
   function ensureLoader(cb){
     if(global.THREE && global.THREE.GLTFLoader) return cb();
@@ -58,10 +69,16 @@
         root.add(gltf.scene);
 
         let mesh = null;
+        const bones = {}, restLocal = {}, restWorld = {};
         const maxAniso = (typeof renderer !== "undefined" && renderer && renderer.capabilities && renderer.capabilities.getMaxAnisotropy)
           ? Math.min(8, renderer.capabilities.getMaxAnisotropy()) : 4;
         gltf.scene.traverse(child=>{
+          child.frustumCulled = false;
           if(child.isSkinnedMesh && !mesh) mesh = child;
+          if(child.isBone){
+            const bn = child.name.replace(/^mixamorig:?/, "");
+            bones[bn] = child;
+          }
           if(child.isMesh){
             child.castShadow = true;
             child.receiveShadow = true;
@@ -75,6 +92,17 @@
             }
           }
         });
+        // 记录骨骼初始局部/世界旋转（供舞蹈、投篮与还原传球待机使用）
+        gltf.scene.updateMatrixWorld(true);
+        for(const bn in bones){
+          restLocal[bn] = bones[bn].quaternion.clone();
+          restWorld[bn] = bones[bn].getWorldQuaternion(new THREE.Quaternion());
+        }
+        const hipPos = bones.Hips ? bones.Hips.getWorldPosition(new THREE.Vector3()) : null;
+        state.hipY = hipPos && hipPos.y > 0.3 ? hipPos.y : 0.95;
+        state.bones = bones;
+        state.restLocal = restLocal;
+        state.restWorld = restWorld;
 
         let rHand = gltf.scene.getObjectByName("mixamorigRightHand") || gltf.scene.getObjectByName("mixamorig:RightHand");
         let rPalm = gltf.scene.getObjectByName("mixamorigRightHandMiddle1") || gltf.scene.getObjectByName("mixamorig:RightHandMiddle1");
@@ -208,6 +236,64 @@
     return state.ready && state.throwAction ? state.releaseDelay : 0;
   }
 
+  function restoreRestPose(){
+    for(const bn in state.bones){
+      if(state.restLocal[bn]) state.bones[bn].quaternion.copy(state.restLocal[bn]);
+    }
+  }
+
+  function applyDance(dn){
+    const w = Math.max(0, Math.min(1, dn.w == null ? 1 : dn.w));
+    if(w <= 0 || !dn.q || !state.root) return;
+    state.root.updateMatrixWorld(true);
+    for(let i = 0; i < DANCE_BONES.length; i++){
+      const n = DANCE_BONES[i], bone = state.bones[n], rw = state.restWorld[n];
+      if(!bone || !rw || !bone.parent) continue;
+      _dq.set(dn.q[i*4], dn.q[i*4+1], dn.q[i*4+2], dn.q[i*4+3]).multiply(rw);
+      const targetQ = w < 1 ? bone.getWorldQuaternion(_dc).slerp(_dq, w) : _dq;
+      bone.parent.getWorldQuaternion(_pq).invert();
+      bone.quaternion.copy(_pq).multiply(targetQ);
+      bone.updateMatrix();
+      bone.matrixWorld.multiplyMatrices(bone.parent.matrixWorld, bone.matrix);
+    }
+    state.root.position.y = dn.hy > 0.02 ? dn.hy * state.hipY * w * 0.35 : 0;
+    state.root.updateMatrixWorld(true);
+  }
+
+  function applyLimbMotion(guy){
+    const B = state.bones, RL = state.restLocal;
+    if(!B.RightArm || !B.LeftArm) return;
+    restoreRestPose();
+    const rotBone = (bn, rx, ry, rz)=>{
+      const b = B[bn], r0 = RL[bn];
+      if(!b || !r0) return;
+      _eul.set(rx || 0, ry || 0, rz || 0, "XYZ");
+      _qOff.setFromEuler(_eul);
+      b.quaternion.copy(r0).multiply(_qOff);
+    };
+    const lArmX = guy.arms && guy.arms[0] ? guy.arms[0].rotation.x : 0;
+    const rArmX = guy.arms && guy.arms[1] ? guy.arms[1].rotation.x : 0;
+    const lElbX = guy.elbows && guy.elbows[0] ? guy.elbows[0].rotation.x : 0;
+    const rElbX = guy.elbows && guy.elbows[1] ? guy.elbows[1].rotation.x : 0;
+    const lLegX = guy.legs && guy.legs[0] ? guy.legs[0].rotation.x : 0;
+    const rLegX = guy.legs && guy.legs[1] ? guy.legs[1].rotation.x : 0;
+    const lKneeX = guy.knees && guy.knees[0] ? guy.knees[0].rotation.x : 0;
+    const rKneeX = guy.knees && guy.knees[1] ? guy.knees[1].rotation.x : 0;
+    const torsoX = guy.torso ? guy.torso.rotation.x : 0;
+    // Mixamo T-pose 手臂水平外展，从初始抱球姿叠加动作增量
+    rotBone("Spine1", torsoX * 0.5, 0, 0);
+    rotBone("LeftArm", (lArmX + 0.5) * 0.85, 0, 0);
+    rotBone("RightArm", (rArmX + 0.5) * 0.85, 0, 0);
+    rotBone("LeftForeArm", lElbX * 0.55, 0, 0);
+    rotBone("RightForeArm", rElbX * 0.55, 0, 0);
+    rotBone("LeftUpLeg", -lLegX * 0.85, 0, 0);
+    rotBone("RightUpLeg", -rLegX * 0.85, 0, 0);
+    rotBone("LeftLeg", Math.max(0, lKneeX) * 0.85, 0, 0);
+    rotBone("RightLeg", Math.max(0, rKneeX) * 0.85, 0, 0);
+    state.root.position.y = 0;
+    state.root.updateMatrixWorld(true);
+  }
+
   function update(dt){
     if(!state.ready){
       if(!state.loading) loadModel();
@@ -218,22 +304,33 @@
 
     hideVoxelMeshes(state.attachedGuy);
 
-    if(state.mixer){
-      if(state.isThrowing){
-        state.throwTime += dt;
-        state.mixer.update(dt);
-        if(state.throwTime >= state.throwDuration){
-          state.isThrowing = false;
-          state.released = false;
-          state.throwAction.time = 0.033;
-          state.mixer.update(0);
-          state.throwAction.paused = true;
-        }
-      }else{
-        const t = (typeof G !== "undefined" && G.tNow) || 0;
-        const breath = Math.sin(t * 1.8) * 0.02;
-        state.root.position.y = breath * 0.5;
+    const guy = state.attachedGuy;
+    const dn = guy.pregameDance && guy.pregameDance.q ? guy.pregameDance : null;
+    const dw = dn ? Math.max(0, Math.min(1, dn.w == null ? 1 : dn.w)) : 0;
+    const gameState = (typeof G !== "undefined" && G && G.state) || "";
+    const inShow = gameState === "pregame" || gameState === "wincine" || gameState === "victorycine";
+
+    if(dn && dw > 0.001){
+      applyDance(dn);
+    }else if(state.isThrowing && state.mixer){
+      state.throwTime += dt;
+      state.mixer.update(dt);
+      if(state.throwTime >= state.throwDuration){
+        state.isThrowing = false;
+        state.released = false;
+        state.throwAction.time = 0.033;
+        state.mixer.update(0);
+        state.throwAction.paused = true;
       }
+    }else if(inShow){
+      applyLimbMotion(guy);
+    }else if(state.mixer){
+      state.throwAction.time = 0.033;
+      state.mixer.update(0);
+      state.throwAction.paused = true;
+      const t = (typeof G !== "undefined" && G.tNow) || 0;
+      const breath = Math.sin(t * 1.8) * 0.02;
+      state.root.position.y = breath * 0.5;
     }
 
     // 手部持球点对齐（待机及推球蓄力出手前，球始终紧贴双手掌心）

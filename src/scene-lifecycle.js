@@ -6,16 +6,18 @@
     if(!layer)return;
     layer.target=0;
     if(Array.isArray(layer.data))layer.data.forEach(item=>{item.grow=0;});
-    [layer.stems,layer.petals,layer.centers].forEach(mesh=>{if(mesh)mesh.count=0;});
+    for(const mesh of layer.meshes)mesh.count=0;
   }
 
   function resetFlower(){
     const state=environmentRoot&&environmentRoot.userData&&environmentRoot.userData.flowerState;
     if(!state)return false;
-    state.revealProgress=0;state.pulse=0;state.visible=0;state.structureVisible=0;
+    state.revealProgress=0;state.visualProgress=0;state.pulse=0;state.visible=0;state.structureVisible=0;state.elapsed=0;
     resetFlowerLayer(state.ground);resetFlowerLayer(state.structure);
-    if(state.grassMat&&state.grassStart)state.grassMat.color.copy(state.grassStart);
-    if(Array.isArray(state.bloomMaterials))state.bloomMaterials.forEach(mat=>{mat.emissiveIntensity=0;});
+    state.petalMat.emissiveIntensity=.038;
+    state.coreMat.emissiveIntensity=.025;
+    const place=environmentRoot.userData.placeState;
+    if(place?.meadow){place.meadow.progress=0;AIBAWorldWonders.update(place);}
     document.documentElement.dataset.flowerCount="0";
     document.documentElement.dataset.flowerGround="0";
     document.documentElement.dataset.flowerStructure="0";
