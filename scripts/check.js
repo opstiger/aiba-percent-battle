@@ -8,7 +8,7 @@ const childProcess=require("child_process");
 
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
-const snapshot="block-3pt-kingv2.28.0-modular.html";
+const snapshot="block-3pt-kingv2.29.2-modular.html";
 const requiredFiles=[
   entry,
   snapshot,
@@ -495,9 +495,9 @@ for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"]
 if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js"></script>'))fail("Percent Battle opponent cache version missing");
 if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js"></script>')>entryHtml.indexOf('<script src="src/game-flow.js"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
-for(const token of ["v2.29.0 MODULAR","MODULAR / v2.29.0"])
+for(const token of ["v2.29.2 MODULAR","MODULAR / v2.29.2"])
   if(!entryHtml.includes(token))fail("visible version token missing "+token);
-if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.29.0";'))fail("GAME_VERSION must be v2.29.0");
+if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.29.2";'))fail("GAME_VERSION must be v2.29.2");
 /* GAME_VERSION 会随成绩上报(见 percent-battle/state.js 的 version 字段)。以前靠手工让
    game-config.js 的 ?v= 跟着发版号走；现在 v 是内容 hash，改常量就会换 v，上面已校验不过期。 */
 const playerMeterGradient='<linearGradient id="ppGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#2e8bff"/><stop offset="55%" stop-color="#39d3ff"/><stop offset="78%" stop-color="#ffd23f"/><stop offset="100%" stop-color="#ff4040"/></linearGradient>';
@@ -1041,10 +1041,10 @@ const renderingCore=read("src/rendering/core.js");
 for(const token of ['runtime.register("rendering:core"',"WebGLRenderer","RENDER_QUALITY","updateRenderQuality","dampRig","visualViewport","AmbientLight"])
   if(!renderingCore.includes(token))fail("rendering core token missing "+token);
 const renderingMaterials=read("src/rendering/materials.js");
-for(const token of ['runtime.register("rendering:materials"',"function pixTex","function realBallTex","function triBallTex","function spaldingPanelCurve","function paintBasketballChannels","function paintTriBallPanels","MeshPhongMaterial","bumpMap:texBallRelief","SphereGeometry(0.16,32,20)"])
+for(const token of ['runtime.register("rendering:materials"',"function pixTex","function realBallTex","function triBallTex","function spaldingPanelCurve","function paintBasketballChannels","function paintTriBallPanels","MeshPhongMaterial","bumpMap:texBallRelief","const ballGeo="])
   if(!renderingMaterials.includes(token))fail("rendering materials token missing "+token);
 for(const source of [renderingMaterials]){
-  for(const token of ["pixTex(512,256","spaldingPanelCurve(720)","candidateMeridianA.push([.75,k])","candidateMeridianAOpposite.push([.25,k])","paintTriBallPanels","rotatedTriColorIndex","labels.fill(-1)","panelVotes","turn=Math.PI/2","BALL_LINE_DEBUG","full ring 1","full ring A","double curve","Math.hypot(x,y,z)<radius","LinearMipmapLinearFilter","anisotropy:8","ballTextureRng(0x8badf00d)","SphereGeometry(0.16,32,20)"])
+  for(const token of ["pixTex(512,256","spaldingPanelCurve(720)","candidateMeridianA.push([.75,k])","candidateMeridianAOpposite.push([.25,k])","paintTriBallPanels","rotatedTriColorIndex","labels.fill(-1)","panelVotes","turn=Math.PI/2","BALL_LINE_DEBUG","full ring 1","full ring A","double curve","Math.hypot(x,y,z)<radius","LinearMipmapLinearFilter","anisotropy:8","ballTextureRng(0x8badf00d)","SphereGeometry(0.16,64,48)","channelDistance3D(nx,ny,nz)"])
     if(!source.includes(token))fail("calculated basketball material missing "+token);
   if(source.includes("centerMeridian")||source.includes("meridianA.push([0,k])")||source.includes("meridianB.push([.5,k])")||source.includes("candidateMeridianB")||source.includes("Math.random()*96")||source.includes("SphereGeometry(0.16,12,10)"))fail("legacy basketball pattern remains");
 }

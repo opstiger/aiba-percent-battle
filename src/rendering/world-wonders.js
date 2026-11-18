@@ -289,7 +289,155 @@
     if(glow){glow.material.color.setScalar(.55);s.lights.push({mesh:glow,threshold:.5});}
     s.wonder={kind:"spanish"};
   }
-  function lunar(s,b,{batch}){
+  function lunarLander(s,batch,terrain){
+    const lander=new THREE.Group();lander.name="lunarLander";
+    const ray=new THREE.Raycaster(),down=new THREE.Vector3(0,-1,0);
+    terrain.updateWorldMatrix(true,false);
+    const floorY=(x,z)=>{
+      ray.set(new THREE.Vector3(x,20,z),down);
+      return ray.intersectObject(terrain,false)[0].point.y;
+    };
+    lander.position.set(-17.5,floorY(-17.5,-20.5),-20.5);
+    lander.rotation.y=-.22;
+    s.root.add(lander);lander.updateWorldMatrix(true,false);
+
+    const shell=batch(),up=new THREE.Vector3(0,1,0),e=new THREE.Euler(),q=new THREE.Quaternion();
+    const point=(x,y,z)=>new THREE.Vector3(x,y,z);
+    const beam=(color,a,b,width,depth=width)=>{
+      const d=b.clone().sub(a),length=d.length(),mid=a.clone().lerp(b,.5);
+      e.setFromQuaternion(q.setFromUnitVectors(up,d.normalize()));
+      shell.box(color,mid.x,mid.y,mid.z,width,length,depth,e.x,e.y,e.z);
+    };
+    // One mesh per surface finish. Explicit facets model the angled skin and the insulation folds.
+    const panels=()=>{
+      const pos=[],colors=[],c=new THREE.Color();
+      const triangle=(a,b,c0,tint)=>{
+        c.set(tint).convertSRGBToLinear();
+        for(const v of [a,b,c0]){pos.push(v.x,v.y,v.z);colors.push(c.r,c.g,c.b);}
+      };
+      const quad=(a,b,c,d,tint)=>{triangle(a,b,c,tint);triangle(a,c,d,tint);};
+      const finish=(name,params)=>{
+        const geometry=new THREE.BufferGeometry();
+        geometry.setAttribute("position",new THREE.Float32BufferAttribute(pos,3));
+        geometry.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));
+        geometry.computeVertexNormals();
+        const mesh=new THREE.Mesh(geometry,new THREE.MeshStandardMaterial({vertexColors:true,...params}));
+        mesh.name=name;mesh.castShadow=true;mesh.receiveShadow=true;lander.add(mesh);
+        return mesh;
+      };
+      return {triangle,quad,finish};
+    };
+    const outline=[[1,-.55],[1,.5],[.72,1],[-.72,1],[-1,.5],[-1,-.55],[-.62,-1],[.62,-1]];
+    const ring=(y,w,d,z=0)=>outline.map(([x,v])=>point(x*w,y,z+v*d));
+    const hull=panels(),rows=[ring(3.09,1.22,1.0),ring(3.70,1.58,1.34,.14),ring(4.62,1.52,1.14,.14),ring(5.16,1.00,.86,-.08)];
+    const sides=[0xaab0ae,0x858b8e,0xbfc2b9,0x8e9597,0xaeb5b5,0x656d74,0x545d62,0x7b8488];
+    for(let r=0;r<rows.length-1;r++)for(let i=0;i<8;i++){
+      const j=(i+1)%8;
+      hull.quad(rows[r][i],rows[r+1][i],rows[r+1][j],rows[r][j],r===0?0x535758:sides[i]);
+    }
+    for(let i=0;i<8;i++)hull.triangle(point(0,5.16,-.08),rows[3][(i+1)%8],rows[3][i],0xbfc4c3);
+    const window=panels(),frontZ=y=>1.48-(y-3.70)*(.20/.92);
+    for(const side of [-1,1]){
+      const outline=[[.18,4.43],[.93,4.36],[.80,3.92]];
+      if(side===1)outline.reverse();
+      const glazed=(scale,offset,tint)=>window.triangle(...outline.map(([x,y])=>{
+        const u=.64+(x-.64)*scale,v=4.23+(y-4.23)*scale;
+        return point(side*u,v,frontZ(v)+offset);
+      }),tint);
+      glazed(1,.014,0x323a3e);glazed(.80,.024,0x71949f);glazed(.60,.030,0x263e4a);
+    }
+    window.finish("lunarLanderWindows",{roughness:.28,emissive:0x385968,emissiveIntensity:.10});
+    hull.finish("lunarLanderCabin",{roughness:.54,metalness:.09,emissive:0x697173,emissiveIntensity:.06});
+    shell.box(0x50565a,0,3.53,1.43,.78,.41,.12,-.12);
+    shell.box(0xb3a992,0,3.58,1.51,.57,.26,.06,-.12);
+    shell.box(0x343b40,.25,3.58,1.56,.07,.07,.07);
+    shell.box(0xb5b8b5,0,5.21,-.25,1.0,.18,.97);
+    shell.box(0x5d676b,0,5.33,-.25,.69,.09,.66);
+    for(const side of [-1,1]){
+      shell.box(0x363e45,side*1.61,4.07,.31,.43,.43,.44);
+      shell.box(0x89928e,side*1.87,4.05,.31,.27,.09,.12);
+      shell.box(0x9ca4a2,side*1.36,4.02,-.81,.25,.63,.42);
+    }
+
+    const foil=panels(),lower=ring(1.34,1.54,1.48),upper=ring(3.10,1.72,1.68);
+    const cols=s.mobile?9:14,rowsOfFoil=s.mobile?5:8,crease=[0xd1a257,0xd7a756,0xd5a859,0xc99747,0xdbad5d];
+    for(let i=0;i<8;i++){
+      const j=(i+1)%8,edge=lower[j].clone().sub(lower[i]),normal=point(edge.z,0,-edge.x).normalize();
+      const fold=(col,row)=>{
+        const u0=col/cols,v0=row/rowsOfFoil,belt=Math.sin(u0*Math.PI)*Math.sin(v0*Math.PI);
+        const u=u0+belt*.24*Math.sin(col*1.7+row*1.2+i)/cols;
+        const v=v0+belt*.27*Math.cos(col*2.1-row*.83+i)/rowsOfFoil;
+        const p=lower[i].clone().lerp(lower[j],u).lerp(upper[i].clone().lerp(upper[j],u),v);
+        p.addScaledVector(normal,belt*(.060*Math.sin(col*2.7+row*.83+i)+.042*Math.cos(row*1.6-col*1.4+i)));
+        p.y+=belt*.039*Math.cos(col*2.1+row+i);
+        return p;
+      };
+      for(let row=0;row<rowsOfFoil;row++)for(let col=0;col<cols;col++){
+        const a=fold(col,row),b=fold(col,row+1),c=fold(col+1,row+1),d=fold(col+1,row);
+        foil.quad(a,b,c,d,crease[(i+col+row*3)%crease.length]);
+      }
+    }
+    for(let i=0;i<8;i++)foil.triangle(point(0,3.10,0),upper[(i+1)%8],upper[i],0x96703e);
+    foil.finish("lunarLanderFoil",{roughness:.47,metalness:.20,emissive:0x8d571b,emissiveIntensity:.12});
+    shell.box(0x494038,0,1.38,0,2.82,.14,2.76);
+    shell.add("cone",0x3d4448,0,.95,0,1.35,.76,1.35,Math.PI);
+
+    const padProfile=[[0,-.050],[.40,-.050],[.56,.012],[.56,.074],[.46,.136],[.25,.19],[.12,.17],[0,.17]];
+    const padGeometry=new THREE.LatheGeometry(padProfile.map(p=>new THREE.Vector2(...p)),s.mobile?14:22);
+    const padPos=padGeometry.getAttribute("position"),padColors=[];
+    const dust=new THREE.Color(0x817974).convertSRGBToLinear(),metal=new THREE.Color(0xaf8a51).convertSRGBToLinear(),shade=new THREE.Color();
+    for(let i=0;i<padPos.count;i++){
+      shade.copy(dust).lerp(metal,THREE.MathUtils.smoothstep(padPos.getY(i),.027,.155));
+      padColors.push(shade.r,shade.g,shade.b);
+    }
+    padGeometry.setAttribute("color",new THREE.Float32BufferAttribute(padColors,3));
+    const pads=new THREE.InstancedMesh(padGeometry,new THREE.MeshStandardMaterial({vertexColors:true,roughness:.86,metalness:.06}),4);
+    pads.name="lunarLanderFootpads";pads.castShadow=true;pads.receiveShadow=true;pads.frustumCulled=false;lander.add(pads);
+    const padDust=[],matrix=new THREE.Matrix4();
+    let ladderExit;
+    for(let i=0;i<4;i++){
+      const a=i*Math.PI/2,dx=Math.sin(a),dz=Math.cos(a);
+      const pad=point(dx*3.17,0,dz*3.17),p=lander.localToWorld(pad.clone());
+      p.y=floorY(p.x,p.z);
+      pad.y=p.y-lander.position.y;
+      pads.setMatrixAt(i,matrix.makeTranslation(pad.x,pad.y,pad.z));
+      padDust.push([p.x,p.z,.78,.68,i*.74]);
+      const joint=point(pad.x,pad.y+.17,pad.z),anchor=point(dx*1.47,2.92,dz*1.47);
+      beam(0xa9b2b4,anchor,joint,.123);
+      beam(0x757d7b,anchor,anchor.clone().lerp(joint,.53),.19);
+      for(const side of [-1,1])beam(0x929995,point(dx*1.49+dz*.6*side,1.70,dz*1.49-dx*.6*side),joint.clone().lerp(anchor,.30),.083);
+      if(i===0){
+        const foot=point(0,pad.y+.28,pad.z-.05),top=point(0,3.29,1.73);
+        for(const side of [-1,1])beam(0xa3aaa6,foot.clone().add(point(side*.25,0,0)),top.clone().add(point(side*.25,0,0)),.055);
+        for(let j=0;j<8;j++){
+          const step=foot.clone().lerp(top,j/7);
+          shell.box(0xbfc4b9,0,step.y,step.z,.50,.065,.072);
+        }
+        ladderExit=lander.localToWorld(point(.12,0,pad.z+.57));
+      }
+    }
+    pads.instanceMatrix.needsUpdate=true;
+    beam(0x929b9d,point(.69,5.16,.38),point(.86,5.84,.48),.071);
+    const dish=new THREE.Mesh(new THREE.LatheGeometry([[0,0],[.18,.024],[.41,.13],[.60,.29]].map(p=>new THREE.Vector2(...p)),s.mobile?12:18),
+      new THREE.MeshStandardMaterial({color:0xc3c7c4,roughness:.61,side:THREE.DoubleSide}));
+    dish.name="lunarLanderAntenna";dish.position.set(.86,5.82,.48);dish.rotation.set(.63,0,.31);
+    dish.castShadow=true;lander.add(dish);
+    const braces=shell.finish(lander,"lunarLanderStructure");braces.castShadow=true;braces.receiveShadow=true;
+
+    const route=new THREE.CubicBezierCurve(
+      new THREE.Vector2(ladderExit.x,ladderExit.z),new THREE.Vector2(ladderExit.x+2.6,ladderExit.z+1.3),
+      new THREE.Vector2(-13.9,-7.5),new THREE.Vector2(-9.83,-3.78)
+    );
+    const steps=Math.round(route.getLength()/.68),bootprints=[];
+    for(let i=0;i<=steps;i++){
+      const t=i/steps,p=route.getPointAt(t),forward=route.getTangentAt(t);
+      const side=i%2===0?1:-1,offset=side*(.14+.025*Math.cos(i*2.31));
+      bootprints.push([p.x+forward.y*offset,p.y-forward.x*offset,Math.atan2(forward.x,forward.y)+side*.12,
+        side,.61-.11*t+.12*Math.cos(i*1.46)+.07*Math.sin(i*.68)]);
+    }
+    return {bootprints,padDust};
+  }
+  function lunar(s,b,{batch,lunarMarkings}){
     // 1. 不平整的月球沙地与环形山、远景月山
     const craters=[
       [-14,-15,4.2,0.55,0.28],[15,-12,5.4,0.68,0.34],[-18,10,6.2,0.72,0.38],[19,14,4.8,0.6,0.3],
@@ -345,10 +493,10 @@
     }
     tGeo.setAttribute("color",new THREE.BufferAttribute(tCol,3));
     tGeo.computeVertexNormals();
-    const terrain=new THREE.Mesh(tGeo,new THREE.MeshStandardMaterial({
-      map:regAlbedo,bumpMap:regBump,bumpScale:.25,
-      roughness:.96,metalness:0,vertexColors:true
-    }));
+    const ground=new THREE.MeshStandardMaterial({
+      map:regAlbedo,bumpMap:regBump,bumpScale:.25,roughness:.96,metalness:0,vertexColors:true
+    });
+    const terrain=new THREE.Mesh(tGeo,ground);
     terrain.name="lunarTerrain";terrain.receiveShadow=true;s.root.add(terrain);
 
     // 2. 月球岩石与前景巨石（投射清晰长影）
@@ -410,54 +558,50 @@
     const suit2=makeSuit("lunarSuit2",9.1,-1.6,-1.25,0x2d6fd6);
     suit2.visible=(typeof G!=="undefined"&&G&&G.mode==="battle");
 
-    // 2.6 等比例（约 7 米高）阿波罗登月舱 (Apollo Lunar Module) + 从登月舱走向球场的脚印
-    const lmPos=[-17.5,-20.5],lmY=terrainY(lmPos[0],lmPos[1]);
-    const lm=batch();
-    // 下降级八边形金箔隔热层主体
-    lm.box(0xd6a026,0,2.25,0,3.2,1.65,3.2,0,0,0);
-    lm.box(0xc48b1a,0,2.25,0,3.5,1.45,2.2,0,Math.PI/4,0);
-    lm.box(0x282b30,0,1.25,0,1.15,.55,1.15); // 下降发动机喷口底座
-    lm.add("cone",0x3a3e45,0,.85,0,1.35,.95,1.35,Math.PI,0,0); // 发动机喷管
-    // 四条着陆支架 + 圆形着陆脚垫 + 登月梯
-    for(let k=0;k<4;k++){
-      const ang=Math.PI/4+k*Math.PI/2,cx=Math.cos(ang),cz=Math.sin(ang);
-      lm.box(0x9ca2ac,cx*2.25,1.15,cz*2.25,.15,2.65,.15,0,-ang,-0.62); // 主斜撑直连脚垫
-      lm.box(0x888e98,cx*1.95,1.68,cz*1.95,.10,1.45,.10,0,-ang,0.78);  // 上拉杆
-      lm.box(0xd4a438,cx*3.0,.08,cz*3.0,.92,.12,.92,0,ang,0);           // 着陆脚垫
-      if(k===1){
-        for(let r=0;r<6;r++)lm.box(0xbac0ca,cx*2.1,.45+r*.36,cz*2.1,.44,.05,.07,0,ang+Math.PI/2,0);
-      }
-    }
-    // 上升级银灰/炭黑乘员舱
-    lm.box(0xb8bec8,0,4.15,0,2.7,1.9,2.5);
-    lm.box(0x32363e,0,4.25,.85,2.35,1.5,1.2); // 前部深色隔热面板
-    lm.box(0x7c8490,0,4.25,-1.15,2.1,1.45,.85); // 后部设备舱
-    // 前部两个三角形舷窗
-    lm.box(0x162230,-.52,4.42,1.46,.52,.36,.06,0,0,-.22);
-    lm.box(0x162230,.52,4.42,1.46,.52,.36,.06,0,0,.22);
-    // 顶部对接舱口与 S 波段抛物面天线
-    lm.box(0x9aa0aa,0,5.25,0,1.0,.35,1.0);
-    lm.box(0x8c929c,.85,5.65,.2,.08,.9,.08);
-    lm.add("cone",0xdce0e6,.85,6.1,.35,1.1,.45,1.1,-1.1,0,0);
-    // 两侧姿态控制喷口组 (RCS)
-    for(const sx of [-1,1]){
-      lm.box(0x464a52,sx*1.58,4.35,.4,.42,.42,.42);
-      lm.box(0x8c929c,sx*1.82,4.35,.4,.22,.10,.10);
-    }
-    const lmGrp=new THREE.Group();
-    lmGrp.position.set(lmPos[0],lmY,lmPos[1]);lmGrp.rotation.y=.48;lmGrp.name="lunarLander";
-    const lmMesh=lm.finish(lmGrp,"lunarLanderMesh");
-    if(lmMesh){lmMesh.castShadow=true;lmMesh.receiveShadow=true;}
-    s.root.add(lmGrp);
-
-    // 从登月舱走向场边宇航服的月尘脚印链
-    const prints=batch();
-    for(let i=0;i<18;i++){
-      const t=i/17,px=-15.2+t*5.6+Math.sin(i*.4)*.25,pz=-17.8+t*13.8;
-      const side=(i%2?1:-1)*.18,py=terrainY(px+side,pz);
-      prints.box(0x484b50,px+side,py+.015,pz,.16,.02,.28,0,.35,0);
-    }
-    prints.finish(s.root,"lunarBootprints");
+    const details=lunarLander(s,batch,terrain);
+    const markingBounds=new THREE.Vector4(-22,-25,32,maxZ+25);
+    const markings=lunarMarkings(markingBounds,details,s.mobile);
+    // 粉线直接混入主地形的漫反射，吃同一份日光、投影和凹凸，不叠第二块地板。
+    ground.onBeforeCompile=shader=>{
+      shader.uniforms.lunarMarkings={value:markings};
+      shader.uniforms.lunarMarkingBounds={value:markingBounds};
+      shader.vertexShader="varying vec2 vLunarGround;\n"+shader.vertexShader.replace(
+        "#include <begin_vertex>","#include <begin_vertex>\nvLunarGround = position.xz;"
+      );
+      shader.fragmentShader=`varying vec2 vLunarGround;
+        uniform sampler2D lunarMarkings;
+        uniform vec4 lunarMarkingBounds;
+        float lunarWear(vec2 point, vec2 center, vec2 extent) {
+          return 1.0 - smoothstep(0.24, 1.0, length((point - center) / extent));
+        }
+      `+shader.fragmentShader.replace("#include <map_fragment>",`
+        #include <map_fragment>
+        vec2 markUV = vec2((vLunarGround.x - lunarMarkingBounds.x) / lunarMarkingBounds.z, 1.0 - (vLunarGround.y - lunarMarkingBounds.y) / lunarMarkingBounds.w);
+        vec4 paint = mapTexelToLinear(texture2D(lunarMarkings, markUV));
+        diffuseColor.rgb = mix(diffuseColor.rgb, paint.rgb, paint.a);
+      `).replace("#include <normal_fragment_maps>",`
+        #ifdef USE_BUMPMAP
+          // 压实区沿走动和投篮位置错开，以不同形状融回原来的月尘。
+          float looseDust = 1.0;
+          if (all(greaterThan(markUV, vec2(0.0))) && all(lessThan(markUV, vec2(1.0)))) {
+            vec2 wearPoint = vLunarGround + vec2(
+              0.48 * sin(vLunarGround.y * 0.64 + vLunarGround.x * 0.19),
+              0.55 * cos(vLunarGround.x * 0.71 - vLunarGround.y * 0.14)
+            );
+            looseDust =
+                (1.0 - lunarWear(wearPoint, vec2(-0.85, -2.8), vec2(8.35, 9.4)))
+              * (1.0 - lunarWear(wearPoint, vec2(1.35, 4.0), vec2(4.8, 10.6)))
+              * (1.0 - lunarWear(wearPoint, vec2(0.95, 13.65), vec2(7.25, 7.15)))
+              * (1.0 - lunarWear(wearPoint, vec2(-5.85, -4.95), vec2(3.3, 4.15)))
+              * (1.0 - lunarWear(wearPoint, vec2(5.05, -3.45), vec2(3.55, 4.95)));
+          }
+          float printPress = vLunarGround.x < -9.25 ? smoothstep(0.05, 0.64, paint.a) : 0.0;
+          float relief = mix(0.23, 1.0, looseDust) * (1.0 - 0.82 * printPress);
+          normal = perturbNormalArb(-vViewPosition, normal, dHdxy_fwd() * relief, faceDirection);
+        #endif
+      `);
+    };
+    ground.addEventListener("dispose",()=>markings.dispose());
 
     // 3. 阿波罗实拍感漆黑宇宙星空（稀疏、微弱、柔和圆点星光，不抢主画面）
     const starCount=s.mobile?110:190,sPos=new Float32Array(starCount*3),sCol=new Float32Array(starCount*3);
@@ -538,7 +682,7 @@
     });
     earthMat.map=earthTex;
     const earth=new THREE.Mesh(new THREE.PlaneGeometry(16.5,16.5),earthMat);
-    earth.position.set(7.5,18.5,-78);earth.name="lunarEarth";earth.frustumCulled=false;
+    earth.position.set(23,19.5,-78);earth.name="lunarEarth";earth.frustumCulled=false;
     s.root.add(earth);
     s.wonder={kind:"lunar",earth,suit1,suit2};
   }

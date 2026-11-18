@@ -45,104 +45,106 @@
       const mesh=new THREE.Mesh(geo,basic?new THREE.MeshBasicMaterial({vertexColors:true}):new THREE.MeshLambertMaterial({vertexColors:true}));mesh.name=name;mesh.receiveShadow=true;parent.add(mesh);return mesh;
     }};
   }
-  function lunarSurface(g,cv,p,r,D){
-    const near=COURT.nearBaseline,far=COURT.farBaseline,Z0=COURT.floorMinZ;
-    // 原始月尘底色：不画色块球场或油漆区，整片沙地自然衔接
-    for(let i=0;i<360;i++){
-      const x=(r()-.5)*32,z=Z0+r()*D,rad=.4+r()*2.4;
-      const tone=i%3===0?"#63666b":i%3===1?"#7f8287":"#6d7075";
-      const grad=g.createRadialGradient(x,z,0,x,z,rad);
-      grad.addColorStop(0,tone);grad.addColorStop(1,tone+"00");
-      g.fillStyle=grad;g.globalAlpha=.28+r()*.32;
-      g.fillRect(x-rad,z-rad,rad*2,rad*2);
+  const hoopSupports=()=>[[-8.62,1],[COURT.farBaseline-.96,-1]];
+  function lunarMarkings(bounds,{bootprints,padDust},mobile){
+    const cv=document.createElement("canvas");cv.width=mobile?1280:1664;cv.height=mobile?1792:2048;
+    const g=cv.getContext("2d"),r=rng(91271);
+    const {nearBaseline:near,farBaseline:far}=COURT;
+    g.scale(cv.width/bounds.z,cv.height/bounds.w);g.translate(-bounds.x,-bounds.y);
+    const line=(x,z,x2,z2)=>{g.beginPath();g.moveTo(x,z);g.lineTo(x2,z2);g.stroke();};
+    const arc=(x,z,rad,a=0,b=Math.PI*2)=>{g.beginPath();g.arc(x,z,rad,a,b);g.stroke();};
+
+    // 球员常站的位置只留浅浅的压实磨痕，与基础月尘一起受光。
+    for(const {p} of RACKS){
+      g.save();
+      g.translate(p.x,p.z);
+      g.rotate(Math.atan2(p.x,p.z-COURT.nearHoopZ)*.65);
+      g.scale(.65,1.04);
+      const scuff=g.createRadialGradient(0,0,.04,0,0,1.08);
+      scuff.addColorStop(0,"rgba(82,79,77,.19)");
+      scuff.addColorStop(.54,"rgba(96,93,92,.10)");
+      scuff.addColorStop(1,"rgba(96,93,92,0)");
+      g.fillStyle=scuff;g.fillRect(-1.1,-1.1,2.2,2.2);
+      g.restore();
     }
-    // 大小不一的浅陨石坑印记（暗坑底 + 向阳亮边）
-    for(let i=0;i<42;i++){
-      const cx=(r()-.5)*30,cz=Z0+r()*D,cr=.22+r()*.95;
-      g.globalAlpha=.16+r()*.16;
-      const pit=g.createRadialGradient(cx,cz,0,cx,cz,cr);
-      pit.addColorStop(0,"#4b4e54");pit.addColorStop(.75,"#585b61");pit.addColorStop(1,"rgba(90,93,99,0)");
-      g.fillStyle=pit;g.fillRect(cx-cr,cz-cr,cr*2,cr*2);
-      g.strokeStyle="rgba(162,166,174,.32)";g.lineWidth=.04+cr*.05;
-      g.beginPath();g.arc(cx+.04*cr,cz+.02*cr,cr*.88,-Math.PI*.35,Math.PI*.55);g.stroke();
-    }
-    // 看不清的球场划线：低透明度灰白粉线 + 断续缺口
-    g.globalAlpha=.22;g.strokeStyle=p.line;g.lineWidth=.052;
-    g.setLineDash([.42,.18,.26,.14,.55,.22]);
+
+    g.strokeStyle=palettes.lunarCrater.line;
+    g.globalAlpha=.26;g.lineWidth=.047;
+    g.setLineDash([1.24,.12,.78,.09,1.68,.18]);
     g.strokeRect(-COURT.halfWidth,near,COURT.width,COURT.length);
-    g.beginPath();g.moveTo(-COURT.halfWidth,COURT.midZ);g.lineTo(COURT.halfWidth,COURT.midZ);g.stroke();
-    const circle=(x,z,rad,a=0,b=Math.PI*2)=>{g.beginPath();g.arc(x,z,rad,a,b);g.stroke();};
-    circle(0,COURT.midZ,1.8);
-    [1,-1].forEach(dir=>{
+    line(-COURT.halfWidth,COURT.midZ,COURT.halfWidth,COURT.midZ);
+    arc(0,COURT.midZ,1.8);
+    for(const dir of [1,-1]){
       const base=dir===1?near:far,hz=dir===1?COURT.nearHoopZ:COURT.farHoopZ;
       g.strokeRect(-2.45,dir===1?base:base-5.8,4.9,5.8);
-      circle(0,base+dir*5.8,1.8);
-      circle(0,hz,1.25,dir===1?0:Math.PI,dir===1?Math.PI:Math.PI*2);
-      circle(0,hz,6.75,dir===1?.12:Math.PI+.12,dir===1?Math.PI-.12:Math.PI*2-.12);
-      [-1,1].forEach(side=>{g.beginPath();g.moveTo(side*6.7,base);g.lineTo(side*6.7,hz+dir*.82);g.stroke();});
-    });
-    g.setLineDash([]);
-    // 沙尘覆盖在划线上：让线条若隐若现
-    for(let i=0;i<240;i++){
-      const x=(r()-.5)*17,z=near-1+r()*(COURT.length+2),rad=.22+r()*.85;
-      const dust=i%2?"#707378":"#66696e";
-      const grad=g.createRadialGradient(x,z,0,x,z,rad);
-      grad.addColorStop(0,dust);grad.addColorStop(1,dust+"00");
-      g.fillStyle=grad;g.globalAlpha=.35+r()*.42;
-      g.fillRect(x-rad,z-rad,rad*2,rad*2);
+      arc(0,base+dir*5.8,1.8);
+      arc(0,hz,1.25,dir===1?0:Math.PI,dir===1?Math.PI:Math.PI*2);
     }
-    // 细沙砾与碎石颗粒（柔和圆形沙粒，避免方格感）
-    g.globalAlpha=1;
-    for(let i=0;i<9000;i++){
-      const x=r()*32-16,z=Z0+r()*D,rad=.008+r()*.022;
-      g.fillStyle=r()>.5?"rgba(218,220,226,.09)":"rgba(32,34,38,.11)";
-      g.beginPath();g.arc(x,z,rad,0,Math.PI*2);g.fill();
+
+    // 三分弧和两个底角保留更完整的粉线，缺口留给落尘和磨损。
+    g.globalAlpha=.43;g.lineWidth=.058;
+    g.setLineDash([1.42,.05,.92,.08,1.76,.035]);
+    for(const dir of [1,-1]){
+      const base=dir===1?near:far,hz=dir===1?COURT.nearHoopZ:COURT.farHoopZ;
+      arc(0,hz,6.75,dir===1?.12:Math.PI+.12,dir===1?Math.PI-.12:Math.PI*2-.12);
+      for(const side of [-1,1])line(side*6.7,base,side*6.7,hz+dir*.82);
     }
-    // 边缘柔化羽化遮罩：让场地四周透明过渡到下方的月球3D沙地，彻底消除矩形边界
-    g.save();
-    g.globalCompositeOperation="destination-in";
-    const midZ=COURT.midZ,rx=15.6,rz=D*.49;
-    g.translate(0,midZ);g.scale(1,rz/rx);
-    const edgeMask=g.createRadialGradient(0,0,rx*.52,0,0,rx*.96);
-    edgeMask.addColorStop(0,"rgba(255,255,255,1)");
-    edgeMask.addColorStop(.62,"rgba(255,255,255,.88)");
-    edgeMask.addColorStop(1,"rgba(255,255,255,0)");
-    g.fillStyle=edgeMask;g.fillRect(-rx*1.2,-rx*1.2,rx*2.4,rx*2.4);
-    g.restore();
-    const tex=new THREE.CanvasTexture(cv);tex.name="placeSurface:lunarCrater";
-    tex.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
-    if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;
-    return tex;
-  }
-  function lunarBump(){
-    const cv=document.createElement("canvas");cv.width=1024;cv.height=1024;
-    const g=cv.getContext("2d"),r=rng(44891);
-    g.fillStyle="#808080";g.fillRect(0,0,1024,1024);
-    // 柔和起伏沙丘与浅坑高度图
-    for(let i=0;i<220;i++){
-      const x=r()*1024,y=r()*1024,rad=18+r()*56;
-      const grad=g.createRadialGradient(x,y,0,x,y,rad);
-      const dark=r()<.55;
-      grad.addColorStop(0,dark?"#585858":"#a4a4a4");
-      grad.addColorStop(.72,dark?"#8e8e8e":"#7a7a7a");
-      grad.addColorStop(1,"rgba(128,128,128,0)");
-      g.fillStyle=grad;g.fillRect(x-rad,y-rad,rad*2,rad*2);
+
+    g.globalCompositeOperation="destination-out";
+    for(let i=0;i<180;i++){
+      const x=(r()-.5)*16,z=near+r()*(far-near),radius=.12+r()*.42;
+      const dust=g.createRadialGradient(x,z,0,x,z,radius);
+      dust.addColorStop(0,"rgba(0,0,0,.62)");dust.addColorStop(1,"rgba(0,0,0,0)");
+      g.fillStyle=dust;g.globalAlpha=.30+r()*.60;
+      g.fillRect(x-radius,z-radius,2*radius,2*radius);
     }
-    // 细沙微颗粒
-    for(let i=0;i<6000;i++){
-      const x=r()*1024,y=r()*1024,rad=1+r()*2.2;
-      g.fillStyle=r()>.5?"rgba(220,220,220,.14)":"rgba(40,40,40,.14)";
-      g.beginPath();g.arc(x,y,rad,0,Math.PI*2);g.fill();
+    g.globalCompositeOperation="source-over";g.globalAlpha=1;
+    // Accumulated dust surrounds the pad contact points and both hoop anchors.
+    const dustPatch=(x,z,width,length,angle,strength)=>{
+      g.save();g.translate(x,z);g.rotate(angle);g.scale(width,length);
+      const dust=g.createRadialGradient(.08,-.12,.12,0,0,1);
+      dust.addColorStop(0,`rgba(127,119,109,${strength})`);
+      dust.addColorStop(.56,`rgba(119,113,104,${strength*.67})`);
+      dust.addColorStop(1,"rgba(119,113,104,0)");
+      g.fillStyle=dust;g.fillRect(-1,-1,2,2);g.restore();
+    };
+    for(const pad of padDust)dustPatch(...pad,.27);
+    for(const [z,dir] of hoopSupports()){
+      const base=z-dir*1.55;
+      dustPatch(.04,base,.70,.66,.25,.26);
+      dustPatch(.25,base+.11,.78,.40,-.45,.13);
     }
-    const tex=new THREE.CanvasTexture(cv);tex.name="placeBump:lunarCrater";
-    tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.repeat.set(2,2);
-    return tex;
+    // Impressions use a soft disturbed perimeter, a heel/toe outline and worn ribs.
+    for(const [x,z,yaw,side,strength] of bootprints){
+      dustPatch(x,z,.17,.27,-yaw,strength*.34);
+      g.save();g.translate(x,z);g.rotate(-yaw);g.scale(side,1);
+      g.globalAlpha=strength;
+      g.beginPath();g.moveTo(-.078,-.181);
+      g.bezierCurveTo(-.102,-.14,-.067,-.035,-.089,.059);
+      g.bezierCurveTo(-.108,.157,-.072,.205,.024,.206);
+      g.bezierCurveTo(.112,.197,.113,.132,.092,.059);
+      g.bezierCurveTo(.068,.0,.086,-.092,.078,-.156);
+      g.bezierCurveTo(.050,-.203,-.047,-.204,-.078,-.181);g.closePath();
+      const sole=g.createLinearGradient(-.084,.12,.105,-.04);
+      sole.addColorStop(0,"#77736a");sole.addColorStop(.38,"#454440");sole.addColorStop(1,"#56544f");
+      g.fillStyle=sole;g.fill();g.clip();
+      g.fillStyle="rgba(169,165,153,.87)";
+      for(let rib=0;rib<7;rib++){
+        const rz=-.157+rib*.050,cut=rib%3===1?.017:.006;
+        g.fillRect(-.101,rz,.101-cut,.024);
+        g.fillRect(cut,rz-.005,.111-cut,.022);
+      }
+      g.restore();
+    }
+    const map=new THREE.CanvasTexture(cv);map.name="lunarCourtMarkings";
+    map.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
+    if(THREE.sRGBEncoding)map.encoding=THREE.sRGBEncoding;
+    return map;
   }
   function surface(name){
     const cv=document.createElement("canvas");cv.width=1536;cv.height=1728;
     const g=cv.getContext("2d"),p=palettes[name],r=rng(91271),D=COURT.floorMaxZ-COURT.floorMinZ;
     g.scale(cv.width/32,cv.height/D);g.translate(16,-COURT.floorMinZ);g.fillStyle=p.ground;g.fillRect(-16,COURT.floorMinZ,32,D);
-    if(name==="lunarCrater")return lunarSurface(g,cv,p,r,D);
     g.fillStyle=p.field;g.fillRect(-COURT.halfWidth,COURT.nearBaseline,COURT.width,COURT.length);
     const near=COURT.nearBaseline,far=COURT.farBaseline;
     g.fillStyle=p.key;g.fillRect(-2.45,near,4.9,5.8);g.fillRect(-2.45,far-5.8,4.9,5.8);
@@ -258,14 +260,12 @@
   }
   function restore(){
     if(courtFloor?.userData.placeTexture){courtFloor.userData.placeTexture.dispose();delete courtFloor.userData.placeTexture;}
-    if(courtFloor?.userData.placeBumpTexture){courtFloor.userData.placeBumpTexture.dispose();delete courtFloor.userData.placeBumpTexture;courtFloor.material.bumpMap=null;courtFloor.material.bumpScale=0;}
-    if(courtFloor?.material)courtFloor.material.transparent=false;
     scene.traverse(o=>{if(o.userData.placeHidden!==undefined){o.visible=o.userData.placeHidden;delete o.userData.placeHidden;}});
     setPlaceHoops(false);
   }
-  function themeHoops(s,b){
+  function themeHoops(s,b,faceMarks=b){
     const beach=s.name==="beachSunset",lunar=s.name==="lunarCrater",tokyo=s.name==="tokyoRooftop",wood=s.name==="flowerCourt",rain=s.name==="rainyCourt",color=beach?0x8e969e:lunar?0xeef1f5:tokyo?0x1f2530:wood?0x5c5139:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
-    [[-8.62,1],[COURT.farBaseline-.96,-1]].forEach(([z,dir])=>{
+    hoopSupports().forEach(([z,dir])=>{
       const base=z-dir*1.55;
       if(beach){
         // 洛杉矶 Angels Gate 经典大弧度弯曲鹅颈镀锌钢篮架
@@ -289,12 +289,17 @@
         return;
       }
       b.box(color,0,1.75,base,.24,3.5,.24);b.box(color,0,3.46,z-dir*.76,.22,.22,1.55);
-      b.box(lunar?0xcfd5de:color,0,2.955,base+dir*.505,.13,1.48,.13,dir*Math.PI/4);b.box(lunar?0xc4cad4:wood?0x66513b:0x757b76,0,.1,base,.75,.2,.75);
+      b.box(lunar?0xcfd5de:color,0,2.955,base+dir*.505,.13,1.48,.13,dir*Math.PI/4);b.box(lunar?0xa9a8a6:wood?0x66513b:0x757b76,0,.1,base,.75,.2,.75);
       b.box(lunar?0xdce2ea:tokyo?0x283242:wood?0xad8054:rain?0xc5c1a9:s.name==="spanishQuarter"?0x91988c:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
       for(let j=-2;j<=2;j++)if(wood)b.box(0x694c34,j*.34,3.5,z+dir*.062,.018,1.07,.006);
-      const ink=lunar?0xc83228:tokyo?0xff4d32:wood?0xe4cca0:rain?0x704f40:0x384f56;
-      [-1,1].forEach(a=>{b.box(ink,0,3.5+a*.51,z+dir*.066,1.86,.035,.012);b.box(ink,a*.915,3.5,z+dir*.066,.035,1.05,.012);
-        b.box(ink,a*.3,3.25,z+dir*.069,.035,.36,.014);b.box(ink,0,3.25+a*.18,z+dir*.069,.63,.035,.014);});
+      const ink=lunar?0xc68059:tokyo?0xff4d32:wood?0xe4cca0:rain?0x704f40:0x384f56;
+      const aimInk=lunar?0xf5d18d:ink,aimWidth=lunar?.042:.035;
+      for(const a of [-1,1]){
+        faceMarks.box(ink,0,3.5+a*.51,z+dir*.066,1.86,.035,.012);
+        faceMarks.box(ink,a*.915,3.5,z+dir*.066,.035,1.05,.012);
+        faceMarks.box(aimInk,a*.3,3.25,z+dir*.069,aimWidth,.36,.014);
+        faceMarks.box(aimInk,0,3.25+a*.18,z+dir*.069,.63,aimWidth,.014);
+      }
       for(let x of [-.84,.84])for(let y of [3.04,3.96])b.box(lunar?0x22262e:0x494640,x,y,z+dir*.073,.035,.035,.025);
       if(lunar){
         // NASA 土星五号白黑滚转涂装 + 金色 Kapton 隔热环 + 钛合金连接件
@@ -1581,16 +1586,21 @@
        从树冠上方掠过;椭圆拉长到 20,让长轴两端的俯角回到正常。 */
     if(name==="shonanCoast")s.menuOrbit=[11.4,20,10.4,2.6];
     const b=batch(),builder=({outdoorSunny:city,rainyCourt:rainTown,flowerCourt:village,shonanCoast:shonan,medCliff:med,beachSunset:coast})[name];
-    if(builder)builder(s,b);else AIBAWorldWonders.build(s,b,{batch,tree,facing});
+    if(builder)builder(s,b);else AIBAWorldWonders.build(s,b,{batch,tree,facing,lunarMarkings});
     AIBAWorldLife.build(s,b,{batch,rng});
     if(name==="lunarCrater"){
-      const hb=batch();themeHoops(s,hb);
+      const hb=batch(),marks=batch();themeHoops(s,hb,marks);
       const hm=hb.finish(root,`placeHoop:${name}`);
       if(hm){
         if(hm.material&&hm.material.dispose)hm.material.dispose();
         hm.material=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.32,metalness:.45});
         hm.castShadow=true;hm.receiveShadow=true;
       }
+      const face=marks.finish(root,"lunarBackboardMarkings");
+      face.material.dispose();
+      face.material=new THREE.MeshStandardMaterial({
+        vertexColors:true,roughness:.7,emissive:0xe6b77f,emissiveIntensity:.15
+      });
     }else{
       themeHoops(s,b);
     }
@@ -1615,19 +1625,17 @@
       hemi.color.setHex(0xbcd0c4);hemi.groundColor.setHex(0x3c4a42);hemi.intensity=.5;
       sun.color.setHex(0xfff4dd);sun.intensity=1.15;sun.position.set(-6,26,-4);
     }
-    /* Rain has a water film; forest soil stays rough, with only a faint damp sheen. */
-    const tex=surface(name),m=courtFloor.material;courtFloor.userData.placeTexture=tex;m.map=tex;m.color.setHex(0xffffff);m.roughnessMap=null;
-    m.transparent=(name==="lunarCrater");
-    if(name==="lunarCrater"){
-      const bump=lunarBump();courtFloor.userData.placeBumpTexture=bump;
-      m.bumpMap=bump;m.bumpScale=0.045;
+    if(name!=="lunarCrater"){
+      const tex=surface(name),m=courtFloor.material;courtFloor.userData.placeTexture=tex;m.map=tex;m.color.setHex(0xffffff);m.roughnessMap=null;
+      /* Rain has a water film; forest soil stays rough, with only a faint damp sheen. */
+      m.roughness=name==="rainyCourt"?.62:(name==="tokyoRooftop"?.46:(name==="flowerCourt"?.91:(name==="shonanCoast"?.92:(name==="medCliff"?.88:.95))));
+      m.clearcoat=name==="rainyCourt"?.12:(name==="tokyoRooftop"?.22:(name==="flowerCourt"?.06:0));
+      if(m.clearcoatRoughness!==undefined)m.clearcoatRoughness=(name==="rainyCourt"||name==="flowerCourt"||name==="tokyoRooftop")?.24:.5;
+      m.envMapIntensity=name==="tokyoRooftop"?.18:.04;m.needsUpdate=true;
     }
-    /* 湘南是旧水泥外场:干、亚光、几乎不反光(文档"偏旧但干净") */
-    m.roughness=name==="rainyCourt"?.62:(name==="tokyoRooftop"?.46:(name==="flowerCourt"?.91:(name==="shonanCoast"?.92:(name==="medCliff"?.88:(name==="lunarCrater"?.98:.95)))));
-    m.clearcoat=name==="rainyCourt"?.12:(name==="tokyoRooftop"?.22:(name==="flowerCourt"?.06:0));
-    if(m.clearcoatRoughness!==undefined)m.clearcoatRoughness=(name==="rainyCourt"||name==="flowerCourt"||name==="tokyoRooftop")?.24:.5;
-    m.envMapIntensity=name==="lunarCrater"?.02:(name==="tokyoRooftop"?.18:.04);m.needsUpdate=true;
-    scene.traverse(o=>{if(["courtZone","courtLine","courtMark","nearCourtCrowdRoot"].includes(o.name)){o.userData.placeHidden=o.visible;o.visible=false;}});
+    const hidden=["courtZone","courtLine","courtMark","nearCourtCrowdRoot"];
+    if(name==="lunarCrater")hidden.push("courtFloor");
+    scene.traverse(o=>{if(hidden.includes(o.name)){o.userData.placeHidden=o.visible;o.visible=false;}});
     document.documentElement.dataset.worldPlace=name;return s;
   }
   function update(dt,progress){
