@@ -209,7 +209,59 @@ function makeLunarBallSurfaceCanvas(w,h){
   return lc;
 }
 
-function applyLunarHybridPanels(g,w,h){
+/* 新疆鲜花球场特调面板：天山艾德莱斯绸 (Atlas Silk Ikat) 扎染菱格 + 伊犁薰衣草/雪山草甸配色 */
+function makeFlowerBallSurfaceCanvas(w,h){
+  const fc=document.createElement("canvas");fc.width=w;fc.height=h;
+  const fg=fc.getContext("2d"),r=ballTextureRng(0x521a099);
+  // 1. 深青金石丝绸底色
+  const bg=fg.createLinearGradient(0,0,0,h);
+  bg.addColorStop(0,"#182442");bg.addColorStop(0.5,"#213558");bg.addColorStop(1,"#16213b");
+  fg.fillStyle=bg;fg.fillRect(0,0,w,h);
+
+  // 2. 艾德莱斯绸羽毛状扎染菱格（Ikat Diamond & Flame Wave）
+  const cols=16,colW=w/cols,rowH=h/6;
+  const ikatCols=["#d93848","#f2b84b","#1ea896","#9b72cf","#f5ede0"];
+  for(let c=0;c<cols;c++){
+    const cx=(c+0.5)*colW,tone=ikatCols[c%ikatCols.length];
+    for(let row=-1;row<=7;row++){
+      const cy=row*rowH+(c&1)*rowH*0.5;
+      const rw=colW*0.44,rh=rowH*0.46;
+      // 外层扎染羽化锯齿菱形
+      for(let s=3;s>=1;s--){
+        const k=s/3;
+        fg.fillStyle=s===1?"#f7efe2":(s===2?tone:"rgba(242,184,75,0.42)");
+        fg.globalAlpha=s===3?0.34:(s===2?0.78:0.86);
+        fg.beginPath();
+        const pts=10;
+        for(let p=0;p<pts;p++){
+          const a=(p/pts)*Math.PI*2;
+          const jag=1+(p%2===0?0.14:-0.08);
+          const px=cx+Math.cos(a)*rw*k*jag,py=cy+Math.sin(a)*rh*k*1.15;
+          if(p===0)fg.moveTo(px,py);else fg.lineTo(px,py);
+        }
+        fg.closePath();fg.fill();
+      }
+      // 菱格中心石榴/花蕊点
+      fg.globalAlpha=0.92;
+      fg.fillStyle=c%2===0?"#d93848":"#1ea896";
+      fg.beginPath();fg.arc(cx,cy,Math.max(1.5,colW*0.07),0,Math.PI*2);fg.fill();
+    }
+  }
+  // 3. 细密丝绸经纬织纹 + 草甸金/紫碎花光点
+  fg.globalAlpha=0.09;
+  fg.fillStyle="#ffffff";
+  for(let x=0;x<w;x+=3)fg.fillRect(x,0,1,h);
+  for(let i=0;i<160;i++){
+    fg.globalAlpha=0.22+r()*0.35;
+    fg.fillStyle=r()>0.45?"#f6e58d":"#c59bff";
+    const rad=(1.1+r()*1.8)*(h/256);
+    fg.beginPath();fg.arc(r()*w,r()*h,rad,0,Math.PI*2);fg.fill();
+  }
+  fg.globalAlpha=1;
+  return fc;
+}
+
+function applyHybridPanels(g,w,h,surfaceMode){
   const maskCanvas=document.createElement("canvas");maskCanvas.width=w;maskCanvas.height=h;
   const mc=maskCanvas.getContext("2d");
   for(const path of basketballChannelPaths())strokeWrappedBallPath(mc,path,w,h,4*h/256,"#000");
@@ -230,23 +282,24 @@ function applyLunarHybridPanels(g,w,h){
     }
     panel++;
   }
-  const isLunar=votes.map(v=>v[1]>v[0]);
-  const lunarData=makeLunarBallSurfaceCanvas(w,h).getContext("2d").getImageData(0,0,w,h).data;
+  const isCustom=votes.map(v=>v[1]>v[0]);
+  const surfCanvas=surfaceMode==="flower"?makeFlowerBallSurfaceCanvas(w,h):makeLunarBallSurfaceCanvas(w,h);
+  const surfData=surfCanvas.getContext("2d").getImageData(0,0,w,h).data;
   const outImg=g.getImageData(0,0,w,h);
   for(let p=0;p<w*h;p++){
     const lb=labels[p];
-    if(lb>=0&&isLunar[lb]){
+    if(lb>=0&&isCustom[lb]){
       const i=p*4,grain=0.92+0.12*((outImg.data[i]-160)/80);
-      outImg.data[i]=Math.max(0,Math.min(255,lunarData[i]*grain));
-      outImg.data[i+1]=Math.max(0,Math.min(255,lunarData[i+1]*grain));
-      outImg.data[i+2]=Math.max(0,Math.min(255,lunarData[i+2]*grain));
+      outImg.data[i]=Math.max(0,Math.min(255,surfData[i]*grain));
+      outImg.data[i+1]=Math.max(0,Math.min(255,surfData[i+1]*grain));
+      outImg.data[i+2]=Math.max(0,Math.min(255,surfData[i+2]*grain));
       outImg.data[i+3]=255;
     }
   }
   g.putImageData(outImg,0,0);
 }
 
-function paintBallLeather(g,w,h,base,dark,palette,lunarHybrid){
+function paintBallLeather(g,w,h,base,dark,palette,hybridMode){
   if(palette)paintTriBallPanels(g,w,h,palette);else{g.fillStyle=base;g.fillRect(0,0,w,h);}
   const rnd=ballTextureRng(palette?0x51f15e:0xba11c0de),sc=h/256;
   const step=3.2*sc;
@@ -260,7 +313,7 @@ function paintBallLeather(g,w,h,base,dark,palette,lunarHybrid){
     }
   }
   g.globalAlpha=1;
-  if(lunarHybrid)applyLunarHybridPanels(g,w,h);
+  if(hybridMode)applyHybridPanels(g,w,h,hybridMode==="flower"?"flower":"lunar");
   // 轻微实战使用痕迹：细微磨砂划痕
   const wr=ballTextureRng(0x5c0ff01);
   g.lineCap="round";
@@ -306,9 +359,9 @@ function paintBallLeather(g,w,h,base,dark,palette,lunarHybrid){
   paintBasketballChannels(g,w,h,false);
 }
 
-function realBallTex(base,dark,lunarHybrid){
-  const W=lunarHybrid?1024:512,H=lunarHybrid?512:256;
-  return pixTex(W,H,(g,w,h)=>paintBallLeather(g,w,h,base,dark,null,!!lunarHybrid),{smooth:true,mipmaps:true,anisotropy:8});
+function realBallTex(base,dark,hybridMode){
+  const W=hybridMode?1024:512,H=hybridMode?512:256;
+  return pixTex(W,H,(g,w,h)=>paintBallLeather(g,w,h,base,dark,null,hybridMode||false),{smooth:true,mipmaps:true,anisotropy:8});
 }
 
 function triBallTex(){
@@ -329,6 +382,7 @@ function ballReliefTex(){
 
 const texBall=realBallTex("#c95a2e","#77351c",false);
 let texLunarBall=null;
+let texFlowerBall=null;
 const texGold=triBallTex();
 const texDeep=realBallTex("#54e05a","#1f7a26",false);
 const texBallRelief=ballReliefTex();
@@ -352,8 +406,10 @@ const ballGeo=(()=>{
 })();
 function syncBallVenue(name){
   const wantLunar=name==="lunarCrater";
-  if(wantLunar&&!texLunarBall)texLunarBall=realBallTex("#c95a2e","#77351c",true);
-  const target=wantLunar?texLunarBall:texBall;
+  const wantFlower=name==="flowerCourt";
+  if(wantLunar&&!texLunarBall)texLunarBall=realBallTex("#c95a2e","#77351c","lunar");
+  if(wantFlower&&!texFlowerBall)texFlowerBall=realBallTex("#c95a2e","#77351c","flower");
+  const target=wantLunar?texLunarBall:(wantFlower?texFlowerBall:texBall);
   if(matBall.map!==target){matBall.map=target;matBall.needsUpdate=true;}
 }
 
