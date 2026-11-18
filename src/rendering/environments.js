@@ -435,6 +435,10 @@ function applyScenePreset(name,opts){
   opts=opts||{};
   if(!SCENE_PRESETS[name])name="indoor";
   currentScenePreset=name;
+  if(typeof camera!=="undefined"&&camera){
+    const wantFar=name==="tokyoRooftop"?920:160;
+    if(camera.far!==wantFar){camera.far=wantFar;camera.updateProjectionMatrix();}
+  }
   if(typeof syncBallVenue==="function")syncBallVenue(name);
   const preset=SCENE_PRESETS[name],outdoor=preset.type==="outdoor",rainy=preset.weather==="rain",flower=preset.progression==="flowerBloom",beach=preset.progression==="sunsetToNight";
   currentWeather=preset.weather;
@@ -480,8 +484,8 @@ function applyScenePreset(name,opts){
         sun.shadow.camera.updateProjectionMatrix();
       }
     }else if(name==="tokyoRooftop"){
-      /* 东京摩天楼顶夜场：深蓝都市夜空 + 天台球场 LED 泛光灯主照明 + 清晰远景铁塔与全景灯海。 */
-      scene.background.setHex(0x03060f);scene.fog.color.setHex(0x0a1224);scene.fog.near=150;scene.fog.far=480;
+      /* 东京摩天楼顶夜场：920m 远景视距 + 都市夜色光雾(0x13223d) + 清晰空气透视层次。 */
+      scene.background.setHex(0x040916);scene.fog.color.setHex(0x13223d);scene.fog.near=240;scene.fog.far=880;
       ambient.color.setHex(0x8498bd);ambient.intensity=.38;
       hemi.color.setHex(0x6d89bd);hemi.groundColor.setHex(0x23293a);hemi.intensity=.48;
       sun.color.setHex(0xffe8c8);sun.intensity=1.12;sun.position.set(-14,21,8);

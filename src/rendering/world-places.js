@@ -1601,7 +1601,7 @@
     if(name==="shonanCoast"){scene.fog.near=58;scene.fog.far=190;}
     if(name==="medCliff"){scene.fog.near=95;scene.fog.far=330;}
     if(name==="lunarCrater"){scene.fog.near=160;scene.fog.far=380;}
-    if(name==="tokyoRooftop"){scene.fog.near=150;scene.fog.far=480;}
+    if(name==="tokyoRooftop"){scene.fog.near=210;scene.fog.far=820;}
     if(name==="flowerCourt"){
       /* 峡谷顶部开口漏下的**自然天光**,不是人工灯。
          谷底照度低于露天,但必须读得出"光是从上方开口下来的":所以抬高太阳的
