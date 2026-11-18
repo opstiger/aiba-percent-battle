@@ -247,26 +247,58 @@ function buildFlowerCourt(){
     }
   }
   const ground=[];
-  const quantity=mobile?260:500;
+  const quantity=mobile?340:720,outer=Math.floor(quantity*.54),edges=Math.floor(quantity*.20);
   for(let i=0;i<quantity;i++){
-    const rim=i<quantity*.59;
-    const x=(i%2?1:-1)*r(rim?7.85:.26,rim?14:7.23),z=r(COURT.nearBaseline-4,COURT.farBaseline+5);
-    if(!rim&&BATTLE_SPOTS.some(spot=>Math.hypot(x-spot.p.x,z-spot.p.z)<.68))continue;
-    const h=r(rim?.25:.13,rim?.66:.33),size=r(.074,rim?.159:.125);
-    const source=FLOWER_FORMS[Math.floor((Math.sin(z*.59+x*.54)+1)*1.84)];
-    ground.push(flower(x,heightAt(x,z),z,h,size,rng()<.66?source:pick(FLOWER_FORMS)));
+    // Interleave lawn, sidelines and playing surface while retaining the previous quotas.
+    const slot=i*37%quantity,side=i%2?1:-1;
+    let x,z,height,size;
+    if(slot<outer){
+      if(i%4===0){x=r(-14,14);z=r(COURT.farBaseline+.7,COURT.farBaseline+11);}
+      else if(i%4===1){x=-r(8,14);z=r(COURT.nearBaseline-4,COURT.farBaseline+5);}
+      else if(i%4===2){x=r(8,14);z=r(COURT.nearBaseline-4,COURT.farBaseline+5);}
+      else{x=r(-14,14);z=r(COURT.nearBaseline-8,COURT.nearBaseline-.7);}
+      height=r(.27,.72);size=r(.08,.16);
+    }else if(slot<outer+edges){
+      if(i%3===0){
+        x=side*r(6.53,7.43);z=r(COURT.nearBaseline+.2,COURT.farBaseline-.25);
+      }else{
+        const baseline=i%3===1?COURT.farBaseline:COURT.nearBaseline;
+        x=r(-7.19,7.19);z=baseline+(i%3===1?-1:1)*r(.17,.99);
+      }
+      height=r(.16,.52);size=r(.077,.14);
+    }else{
+      do{
+        x=r(-7.15,7.15);z=r(COURT.nearBaseline+.45,COURT.farBaseline-.45);
+      }while(BATTLE_SPOTS.some(spot=>Math.hypot(x-spot.p.x,z-spot.p.z)<.62));
+      height=r(.13,.38);size=r(.072,.134);
+    }
+    const form=FLOWER_FORMS[Math.floor((Math.sin(z*.59+x*.54)+1)*1.84)];
+    ground.push(flower(x,heightAt(x,z),z,height,size,rng()<.67?form:pick(FLOWER_FORMS)));
   }
   const structure=[];
-  const scaffold=mobile?38:64;
-  for(let i=0;i<scaffold;i++){
+  const boardCount=mobile?38:70,supportCount=mobile?24:44,rimCount=mobile?22:38;
+  const attached=(part,x,y,z,axis,h,size)=>{
+    const d=flower(x,y,z,h,size,pick(FLOWER_FORMS),axis.normalize());
+    d.part=part;structure.push(d);
+  };
+  // Grow from both sides and the top edge of the actual board while keeping the aiming square clear.
+  for(let i=0;i<boardCount;i++){
     const side=i%2?1:-1;
-    if(i<scaffold*.65){
-      const x=side*r(.22,.69),z=r(-10.47,-9.75);
-      structure.push(flower(x,heightAt(x,z),z,r(.39,.86),r(.09,.16),pick(FLOWER_FORMS)));
+    if(i%3!==0){
+      attached("board",r(-.91,.91),4.056,r(-8.652,-8.555),new THREE.Vector3(r(-.34,.34),1,r(.035,.31)),r(.14,.51),r(.083,.145));
     }else{
-      const x=side*r(.94,1.01),z=r(-8.69,-8.62),y=r(3.05,4.02);
-      structure.push(flower(x,y,z,r(.15,.34),r(.06,.105),pick(FLOWER_FORMS),new THREE.Vector3(side*.73,.65,-.21).normalize()));
+      attached("board",side*.947,r(3.06,4.02),r(-8.646,-8.554),new THREE.Vector3(side*.72,.57,r(.16,.33)),r(.14,.34),r(.072,.137));
     }
+  }
+  for(let i=0;i<supportCount;i++){
+    const a=r(0,Math.PI*2),dx=Math.cos(a),dz=Math.sin(a);
+    if(i%3===0)attached("support",r(-.101,.101),3.572,r(-10.02,-8.79),new THREE.Vector3(dx*.33,.95,dz*.22),r(.16,.42),r(.069,.121));
+    else attached("support",dx*.126,r(.17,3.32),-10.17+dz*.126,new THREE.Vector3(dx*.68,.63,dz*.68),r(.14,.39),r(.066,.123));
+  }
+  for(let i=0;i<rimCount;i++){
+    const a=Math.PI+i/(rimCount-1)*Math.PI,dx=Math.cos(a),dz=Math.sin(a);
+    attached("rim",HOOP.x+.315*dx,HOOP.y,HOOP.z+.315*dz,
+      new THREE.Vector3(dx*.68,-.22,dz*.68),r(.092,.20),r(.052,.088));
   }
   state.ambient=makeFlowerLayer(state,ambient,"ambient");
   state.ground=makeFlowerLayer(state,ground,"ground");
@@ -414,7 +446,7 @@ function updateFlowerCourt(progress,dt){
   state.visualProgress+=(state.revealProgress-state.visualProgress)*(1-Math.exp(-2.2*dt));
   const meadow=environmentRoot.userData.placeState?.meadow;
   if(meadow)meadow.progress=state.visualProgress;
-  const groundT=clamp(state.revealProgress/.96,0,1),structureT=smoothRange(.38,1,state.revealProgress);
+  const groundT=clamp(state.revealProgress/.96,0,1),structureT=smoothRange(.16,.91,state.revealProgress);
   setFlowerLayerTarget(state,state.ground,Math.floor(groundT*state.ground.total));
   setFlowerLayerTarget(state,state.structure,Math.floor(structureT*state.structure.total));
   state.time+=dt;state.elapsed+=dt;

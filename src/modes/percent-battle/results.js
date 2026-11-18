@@ -11,7 +11,9 @@
 
   function finishBattle(win,ball){
     const winCine=ctx.getWinCine();
-    if(G.battleOver||(winCine&&winCine.on))return;
+    if(G.state!=="battle"||G.battleOver||(winCine&&winCine.on))return;
+    const score=win?G.score:G.battleOppScore;
+    if(!(score>=BATTLE_TARGET))return;
     startWinCine(win,ball);
   }
   function renderBattleResult(win){

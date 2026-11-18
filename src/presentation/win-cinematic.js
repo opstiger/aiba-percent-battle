@@ -77,7 +77,7 @@ function startWinCine(win,ball){
   poseBallSpinAtTime(w.spin,0);
   // 电影感:黑边 + 字幕
   $("lbT").style.height="11vh";$("lbB").style.height="11vh";
-  $("heroTag").style.display="block";window.AIBASetIcon("heroTag","clapperboard","英雄时刻");
+  $("heroTag").style.display="block";window.AIBASetIcon("heroTag","clapperboard",win?"英雄时刻":"对手决胜球");
   broadcastSting(win?"score":"danger");
 }
 const _wcGhost=new THREE.Vector3();
@@ -185,7 +185,7 @@ function updWinCine(dt){
     rig.pos.set(cp.x,cp.y+hb,cp.z);
     const lk=w.sPos.clone().setY(1.85).lerp(ballPos,0.35);
     rig.look.set(lk.x,lk.y,lk.z);
-    window.AIBASetIcon("heroTag","clapperboard","出手特写");
+    window.AIBASetIcon("heroTag","clapperboard",w.win?"出手特写":"对手决胜球");
   }else if(tt<WC_T1){
     // 飞行轨迹:侧后方跟拍篮球弧线
     const cp=ballPos.clone().addScaledVector(perp,side*3.2).addScaledVector(sdir,-0.6);
@@ -193,7 +193,7 @@ function updWinCine(dt){
     cp.x=clamp(cp.x,-12.5,12.5);
     rig.pos.set(cp.x,cp.y+hb,cp.z);
     rig.look.copy(ballPos);
-    window.AIBASetIcon("heroTag","clapperboard","空中轨迹");
+    window.AIBASetIcon("heroTag","clapperboard",w.win?"空中轨迹":"对手决胜球");
   }else if(tt<WC_T2){
     // 顺利时刻:命中后先给投篮者一个庆祝段落
     if(!w.heroStarted){startCelebrate(w.shooter,w.heroType);w.heroStarted=true;}
@@ -209,7 +209,7 @@ function updWinCine(dt){
     const cp=(w.camSeed<Math.PI?heroFocus.clone().addScaledVector(sdir,2.0-camPhase*0.5).add(orbit):heroFocus.clone().addScaledVector(sdir,1.65-camPhase*0.3).addScaledVector(perp,side*(2.3+0.2*Math.cos(w.camSeed)))).setY(1.7+Math.sin(camPhase*Math.PI)*0.18+hb);
     rig.pos.set(cp.x,cp.y,cp.z);
     rig.look.set(heroFocus.x,1.55,heroFocus.z);
-    window.AIBASetIcon("heroTag","clapperboard",w.win?"顺利时刻":"成功瞬间");
+    window.AIBASetIcon("heroTag","clapperboard",w.win?"顺利时刻":"对手率先破百");
   }else if(tt<WC_T2+0.75){
     // 全场沸腾·观众视角:从篮筐后方看台俯视,人群在前景
     if(!w.fxCrowd){

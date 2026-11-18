@@ -1,36 +1,26 @@
 /* ---------------- hero moments: 投篮机的最后一球特写 ----------------
-   三分大赛(contest)的英雄时刻在内联 releaseShot 里已有;本模块补齐其他模式:
+   三分大赛(contest)在生成球后处理特写;以下是两种投篮机模式的判定:
    - 投篮机闯关:FINAL RUSH 最后 3 秒的压哨球 → 英雄运镜
-   - 百分竞速:达到 96 分后的冲线球(任意一球都可能终结比赛) → 英雄运镜
-   在 gear.js / shot-motion.js 之后加载,保持 releaseShot 包装链。 */
+   - 百分竞速:这一球的实际分值足以破百 → 冲线球运镜
+   在实际生成球时判断,覆盖新版动作的延迟出手和经典动作的即时出手。 */
 (function(global){
   "use strict";
 
-  const prevReleaseShot=global.releaseShot;
-  if(typeof prevReleaseShot!=="function")return;
-
   function shouldHero(B){
     if(typeof G==="undefined"||G.practice||typeof hero==="undefined"||hero.on)return false;
-    if(G.mode==="rackrush"&&G.rush){
-      const cfg=RACK_RUSH_LEVELS[G.rush.level]||{};
-      if(isRackRushSpeed(G.rush))return (G.rush.total||0)>=RACK_RUSH_SPEED_TARGET-4;
-      return !!cfg.final&&G.running&&G.timer<=3.2;
+    if(G.mode!=="rackrush"||G.state!=="rackrush"||!G.running||!G.rush||!B||B.opp)return false;
+    if(isRackRushSpeed(G.rush)){
+      const score=G.rush.total||0;
+      return score<RACK_RUSH_SPEED_TARGET&&Number.isFinite(B.val)&&B.val>0&&score+B.val>=RACK_RUSH_SPEED_TARGET;
     }
-    return false;
+    const cfg=RACK_RUSH_LEVELS[G.rush.level]||{};
+    return !!cfg.final&&G.timer<=3.2;
   }
 
-  const fn=function(power,shot){
-    const r=prevReleaseShot.apply(this,arguments);
-    try{
-      const B=(typeof balls!=="undefined")&&balls[balls.length-1];
-      if(B&&!B.opp&&shouldHero(B))startHero(B);
-    }catch(e){}
-    return r;
-  };
-  fn.__aibaHero=true;
-  global.releaseShot=fn;
+  function onRackRushBallSpawn(ball){
+    if(shouldHero(ball))startHero(ball);
+  }
 
-  /* 进入胜利短片/庆祝前先收掉英雄黑边,避免运镜被更高优先级镜头打断后黑边残留 */
   ["startVictoryCine","startWinCine","startCelebrate"].forEach(name=>{
     const orig=global[name];
     if(typeof orig!=="function"||orig.__aibaHero)return;
@@ -42,5 +32,5 @@
     global[name]=wrapped;
   });
 
-  global.AIBAHeroMoments={shouldHero};
+  global.AIBAHeroMoments={shouldHero,onRackRushBallSpawn};
 })(window);

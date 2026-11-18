@@ -1124,13 +1124,18 @@
       geo.setAttribute("color",new THREE.Float32BufferAttribute(c,3));geo.computeVertexNormals();
       const mat=new THREE.MeshLambertMaterial({vertexColors:true,map:courtMarks()});
       const grass=terrainTexture("leafy-grass.jpg");
-      mat.addEventListener("dispose",()=>grass.dispose());
+      mat.addEventListener("dispose",()=>{
+        grass.dispose();
+        s.meadow.drifts.coverage.dispose();
+      });
       mat.onBeforeCompile=shader=>{
         shader.uniforms.grassDetail={value:grass};
+        shader.uniforms.flowerCover={value:s.meadow.drifts.coverage};
+        shader.uniforms.fieldProgress=s.meadow.drifts.bloom;
         shader.vertexShader="varying vec2 vMeadowXZ;\n"+shader.vertexShader.replace(
           "#include <begin_vertex>","#include <begin_vertex>\nvMeadowXZ = position.xz;"
         );
-        shader.fragmentShader="varying vec2 vMeadowXZ;\nuniform sampler2D grassDetail;\n"+shader.fragmentShader.replace("#include <map_fragment>",`
+        shader.fragmentShader="varying vec2 vMeadowXZ;\nuniform sampler2D grassDetail;\nuniform sampler2D flowerCover;\nuniform float fieldProgress;\n"+shader.fragmentShader.replace("#include <map_fragment>",`
           vec2 m = vMeadowXZ;
           vec2 uvMarks = vec2(m.x/32.0+0.5, 1.0-(m.y+13.0)/36.0);
           vec4 chalk = mapTexelToLinear(texture2D(map, uvMarks));
@@ -1146,6 +1151,13 @@
           float closeGrain = 1.0-smoothstep(25.0,115.0,length(cameraPosition.xz-m));
           diffuseColor.rgb *= 0.77 + coarse*1.72 + (fine-.095)*1.16*closeGrain;
           diffuseColor.rgb = mix(diffuseColor.rgb,vec3(0.205,0.191,0.111),worn);
+          vec2 fromCenter=m-vec2(0.0,4.745);
+          vec2 flowersUV=vec2(fromCenter.x,-fromCenter.y)/232.0+0.5;
+          vec4 drift=mapTexelToLinear(texture2D(flowerCover,flowersUV));
+          float wake=clamp(.095+(length(fromCenter)-16.0)/101.0,.10,.84);
+          float flowering=smoothstep(wake+.025,wake+.15,fieldProgress);
+          float farCover=smoothstep(6.0,24.0,length(cameraPosition.xz-m));
+          diffuseColor.rgb=mix(diffuseColor.rgb,drift.rgb*.79,drift.a*flowering*farCover*.61);
           diffuseColor.rgb = mix(diffuseColor.rgb,chalk.rgb,chalk.a);
         `);
       };
@@ -1154,57 +1166,67 @@
     }
 
     function mountainRange(s,far,material){
-      const cols=s.mobile?166:312,rows=s.mobile?28:44;
-      const radius=far?286:166,depth=far?135:125;
-      const p=[],uv=[],indices=[],ridgeHeights=[],colors=[],c=new THREE.Color();
-      const ranges=far?
-        [[-.74,.25,39],[-.4,.19,53],[-.16,.15,66],[.17,.28,54],[.63,.22,48],[1.45,.42,50],[2.65,.59,40],[-2.32,.49,46],[-1.55,.35,43]]:
-        [[-.93,.45,25],[-.55,.18,35],[.31,.38,33],[.87,.49,40],[1.77,.39,31],[2.9,.58,32],[-2.48,.39,33],[-1.62,.36,29]];
-      const base=linear(far?0x7a8b98:0x626e78),stone=linear(far?0x556775:0x4c5860),snow=linear(0xf8f9f6);
+      const cols=s.mobile?220:400,rows=s.mobile?34:56;
+      const radius=far?290:166,depth=far?143:123;
+      // Bearing and relief describe a connected skyline. A wide shoulder and an off-centre
+      // summit anchor the court-facing massif, with lower ridges continuing around the meadow.
+      const skyline=far?[
+        [-Math.PI,48],[-2.85,59],[-2.62,67],[-2.25,50],[-2.02,62],[-1.75,50],[-1.39,66],
+        [-1.05,53],[-.84,61],[-.70,70],[-.58,81],[-.49,74],[-.40,82],[-.28,105],
+        [-.15,124],[-.076,109],[.018,92],[.13,86],[.23,90],[.34,78],[.54,60],
+        [.67,63],[.79,74],[.93,77],[1.12,63],[1.42,72],[1.72,54],[2.04,68],[2.38,54],[2.75,67],[Math.PI,48]
+      ]:[
+        [-Math.PI,27],[-2.77,35],[-2.37,27],[-2.05,37],[-1.74,29],[-1.38,39],
+        [-1.08,25],[-.81,30],[-.63,39],[-.46,30],[-.23,31],[-.02,25],[.18,34],
+        [.38,43],[.57,29],[.76,39],[1.05,33],[1.28,41],[1.52,32],[1.84,43],
+        [2.10,32],[2.38,39],[2.64,31],[2.93,36],[Math.PI,27]
+      ];
+      const positions=[],uv=[],indices=[],deposition=[],exposure=[];
+      const ridge=[],angle=[];
+      let segment=0;
       for(let i=0;i<=cols;i++){
         const a=(i/cols-.5)*tau;
-        let mountain=far?32:18;
-        for(const [at,width,h] of ranges){
-          const distance=Math.atan2(Math.sin(a-at),Math.cos(a-at));
-          mountain+=h*Math.exp(-((distance/width)**2))*Math.max(.04,1-.55*Math.abs(distance/width));
-        }
-        const ridges=1+.13*Math.sin(a*24+.3)+.07*Math.sin(a*52+2)+.035*Math.cos(a*103);
-        ridgeHeights.push(mountain*ridges);
+        while(a>skyline[segment+1][0])segment++;
+        const [left,low]=skyline[segment],[right,high]=skyline[segment+1];
+        const f=(a-left)/(right-left);
+        const edge=(far?1:.68)*(1.05*Math.sin(a*93+.2)+.68*Math.sin(a*173-1.4));
+        ridge.push(THREE.MathUtils.lerp(low,high,f)+edge);
+        angle.push(a);
       }
       for(let row=0;row<=rows;row++)for(let i=0;i<=cols;i++){
-        const a=(i/cols-.5)*tau,t=row/rows;
-        const r=radius+t*depth+9*Math.sin(a*4+1)+6*Math.cos(a*9+t*2.3);
-        const crest=.48+.073*Math.sin(a*11+.3)+.037*Math.cos(a*21);
-        const profile=t<crest?Math.pow(t/crest,1.28):Math.pow((1-t)/(1-crest),1.48);
-        const cut=a*73+t*8.8+1.8*Math.sin(a*19+t*3.1);
-        const gullies=.11*(.55-Math.abs(Math.sin(cut)))+.052*Math.sin(a*117-t*17.4)+.021*Math.cos(a*192+t*25);
-        const sheer=.035*Math.sin(t*29+a*17)*Math.sin(a*43-t*4.5);
-        const y=-6+ridgeHeights[i]*(profile+Math.sin(Math.PI*t)*(gullies+sheer));
-        p.push(Math.sin(a)*r,y,COURT.midZ-Math.cos(a)*r);
-        uv.push(a*radius/31+.35*Math.sin(t*4.1), (t*depth+y*.83)/23);
+        const a=angle[i],t=row/rows;
+        const r=radius+t*depth+10*Math.sin(a*4+1)+7*Math.cos(a*9+t*1.8);
+        const crest=.52+.046*Math.sin(a*11+.3)+.043*Math.cos(a*21);
+        const profile=t<crest?Math.pow(t/crest,1.31):Math.pow((1-t)/(1-crest),1.45);
+        // Cuts bend and join as they descend off the crest. Vary their width and depth along the range.
+        const flow=a*(far?54:36)+t*13+2.1*Math.sin(a*13+t*3.8);
+        const ravine=Math.pow(1-Math.abs(Math.sin(flow)),2);
+        const ribs=.030*Math.sin(a*107-t*13+1.4*Math.sin(a*23+t*7))+.017*Math.sin(a*184+t*28);
+        const cuts=(.67+.33*Math.sin(a*18+t*8))*(.055-.146*ravine)+ribs;
+        const y=-5+ridge[i]*(profile+Math.sin(Math.PI*t)*(cuts+.014*Math.sin(t*31+a*27)));
+        positions.push(Math.sin(a)*r,y,COURT.midZ-Math.cos(a)*r);
+        uv.push(a*radius/30+t*.28,(t*depth+y*.62)/29);
+        deposition.push(ravine);
         if(row<rows&&i<cols){
           const k=row*(cols+1)+i;
           indices.push(k,k+1,k+cols+1,k+1,k+cols+2,k+cols+1);
         }
       }
       const geo=new THREE.BufferGeometry();geo.setIndex(indices);
-      geo.setAttribute("position",new THREE.Float32BufferAttribute(p,3));
+      geo.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
       geo.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));geo.computeVertexNormals();
-      const n=geo.getAttribute("normal"),light=[];
-      for(let i=0;i<n.count;i++){
-        const a=((i%(cols+1))/cols-.5)*tau,y=p[i*3+1];
-        const strata=.52+.26*Math.sin(a*58+y*.16)+.18*Math.sin(a*108-y*.31);
-        const line=(far?44:34)+8*Math.sin(a*13)+8*Math.sin(a*94+y*.083)+3.7*Math.cos(a*153-y*.18);
-        const snowCover=smooth(y,line-4,line+8)*(.17+.83*smooth(n.getY(i),.40,.85));
-        const highSnow=smooth(y,line+14,line+26)*.85;
-        const facing=.53+.47*Math.max(0,-.76*n.getX(i)+.59*n.getY(i)+.29*n.getZ(i));
-        light.push(Math.max(0,-.61*n.getX(i)+.38*n.getY(i)+.68*n.getZ(i)));
-        c.copy(base).lerp(stone,strata).lerp(snow,Math.max(snowCover,highSnow)).multiplyScalar(facing);
-        colors.push(c.r,c.g,c.b);
+      const normals=geo.getAttribute("normal"),sunward=new THREE.Vector3(-.88,.26,.41).normalize();
+      for(let i=0;i<normals.count;i++){
+        const a=angle[i%(cols+1)],y=positions[i*3+1],ny=normals.getY(i);
+        const snowLine=(far?46:34)+6*Math.sin(a*9+.8)+3.5*Math.sin(a*22);
+        const alpine=smooth(y,snowLine-22,snowLine+28);
+        // Snow settles in bowls and chutes above the tree line. Convex, steep ribs stay exposed even at the summit.
+        const retention=alpine*(.29+.49*smooth(ny,.23,.87)+.35*deposition[i]);
+        const sunFace=normals.getX(i)*sunward.x+ny*sunward.y+normals.getZ(i)*sunward.z;
+        const daylight=.50+.50*Math.max(0,-.39*normals.getX(i)+.74*ny+.55*normals.getZ(i));
+        exposure.push(retention,sunFace,daylight,smooth(y,far?36:34,far?91:62));
       }
-      geo.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));
-      geo.setAttribute("peakLight",new THREE.Float32BufferAttribute(light,1));
-      // Static, baked sun direction keeps south-facing snow readable against the bright sky.
+      geo.setAttribute("rockExposure",new THREE.Float32BufferAttribute(exposure,4));
       const mesh=new THREE.Mesh(geo,material);
       mesh.name=far?"alpineFarSnowPeaks":"alpineNearRidges";s.root.add(mesh);
     }
@@ -1310,9 +1332,12 @@
             vec3 blue=mix(vec3(.066,.246,.49),vec3(.46,.66,.78),haze);
             blue=mix(blue,vec3(.39,.51,.59),.38*(1.0-phase.x));
             float glint=pow(max(0.0,dot(ray,normalize(vec3(-.86,.21,.37)))),12.0);
-            blue=mix(blue,vec3(.79,.48,.26),phase.y*.32*glint);
+            vec3 evening=mix(vec3(.030,.085,.112),vec3(.105,.205,.245),haze);
+            blue=mix(blue,evening,phase.y*.83);
+            blue=mix(blue,vec3(.43,.26,.16),phase.y*.25*glint);
             vec3 cloud=mix(vec3(.51,.59,.66),vec3(.93,.94,.92),smoothstep(.45,.7,cover+(cover-fringe)));
-            cloud=mix(cloud,vec3(.94,.67,.46),phase.y*.30*glint);
+            cloud=mix(cloud,cloud*vec3(.70,.73,.80),phase.y*.67);
+            cloud=mix(cloud,vec3(.94,.67,.46),phase.y*.20*glint);
             gl_FragColor=vec4(mix(blue,cloud,alpha),1.0);
             #include <tonemapping_fragment>
             #include <encodings_fragment>
@@ -1322,7 +1347,29 @@
       const sky=new THREE.Mesh(new THREE.SphereGeometry(485,32,20),skyMat);
       sky.name="alpineCloudSky";sky.position.z=COURT.midZ;sky.frustumCulled=false;sky.renderOrder=-990;s.root.add(sky);
       return {phase,time,progress:0,cloudSun:new THREE.Color(0xe4edf0),daySun:new THREE.Color(0xffefcf),
-        peakSun:new THREE.Color(0xffc17f),blueFog:new THREE.Color(0xa8c4d0),goldFog:new THREE.Color(0xc9bab1)};
+        peakSun:new THREE.Color(0xffc17f),blueFog:new THREE.Color(0xa8c4d0),goldFog:new THREE.Color(0x879cad)};
+    }
+
+    function driftCoverage(instances){
+      const canvas=document.createElement("canvas");canvas.width=1024;canvas.height=1024;
+      const paint=canvas.getContext("2d"),brushes=new Map(),density=canvas.width/232;
+      for(const item of instances){
+        let brush=brushes.get(item.tint);
+        if(!brush){
+          brush=document.createElement("canvas");brush.width=24;brush.height=24;
+          const g=brush.getContext("2d"),gradient=g.createRadialGradient(12,12,1,12,12,12);
+          const tint=new THREE.Color(item.tint),[r,gc,b]=tint.toArray().map(x=>Math.round(x*255));
+          gradient.addColorStop(0,`rgba(${r},${gc},${b},.43)`);
+          gradient.addColorStop(.35,`rgba(${r},${gc},${b},.29)`);
+          gradient.addColorStop(1,`rgba(${r},${gc},${b},0)`);
+          g.fillStyle=gradient;g.fillRect(0,0,24,24);brushes.set(item.tint,brush);
+        }
+        const u=(item.x+116)*density,v=(item.z-COURT.midZ+116)*density;
+        const spread=(1.45+item.size*.82)*density;
+        paint.drawImage(brush,u-spread,v-spread*.64,spread*2,spread*1.28);
+      }
+      const map=new THREE.CanvasTexture(canvas);map.encoding=THREE.sRGBEncoding;
+      return map;
     }
 
     function distantFlowers(s,weather){
@@ -1344,15 +1391,16 @@
       const geo=new THREE.BufferGeometry();geo.setAttribute("position",new THREE.Float32BufferAttribute(verts,3));
       geo.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));geo.computeVertexNormals();
       const groups=[[-1.15,27,8],[-.61,30,13],[.41,25,11],[.82,43,16],[-.41,49,12],[.26,59,16],
-        [.72,77,15],[-.68,74,19],[-1.56,50,16],[1.51,59,24],[2.05,36,19],[-2.05,34,18],[2.70,56,26],[-2.7,58,21]];
-      const instances=[],targets=[],tints=[0xf6e4ae,0xe3b4cf,0xe0d4f5,0xffe66e,0xf5eede,0xf2afc2],total=s.mobile?900:1700;
+        [.72,77,15],[-.68,74,19],[-1.56,50,16],[1.51,59,24],[2.05,36,19],[-2.05,34,18],[2.70,56,26],[-2.7,58,21],
+        [-.18,77,16],[.16,92,17],[-.97,96,20],[.97,96,20],[2.7,92,24],[-2.57,91,24]];
+      const instances=[],targets=[],tints=[0xf6e7b0,0xe073a5,0xb993dd,0xffd344,0xf8eeda,0xf598ac],total=s.mobile?2780:5350;
       for(let i=0;i<total;i++){
         const [heading,rad,width]=groups[i%groups.length];
         const r=rad+(s.r()+s.r()-1)*width,a=heading+(s.r()+s.r()-1)*width/r;
         const x=Math.sin(a)*r,z=COURT.midZ-Math.cos(a)*r;
         if(Math.abs(x)<14.2&&z>COURT.floorMinZ-4&&z<COURT.floorMaxZ+4)continue;
-        instances.push({x,z,yaw:s.r()*tau,size:(.57+.46*s.r())*(1+smooth(r,34,74)*.40),tint:tints[i%tints.length],
-          when:THREE.MathUtils.clamp(.15+(r-16)/91+s.r()*.10,.15,.91)});
+        instances.push({x,z,yaw:s.r()*tau,size:(.67+.46*s.r())*(1+smooth(r,29,74)*.54),tint:tints[(i%groups.length+(i%7===0?1:0))%tints.length],
+          when:THREE.MathUtils.clamp(.095+(r-16)/101+s.r()*.15,.10,.90)});
       }
       instances.sort((a,b)=>a.when-b.when);
       const mat=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide,emissive:0xdcd2a4,emissiveIntensity:.035});
@@ -1378,7 +1426,7 @@
       });
       geo.setAttribute("bloomStart",new THREE.InstancedBufferAttribute(new Float32Array(targets),1));
       mesh.name="alpineWildflowerDrifts";mesh.frustumCulled=false;mesh.count=0;s.root.add(mesh);
-      return {mesh,targets,bloom};
+      return {mesh,targets,bloom,coverage:driftCoverage(instances)};
     }
 
     function updateMeadow(s){
@@ -1404,23 +1452,36 @@
       s.meadow=meadowWeather(s);
       ground(s);
       const rock=terrainTexture("alpine-rock.jpg");
-      const mountain=new THREE.MeshBasicMaterial({vertexColors:true,map:rock,side:THREE.DoubleSide});
+      const mountain=new THREE.MeshBasicMaterial({map:rock,side:THREE.DoubleSide});
       mountain.onBeforeCompile=shader=>{
         shader.uniforms.meadowPhase=s.meadow.phase;
-        shader.vertexShader="attribute float peakLight;\nvarying float vPeakLight;\n"+
-          shader.vertexShader.replace("#include <begin_vertex>","#include <begin_vertex>\nvPeakLight=peakLight;");
-        shader.fragmentShader="uniform vec2 meadowPhase;\nvarying float vPeakLight;\n"+
-          shader.fragmentShader.replace("#include <map_fragment>",`
-          vec3 rockA = mapTexelToLinear(texture2D(map,vUv)).rgb;
-          vec3 rockB = mapTexelToLinear(texture2D(map, mat2(0.81,-0.59,0.59,0.81)*vUv*0.43)).rgb;
-          float grain = dot(mix(rockA,rockB,0.36),vec3(.22,.70,.08));
-        `).replace("#include <color_fragment>",`
-          #include <color_fragment>
-          float whiteSlope=smoothstep(0.35,0.75,diffuseColor.r);
-          diffuseColor.rgb *= mix(0.63+grain*1.50,0.89+grain*0.36,whiteSlope) * mix(.88,1.0,meadowPhase.x);
-          float alpenglow=meadowPhase.y*(.17+.83*smoothstep(.14,.72,vPeakLight))*smoothstep(.20,.61,diffuseColor.r);
-          vec3 warm=diffuseColor.rgb*vec3(1.53,.92,.44)+vec3(.20,.035,.003);
-          diffuseColor.rgb=mix(diffuseColor.rgb,warm,alpenglow);
+        shader.uniforms.peakRock={value:linear(0x596471)};
+        shader.uniforms.peakSnow={value:linear(0xd2dde3)};
+        shader.uniforms.peakShade={value:linear(0x435b77)};
+        shader.uniforms.peakAmber={value:linear(0xff9e46)};
+        shader.vertexShader="attribute vec4 rockExposure;\nvarying vec4 vRockExposure;\n"+
+          shader.vertexShader.replace("#include <begin_vertex>","#include <begin_vertex>\nvRockExposure=rockExposure;");
+        shader.fragmentShader=`uniform vec2 meadowPhase;
+          uniform vec3 peakRock,peakSnow,peakShade,peakAmber;
+          varying vec4 vRockExposure;
+        `+shader.fragmentShader.replace("#include <map_fragment>",`
+          vec3 coarse=mapTexelToLinear(texture2D(map,vUv*.46)).rgb;
+          vec2 tilted=mat2(.91,-.41,.41,.91)*vUv;
+          vec3 surface=mapTexelToLinear(texture2D(map,tilted*1.29)).rgb;
+          vec3 flutes=mapTexelToLinear(texture2D(map,vec2(vUv.x*1.63+vUv.y*.26,vUv.y*.35))).rgb;
+          vec3 lum=vec3(.22,.70,.08);
+          float weathering=dot(coarse,lum),grain=dot(surface,lum),streak=dot(flutes,lum);
+          float ice=smoothstep(.31,.53,vRockExposure.x+(weathering-.28)*.42+(streak-.28)*.38+(grain-.28)*.15);
+          vec3 stone=peakRock*(.41+1.23*weathering+.60*grain+.40*streak);
+          vec3 snow=peakSnow*(.75+.36*weathering+.29*grain+.16*streak);
+          vec3 terrain=mix(stone,snow,ice);
+          float face=vRockExposure.y;
+          float light=smoothstep(.065,.33,face+.15*(weathering-.28))*vRockExposure.w;
+          vec3 day=terrain*vRockExposure.z*mix(.9,1.04,meadowPhase.x);
+          vec3 shadow=terrain*vec3(.35,.46,.69)+peakShade*.22;
+          vec3 amber=terrain*vec3(1.14,.59,.32)+peakAmber*(.28+.27*ice+.28*grain);
+          vec3 sunset=mix(shadow,amber,light);
+          diffuseColor.rgb=mix(day,sunset,meadowPhase.y);
         `);
       };
       mountainRange(s,true,mountain);mountainRange(s,false,mountain);

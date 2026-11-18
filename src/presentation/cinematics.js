@@ -7,6 +7,7 @@ function startHero(B){
   if(hero.perp.x*B.p0.x>0)hero.perp.negate();
   rig.pos.copy(eyePos());
   $("lbT").style.height="9vh";$("lbB").style.height="9vh";
+  window.AIBASetIcon("heroTag","clapperboard","英雄时刻 HERO BALL");
   $("heroTag").style.display="block";
 }
 function endHero(){

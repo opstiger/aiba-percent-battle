@@ -41,6 +41,7 @@ const DICT={
 "得分唤醒整片草甸的野花，云开后暖光逐渐照亮雪峰":"Score to bring the meadow into bloom and watch the clouds part over the glowing peaks.",
 "西海岸夕阳":"West coast sunset",
 "百分竞速":"Speed 100",
+"对手决胜球":"Opponent’s winning shot",
 "彩球架":"Money rack",
 "RACK RUSH完成!":"RACK RUSH complete!",
 "运气球罢了...":"Just a lucky one...",

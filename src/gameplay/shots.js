@@ -467,6 +467,7 @@ function afterBallSpawn(B,shot,err,isBattle,isRush,isDeep){
     const flightBudget=typeof PASS_FLIGHT_RUSH!=="undefined"?PASS_FLIGHT_RUSH.budget:.27;
     const delay=Math.max(60,(feed-expectedCharge-flightBudget)*1000);
     afterPlayerLands(delay,()=>{if(G.state==="rackrush"&&G.running&&!G.buzzed)readyBall();});
+    window.AIBAHeroMoments?.onRackRushBallSpawn(B);
     return;
   }
   // hero moment: last ball / buzzer beater / tiebreak
