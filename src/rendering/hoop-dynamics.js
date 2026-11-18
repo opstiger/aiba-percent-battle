@@ -24,6 +24,7 @@
 
   /* 阻尼弹簧：a 角度（弧度），v 角速度。f 频率 Hz，zeta 阻尼比。 */
   function spring(f,zeta){return {a:0,v:0,w:2*Math.PI*f,z:zeta};}
+  function tuneSpring(s,f,zeta){s.w=2*Math.PI*f;s.z=zeta;}
   function stepSpring(s,dt){
     // 半隐式欧拉，dt 已被切成 ≤ 1/240
     const acc=-s.w*s.w*s.a-2*s.z*s.w*s.v;
@@ -31,12 +32,39 @@
     if(Math.abs(s.a)<1e-5&&Math.abs(s.v)<1e-4){s.a=0;s.v=0;}
   }
 
+  /* 分场地篮架物理配置（HoopPhysicsProfile）：职业场馆紧实 vs 街头松弹 vs 月球低阻尼 */
+  const COURT_PROFILES={
+    indoor:{rimFreq:10.5,rimZeta:0.16,rollFreq:12.0,rollZeta:0.18,boardFreq:6.2,boardZeta:0.10,netMem:62,netDamp:0.972,netRebound:0.011},
+    tokyoRooftop:{rimFreq:9.0,rimZeta:0.14,rollFreq:11.0,rollZeta:0.16,boardFreq:5.5,boardZeta:0.09,netMem:55,netDamp:0.975,netRebound:0.013},
+    street:{rimFreq:7.8,rimZeta:0.11,rollFreq:9.6,rollZeta:0.13,boardFreq:4.8,boardZeta:0.08,netMem:50,netDamp:0.978,netRebound:0.014},
+    rainyCourt:{rimFreq:8.4,rimZeta:0.15,rollFreq:10.2,rollZeta:0.17,boardFreq:5.2,boardZeta:0.10,netMem:48,netDamp:0.968,netRebound:0.009},
+    spanishQuarter:{rimFreq:8.0,rimZeta:0.12,rollFreq:9.8,rollZeta:0.14,boardFreq:5.0,boardZeta:0.085,netMem:52,netDamp:0.976,netRebound:0.013},
+    flowerCourt:{rimFreq:8.8,rimZeta:0.13,rollFreq:10.5,rollZeta:0.15,boardFreq:5.4,boardZeta:0.09,netMem:54,netDamp:0.976,netRebound:0.013},
+    beachSunset:{rimFreq:8.6,rimZeta:0.13,rollFreq:10.4,rollZeta:0.15,boardFreq:5.3,boardZeta:0.09,netMem:54,netDamp:0.976,netRebound:0.013},
+    arcticSnow:{rimFreq:9.8,rimZeta:0.15,rollFreq:11.4,rollZeta:0.17,boardFreq:5.9,boardZeta:0.10,netMem:60,netDamp:0.973,netRebound:0.011},
+    medCliff:{rimFreq:8.7,rimZeta:0.13,rollFreq:10.5,rollZeta:0.15,boardFreq:5.4,boardZeta:0.09,netMem:55,netDamp:0.975,netRebound:0.012},
+    lunarCrater:{rimFreq:6.2,rimZeta:0.08,rollFreq:7.5,rollZeta:0.09,boardFreq:4.2,boardZeta:0.06,netMem:38,netDamp:0.986,netRebound:0.016}
+  };
+
   const state={
     built:false,hoop:null,
     boardPivot:null,rimPivot:null,
-    rimPitch:spring(9,.14),rimRoll:spring(11,.16),boardPitch:spring(5.5,.09),
-    net:null,lastContactT:-9,clock:0
+    rimPitch:spring(10.5,.16),rimRoll:spring(12.0,.18),boardPitch:spring(6.2,.10),
+    net:null,lastContactT:-9,clock:0,
+    courtPreset:"",profile:COURT_PROFILES.indoor
   };
+
+  function setCourtProfile(preset){
+    const key=preset||"indoor";
+    if(state.courtPreset===key)return state.profile;
+    const p=COURT_PROFILES[key]||COURT_PROFILES.indoor;
+    state.courtPreset=key;state.profile=p;
+    tuneSpring(state.rimPitch,p.rimFreq,p.rimZeta);
+    tuneSpring(state.rimRoll,p.rollFreq,p.rollZeta);
+    tuneSpring(state.boardPitch,p.boardFreq,p.boardZeta);
+    return p;
+  }
+  function getCourtProfile(){return state.profile;}
 
   /* ---------- 篮筐（纤细主圈 + 偏心后半弧渐变加强领圈 + L型弹簧底座 + 细挂网环） ---------- */
   function buildRimMeshes(parent,center,dir,mat){
@@ -179,6 +207,27 @@
     net.asleep=false;
     net.acc=Math.min(net.acc+dt,SUB*4);
     const pos=net.pos,prev=net.prev,rest=net.rest,cols=NET.cols;
+    const prof=state.profile||COURT_PROFILES.indoor;
+    // 检测球穿过网底时触发二段回弹过冲（下坠 -> 向上翻弹振荡）
+    const hy=state.hoop?state.hoop.y:3.05;
+    let inUpperNet=false;
+    for(const b of list){
+      if(b[1]<=hy-0.02&&b[1]>=hy-0.36&&b[4]<-0.35){
+        inUpperNet=true;net.passActive=true;
+        net.passSpeed=Math.max(net.passSpeed||0,Math.hypot(b[3],b[4],b[5]));
+      }
+    }
+    if(net.passActive&&!inUpperNet){
+      net.passActive=false;
+      const spd=clamp((net.passSpeed||4)/6,0.4,1.35);
+      const kickUp=prof.netRebound*spd;
+      for(let p=cols;p<net.n;p++){
+        const k=p*3,row=(p/cols|0)/NET.rows;
+        // 向下拖拽后向上回弹微过冲（受 cap 保护，绝不会翻到篮圈上面）
+        net.prev[k+1]-=kickUp*row;
+      }
+      net.passSpeed=0;
+    }
     while(net.acc>=SUB){
       net.acc-=SUB;
       // 顶排钉在挂网钩上（跟着篮筐一起动）
@@ -189,12 +238,12 @@
       }
       // 积分 + 形状记忆（尼龙网有挺度，会回到锥形）
       const rw=net.restWorld;
+      const dampFactor=prof.netDamp||0.975,mem=(prof.netMem||55)*SUB*SUB;
       for(let p=cols;p<net.n;p++){
         const k=p*3;
         rimToWorld(w3,rest[k],rest[k+1],rest[k+2]);
         rw[k]=w3[0];rw[k+1]=w3[1];rw[k+2]=w3[2];
-        const vx=(pos[k]-prev[k])*.975,vy=(pos[k+1]-prev[k+1])*.975,vz=(pos[k+2]-prev[k+2])*.975;
-        const mem=55*SUB*SUB;
+        const vx=(pos[k]-prev[k])*dampFactor,vy=(pos[k+1]-prev[k+1])*dampFactor,vz=(pos[k+2]-prev[k+2])*dampFactor;
         prev[k]=pos[k];prev[k+1]=pos[k+1];prev[k+2]=pos[k+2];
         pos[k]+=vx+(w3[0]-pos[k])*mem;
         /* 不加常量重力：rest 形状本身就是"挂好的网"，重力已经折进去了。
@@ -360,6 +409,7 @@
   }
   function update(dt){
     if(!state.built)return;
+    try{setCourtProfile(document.documentElement.dataset.scenePreset||"indoor");}catch(e){}
     const safe=clamp(Number(dt)||0,0,.05);
     state.clock+=safe;
     // 弹簧按 ≤1/240 切片，帧率不同结果一致
@@ -385,7 +435,9 @@
   }
   global.AIBAHoopDynamics=Object.freeze({
     buildNear,buildStaticRim,impact,kick,reset,update,
+    setCourtProfile,getCourtProfile,
     get state(){return state;},
-    netConfig:NET
+    netConfig:NET,
+    courtProfiles:COURT_PROFILES
   });
 })(window);

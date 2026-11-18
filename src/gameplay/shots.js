@@ -501,7 +501,9 @@ function playRimImpactSound(b,made){
 function madeShotSound(b){
   if(b&&b.outcome==="rattle")return; // rim-make clip already played at first contact
   if(b&&b.outcome==="bank"){sRimMake();return;}
-  sSwish();
+  const spd=b&&b.v0?Math.min(9,Math.max(2.5,Math.hypot(b.v0.x||0,b.v0.z||0,3.8))):4.6;
+  const off=b&&b.outcome==="bank"?0.45:0.15;
+  sSwish({speed:spd,offset:off});
 }
 function madeBall(b){
   b.made=true;
@@ -635,7 +637,7 @@ function silentBallMade(b){
 }
 function physicsBallEvent(b,e){
   const fx=globalThis.AIBAHoopDynamics,haptic=typeof impactHaptic==="function"?impactHaptic:playerRimHaptic;
-  const sfx=(kind,fallback)=>{if(typeof impactSfx==="function")impactSfx(kind,e.impulse);else fallback();};
+  const sfx=(kind,fallback)=>{if(typeof impactSfx==="function")impactSfx(kind,e.impulse,e);else fallback();};
   switch(e.type){
     case "rim":
       if(fx)fx.impact("rim",e);

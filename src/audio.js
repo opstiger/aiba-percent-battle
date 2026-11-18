@@ -391,14 +391,17 @@ function decodeGameplaySfx(k){
 /* 撞击力度 → 音量（PH-3）。真实物理球按碰撞冲量调用 impactSfx，轻擦筐声音小、重砸声音大；
    其他调用方不传就是 1，行为不变。只作用于解码后的 WebAudio 采样和合成兜底音。 */
 let sfxImpactGain=1;
-function impactSfx(kind,impulse){
+function impactSfx(kind,impulse,event){
   const J=Math.max(0,Number(impulse)||0);
   const gain=kind==="floor"?Math.max(.22,Math.min(1.15,.2+J/12)):Math.max(.3,Math.min(1.3,.28+J/4.5));
   const prev=sfxImpactGain;sfxImpactGain=gain;
   try{
+    if((kind==="rim"||kind==="rimMake"||kind==="board"||kind==="connector")&&!MUTED&&AC&&AC.state==="running"&&window.AIBAHoopAudio){
+      if(window.AIBAHoopAudio.trigger(kind,J||2.5,event,AC,sfxBus||master))return gain;
+    }
     if(kind==="rim")sClank();
     else if(kind==="rimMake")sRimMake();
-    else if(kind==="board")sBoard();
+    else if(kind==="board"||kind==="connector")sBoard();
     else if(kind==="floor")sBounce();
   }finally{sfxImpactGain=prev;}
   return gain;
@@ -1189,7 +1192,10 @@ function sBounce(kind){
   const g2=AC.createGain();g2.gain.value=0.16*sfxImpactGain;
   n.connect(bp);bp.connect(g2);g2.connect(master);n.start(t);
 }
-function sSwish(){
+function sSwish(info){
+  if(!MUTED&&AC&&AC.state==="running"&&window.AIBAHoopAudio){
+    if(window.AIBAHoopAudio.trigger("net",info&&info.speed||4.6,info,AC,sfxBus||master))return;
+  }
   if(extPlayVariant("swish",["swish","swish2","swish3"]))return;
   if(!AC||MUTED)return;
   const t=AC.currentTime;
