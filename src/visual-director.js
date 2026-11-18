@@ -15,7 +15,7 @@
     arcticSnow:{top:0x020911,horizon:0x101f31,lower:0x334859},
     spanishQuarter:{top:0x3c7898,horizon:0xb8c9c0,lower:0xdac8a8},
     lunarCrater:{top:0x000002,horizon:0x020307,lower:0x06070a},
-    tokyoRooftop:{top:0x02050d,horizon:0x13203d,lower:0x0a0f1c}
+    tokyoRooftop:{top:0x02050d,horizon:0x0b152a,lower:0x050914}
   });
 
   function makeSkyDome(THREE,name,centerZ){

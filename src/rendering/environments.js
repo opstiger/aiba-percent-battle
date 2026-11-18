@@ -480,8 +480,8 @@ function applyScenePreset(name,opts){
         sun.shadow.camera.updateProjectionMatrix();
       }
     }else if(name==="tokyoRooftop"){
-      /* 东京摩天楼顶夜场：深蓝都市夜空 + 天台球场 LED 泛光灯主照明 + 清晰远景铁塔与灯海。 */
-      scene.background.setHex(0x040812);scene.fog.color.setHex(0x0c1428);scene.fog.near=95;scene.fog.far=360;
+      /* 东京摩天楼顶夜场：深蓝都市夜空 + 天台球场 LED 泛光灯主照明 + 清晰远景铁塔与全景灯海。 */
+      scene.background.setHex(0x03060f);scene.fog.color.setHex(0x0a1224);scene.fog.near=150;scene.fog.far=480;
       ambient.color.setHex(0x8498bd);ambient.intensity=.38;
       hemi.color.setHex(0x6d89bd);hemi.groundColor.setHex(0x23293a);hemi.intensity=.48;
       sun.color.setHex(0xffe8c8);sun.intensity=1.12;sun.position.set(-14,21,8);

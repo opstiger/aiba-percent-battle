@@ -565,7 +565,7 @@
     b.box(0x4c586b,0,railH,zMax,px*2+.16,.055,.09);
     b.box(0x4c586b,-px,railH,zMid,.09,.055,zLen+.16);
     b.box(0x4c586b,px,railH,zMid,.09,.055,zLen+.16);
-    const glassMat=new THREE.MeshBasicMaterial({color:0x7eb8f0,transparent:true,opacity:0.17,depthWrite:false,side:THREE.DoubleSide});
+    const glassMat=new THREE.MeshBasicMaterial({color:0x7eb8f0,transparent:true,opacity:0.12,depthWrite:false,side:THREE.DoubleSide});
     const addGlass=(w,h,d,x,y,z)=>{const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),glassMat);m.position.set(x,y,z);s.root.add(m);};
     addGlass(px*2-.1,.9,0.03,0,.68,zMin);
     addGlass(px*2-.1,.9,0.03,0,.68,zMax);
@@ -595,153 +595,292 @@
     };
     for(const sx of [-1,1])for(const sz of [-1,1])makeBeacon(sx*(px-.1),1.38,sz<0?zMin:zMax,sx+sz,.95);
 
-    // 3. 东京夜景摩天楼群 + 程序化霓虹窗格贴图
-    const winCv=document.createElement("canvas");winCv.width=256;winCv.height=512;
-    const wg=winCv.getContext("2d");
-    wg.fillStyle="#070b14";wg.fillRect(0,0,256,512);
-    for(let row=6;row<504;row+=10){
-      const floorLit=s.r();
-      if(floorLit<.16)continue;
-      for(let col=6;col<248;col+=8){
-        const lit=s.r();
-        if(lit<.44)continue;
-        wg.fillStyle=lit>.93?"#7dd3fc":lit>.83?"#fb7185":lit>.62?"#fde68a":"#fff7ed";
-        wg.fillRect(col,row,5,6);
-      }
-    }
-    const winTex=new THREE.CanvasTexture(winCv);
-    winTex.wrapS=THREE.RepeatWrapping;winTex.wrapT=THREE.RepeatWrapping;
-    winTex.repeat.set(1.5,2.2);
-    if(THREE.sRGBEncoding)winTex.encoding=THREE.sRGBEncoding;
-    const skyMat=new THREE.MeshBasicMaterial({map:winTex,color:0xdbeafe});
+    // 3. 100% 程序化东京写实天际线建模（5 类真实建筑轮廓 + 留白率 75% 的自然办公楼层灯带）
+    const makeNaturalFacade=(style,seed)=>{
+      const cv=document.createElement("canvas");cv.width=512;cv.height=1024;
+      const g=cv.getContext("2d"),r=AIBAWorldPlaces.rng(seed);
+      // 深色玻璃幕墙底色（夜空微弱天光反射）
+      const bg=g.createLinearGradient(0,0,0,1024);
+      if(style==="office"){bg.addColorStop(0,"#09111f");bg.addColorStop(1,"#04070e");}
+      else if(style==="res"){bg.addColorStop(0,"#0a0c14");bg.addColorStop(1,"#05060a");}
+      else{bg.addColorStop(0,"#050810");bg.addColorStop(1,"#020408");}
+      g.fillStyle=bg;g.fillRect(0,0,512,1024);
 
-    // 暗色都市大地基底（夜色东京街道底面）
-    b.box(0x050811,0,-68,0,520,1,520);
-
-    // 围绕四周的摩天大楼（正前方留出开阔走廊给东京铁塔，两侧与远景高低错落耸立于地平线之上）
-    const bldCount=s.mobile?52:84;
-    const neonCols=[0x38bdf8,0xf43f5e,0xfbbf24,0x22d3ee];
-    for(let i=0;i<bldCount;i++){
-      let bx,bz,topY;
-      if(i<28){
-        // 铁塔左右两侧纵深天际线（高出天台地平线 -2m ~ +24m，形成壮观都市峡谷）
-        const side=i%2?1:-1;
-        bx=side*(30+s.r()*95);
-        bz=-24-s.r()*115;
-        topY=-2+s.r()*26;
-      }else if(i<56){
-        // 球场左右侧高楼群
-        const side=i%2?1:-1;
-        bx=side*(28+s.r()*90);
-        bz=-20+s.r()*68;
-        topY=-4+s.r()*22;
+      if(style==="office"){
+        // 真实写字楼：70%+ 楼层全暗，亮灯楼层呈成片连续水平办公带，中间留暗色核心筒竖带
+        const coreX=180+r()*120,coreW=36+r()*40;
+        for(let y=18;y<1008;y+=14){
+          const floorRoll=r();
+          if(floorRoll<0.68)continue; // 大部分楼层熄灯
+          const segStart=floorRoll>0.88?16:(r()*220);
+          const segEnd=floorRoll>0.88?496:(segStart+80+r()*220);
+          const tone=r()>0.45?"#dff4ff":r()>0.5?"#fde68a":"#bae6fd";
+          const alpha=0.55+r()*0.38;
+          g.fillStyle=tone;
+          for(let x=segStart;x<Math.min(496,segEnd);x+=12){
+            if(x>coreX&&x<coreX+coreW)continue;
+            if(r()<0.18)continue;
+            g.globalAlpha=alpha*(0.75+r()*0.25);
+            g.fillRect(x,y,8,5);
+          }
+        }
+        g.globalAlpha=1;
+        // 顶层设备层微光环
+        g.fillStyle="rgba(147,197,253,0.22)";g.fillRect(10,6,492,3);
+      }else if(style==="res"){
+        // 真实塔楼公寓：稀疏错落的暖黄/米白单户亮窗（约 18% 亮灯率）
+        for(let y=20;y<1008;y+=16){
+          for(let x=14;x<494;x+=18){
+            if(r()>0.18)continue;
+            g.fillStyle=r()>0.35?"#fde68a":"#fff7ed";
+            g.globalAlpha=0.5+r()*0.42;
+            g.fillRect(x,y,9,6);
+          }
+        }
+        g.globalAlpha=1;
       }else{
-        // 极远景铁塔背景天际线与后方楼群
-        bx=(s.r()-.5)*240;
-        bz=i<72?(-118-s.r()*48):(34+s.r()*65);
-        topY=-6+s.r()*18;
-      }
-      const bw=10+s.r()*14,bd=10+s.r()*14,bh=topY+68;
-      const bm=new THREE.Mesh(new THREE.BoxGeometry(bw,bh,bd),skyMat);
-      bm.position.set(bx,-68+bh*.5,bz);
-      s.root.add(bm);
-      // 楼顶航空灯或霓虹冠饰
-      if(topY>4){
-        makeBeacon(bx+bw*.38,topY+.4,bz+bd*.38,i*.7,1.45);
-        if(i%4===0){
-          const nc=neonCols[i%neonCols.length];
-          lampGlow.box(nc,bx,topY-.35,bz+bd*.5+.08,bw*.72,.28,.12);
+        // 暗色调背景楼宇：90% 全暗剪影，仅零星几层微光，拉开城市前后明暗层次
+        for(let y=28;y<1000;y+=22){
+          if(r()>0.14)continue;
+          g.fillStyle="rgba(226,232,240,0.38)";
+          for(let x=24;x<480;x+=20)if(r()<0.45)g.fillRect(x,y,10,5);
         }
       }
+      const tex=new THREE.CanvasTexture(cv);
+      tex.wrapS=THREE.RepeatWrapping;tex.wrapT=THREE.RepeatWrapping;
+      tex.anisotropy=4;
+      if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;
+      return tex;
+    };
+    const matOffice=new THREE.MeshBasicMaterial({map:makeNaturalFacade("office",10931)});
+    const matRes=new THREE.MeshBasicMaterial({map:makeNaturalFacade("res",20477)});
+    const matSil=new THREE.MeshBasicMaterial({map:makeNaturalFacade("sil",30881)});
+
+    // 合并多种几何体生成真实东京大厦外轮廓模板（标准体在 y∈[-0.5, 0.5] 内）
+    const mergeGeos=(parts)=>{
+      let totVerts=0;
+      const nonIdx=parts.map(g=>{
+        const ng=g.index?g.toNonIndexed():g;
+        totVerts+=ng.attributes.position.count;
+        return ng;
+      });
+      const pos=new Float32Array(totVerts*3),uv=new Float32Array(totVerts*2);
+      let offP=0,offU=0;
+      nonIdx.forEach(ng=>{
+        pos.set(ng.attributes.position.array,offP);
+        if(ng.attributes.uv)uv.set(ng.attributes.uv.array,offU);
+        offP+=ng.attributes.position.count*3;
+        offU+=ng.attributes.position.count*2;
+        ng.dispose();
+      });
+      const out=new THREE.BufferGeometry();
+      out.setAttribute("position",new THREE.BufferAttribute(pos,3));
+      out.setAttribute("uv",new THREE.BufferAttribute(uv,2));
+      out.computeVertexNormals();
+      return out;
+    };
+    // 模板 A：六本木森大厦式退台八角/切角塔楼（底座+中段+退台冠部）
+    const geoSetback=(()=>{
+      const p1=new THREE.BoxGeometry(1,.42,1);p1.translate(0,-.29,0);
+      const p2=new THREE.BoxGeometry(.80,.40,.80);p2.translate(0,.12,0);
+      const p3=new THREE.BoxGeometry(.54,.18,.54);p3.translate(0,.41,0);
+      return mergeGeos([p1,p2,p3]);
+    })();
+    // 模板 B：圆柱/切角流线摩天楼（虎之门/品川风格）
+    const geoCyl=new THREE.CylinderGeometry(.46,.56,1,10,1);
+    // 模板 C：斜切顶面现代玻璃大厦
+    const geoSlant=(()=>{
+      const g=new THREE.BoxGeometry(1,1,1);
+      const p=g.attributes.position;
+      for(let i=0;i<p.count;i++){
+        if(p.getY(i)>0&&p.getX(i)>0)p.setY(i,0.32);
+      }
+      return g;
+    })();
+    // 模板 D：双子/错落组合办公楼
+    const geoTwin=(()=>{
+      const p1=new THREE.BoxGeometry(.58,1,.92);p1.translate(-.21,0,0);
+      const p2=new THREE.BoxGeometry(.52,.78,.82);p2.translate(.22,-.11,.04);
+      return mergeGeos([p1,p2]);
+    })();
+
+    // 远景深色城市大地基底
+    const cityGround=new THREE.Mesh(
+      new THREE.PlaneGeometry(360,360),
+      new THREE.MeshBasicMaterial({color:0x03060d})
+    );
+    cityGround.rotation.x=-Math.PI/2;cityGround.position.set(0,-22,0);s.root.add(cityGround);
+
+    // 3200 颗微距都市街头/路灯点阵（更克制柔和，避免碎噪感）
+    const ptCount=s.mobile?1800:3200;
+    const ptPos=new Float32Array(ptCount*3),ptCol=new Float32Array(ptCount*3);
+    const pal=[[1,.88,.70],[1,.70,.36],[.55,.82,1],[1,.34,.28],[.92,.95,1]];
+    for(let i=0;i<ptCount;i++){
+      const ang=s.r()*Math.PI*2,rad=38+Math.pow(s.r(),.78)*110;
+      ptPos[i*3]=Math.cos(ang)*rad;
+      ptPos[i*3+1]=-19+s.r()*17;
+      ptPos[i*3+2]=Math.sin(ang)*rad-6;
+      const c=pal[i%pal.length];
+      ptCol[i*3]=c[0];ptCol[i*3+1]=c[1];ptCol[i*3+2]=c[2];
     }
+    const ptGeo=new THREE.BufferGeometry();
+    ptGeo.setAttribute("position",new THREE.BufferAttribute(ptPos,3));
+    ptGeo.setAttribute("color",new THREE.BufferAttribute(ptCol,3));
+    const ptMat=new THREE.PointsMaterial({size:0.46,vertexColors:true,transparent:true,opacity:.82,sizeAttenuation:true});
+    s.root.add(new THREE.Points(ptGeo,ptMat));
+
+    // 按轮廓×材质分批构建多样化东京建筑群（全部落在 r<=144 内）
+    const totalBld=s.mobile?180:290;
+    const bGeos=[geoSetback,geoCyl,geoSlant,geoTwin];
+    const bMats=[matOffice,matRes,matSil];
+    const pools=[];
+    const poolMax=Math.ceil(totalBld/6)+8;
+    for(let gi=0;gi<bGeos.length;gi++)for(let mi=0;mi<bMats.length;mi++){
+      pools.push({inst:new THREE.InstancedMesh(bGeos[gi],bMats[mi],poolMax),count:0,max:poolMax});
+    }
+    const dummy=new THREE.Object3D();
+    const tx=25,tz=-124;
+    for(let i=0;i<totalBld;i++){
+      let bx,bz,bw,bd,topY,rotY=(s.r()-.5)*0.9,gi=i%bGeos.length,mi=i%bMats.length;
+      if(i===0){
+        // 左侧六本木/麻布台式超高流线主塔
+        bx=-38;bz=-94;bw=10.5;bd=10.5;topY=21;rotY=0.2;gi=1;mi=0;
+      }else if(i<175){
+        bx=(s.r()-.5)*215;
+        bz=-32-s.r()*110;
+        if(Math.abs(bx-tx)<13&&bz>-126&&bz<-30)bx+=(bx>=tx?15:-15);
+        if(Math.hypot(bx,bz)>144)continue;
+        bw=3.0+s.r()*4.2;bd=3.0+s.r()*4.2;
+        topY=-3+s.r()*10+(s.r()>.86?7:0);
+      }else if(i<245){
+        const side=i%2?1:-1;
+        bx=side*(26+s.r()*95);
+        bz=-28+s.r()*75;
+        if(Math.hypot(bx,bz)>144)continue;
+        bw=3.4+s.r()*4.6;bd=3.4+s.r()*4.6;
+        topY=-3+s.r()*11;
+      }else{
+        bx=(s.r()-.5)*180;
+        bz=34+s.r()*70;
+        if(Math.hypot(bx,bz)>144)continue;
+        bw=3.5+s.r()*4.5;bd=3.5+s.r()*4.5;
+        topY=-3+s.r()*9;
+      }
+      const bh=Math.max(10,topY+22);
+      dummy.position.set(bx,-22+bh*.5,bz);
+      dummy.rotation.set(0,rotY,0);
+      dummy.scale.set(bw,bh,bd);
+      dummy.updateMatrix();
+      const pool=pools[gi*bMats.length+mi];
+      if(pool.count<pool.max){
+        pool.inst.setMatrixAt(pool.count++,dummy.matrix);
+      }
+      if(topY>3.5&&i%4===0)makeBeacon(bx,topY+.35,bz,i*.7,0.9);
+    }
+    pools.forEach(p=>{
+      p.inst.count=p.count;
+      p.inst.instanceMatrix.needsUpdate=true;
+      if(p.count>0)s.root.add(p.inst);
+    });
     lampGlow.finish(s.root,"tokyoRooftopFloods",true);
 
-    // 4. 标志性地标：东京铁塔（偏右构图，不被篮筐遮挡，红白钢架 + 暖金/橙红夜间照明 + 展望台 + 塔尖）
-    const tx=19.5,tz=-82,tBase=-48;
+    // 4. 远景全亮东京铁塔（距离感拉远至 z=-124、精致纤细结构 + 通体暖橙金发光光晕）
+    const tBase=-10,H=44;
     const towerGlow=batch();
-    const tiers=13,H=86;
-    const halfAt=u=>13.0*Math.pow(1-u,1.52)+1.15;
+    const tiers=12;
+    const halfAt=u=>5.6*Math.pow(1-u,1.55)+0.55;
     for(let k=0;k<tiers;k++){
-      const u0=k/tiers,u1=(k+1)/tiers,um=(u0+u1)*.5;
+      const u0=k/tiers,u1=(k+1)/tiers;
       const y0=tBase+u0*H,y1=tBase+u1*H,ym=(y0+y1)*.5;
       const w0=halfAt(u0),w1=halfAt(u1),wm=(w0+w1)*.5;
-      const red=k%2===0;
-      const col=red?0xeb3f25:0xf3f5f8;
-      const segH=(y1-y0)+.25,tilt=Math.atan2(w0-w1,y1-y0);
-      // 四根倾斜钢骨主腿
+      const segH=(y1-y0)+.15,tilt=Math.atan2(w0-w1,y1-y0);
+      // 夜间点亮的东京铁塔：通体暖橙金 + 中上段炽白泛光（直接使用自发光 batch）
+      const glowCol=(k===6||k===7)?0xfff3d6:(k>=8?0xff9442:0xff6a1a);
       for(const sx of [-1,1])for(const sz of [-1,1]){
-        b.box(col,tx+sx*wm,ym,tz+sz*wm,.48,segH,.48,sz*tilt,0,-sx*tilt);
-        // 内侧暖橙夜间投光高亮筋
-        towerGlow.box(red?0xff6e30:0xffbe76,tx+sx*(wm-.22),ym,tz+sz*(wm-.22),.2,segH*.94,.2,sz*tilt,0,-sx*tilt);
+        towerGlow.box(glowCol,tx+sx*wm,ym,tz+sz*wm,.26,segH,.26,sz*tilt,0,-sx*tilt);
       }
-      // 水平横梁与交叉斜撑
-      b.box(col,tx,y1,tz-w1,w1*2,.34,.34);
-      b.box(col,tx,y1,tz+w1,w1*2,.34,.34);
-      b.box(col,tx-w1,y1,tz,.34,.34,w1*2);
-      b.box(col,tx+w1,y1,tz,.34,.34,w1*2);
+      towerGlow.box(glowCol,tx,y1,tz-w1,w1*2,.22,.22);
+      towerGlow.box(glowCol,tx,y1,tz+w1,w1*2,.22,.22);
+      towerGlow.box(glowCol,tx-w1,y1,tz,.22,.22,w1*2);
+      towerGlow.box(glowCol,tx+w1,y1,tz,.22,.22,w1*2);
       if(k<tiers-1){
         const diag=Math.hypot(wm*1.9,y1-y0),ang=Math.atan2(wm*1.9,y1-y0);
-        b.box(col,tx,ym,tz+wm,.18,diag,.18,0,0,ang);
-        b.box(col,tx,ym,tz+wm,.18,diag,.18,0,0,-ang);
+        towerGlow.box(glowCol,tx,ym,tz+wm,.13,diag,.13,0,0,ang);
+        towerGlow.box(glowCol,tx,ym,tz+wm,.13,diag,.13,0,0,-ang);
       }
     }
-    // 大展望台 (Main Deck) & 特别展望台 (Top Deck)
-    const mainY=tBase+52,topY=tBase+71;
-    b.box(0x28303e,tx,mainY,tz,8.0,3.2,8.0);
-    towerGlow.box(0xffc966,tx,mainY,tz,8.25,1.5,8.25);
-    towerGlow.box(0x7dd3fc,tx,mainY+1.0,tz,8.15,.35,8.15);
-    b.box(0x28303e,tx,topY,tz,4.2,2.4,4.2);
-    towerGlow.box(0xffd27a,tx,topY,tz,4.45,1.0,4.45);
-    // 顶部红白避雷针天线 + 塔尖航空红灯
+    // 大展望台 & 特别展望台（暖金主灯带 + 冰蓝环带）
+    const mainY=tBase+19.5,topY=tBase+29.5;
+    towerGlow.box(0xffe08a,tx,mainY,tz,4.2,1.5,4.2);
+    towerGlow.box(0x7dd3fc,tx,mainY+.65,tz,4.3,.28,4.3);
+    towerGlow.box(0xfff0b3,tx,topY,tz,2.3,1.1,2.3);
+    // 顶部避雷针天线
     for(let a=0;a<4;a++){
-      const ay=tBase+H+a*5.5+2.75;
-      b.box(a%2?0xf3f5f8:0xeb3f25,tx,ay,tz,.55-.08*a,5.6,.55-.08*a);
-      towerGlow.box(0xff8c42,tx,ay,tz,.6-.08*a,5.2,.6-.08*a);
+      const ay=tBase+H+a*2.6+1.3;
+      towerGlow.box(a%2?0xfff3e0:0xff5a1f,tx,ay,tz,.30-.04*a,2.7,.30-.04*a);
     }
     towerGlow.finish(s.root,"tokyoTowerGlow",true);
-    makeBeacon(tx,tBase+H+22.4,tz,0,2.1);
+    makeBeacon(tx,tBase+H+10.6,tz,0,1.45);
 
-    // 5. 首都高架桥 + 流动红白车流光轨
-    b.box(0x131822,0,-46.5,-44,240,.8,5.2);
+    // 铁塔夜间泛光柔光晕（克制通透的暖橙空气辉光，避免过曝白斑）
+    const haloCv=document.createElement("canvas");haloCv.width=128;haloCv.height=128;
+    const hg=haloCv.getContext("2d");
+    const hgr=hg.createRadialGradient(64,64,2,64,64,60);
+    hgr.addColorStop(0,"rgba(255,115,35,0.26)");
+    hgr.addColorStop(0.5,"rgba(255,75,20,0.09)");
+    hgr.addColorStop(1,"rgba(255,50,10,0)");
+    hg.fillStyle=hgr;hg.fillRect(0,0,128,128);
+    const haloTex=new THREE.CanvasTexture(haloCv);
+    const haloMat=new THREE.MeshBasicMaterial({map:haloTex,transparent:true,blending:THREE.AdditiveBlending,depthWrite:false});
+    const haloMesh=new THREE.Mesh(new THREE.PlaneGeometry(18,36),haloMat);
+    haloMesh.position.set(tx,tBase+19,tz+1);
+    s.root.add(haloMesh);
+
+    // 5. 高架公路 + 140 辆流动红白车流光轨
+    const roadDefs=[
+      {z:-36,y:-1.2,rotY:0.05,len:200},
+      {z:-66,y:-3.5,rotY:-0.09,len:220},
+      {z:-96,y:-5.5,rotY:0.12,len:220}
+    ];
+    roadDefs.forEach(rd=>{
+      b.box(0x0b0f18,0,rd.y,rd.z,rd.len,.45,3.8,0,rd.rotY,0);
+    });
+    const tCount=s.mobile?80:140;
+    const carGeo=new THREE.BoxGeometry(1.3,.18,.28);
+    const instHead=new THREE.InstancedMesh(carGeo,new THREE.MeshBasicMaterial({color:0xfff7ed}),tCount/2);
+    const instTail=new THREE.InstancedMesh(carGeo,new THREE.MeshBasicMaterial({color:0xff3b30}),tCount/2);
     const traffic=[];
-    const tCount=s.mobile?18:32;
     for(let i=0;i<tCount;i++){
-      const dir=i%2?1:-1;
-      const tm=new THREE.Mesh(
-        new THREE.BoxGeometry(1.7,.22,.32),
-        new THREE.MeshBasicMaterial({color:dir>0?0xff3b30:0xf8fafc})
-      );
-      const startX=-115+i*(230/tCount);
-      tm.position.set(startX,-45.95,dir>0?-42.8:-45.2);
-      s.root.add(tm);
-      traffic.push({m:tm,baseX:startX,dir,speed:14+(i%5)*3.2});
+      const rd=roadDefs[i%roadDefs.length],dir=i%2?1:-1;
+      const basePos=(i/tCount-.5)*rd.len;
+      traffic.push({rd,dir,basePos,speed:14+(i%7)*2.4,lane:dir>0?1.0:-1.0,isHead:dir<0,idx:(i/2)|0});
     }
+    s.root.add(instHead);s.root.add(instTail);
 
-    // 6. 远方东京湾与彩虹大桥剪影（左远景）
-    b.box(0x061020,-75,-56,-145,140,.4,40);
-    b.box(0x1f2a3c,-75,-46,-145,84,.55,1.4);
-    for(const pxOff of [-22,22]){
-      b.box(0xdbeafe,-75+pxOff,-43,-145,1.1,16,1.1);
-    }
-    const bridgeGlow=batch();
-    bridgeGlow.box(0xe0f2fe,-75,-45.6,-145,84,.25,1.5);
-    bridgeGlow.finish(s.root,"tokyoRainbowBridge",true);
-
-    s.wonder={kind:"tokyo",beacons,traffic};
+    s.wonder={kind:"tokyo",beacons,traffic,instHead,instTail,dummy};
+    update(s);
   }
   function build(s,b,helpers){if(s.name==="arcticSnow")arctic(s,b,helpers);else if(s.name==="spanishQuarter")spanish(s,b,helpers);else if(s.name==="lunarCrater")lunar(s,b,helpers);else if(s.name==="tokyoRooftop")tokyo(s,b,helpers);}
   function update(s){
     const w=s.wonder;if(!w)return;
     if(w.kind==="tokyo"){
-      const t=s.time;
+      const t=s.time,d=w.dummy;
+      d.scale.set(1,1,1);
       w.beacons.forEach(b=>{
         const p=.22+.78*(.5+.5*Math.sin(t*3.1+b.phase));
         b.mat.color.setRGB(1.0*p,.16*p,.12*p);
       });
       w.traffic.forEach(tr=>{
-        const span=236;
-        tr.m.position.x=((tr.baseX+tr.dir*tr.speed*t+118)%span+span)%span-118;
+        const span=tr.rd.len,u=((tr.basePos+tr.dir*tr.speed*t+span*.5)%span+span)%span-span*.5;
+        const c=Math.cos(tr.rd.rotY),sn=Math.sin(tr.rd.rotY);
+        d.position.set(u*c+tr.lane*sn,tr.rd.y+.55,tr.rd.z-u*sn+tr.lane*c);
+        d.rotation.set(0,tr.rd.rotY,0);
+        d.updateMatrix();
+        if(tr.isHead)w.instHead.setMatrixAt(tr.idx,d.matrix);
+        else w.instTail.setMatrixAt(tr.idx,d.matrix);
       });
+      w.instHead.instanceMatrix.needsUpdate=true;
+      w.instTail.instanceMatrix.needsUpdate=true;
       return;
     }
     if(w.kind==="lunar"){
