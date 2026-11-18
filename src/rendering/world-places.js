@@ -1238,7 +1238,7 @@
   }
   function update(dt,progress){
     const s=environmentRoot.userData.placeState;if(!s)return;s.time+=dt;
-    AIBAWorldWonders.update(s);
+    AIBAWorldWonders.update(s,dt);
     s.plants.forEach(p=>{const t=s.time,phase=p.phase;p.pivot.rotation.z=(Math.sin(t*.8+phase)+.32*Math.sin(t*1.73+phase*2))*p.amp;p.pivot.rotation.x=Math.sin(t*.61+phase)*p.amp*.55;});
     if(s.meadowWind)s.meadowWind.value=s.time;
     /* 湘南的浪:整片泡沫缓慢向岸推移,循环 —— 和 beachSunset 的 s.wave 同机制,

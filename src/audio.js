@@ -599,7 +599,8 @@ function applyExternalMediaMix(){
   set("bgm",EXT_DEFAULT_VOLUME.bgm*(duck?0.58:1)*pd);
   set("crowd",quiet?0:(G.finalRun?0.34:EXT_DEFAULT_VOLUME.crowd)*(1+heat*.42)*(duck?0.72:1)*pd);
   set("crowdCheer",quiet?0:(G.finalRun?0.31:EXT_DEFAULT_VOLUME.crowdCheer)*(1+heat*.62)*(duck?0.7:1)*pd);
-  set("rain",(arenaLike?0.2:0.11)*(duck?0.82:1)*pd);
+  const rainGain=currentScenePreset==="flowerCourt"?meadowRainLevel()*.75:1;
+  set("rain",(arenaLike?0.2:0.11)*(duck?0.82:1)*pd*rainGain);
   set("ocean",(G.finalRun?0.26:(arenaLike?0.24:0.12))*(duck?0.82:1)*pd);
 }
 function setCrowdHeat(level){
@@ -612,11 +613,14 @@ function setCrowdHeat(level){
   }
   applyExternalMediaMix();
 }
+function meadowRainLevel(){
+  return environmentRoot.userData.placeState?.meadow?.uniforms.meadowSky.value.z||0;
+}
 function syncSceneAmbience(){
   const arenaLike=sceneAudioArenaLike(),allowed=G.state==="diff"||arenaLike;
   applyExternalMediaMix();
   if(!AC||MUTED||AC.state==="suspended"||!allowed){extStop("rain");extStop("ocean");syncCoastalWind(false);syncAudioDebug();return;}
-  const rainy=currentWeather==="rain",beach=currentScenePreset==="beachSunset",rooftop=currentScenePreset==="tokyoRooftop";
+  const rainy=currentWeather==="rain"||meadowRainLevel()>.06,beach=currentScenePreset==="beachSunset",rooftop=currentScenePreset==="tokyoRooftop";
   applyExternalMediaMix();
   if(rainy)extPlay("rain");else extStop("rain");
   if(beach){extPlay("ocean");syncCoastalWind(arenaLike);}else{extStop("ocean");syncCoastalWind(rooftop&&arenaLike);}
@@ -1048,6 +1052,20 @@ function noiseHit(dur,vol,hp){
   const f=AC.createBiquadFilter();f.type="highpass";f.frequency.value=hp||2000;
   const g=AC.createGain();g.gain.value=vol||0.2;
   n.connect(f);f.connect(g);g.connect(sfxBus||master);n.start();
+}
+function playMeadowThunder(){
+  if(!AC||MUTED||AC.state!=="running"||!sceneAudioArenaLike())return;
+  const t=AC.currentTime,duration=2.3;
+  const rumble=AC.createBufferSource(),low=AC.createBiquadFilter(),gain=AC.createGain();
+  rumble.buffer=noiseBusBuffer(duration);
+  low.type="lowpass";low.frequency.setValueAtTime(330,t);
+  low.frequency.exponentialRampToValueAtTime(64,t+duration);
+  gain.gain.setValueAtTime(.001,t);
+  gain.gain.exponentialRampToValueAtTime(.48,t+.10);
+  gain.gain.exponentialRampToValueAtTime(.16,t+.31);
+  gain.gain.exponentialRampToValueAtTime(.23,t+.56);
+  gain.gain.exponentialRampToValueAtTime(.001,t+duration);
+  rumble.connect(low);low.connect(gain);gain.connect(sfxBus||master);rumble.start(t);
 }
 function blipBus(bus,freq,dur,type,vol,slide){
   if(!AC||MUTED)return;

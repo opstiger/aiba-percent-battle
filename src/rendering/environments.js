@@ -158,9 +158,10 @@ function writeFlowerInstance(state,layer,i,grow){
   const d=layer.data[i],o=state.dummy,form=d.form;
   const scale=Math.max(.001,Math.pow(grow,.76)),height=d.h*scale;
   const phase=state.time*1.3-d.x*.23-d.z*.125;
-  const gust=Math.sin(phase)*.105+Math.sin(phase*.62+d.phase)*.053;
+  const wind=state.wind||0;
+  const gust=(Math.sin(phase)*.105+Math.sin(phase*.62+d.phase)*.053)*(1+wind*1.25);
   const flick=Math.sin(state.time*2.37+d.phase*1.7)*.033;
-  const arcX=(gust+flick+.037)*height,arcZ=(gust*.54-flick*.50)*height;
+  const arcX=(gust+flick+.037+.16*wind)*height,arcZ=(gust*.54-flick*.50+.075*wind)*height;
   const at=(p,t)=>p.set(d.x+d.axis.x*height*t+arcX*t*t,d.y+d.axis.y*height*t,d.z+d.axis.z*height*t+arcZ*t*t);
   at(state.root,0);at(state.mid,.5);at(state.tip,1);
   const radius=d.stem*scale;
@@ -445,7 +446,11 @@ function updateFlowerCourt(progress,dt){
   state.revealProgress=Math.max(state.revealProgress,Math.pow(clamp(progress,0,1),.88));
   state.visualProgress+=(state.revealProgress-state.visualProgress)*(1-Math.exp(-2.2*dt));
   const meadow=environmentRoot.userData.placeState?.meadow;
-  if(meadow)meadow.progress=state.visualProgress;
+  if(meadow){
+    meadow.flowerProgress=state.visualProgress;
+    meadow.score=clamp(progress,0,1);
+    state.wind=meadow.wind.value;
+  }
   const groundT=clamp(state.revealProgress/.96,0,1),structureT=smoothRange(.16,.91,state.revealProgress);
   setFlowerLayerTarget(state,state.ground,Math.floor(groundT*state.ground.total));
   setFlowerLayerTarget(state,state.structure,Math.floor(structureT*state.structure.total));
@@ -661,7 +666,10 @@ function applyScenePreset(name,opts){
 function getEnvironmentProgress(){
   if(G.state==="boot"||G.state==="menu"||G.state==="diff"||G.state==="intro")return 0;
   if(G.mode==="battle")return clamp(Math.max(G.score||0,G.battleOppScore||0)/BATTLE_TARGET,0,1);
-  if(G.mode==="rackrush"&&G.rush)return clamp((G.rush.level+(G.timer<=0?1:1-G.timer/Math.max(1,(RACK_RUSH_LEVELS[G.rush.level]||RACK_RUSH_LEVELS[0]).time)))/RACK_RUSH_LEVELS.length,0,1);
+  if(G.mode==="rackrush"&&G.rush){
+    if(currentScenePreset==="flowerCourt"&&isRackRushSpeed(G.rush))return clamp((G.rush.total||0)/RACK_RUSH_SPEED_TARGET,0,1);
+    return clamp((G.rush.level+(G.timer<=0?1:1-G.timer/Math.max(1,(RACK_RUSH_LEVELS[G.rush.level]||RACK_RUSH_LEVELS[0]).time)))/RACK_RUSH_LEVELS.length,0,1);
+  }
   if(G.mode==="contest")return clamp((G.score||0)/40,0,1);
   return 0;
 }

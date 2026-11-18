@@ -17,7 +17,11 @@
     state.petalMat.emissiveIntensity=.038;
     state.coreMat.emissiveIntensity=.025;
     const place=environmentRoot.userData.placeState;
-    if(place?.meadow){place.meadow.progress=0;AIBAWorldWonders.update(place);}
+    if(place?.meadow){
+      AIBAMeadowWeather.reset(place.meadow);
+      state.wind=0;
+      AIBAWorldWonders.update(place);
+    }
     document.documentElement.dataset.flowerCount="0";
     document.documentElement.dataset.flowerGround="0";
     document.documentElement.dataset.flowerStructure="0";

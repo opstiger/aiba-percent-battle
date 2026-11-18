@@ -1132,10 +1132,11 @@
         shader.uniforms.grassDetail={value:grass};
         shader.uniforms.flowerCover={value:s.meadow.drifts.coverage};
         shader.uniforms.fieldProgress=s.meadow.drifts.bloom;
+        Object.assign(shader.uniforms,s.meadow.uniforms);
         shader.vertexShader="varying vec2 vMeadowXZ;\n"+shader.vertexShader.replace(
           "#include <begin_vertex>","#include <begin_vertex>\nvMeadowXZ = position.xz;"
         );
-        shader.fragmentShader="varying vec2 vMeadowXZ;\nuniform sampler2D grassDetail;\nuniform sampler2D flowerCover;\nuniform float fieldProgress;\n"+shader.fragmentShader.replace("#include <map_fragment>",`
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+"varying vec2 vMeadowXZ;\nuniform sampler2D grassDetail;\nuniform sampler2D flowerCover;\nuniform float fieldProgress;\n"+shader.fragmentShader.replace("#include <map_fragment>",`
           vec2 m = vMeadowXZ;
           vec2 uvMarks = vec2(m.x/32.0+0.5, 1.0-(m.y+13.0)/36.0);
           vec4 chalk = mapTexelToLinear(texture2D(map, uvMarks));
@@ -1158,6 +1159,14 @@
           float flowering=smoothstep(wake+.025,wake+.15,fieldProgress);
           float farCover=smoothstep(6.0,24.0,length(cameraPosition.xz-m));
           diffuseColor.rgb=mix(diffuseColor.rgb,drift.rgb*.79,drift.a*flowering*farCover*.61);
+          float movingLight=sunWindow(vec3(m.x,0.0,m.y),1.0);
+          float outside=smoothstep(.85,1.48,max(clearing.x,clearing.y));
+          float cloudShade=1.0-.43*meadowSky.x*(1.0-meadowSky.y*.72)*(1.0-movingLight)*mix(.48,1.0,outside);
+          cloudShade+=movingLight*meadowAir.y*.41*mix(.48,1.0,outside);
+          diffuseColor.rgb*=vec3(cloudShade)*(1.0-meadowSky.w*(.15+fine*.25));
+          vec3 eye=normalize(cameraPosition-vec3(m.x,0.0,m.y));
+          float shine=pow(max(0.0,dot(reflect(-meadowSun,vec3(0.0,1.0,0.0)),eye)),12.0);
+          diffuseColor.rgb+=vec3(.13,.105,.076)*shine*meadowSky.w*meadowSky.x*(.24+.76*movingLight)*(.32+fine);
           diffuseColor.rgb = mix(diffuseColor.rgb,chalk.rgb,chalk.a);
         `);
       };
@@ -1215,18 +1224,17 @@
       const geo=new THREE.BufferGeometry();geo.setIndex(indices);
       geo.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
       geo.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));geo.computeVertexNormals();
-      const normals=geo.getAttribute("normal"),sunward=new THREE.Vector3(-.88,.26,.41).normalize();
+      const normals=geo.getAttribute("normal");
       for(let i=0;i<normals.count;i++){
         const a=angle[i%(cols+1)],y=positions[i*3+1],ny=normals.getY(i);
         const snowLine=(far?46:34)+6*Math.sin(a*9+.8)+3.5*Math.sin(a*22);
         const alpine=smooth(y,snowLine-22,snowLine+28);
         // Snow settles in bowls and chutes above the tree line. Convex, steep ribs stay exposed even at the summit.
         const retention=alpine*(.29+.49*smooth(ny,.23,.87)+.35*deposition[i]);
-        const sunFace=normals.getX(i)*sunward.x+ny*sunward.y+normals.getZ(i)*sunward.z;
         const daylight=.50+.50*Math.max(0,-.39*normals.getX(i)+.74*ny+.55*normals.getZ(i));
-        exposure.push(retention,sunFace,daylight,smooth(y,far?36:34,far?91:62));
+        exposure.push(retention,daylight,smooth(y,far?36:34,far?91:62));
       }
-      geo.setAttribute("rockExposure",new THREE.Float32BufferAttribute(exposure,4));
+      geo.setAttribute("rockExposure",new THREE.Float32BufferAttribute(exposure,3));
       const mesh=new THREE.Mesh(geo,material);
       mesh.name=far?"alpineFarSnowPeaks":"alpineNearRidges";s.root.add(mesh);
     }
@@ -1277,13 +1285,15 @@
         }
       }
       const geo=new THREE.BufferGeometry();geo.setIndex(indices);geo.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));geo.computeVertexNormals();
-      const mat=new THREE.MeshLambertMaterial({side:THREE.DoubleSide}),time={value:0};
+      const mat=new THREE.MeshLambertMaterial({side:THREE.DoubleSide}),time=s.meadow.time;
       mat.onBeforeCompile=shader=>{
         shader.uniforms.meadowTime=time;
-        shader.vertexShader="uniform float meadowTime;\n"+shader.vertexShader.replace("#include <begin_vertex>",`
+        shader.uniforms.meadowWind=s.meadow.wind;
+        shader.vertexShader="uniform float meadowTime,meadowWind;\n"+shader.vertexShader.replace("#include <begin_vertex>",`
           #include <begin_vertex>
           vec2 root = instanceMatrix[3].xz;
-          float wind = 0.12*sin(meadowTime*1.55-root.x*.27-root.y*.12)+0.063*sin(meadowTime*2.1+root.y*.65);
+          float wind = (0.12*sin(meadowTime*1.55-root.x*.27-root.y*.12)+0.063*sin(meadowTime*2.1+root.y*.65))
+            *(1.0+meadowWind*1.4)+meadowWind*.18;
           transformed.x += wind * position.y * position.y;
           transformed.z += wind * position.y * position.y * 0.52;
         `);
@@ -1301,53 +1311,6 @@
       }
       mesh.name="alpineSwayingGrass";mesh.frustumCulled=false;s.root.add(mesh);
       s.meadowWind=time;
-    }
-
-    function meadowWeather(s){
-      const phase={value:new THREE.Vector2(0,0)},time={value:0};
-      const skyMat=new THREE.ShaderMaterial({
-        side:THREE.BackSide,depthWrite:false,fog:false,uniforms:{phase,time},
-        vertexShader:`
-          varying vec3 vDirection;
-          void main(){vDirection=position;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}
-        `,
-        fragmentShader:`
-          varying vec3 vDirection;
-          uniform vec2 phase;
-          uniform float time;
-          float hash(vec2 p){return fract(sin(dot(p,vec2(127.1,311.7)))*43758.5453);}
-          float noise(vec2 p){
-            vec2 n=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
-            return mix(mix(hash(n),hash(n+vec2(1.0,0.0)),f.x),mix(hash(n+vec2(0.0,1.0)),hash(n+vec2(1.0)),f.x),f.y);
-          }
-          float clouds(vec2 p){return .56*noise(p)+.30*noise(p*2.1)+.14*noise(p*4.33);}
-          void main(){
-            vec3 ray=normalize(vDirection);
-            float height=max(0.0,ray.y),haze=pow(1.0-height,3.0);
-            vec2 p=ray.xz/(0.26+height)*1.25+vec2(time*.026,time*.012);
-            float cover=clouds(p+vec2(3.0,13.4));
-            float fringe=clouds(p+vec2(-.16,.18)+vec2(3.0,13.4));
-            float edge=mix(.41,.705,phase.x);
-            float alpha=smoothstep(edge,edge+.117,cover)*smoothstep(-.035,.12,ray.y);
-            vec3 blue=mix(vec3(.066,.246,.49),vec3(.46,.66,.78),haze);
-            blue=mix(blue,vec3(.39,.51,.59),.38*(1.0-phase.x));
-            float glint=pow(max(0.0,dot(ray,normalize(vec3(-.86,.21,.37)))),12.0);
-            vec3 evening=mix(vec3(.030,.085,.112),vec3(.105,.205,.245),haze);
-            blue=mix(blue,evening,phase.y*.83);
-            blue=mix(blue,vec3(.43,.26,.16),phase.y*.25*glint);
-            vec3 cloud=mix(vec3(.51,.59,.66),vec3(.93,.94,.92),smoothstep(.45,.7,cover+(cover-fringe)));
-            cloud=mix(cloud,cloud*vec3(.70,.73,.80),phase.y*.67);
-            cloud=mix(cloud,vec3(.94,.67,.46),phase.y*.20*glint);
-            gl_FragColor=vec4(mix(blue,cloud,alpha),1.0);
-            #include <tonemapping_fragment>
-            #include <encodings_fragment>
-          }
-        `
-      });
-      const sky=new THREE.Mesh(new THREE.SphereGeometry(485,32,20),skyMat);
-      sky.name="alpineCloudSky";sky.position.z=COURT.midZ;sky.frustumCulled=false;sky.renderOrder=-990;s.root.add(sky);
-      return {phase,time,progress:0,cloudSun:new THREE.Color(0xe4edf0),daySun:new THREE.Color(0xffefcf),
-        peakSun:new THREE.Color(0xffc17f),blueFog:new THREE.Color(0xa8c4d0),goldFog:new THREE.Color(0x879cad)};
     }
 
     function driftCoverage(instances){
@@ -1406,12 +1369,12 @@
       const mat=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide,emissive:0xdcd2a4,emissiveIntensity:.035});
       const bloom={value:0};
       mat.onBeforeCompile=shader=>{
-        shader.uniforms.meadowTime=weather.time;shader.uniforms.meadowBloom=bloom;
-        shader.vertexShader="uniform float meadowTime;\nuniform float meadowBloom;\nattribute float bloomStart;\n"+
+        shader.uniforms.meadowTime=weather.time;shader.uniforms.meadowBloom=bloom;shader.uniforms.meadowWind=weather.wind;
+        shader.vertexShader="uniform float meadowTime,meadowBloom,meadowWind;\nattribute float bloomStart;\n"+
           shader.vertexShader.replace("#include <begin_vertex>",`
             #include <begin_vertex>
             vec2 root=instanceMatrix[3].xz;
-            float wind=sin(meadowTime*1.27-root.x*.23-root.y*.125)*.15;
+            float wind=sin(meadowTime*1.55-root.x*.23-root.y*.125)*(.15+meadowWind*.15)+meadowWind*.15;
             transformed.x+=wind*position.y*position.y;
             transformed.z+=wind*.53*position.y*position.y;
             transformed*=max(.001,smoothstep(bloomStart,bloomStart+.095,meadowBloom));
@@ -1429,41 +1392,45 @@
       return {mesh,targets,bloom,coverage:driftCoverage(instances)};
     }
 
-    function updateMeadow(s){
-      const weather=s.meadow,p=weather.progress;
-      const clear=smooth(p,.12,.71),gold=smooth(p,.71,.98);
-      weather.phase.value.set(clear,gold);weather.time.value=s.time;
+    function updateMeadow(s,dt){
+      const weather=s.meadow,p=weather.flowerProgress;
+      const {rain,clear,gold,flash}=AIBAMeadowWeather.update(weather,s.time,dt);
       const drifts=weather.drifts;
       drifts.bloom.value=p;
       while(drifts.mesh.count<drifts.targets.length&&drifts.targets[drifts.mesh.count]<p)drifts.mesh.count++;
       while(drifts.mesh.count>0&&drifts.targets[drifts.mesh.count-1]>=p)drifts.mesh.count--;
-      ambient.intensity=.56-.16*clear+.018*gold;
-      hemi.intensity=.56-.07*clear;
-      sun.intensity=.34+.76*clear-.12*gold;
-      sun.position.set(-22-11*gold,32-17*gold,14+6*gold);
-      sun.color.copy(weather.cloudSun).lerp(weather.daySun,clear).lerp(weather.peakSun,gold);
-      scene.fog.color.copy(weather.blueFog).lerp(weather.goldFog,gold*.57);
-      document.documentElement.dataset.environmentPhase=gold>.34?"golden-peaks":clear>.18?"clearing":"cloudy";
-      document.documentElement.dataset.flowerMeadow=String(drifts.mesh.count*3);
+      ambient.color.copy(weather.skyColor).lerp(weather.sunColor,clear*.39);
+      ambient.intensity=.57-.12*clear+.035*gold+.12*flash;
+      hemi.intensity=.56-.10*rain-.05*gold;
+      sun.intensity=.19+.82*clear-.03*gold+.09*flash;
+      // Long shadows, from the same direction the cloud and mountain shaders use.
+      sun.position.copy(weather.uniforms.meadowSun.value).multiplyScalar(49);
+      sun.color.copy(weather.wetColor).lerp(weather.sunColor,clear).lerp(weather.warmColor,gold);
+      scene.fog.color.copy(weather.coolFog).lerp(weather.clearingFog,clear);
+      scene.fog.near=52+17*clear;scene.fog.far=600-126*rain+277*clear;
+      const data=document.documentElement.dataset;
+      if(data.environmentPhase!==weather.stage)data.environmentPhase=weather.stage;
+      const count=String(drifts.mesh.count*3);
+      if(data.flowerMeadow!==count)data.flowerMeadow=count;
     }
 
     function buildMeadow(s){
       s.heightAt=elevation;
-      s.meadow=meadowWeather(s);
+      s.meadow=AIBAMeadowWeather.build(s);
       ground(s);
       const rock=terrainTexture("alpine-rock.jpg");
       const mountain=new THREE.MeshBasicMaterial({map:rock,side:THREE.DoubleSide});
       mountain.onBeforeCompile=shader=>{
-        shader.uniforms.meadowPhase=s.meadow.phase;
+        Object.assign(shader.uniforms,s.meadow.uniforms);
         shader.uniforms.peakRock={value:linear(0x596471)};
         shader.uniforms.peakSnow={value:linear(0xd2dde3)};
         shader.uniforms.peakShade={value:linear(0x435b77)};
         shader.uniforms.peakAmber={value:linear(0xff9e46)};
-        shader.vertexShader="attribute vec4 rockExposure;\nvarying vec4 vRockExposure;\n"+
-          shader.vertexShader.replace("#include <begin_vertex>","#include <begin_vertex>\nvRockExposure=rockExposure;");
-        shader.fragmentShader=`uniform vec2 meadowPhase;
+        shader.vertexShader="attribute vec3 rockExposure;\nvarying vec3 vRockExposure,vRockNormal,vRockWorld;\n"+
+          shader.vertexShader.replace("#include <begin_vertex>","#include <begin_vertex>\nvRockExposure=rockExposure;vRockNormal=normal;vRockWorld=position;");
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+`
           uniform vec3 peakRock,peakSnow,peakShade,peakAmber;
-          varying vec4 vRockExposure;
+          varying vec3 vRockExposure,vRockNormal,vRockWorld;
         `+shader.fragmentShader.replace("#include <map_fragment>",`
           vec3 coarse=mapTexelToLinear(texture2D(map,vUv*.46)).rgb;
           vec2 tilted=mat2(.91,-.41,.41,.91)*vUv;
@@ -1475,25 +1442,31 @@
           vec3 stone=peakRock*(.41+1.23*weathering+.60*grain+.40*streak);
           vec3 snow=peakSnow*(.75+.36*weathering+.29*grain+.16*streak);
           vec3 terrain=mix(stone,snow,ice);
-          float face=vRockExposure.y;
-          float light=smoothstep(.065,.33,face+.15*(weathering-.28))*vRockExposure.w;
-          vec3 day=terrain*vRockExposure.z*mix(.9,1.04,meadowPhase.x);
+          float face=dot(normalize(vRockNormal),meadowSun);
+          float light=smoothstep(.04,.31,face+.15*(weathering-.28))*vRockExposure.z;
+          vec3 day=terrain*vRockExposure.y*mix(.73,.94,meadowSky.x);
+          day=mix(day,day*vec3(.69,.87,1.16)+vec3(.015,.024,.037),(1.0-meadowSky.x)*.60);
           vec3 shadow=terrain*vec3(.35,.46,.69)+peakShade*.22;
           vec3 amber=terrain*vec3(1.14,.59,.32)+peakAmber*(.28+.27*ice+.28*grain);
           vec3 sunset=mix(shadow,amber,light);
-          diffuseColor.rgb=mix(day,sunset,meadowPhase.y);
+          vec3 col=mix(day,sunset,meadowSky.y);
+          float drift=cloudDensity(vRockWorld.xz+vec2(vRockWorld.y*3.0,34.0));
+          float bank=smoothstep(21.0,75.0,vRockWorld.y+25.0*(drift-.45))*smoothstep(.23,.56,drift);
+          float cloud=bank*(.91-.87*meadowSky.x);
+          vec3 bankColor=mix(vec3(.20,.255,.322),vec3(.34,.42,.50),drift);
+          diffuseColor.rgb=mix(col,bankColor,cloud);
         `);
       };
       mountainRange(s,true,mountain);mountainRange(s,false,mountain);
       spruceForest(s);meadowGrass(s);
       s.meadow.drifts=distantFlowers(s,s.meadow);
-      updateMeadow(s);
+      updateMeadow(s,0);
     }
     return {build:buildMeadow,update:updateMeadow};
   })();
   function build(s,b,helpers){if(s.name==="flowerCourt")meadow.build(s);else if(s.name==="arcticSnow")arctic(s,b,helpers);else if(s.name==="spanishQuarter")spanish(s,b,helpers);else if(s.name==="lunarCrater")lunar(s,b,helpers);else if(s.name==="tokyoRooftop")tokyo(s,b,helpers);}
-  function update(s){
-    if(s.meadow)meadow.update(s);
+  function update(s,dt=0){
+    if(s.meadow)meadow.update(s,dt);
     const w=s.wonder;if(!w)return;
     if(w.kind==="tokyo"){
       const t=s.time,d=w.dummy;

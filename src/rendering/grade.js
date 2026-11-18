@@ -163,6 +163,7 @@
   const compMat=new THREE.ShaderMaterial({
     uniforms:{
       tScene:{value:null},tBlur:{value:null},tDepth:{value:null},
+      tMeadowAir:{value:null},useMeadowAir:{value:0},
       useDepth:{value:0},camNear:{value:0.1},camFar:{value:120},
       exposure:{value:1},contrast:{value:1},saturation:{value:1},lift:{value:0},
       warm:{value:new THREE.Vector3(1,1,1)},
@@ -173,8 +174,8 @@
     },
     vertexShader:VERT,
     fragmentShader:`
-      uniform sampler2D tScene,tBlur,tDepth;
-      uniform float useDepth,camNear,camFar;
+      uniform sampler2D tScene,tBlur,tDepth,tMeadowAir;
+      uniform float useDepth,useMeadowAir,camNear,camFar;
       uniform float exposure,contrast,saturation,lift;
       uniform vec3 warm;
       uniform float bloomThreshold,bloomStrength;
@@ -189,14 +190,19 @@
 
         /* 背景柔化:按真实深度,不是按半径 —— 按半径糊会把边角的主角也糊掉 */
         float coc=0.0;
-        if(useDepth>0.5&&dofStrength>0.001){
+        float lin=0.0;
+        if(useDepth>0.5||useMeadowAir>0.5){
           float z=texture2D(tDepth,vUv).x*2.0-1.0;
-          float lin=2.0*camNear*camFar/(camFar+camNear-z*(camFar-camNear));
-          coc=smoothstep(dofNear,dofFar,lin)*dofStrength;
+          lin=2.0*camNear*camFar/(camFar+camNear-z*(camFar-camNear));
+          coc=smoothstep(dofNear,dofFar,lin)*dofStrength*useDepth;
         }
         vec3 col=mix(base,blur,coc);
 
         col+=max(blur-bloomThreshold,0.0)*bloomStrength;
+        if(useMeadowAir>0.5){
+          vec4 air=texture2D(tMeadowAir,vUv);
+          col=mix(col,air.rgb,air.a*smoothstep(15.0,30.0,lin));
+        }
 
         col*=exposure;
         /* 对比要带一段 toe。围绕 0.5 线性拉开会把整个暗部推进纯黑 —— 实测顶棚桁架
@@ -216,7 +222,7 @@
     depthTest:false,depthWrite:false
   });
 
-  let rtScene=null,rtA=null,rtB=null,rtW=0,rtH=0;
+  let rtScene=null,rtA=null,rtB=null,rtAir=null,rtW=0,rtH=0;
   const size=new THREE.Vector2();
 
   /* opts.depthBuffer —— 真正的 Z-buffer,**画场景的 RT 必须有**;
@@ -251,7 +257,7 @@
     renderer.getDrawingBufferSize(size);
     const w=Math.max(2,size.x|0),h=Math.max(2,size.y|0);
     if(w===rtW&&h===rtH&&rtScene)return;
-    disposeRT(rtScene);disposeRT(rtA);disposeRT(rtB);
+    disposeRT(rtScene);disposeRT(rtA);disposeRT(rtB);disposeRT(rtAir);rtAir=null;
     rtW=w;rtH=h;
     /* 场景 RT:Z-buffer 恒开(轻量档也得有,否则整场没有遮挡);
        深度贴图只有 full 档跑景深时才需要。 */
@@ -270,8 +276,28 @@
     baseRender(fsScene,fsCam);
   }
 
-  function composite(){
+  function drawMeadowAir(weather){
+    if(!rtAir){
+      // Fog has no sharp structure; the final full-resolution depth sample keeps it off the court.
+      rtAir=makeRT(Math.max(2,rtW>>2),Math.max(2,rtH>>2),{depthBuffer:false});
+      rtAir.texture.encoding=THREE.LinearEncoding;
+    }
+    const mat=weather.airMaterial,u=mat.uniforms;
+    u.sceneDepth.value=rtScene.depthTexture;
+    u.invProjection.value.copy(camera.projectionMatrixInverse);
+    u.cameraWorld.value.copy(camera.matrixWorld);
+    u.airViewProjection.value.multiplyMatrices(camera.projectionMatrix,camera.matrixWorldInverse);
+    u.cameraClip.value.set(camera.near,camera.far);
+    u.airAspect.value=camera.aspect;
+    drawPass(mat,rtAir);
+    u.sceneDepth.value=null;
+    return rtAir.texture;
+  }
+
+  function composite(air){
     const u=compMat.uniforms;
+    u.tMeadowAir.value=air;
+    u.useMeadowAir.value=air?1:0;
     u.tScene.value=rtScene.texture;
     /* 轻量档没有模糊图:把泛光/景深的输入接回场景本身并把强度置零,
        shader 里 max(blur-1.0,0)=0、coc=0,等于只跑调色和暗角那几行。 */
@@ -294,9 +320,18 @@
   let failed=false;
   renderer.render=function(sc,cam){
     /* 只接管主场景。装备预览等自带 scene/camera 的离屏渲染原样放行。 */
-    if(failed||!P.enabled||sc!==scene||cam!==camera)return baseRender(sc,cam);
+    if(sc!==scene||cam!==camera)return baseRender(sc,cam);
+    const weather=RT_SVC.environmentRoot.userData.placeState?.meadow;
+    if(failed||!P.enabled){
+      if(weather)weather.fallback.visible=true;
+      if(rtAir){disposeRT(rtAir);rtAir=null;}
+      return baseRender(sc,cam);
+    }
     try{
       ensureTargets();
+      const useAir=!!(weather&&rtScene.depthTexture&&!COARSE&&!WEAK);
+      if(weather)weather.fallback.visible=!useAir;
+      if(!useAir&&rtAir){disposeRT(rtAir);rtAir=null;}
       renderer.setRenderTarget(rtScene);
       baseRender(sc,cam);
 
@@ -308,11 +343,12 @@
         bd.set(0,P.blurSpread/bh);drawPass(blurMat,rtB);
       }
 
-      composite();
+      composite(useAir?drawMeadowAir(weather):null);
       renderer.setRenderTarget(null);
     }catch(e){
       /* 后期挂了不能连累游戏:退回直出,并且不再重试。 */
       failed=true;
+      if(weather)weather.fallback.visible=true;
       try{renderer.setRenderTarget(null);}catch(e2){}
       if(window.console&&console.warn)console.warn("[AIBAGrade] post pass disabled:",e);
       baseRender(sc,cam);
