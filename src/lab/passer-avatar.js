@@ -301,36 +301,48 @@
     setBoneCharDelta("Spine1", _qChar.setFromEuler(_eul));
 
     // 2. 手臂：先从 Mixamo T-pose 水平外展放回自然垂立（左臂绕 Z -1.22，右臂 +1.22），再叠加前后摆臂
+    //    注意 AIBA 约定：arms[0].z < 0 为左臂向外张开，arms[1].z > 0 为右臂向外张开
+    const lAbduct = -1.22 - lArmZ * 0.85;
+    const rAbduct = 1.22 - rArmZ * 0.85;
     _eul.set(lArmX * 0.85, 0, 0, "XYZ");
-    _eul2.set(0, 0, -1.22 + lArmZ * 0.75, "XYZ");
+    _eul2.set(0, 0, lAbduct, "XYZ");
     _qChar.setFromEuler(_eul).multiply(_qOff2.setFromEuler(_eul2));
     setBoneCharDelta("LeftArm", _qChar);
 
+    // 3. 手肘：沿大臂同一平面继续屈肘（保证无论手臂举多高，肘部都朝解剖正确方向弯曲）
+    _eul.set(lArmX * 0.85 + lElbX * 0.95 - 0.16, 0, 0, "XYZ");
+    _eul2.set(0, 0, lAbduct, "XYZ");
+    _qChar.setFromEuler(_eul).multiply(_qOff2.setFromEuler(_eul2));
+    setBoneCharDelta("LeftForeArm", _qChar);
+
     _eul.set(rArmX * 0.85, 0, 0, "XYZ");
-    _eul2.set(0, 0, 1.22 + rArmZ * 0.75, "XYZ");
+    _eul2.set(0, 0, rAbduct, "XYZ");
     _qChar.setFromEuler(_eul).multiply(_qOff2.setFromEuler(_eul2));
     setBoneCharDelta("RightArm", _qChar);
 
-    // 3. 手肘：先跟大臂垂立，再按角色空间 X 轴向前屈肘
-    _eul.set((lArmX * 0.85) + (lElbX * 0.75) - 0.16, 0, -1.22 + lArmZ * 0.75, "XYZ");
-    setBoneCharDelta("LeftForeArm", _qChar.setFromEuler(_eul));
-
-    _eul.set((rArmX * 0.85) + (rElbX * 0.75) - 0.16, 0, 1.22 + rArmZ * 0.75, "XYZ");
-    setBoneCharDelta("RightForeArm", _qChar.setFromEuler(_eul));
+    _eul.set(rArmX * 0.85 + rElbX * 0.95 - 0.16, 0, 0, "XYZ");
+    _eul2.set(0, 0, rAbduct, "XYZ");
+    _qChar.setFromEuler(_eul).multiply(_qOff2.setFromEuler(_eul2));
+    setBoneCharDelta("RightForeArm", _qChar);
 
     // 4. 腿部：角色空间 X 轴直接对应前后抬腿与屈膝
+    const lk = Math.max(0, lKneeX) * 0.85;
+    const rk = Math.max(0, rKneeX) * 0.85;
     _eul.set(lLegX * 0.85, 0, 0, "XYZ");
     setBoneCharDelta("LeftUpLeg", _qChar.setFromEuler(_eul));
 
     _eul.set(rLegX * 0.85, 0, 0, "XYZ");
     setBoneCharDelta("RightUpLeg", _qChar.setFromEuler(_eul));
 
-    _eul.set(lLegX * 0.85 + Math.max(0, lKneeX) * 0.85, 0, 0, "XYZ");
+    _eul.set(lLegX * 0.85 + lk, 0, 0, "XYZ");
     setBoneCharDelta("LeftLeg", _qChar.setFromEuler(_eul));
 
-    _eul.set(rLegX * 0.85 + Math.max(0, rKneeX) * 0.85, 0, 0, "XYZ");
+    _eul.set(rLegX * 0.85 + rk, 0, 0, "XYZ");
     setBoneCharDelta("RightLeg", _qChar.setFromEuler(_eul));
 
+    // 双脚屈膝下蹲时重心微沉，避免踮脚悬空
+    const minKnee = Math.min(lk, rk);
+    state.root.position.y = minKnee > 0.05 ? -Math.sin(minKnee) * 0.18 : 0;
     state.root.updateMatrixWorld(true);
   }
 
