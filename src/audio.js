@@ -267,7 +267,8 @@ let AC=null,master=null,crowdBus=null,crowdGain=null,musicBus=null,arenaBus=null
 let musicTimer=null,arenaTimer=null,ambTimer=null,duckTimer=null,mediaDuckTimer=null,mediaDuckUntil=0;
 const CROWD_BASE=0.16;
 const EXT_DEFAULT_VOLUME=Object.freeze({
-  bgm:.58,crowd:.25,crowdCheer:.23,rain:.19,ocean:.17,rainforest:.36,gull:.26,
+  bgm:.58,crowd:.25,crowdCheer:.23,rain:.19,ocean:.17,rainforest:.36,
+  meadowBirds:.24,meadowCrickets:.18,meadowWind:.20,meadowThunder:.76,gull:.26,
   applause:.5,boo:.42,buzzer:.86,startWhistle:.72,shoeSqueak:.62,
   bounce:.72,bounce2:.72,bounceSequence:.52,swish:.92,swish2:.92,swish3:.92,clank:.86,clank2:.86,rimMake:.9,
   crowdFinalMake:.88,crowdFinalMiss:.88
@@ -352,7 +353,7 @@ function extEnsureSrc(k){
   const a=extA[k];if(!a||a.getAttribute("src"))return false;
   try{a.src=EXT_AUDIO[k];a.load();return true;}catch(e){return false;}
 }
-const GAMEPLAY_SFX_KEYS=["startWhistle","buzzer","shoeSqueak","bounce","bounce2","bounceSequence","swish","swish2","swish3","clank","clank2","rimMake","applause","boo"];
+const GAMEPLAY_SFX_KEYS=["startWhistle","buzzer","shoeSqueak","bounce","bounce2","bounceSequence","swish","swish2","swish3","clank","clank2","rimMake","applause","boo","meadowThunder"];
 const decodedGameplaySfx=Object.create(null),decodedGameplaySfxLoads=Object.create(null);
 function syncGameplaySfxDebug(){
   try{
@@ -391,14 +392,70 @@ function decodeGameplaySfx(k){
 /* 撞击力度 → 音量（PH-3）。真实物理球按碰撞冲量调用 impactSfx，轻擦筐声音小、重砸声音大；
    其他调用方不传就是 1，行为不变。只作用于解码后的 WebAudio 采样和合成兜底音。 */
 let sfxImpactGain=1;
+function playMeadowFloorBounce(impulse,event){
+  if(!AC||MUTED||AC.state!=="running")return false;
+  const t=AC.currentTime,J=Math.max(0.2,Number(impulse)||3.5);
+  const fNorm=Math.min(1.25,Math.max(0.18,J/9.5));
+  const bus=sfxBus||master;
+  const wet=environmentRoot?.userData?.placeState?.meadow?.wetness||0;
+  const liquid=(event&&window.AIBAMeadowCourt?.poolLiquidAt)?window.AIBAMeadowCourt.poolLiquidAt(event.x||0,event.z||0,wet):0;
+  // 1. 户外草地/泥地闷弹（相比室内木地板更沉、低通收敛、无球馆反射）
+  const buf=decodedGameplaySfx.bounce||decodedGameplaySfx.bounce2;
+  if(buf){
+    try{
+      const src=AC.createBufferSource(),lp=AC.createBiquadFilter(),g=AC.createGain();
+      src.buffer=buf;
+      src.playbackRate.setValueAtTime(0.84+(Math.random()-0.5)*0.08-wet*0.06,t);
+      lp.type="lowpass";lp.frequency.setValueAtTime(560-wet*140+fNorm*180,t);
+      g.gain.setValueAtTime(0.58*fNorm,t);
+      src.connect(lp);lp.connect(g);g.connect(bus);src.start(t);
+    }catch(e){}
+  }else{
+    const o=AC.createOscillator(),g=AC.createGain();
+    o.type="sine";o.frequency.setValueAtTime(76,t);o.frequency.exponentialRampToValueAtTime(38,t+0.095);
+    g.gain.setValueAtTime(0.28*fNorm,t);g.gain.exponentialRampToValueAtTime(0.001,t+0.11);
+    o.connect(g);g.connect(bus);o.start(t);o.stop(t+0.12);
+  }
+  // 2. 砸进草场水洼：物理联动水花溅射 + 气泡水珠声
+  if(liquid>0.06){
+    const sAmt=Math.min(1.15,fNorm*(0.45+0.95*liquid));
+    const dur=0.14+0.14*sAmt;
+    const n=AC.createBufferSource();n.buffer=noiseBusBuffer(dur);
+    const bp=AC.createBiquadFilter();bp.type="bandpass";bp.Q.value=0.95;
+    bp.frequency.setValueAtTime(680+500*sAmt,t);
+    bp.frequency.exponentialRampToValueAtTime(2400+1100*sAmt,t+dur*0.35);
+    bp.frequency.exponentialRampToValueAtTime(920,t+dur);
+    const g=AC.createGain();
+    g.gain.setValueAtTime(0.0001,t);
+    g.gain.linearRampToValueAtTime(0.32*sAmt,t+0.015);
+    g.gain.exponentialRampToValueAtTime(0.0008,t+dur);
+    n.connect(bp);bp.connect(g);g.connect(bus);n.start(t);
+    // 3~5 颗随机飞溅水珠的"噗咚"气泡音
+    const drops=Math.min(5,2+Math.floor(sAmt*3));
+    for(let i=0;i<drops;i++){
+      const dt=0.025+i*0.032+Math.random()*0.025;
+      const o=AC.createOscillator(),dg=AC.createGain();
+      o.type="sine";
+      const f0=520+Math.random()*680;
+      o.frequency.setValueAtTime(f0,t+dt);
+      o.frequency.exponentialRampToValueAtTime(f0*1.72,t+dt+0.042);
+      dg.gain.setValueAtTime(0.0001,t+dt);
+      dg.gain.linearRampToValueAtTime(0.048*sAmt*(1-i*0.14),t+dt+0.008);
+      dg.gain.exponentialRampToValueAtTime(0.0006,t+dt+0.052);
+      o.connect(dg);dg.connect(bus);o.start(t+dt);o.stop(t+dt+0.06);
+    }
+  }
+  return true;
+}
 function impactSfx(kind,impulse,event){
   const J=Math.max(0,Number(impulse)||0);
   const gain=kind==="floor"?Math.max(.22,Math.min(1.15,.2+J/12)):Math.max(.3,Math.min(1.3,.28+J/4.5));
   const prev=sfxImpactGain;sfxImpactGain=gain;
   try{
     if((kind==="rim"||kind==="rimMake"||kind==="board"||kind==="connector")&&!MUTED&&AC&&AC.state==="running"&&window.AIBAHoopAudio){
-      if(window.AIBAHoopAudio.trigger(kind,J||2.5,event,AC,sfxBus||master))return gain;
+      if(window.AIBAHoopAudio.trigger(kind,J||2.5,event,AC,sfxBus||master,decodedGameplaySfx))return gain;
     }
+    if(kind==="floor"&&currentScenePreset==="flowerCourt"&&playMeadowFloorBounce(J||3.5,event))return gain;
     if(kind==="rim")sClank();
     else if(kind==="rimMake")sRimMake();
     else if(kind==="board"||kind==="connector")sBoard();
@@ -451,13 +508,13 @@ function extInit(){
       /* 先配好 preload/loop 再赋 src:构造函数传 URL 会立刻开始下载。
          同源资源不需要 crossOrigin,带上反而会让 <audio> 走 CORS 模式。 */
       const a=new Audio();
-      const looped=k==="bgm"||k==="crowd"||k==="crowdCheer"||k==="rain"||k==="ocean"||k==="rainforest";
+      const looped=k==="bgm"||k==="crowd"||k==="crowdCheer"||k==="rain"||k==="ocean"||k==="rainforest"||k==="meadowBirds"||k==="meadowCrickets"||k==="meadowWind";
       a.preload="auto";a.loop=looped;
       /* 启动音轨等 blob；游戏音效走 WebAudio 解码(decodeGameplaySfx 会自己 fetch)，
          这里再赋一次 src 就是同一个文件下载两遍 —— 实测 crowd-boo-01 和
          bounce-sequence-indoor-01 各被拉了两次，约 325KB 白付。
          解码失败时 extPlay 会懒赋 src 兜底，所以这里不赋不影响出声。 */
-      const lazySrc=k==="rainforest"||EXT_BOOT_KEYS.indexOf(k)>=0||GAMEPLAY_SFX_KEYS.indexOf(k)>=0;
+      const lazySrc=k==="rainforest"||k==="meadowBirds"||k==="meadowCrickets"||k==="meadowWind"||EXT_BOOT_KEYS.indexOf(k)>=0||GAMEPLAY_SFX_KEYS.indexOf(k)>=0;
       if(!lazySrc)a.src=u;
       a.volume=EXT_DEFAULT_VOLUME[k]||0.85;
       a.onerror=()=>{delete extA[k];};
@@ -570,9 +627,22 @@ function externalMediaDuckActive(){
   return Date.now()<mediaDuckUntil;
 }
 const QUIET_CROWD_SCENES=new Set(["lunarCrater","beachSunset","arcticSnow","flowerCourt","rainforest","medCliff","rainyCourt","spanishQuarter","tokyoRooftop"]);
+const STREET_CROWD_SCENES=new Set(["outdoorSunny","spanishQuarter","tokyoRooftop","rainyCourt"]);
+function sceneCrowdProfile(){
+  const s=(typeof currentScenePreset==="string"&&currentScenePreset)||document.documentElement.dataset.scenePreset||"indoor";
+  if(s==="indoor")return {kind:"arena",arena:1,roar:1,clap:1,clapCount:38,boo:1,aww:1,whistle:1,final:1};
+  if(STREET_CROWD_SCENES.has(s))return {kind:"street",arena:0,roar:0,clap:0.28,clapCount:10,boo:0,aww:0,whistle:0,final:0};
+  return {kind:"nature",arena:0,roar:0,clap:0,clapCount:0,boo:0,aww:0,whistle:0,final:0};
+}
 function isCrowdQuietScene(){
   const s=(typeof currentScenePreset==="string"&&currentScenePreset)||document.documentElement.dataset.scenePreset||"indoor";
   return QUIET_CROWD_SCENES.has(s);
+}
+function meadowWeatherAudioState(){
+  const m=environmentRoot?.userData?.placeState?.meadow;
+  if(!m)return {rain:0,clear:0.5,gold:0,wind:0.25};
+  const sky=m.uniforms.meadowSky.value;
+  return {rain:sky.z||0,clear:sky.x||0,gold:sky.y||0,wind:m.wind?.value||0.25};
 }
 let windBus=null,windNode=null;
 function syncCoastalWind(on){
@@ -592,23 +662,33 @@ function syncCoastalWind(on){
   }
 }
 function applyExternalMediaMix(){
-  const duck=externalMediaDuckActive(),arenaLike=sceneAudioArenaLike(),quiet=isCrowdQuietScene();
+  const duck=externalMediaDuckActive(),arenaLike=sceneAudioArenaLike(),cp=sceneCrowdProfile();
   const heat=Math.max(0,Math.min(1,crowdHeat||0));
   const pd=pauseDuck?PAUSE_DUCK:1;
-  const set=(k,v)=>{if(extA[k]&&!extFade[k])extA[k].volume=v;};
+  const set=(k,v)=>{if(extA[k]&&!extFade[k])extA[k].volume=Math.max(0,Math.min(1,v));};
   set("bgm",EXT_DEFAULT_VOLUME.bgm*(duck?0.58:1)*pd);
-  set("crowd",quiet?0:(G.finalRun?0.34:EXT_DEFAULT_VOLUME.crowd)*(1+heat*.42)*(duck?0.72:1)*pd);
-  set("crowdCheer",quiet?0:(G.finalRun?0.31:EXT_DEFAULT_VOLUME.crowdCheer)*(1+heat*.62)*(duck?0.7:1)*pd);
-  const rainGain=currentScenePreset==="flowerCourt"?meadowRainLevel()*.75:1;
-  set("rain",(arenaLike?0.2:0.11)*(duck?0.82:1)*pd*rainGain);
+  set("crowd",cp.arena?(G.finalRun?0.34:EXT_DEFAULT_VOLUME.crowd)*(1+heat*.42)*(duck?0.72:1)*pd:0);
+  set("crowdCheer",cp.arena?(G.finalRun?0.31:EXT_DEFAULT_VOLUME.crowdCheer)*(1+heat*.62)*(duck?0.7:1)*pd:0);
+  const mw=meadowWeatherAudioState();
+  const rainGain=currentScenePreset==="flowerCourt"?mw.rain*.85:1;
+  set("rain",(arenaLike?0.22:0.11)*(duck?0.82:1)*pd*rainGain);
   set("ocean",(G.finalRun?0.26:(arenaLike?0.24:0.12))*(duck?0.82:1)*pd);
   set("rainforest",(arenaLike?EXT_DEFAULT_VOLUME.rainforest:.22)*(duck?.71:1)*pd);
+  // 鲜花·天山草甸三层真实环境音：风声随阵风起伏，鸟鸣在晴/阴天歌唱、大雨躲雨，虫鸣在放晴与日照金山渐入
+  const meadowBase=(arenaLike?1:0.55)*(duck?0.78:1)*pd;
+  const windVol=EXT_DEFAULT_VOLUME.meadowWind*(0.38+Math.min(1,mw.wind)*0.88)*meadowBase;
+  const birdVol=EXT_DEFAULT_VOLUME.meadowBirds*(1-Math.min(1,mw.rain*3.4))*(0.62+0.38*mw.clear)*meadowBase;
+  const cricketVol=EXT_DEFAULT_VOLUME.meadowCrickets*(1-Math.min(1,mw.rain*5.0))*Math.max(0,Math.min(1,(mw.clear-0.22)/0.55))*(0.55+0.45*mw.gold)*meadowBase;
+  set("meadowWind",windVol);
+  set("meadowBirds",birdVol);
+  set("meadowCrickets",cricketVol);
 }
 function setCrowdHeat(level){
   crowdHeat=Math.max(0,Math.min(1,Number(level)||0));
   if(crowdBus&&AC){
-    const t=AC.currentTime,base=isCrowdQuietScene()?0:(extA.crowd?0.035:CROWD_BASE);
-    const target=isCrowdQuietScene()?0:(base+crowdHeat*(extA.crowd?0.035:0.075))*(pauseDuck?PAUSE_DUCK:1);
+    const cp=sceneCrowdProfile();
+    const t=AC.currentTime,base=cp.arena?(extA.crowd?0.035:CROWD_BASE):0;
+    const target=cp.arena?(base+crowdHeat*(extA.crowd?0.035:0.075))*(pauseDuck?PAUSE_DUCK:1):0;
     crowdBus.gain.cancelScheduledValues(t);
     crowdBus.gain.setTargetAtTime(target,t,pauseDuck?0.12:0.55);
   }
@@ -620,11 +700,25 @@ function meadowRainLevel(){
 function syncSceneAmbience(){
   const arenaLike=sceneAudioArenaLike(),allowed=G.state==="diff"||arenaLike;
   applyExternalMediaMix();
-  if(!AC||MUTED||AC.state==="suspended"||!allowed){extStop("rain");extStop("ocean");extStop("rainforest");syncCoastalWind(false);syncAudioDebug();return;}
-  const rainy=currentWeather==="rain"||meadowRainLevel()>.06,beach=currentScenePreset==="beachSunset",rooftop=currentScenePreset==="tokyoRooftop";
+  if(!AC||MUTED||AC.state==="suspended"||!allowed){
+    extStop("rain");extStop("ocean");extStop("rainforest");
+    extStop("meadowWind");extStop("meadowBirds");extStop("meadowCrickets");
+    syncCoastalWind(false);syncAudioDebug();return;
+  }
+  const mw=meadowWeatherAudioState();
+  const isMeadow=currentScenePreset==="flowerCourt";
+  const rainy=currentWeather==="rain"||(isMeadow&&mw.rain>.05);
+  const beach=currentScenePreset==="beachSunset",rooftop=currentScenePreset==="tokyoRooftop";
   applyExternalMediaMix();
   if(rainy)extPlay("rain");else extStop("rain");
   if(currentScenePreset==="rainforest")extPlay("rainforest");else extStop("rainforest");
+  if(isMeadow){
+    extPlay("meadowWind");
+    if(mw.rain<0.28)extPlay("meadowBirds");else extStop("meadowBirds");
+    if(mw.clear>0.26&&mw.rain<0.14)extPlay("meadowCrickets");else extStop("meadowCrickets");
+  }else{
+    extStop("meadowWind");extStop("meadowBirds");extStop("meadowCrickets");
+  }
   if(beach){extPlay("ocean");syncCoastalWind(arenaLike);}else{extStop("ocean");syncCoastalWind(rooftop&&arenaLike);}
   setCrowdHeat(crowdHeat);
   syncAudioDebug();
@@ -913,17 +1007,20 @@ function crowdSwell(amt,dur){
   crowdBus.gain.exponentialRampToValueAtTime(b,t+(dur||2.4));
 }
 try{window.AIBAAudio=Object.assign(window.AIBAAudio||{},{setCrowdHeat,crowdSwell,setPauseAudioDuck});}catch(e){}
-/* ---- 掌声:几十个去相关的真实拍手颗粒 ---- */
+/* ---- 掌声:几十个去相关的真实拍手颗粒（按场地人口密度差异化） ---- */
 function applause(vol,dur,n){
-  if(!AC||MUTED||isCrowdQuietScene())return;
-  if(extA.applause&&vol>0.4&&extPlay("applause"))return;
-  dur=dur||2.4;n=n||Math.floor(dur*38);
+  const cp=sceneCrowdProfile();
+  if(!AC||MUTED||cp.clap<=0)return;
+  if(cp.arena&&extA.applause&&vol>0.4&&extPlay("applause"))return;
+  dur=dur||(cp.arena?2.4:1.3);
+  n=n||Math.max(4,Math.floor(dur*(cp.clapCount||10)));
+  const scale=cp.clap;
   const t0=AC.currentTime;
   for(let i=0;i<n;i++){
     const u=i/n;
-    const env=Math.min(1,u*5)*Math.pow(1-u,1.4);          // 起势→衰减
+    const env=Math.min(1,u*5)*Math.pow(1-u,1.4);
     if(Math.random()>env*1.25)continue;
-    clapOne(t0+u*dur+rnd2(0,0.03),(vol||0.5)*rnd2(0.5,1)*env);
+    clapOne(t0+u*dur+rnd2(0,0.04),(vol||0.5)*scale*rnd2(0.5,1)*env);
   }
 }
 function clapOne(at,v){
@@ -962,13 +1059,15 @@ function shout(vol){ // 远处兴奋喊叫
   const t=AC.currentTime;
   voiceBurst(t,rnd2(160,260),rnd2(0.25,0.5),vol||0.1,1.25);
 }
-function crowdRoar(big){ // 多人齐喊
-  if(!AC||MUTED)return;
+function crowdRoar(big){ // 多人齐喊（仅室内球馆触发，避免户外草甸/街头出现NBA万人呐喊）
+  const cp=sceneCrowdProfile();
+  if(!AC||MUTED||!cp.roar)return;
   const t=AC.currentTime,n=big?14:7;
   for(let i=0;i<n;i++)voiceBurst(t+rnd2(0,0.25),rnd2(140,300),rnd2(0.3,0.7),rnd2(0.05,0.12),rnd2(1.1,1.4));
 }
-function boo(dur){ // 起哄嘘声
-  if(!AC||MUTED)return;
+function boo(dur){ // 起哄嘘声（仅室内球馆）
+  const cp=sceneCrowdProfile();
+  if(!AC||MUTED||!cp.boo)return;
   if(extA.boo&&extPlay("boo",Math.max(900,(dur||2)*1000)))return;
   const t=AC.currentTime;dur=dur||2.0;
   for(let i=0;i<8;i++){
@@ -988,13 +1087,15 @@ function boo(dur){ // 起哄嘘声
     o.start(t);o.stop(t+dur+0.1);
   }
 }
-function aww(){ // 全场惋惜 "噢——"
-  if(!AC||MUTED)return;
+function aww(){ // 全场惋惜 "噢——"（仅室内球馆）
+  const cp=sceneCrowdProfile();
+  if(!AC||MUTED||!cp.aww)return;
   const t=AC.currentTime;
   for(let i=0;i<9;i++)voiceBurst(t+rnd2(0,0.12),rnd2(200,330),rnd2(0.5,0.9),rnd2(0.035,0.07),0.62);
 }
 function whistle(){
-  if(!AC||MUTED)return;
+  const cp=sceneCrowdProfile();
+  if(!AC||MUTED||!cp.whistle)return;
   const t=AC.currentTime,f=rnd2(2100,2700);
   const o=AC.createOscillator();o.type="sine";
   o.frequency.setValueAtTime(f,t);
@@ -1058,17 +1159,47 @@ function noiseHit(dur,vol,hp){
 }
 function playMeadowThunder(){
   if(!AC||MUTED||AC.state!=="running"||!sceneAudioArenaLike())return;
-  const t=AC.currentTime,duration=2.3;
-  const rumble=AC.createBufferSource(),low=AC.createBiquadFilter(),gain=AC.createGain();
-  rumble.buffer=noiseBusBuffer(duration);
-  low.type="lowpass";low.frequency.setValueAtTime(330,t);
-  low.frequency.exponentialRampToValueAtTime(64,t+duration);
-  gain.gain.setValueAtTime(.001,t);
-  gain.gain.exponentialRampToValueAtTime(.48,t+.10);
-  gain.gain.exponentialRampToValueAtTime(.16,t+.31);
-  gain.gain.exponentialRampToValueAtTime(.23,t+.56);
-  gain.gain.exponentialRampToValueAtTime(.001,t+duration);
-  rumble.connect(low);low.connect(gain);gain.connect(sfxBus||master);rumble.start(t);
+  const t=AC.currentTime,bus=sfxBus||master;
+  const buf=decodedGameplaySfx.meadowThunder;
+  if(buf){
+    try{
+      const src=AC.createBufferSource(),g=AC.createGain();
+      src.buffer=buf;
+      src.playbackRate.setValueAtTime(0.91+Math.random()*0.17,t);
+      g.gain.setValueAtTime(EXT_DEFAULT_VOLUME.meadowThunder*(pauseDuck?PAUSE_DUCK:1),t);
+      const pan=AC.createStereoPanner?AC.createStereoPanner():null;
+      src.connect(g);
+      if(pan){pan.pan.value=(Math.random()-0.5)*0.65;g.connect(pan);pan.connect(bus);}
+      else g.connect(bus);
+      src.start(t);
+      // 叠加一丝 52Hz 超低频山谷胸腔震动
+      const sub=AC.createOscillator(),sg=AC.createGain();
+      sub.type="sine";sub.frequency.setValueAtTime(58,t);sub.frequency.exponentialRampToValueAtTime(34,t+1.4);
+      sg.gain.setValueAtTime(0.001,t);sg.gain.linearRampToValueAtTime(0.16,t+0.12);sg.gain.exponentialRampToValueAtTime(0.001,t+1.6);
+      sub.connect(sg);sg.connect(bus);sub.start(t);sub.stop(t+1.65);
+      return;
+    }catch(e){}
+  }
+  // 兜底：立体声电弧裂响 + 山谷双声道延迟滚雷
+  const duration=3.2;
+  noiseHit(0.11,0.34,1100);
+  for(let side=0;side<2;side++){
+    const delay=side?0.12:0;
+    const rumble=AC.createBufferSource(),low=AC.createBiquadFilter(),gain=AC.createGain();
+    rumble.buffer=noiseBusBuffer(duration);
+    low.type="lowpass";low.frequency.setValueAtTime(380,t+delay);
+    low.frequency.exponentialRampToValueAtTime(58,t+delay+duration);
+    gain.gain.setValueAtTime(.001,t+delay);
+    gain.gain.exponentialRampToValueAtTime(side?.28:.46,t+delay+.09);
+    gain.gain.exponentialRampToValueAtTime(.14,t+delay+.42);
+    gain.gain.exponentialRampToValueAtTime(.22,t+delay+.85);
+    gain.gain.exponentialRampToValueAtTime(.001,t+delay+duration);
+    const pan=AC.createStereoPanner?AC.createStereoPanner():null;
+    rumble.connect(low);low.connect(gain);
+    if(pan){pan.pan.value=side?0.48:-0.48;gain.connect(pan);pan.connect(bus);}
+    else gain.connect(bus);
+    rumble.start(t+delay);
+  }
 }
 function blipBus(bus,freq,dur,type,vol,slide){
   if(!AC||MUTED)return;
@@ -1170,6 +1301,9 @@ function leaveArenaAudio(){
   extStop("rain",320);
   extStop("ocean",320);
   extStop("rainforest",320);
+  extStop("meadowWind",320);
+  extStop("meadowBirds",320);
+  extStop("meadowCrickets",320);
   syncAudioDebug();
 }
 let shoeSqueakAt=0;
@@ -1216,8 +1350,9 @@ function sBounce(kind){
 }
 function sSwish(info){
   if(!MUTED&&AC&&AC.state==="running"&&window.AIBAHoopAudio){
-    if(window.AIBAHoopAudio.trigger("net",info&&info.speed||4.6,info,AC,sfxBus||master))return;
+    if(window.AIBAHoopAudio.trigger("net",info&&info.speed||4.6,info,AC,sfxBus||master,decodedGameplaySfx))return;
   }
+  if(info&&info.netStyle==="brush")return;
   if(extPlayVariant("swish",["swish","swish2","swish3"]))return;
   if(!AC||MUTED)return;
   const t=AC.currentTime;
@@ -1283,11 +1418,12 @@ function sBuzz(){
 const sBeep=()=>blip(880,0.1,"square",0.1);
 const sGo=()=>{if(!extPlay("startWhistle"))blip(1320,0.3,"square",0.14);};
 function cheerSound(big){
+  const cp=sceneCrowdProfile();
   if(!AC||MUTED)return;
-  crowdSwell(big?0.42:0.2,big?2.8:1.5);
-  applause(big?0.6:0.3,big?2.6:1.4);
-  crowdRoar(big);
-  if(big&&Math.random()<0.6)whistle();
+  if(cp.arena)crowdSwell(big?0.42:0.2,big?2.8:1.5);
+  if(cp.clap>0)applause(big?0.6:0.3,big?2.2:1.2);
+  if(cp.roar)crowdRoar(big);
+  if(cp.whistle&&big&&Math.random()<0.6)whistle();
 }
 /* ---- BGM v2: 鼓组+贝斯+和声垫+琶音 ---- */
 function music(on,fast){
@@ -1426,7 +1562,7 @@ function toggleMute(){
       if(AC)AC.suspend();
       if(window.speechSynthesis)speechSynthesis.cancel();
       clearTimeout(SPK.timer);SPK.queue.length=0;SPK.speaking=false;
-      extStop("bgm");extStop("crowd");extStop("crowdCheer");extStop("rain");extStop("ocean");extStop("rainforest",0);extStop("gull");
+      extStop("bgm");extStop("crowd");extStop("crowdCheer");extStop("rain");extStop("ocean");extStop("rainforest",0);extStop("meadowWind",0);extStop("meadowBirds",0);extStop("meadowCrickets",0);extStop("gull");
       syncAudioDebug();
       return;
     }

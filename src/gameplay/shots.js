@@ -499,11 +499,17 @@ function playRimImpactSound(b,made){
   return true;
 }
 function madeShotSound(b){
-  if(b&&b.outcome==="rattle")return; // rim-make clip already played at first contact
-  if(b&&b.outcome==="bank"){sRimMake();return;}
-  const spd=b&&b.v0?Math.min(9,Math.max(2.5,Math.hypot(b.v0.x||0,b.v0.z||0,3.8))):4.6;
-  const off=b&&b.outcome==="bank"?0.45:0.15;
-  sSwish({speed:spd,offset:off});
+  const ev=b&&b._madeEvent;
+  const rimHits=ev&&Number.isFinite(ev.rimHits)?ev.rimHits:(b&&b.outcome==="rattle"?2:0);
+  const boardHits=ev&&Number.isFinite(ev.boardHits)?ev.boardHits:(b&&b.outcome==="bank"?1:0);
+  const speed=ev&&Number.isFinite(ev.speed)?ev.speed:(b&&b.v0?Math.min(9,Math.max(2.5,Math.hypot(b.v0.x||0,b.v0.z||0,3.8))):4.6);
+  const offset=ev&&Number.isFinite(ev.offset)?ev.offset:(boardHits?0.35:0.15);
+  // 真实物理逻辑：只有空心或高速擦板入网才触发爽脆刷网声；砸框多下慢悠悠掉进网只触发极轻的尼龙网擦声
+  let netStyle="swish";
+  if(rimHits>=2||(rimHits>=1&&speed<3.6))netStyle="brush";
+  else if(rimHits===1)netStyle="softSwish";
+  else if(boardHits>0)netStyle="bankSwish";
+  sSwish({speed,offset,rimHits,boardHits,netStyle});
 }
 function madeBall(b){
   b.made=true;
@@ -583,7 +589,7 @@ function madeBall(b){
   cheerSound(big);G.cheer=Math.min(1,G.cheer+(big?1:0.6));
   if(navigator.vibrate)navigator.vibrate(big?[20,30,20]:18);
   popScore("+"+b.val,b.deep?"#54e05a":(b.money?"#ffd23f":"#7CFC6B"));
-  const endingRound=G.seq&&G.shotIdx>=G.seq.length;if(endingRound){beginFinalAudioWindow();if(G.mode==="contest"&&typeof extPlay==="function")extPlay("crowdFinalMake");}
+  const endingRound=G.seq&&G.shotIdx>=G.seq.length;if(endingRound){beginFinalAudioWindow();if(G.mode==="contest"&&currentScenePreset==="indoor"&&typeof extPlay==="function")extPlay("crowdFinalMake");}
   const momentumSpoke=!endingRound&&triggerMakeRunVoice();
   if(!momentumSpoke)toast((b.deep?"⚡ 深远三分! ":"")+CHEERS[(Math.random()*CHEERS.length)|0]+(G.streak>=4?" 🔥x"+G.streak:""));
   if(!endingRound&&b.deep)gameDjSay("深远三分!","special",2.0);
@@ -614,7 +620,7 @@ function missBall(){
     if(Math.random()<.35)toast(MISSES[(Math.random()*MISSES.length)|0],"#ff8d7a");
     updateRackRushHUD();return;
   }
-  G.missRun=(G.missRun||0)+1;noteResultMissRun();if(G.mode==="contest"&&G.seq&&G.shotIdx>=G.seq.length){if(typeof extPlay==="function")extPlay("crowdFinalMiss");}else{if(Math.random()<0.45)aww();}if(triggerMissRunVoice())return;
+  G.missRun=(G.missRun||0)+1;noteResultMissRun();if(G.mode==="contest"&&G.seq&&G.shotIdx>=G.seq.length){if(currentScenePreset==="indoor"&&typeof extPlay==="function")extPlay("crowdFinalMiss");}else{if(Math.random()<0.45)aww();}if(triggerMissRunVoice())return;
   // 连续打铁 → 对手垃圾话
   if(G.missRun>=2&&G.opponents.length&&Math.random()<0.35){
     const o=G.opponents[(Math.random()*G.opponents.length)|0];
@@ -642,13 +648,15 @@ function physicsBallEvent(b,e){
     case "rim":
       if(fx)fx.impact("rim",e);
       haptic(b,e.impulse);
-      // 第一次碰筐：进球的涮筐播"筐响进"，其余播打铁；之后每一下按冲量大小响
+      b.rimHitCount=(b.rimHitCount||0)+1;
+      if(e.hitIndex==null)e.hitIndex=b.rimHitCount-1;
+      // 第一次碰筐：进球的涮筐播"筐响进"，其余播打铁；后续每一次弹跳按 hitIndex 与真实冲量动态变调衰减
       if(!b.rimSoundPlayed){
         b.rimSoundPlayed=true;
         const make=b.willMake&&b.outcome==="rattle";
         sfx(make?"rimMake":"rim",make?sRimMake:sClank);
         document.documentElement.dataset.lastRimSound=make?"make":"miss";
-      }else if(e.impulse>.5)sfx("rim",sClank);
+      }else if(e.impulse>.32)sfx("rim",sClank);
       break;
     case "board":case "connector":
       if(fx)fx.impact(e.type,e);
@@ -658,6 +666,7 @@ function physicsBallEvent(b,e){
       b.bounces++;splashMeadowBall(e.x,e.z,e.impulse);sfx("floor",sBounce);break;
     case "made":
       if(b.made)break;
+      b._madeEvent=e;
       if(b.opp){oppScore(b);b.made=true;}
       else if(b.silent)silentBallMade(b);
       else madeBall(b);

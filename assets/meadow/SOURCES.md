@@ -4,3 +4,7 @@
 - [Leafy Grass](https://polyhaven.com/a/leafy_grass) · Charlotte Baglioni · CC0. The 1K diffuse map was resized and recompressed for the game as `leafy-grass.jpg`.
 
 The ridgelines, snow coverage, grass blades, and flower geometry are generated in the game.
+
+## Sound
+
+- `birds-loop.mp3`, `crickets-loop.mp3`, `wind-loop.mp3`, `thunder-clap.mp3`: adapted from open-source nature recordings in [Moodist](https://github.com/remvze/moodist) (filtered, crossfaded for seamless looping, and loudness-normalized).

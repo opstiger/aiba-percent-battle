@@ -23,109 +23,275 @@
   function woodMap(random){
     const canvas=document.createElement("canvas");canvas.width=768;canvas.height=448;
     const g=canvas.getContext("2d"),w=canvas.width,h=canvas.height;
-    const beige=["#80694f","#9d8057","#a08860","#88724f","#a7875f"];
+    const beige=["#856c50","#9d8058","#957b56","#7e674b","#a6875e"];
     g.fillStyle=beige[0];g.fillRect(0,0,w,h);
     for(let row=0;row<5;row++){
       const y=h*row/5,dh=h/5;
       g.fillStyle=beige[row];g.fillRect(0,y,w,dh);
-      for(let i=0;i<160;i++){
-        const x=random()*w,yy=y+random()*dh,end=Math.min(w,x+18+random()*335);
-        g.strokeStyle=i%4?"rgba(60,39,24,.16)":"rgba(243,210,163,.21)";
-        g.lineWidth=.28+random()*1.7;g.beginPath();g.moveTo(x,yy);
-        g.bezierCurveTo(lerp(x,end,.30),yy+random()*2,lerp(x,end,.60),yy-random()*4,end,yy+random()*3);g.stroke();
+      // Warm sun-bleached top edge & damp lower wood stain per horizontal spruce slab.
+      const grad=g.createLinearGradient(0,y,0,y+dh);
+      grad.addColorStop(0,"rgba(235,204,158,.14)");
+      grad.addColorStop(.75,"rgba(0,0,0,0)");
+      grad.addColorStop(1,"rgba(52,40,26,.24)");
+      g.fillStyle=grad;g.fillRect(0,y,w,dh);
+      for(let i=0;i<185;i++){
+        const x=random()*w,yy=y+random()*dh,end=Math.min(w,x+22+random()*340);
+        g.strokeStyle=i%4?"rgba(55,36,21,.19)":"rgba(243,212,166,.22)";
+        g.lineWidth=.3+random()*1.8;g.beginPath();g.moveTo(x,yy);
+        g.bezierCurveTo(lerp(x,end,.30),yy+random()*2.2,lerp(x,end,.60),yy-random()*4.2,end,yy+random()*3.2);g.stroke();
       }
-      g.fillStyle="#433726";g.fillRect(0,y,w,1+random()*4);
-      g.fillStyle="rgba(234,198,144,.58)";g.fillRect(0,y+4,w,1);
+      // Subtle weathered cracks & seam darkening between horizontal slabs.
+      g.fillStyle="#3a2e1f";g.fillRect(0,y,w,2+random()*3.5);
+      g.fillStyle="rgba(234,198,144,.48)";g.fillRect(0,y+4.5,w,1);
     }
-    for(const [x,y,rx,ry] of [[143,97,15,6],[611,210,22,7],[478,347,12,4]]){
+    // Natural spruce knots.
+    for(const [x,y,rx,ry] of [[143,88,16,6.5],[611,208,23,7.5],[478,342,13,4.5],[240,266,11,4]]){
       for(let i=0;i<7;i++){
-        g.beginPath();g.ellipse(x,y,rx+i*4,ry+i*.8,-.13,0,tau);
-        g.lineWidth=1;g.strokeStyle=i?"rgba(64,40,23,.22)":"#5b3d24";g.stroke();
+        g.beginPath();g.ellipse(x,y,rx+i*4,ry+i*.85,-.11,0,tau);
+        g.lineWidth=1.1;g.strokeStyle=i?"rgba(60,38,21,.24)":"#4e331c";g.stroke();
       }
     }
-    for(let i=0;i<32;i++){
-      const x=30+random()*(w-60),y=25+random()*(h-42);
-      g.beginPath();g.moveTo(x,y);g.lineTo(x+4+random()*28,y+(random()-.5)*10);
-      g.lineWidth=.6+random()*2;g.strokeStyle=i%3?"rgba(245,224,179,.55)":"rgba(58,42,28,.68)";g.stroke();
-    }
-    g.strokeStyle="#e6d8b2";g.lineWidth=11;g.lineJoin="round";
-    g.beginPath();g.moveTo(43,41);g.lineTo(701,33);g.lineTo(733,51);g.lineTo(727,400);
-    g.lineTo(42,409);g.lineTo(36,59);g.closePath();g.stroke();
+    // Hand-brushed pasture lime-white outer frame & aiming box (dry-brush bristle texture).
+    g.strokeStyle="#e8dcb8";g.lineWidth=11;g.lineJoin="round";
+    g.beginPath();g.moveTo(46,44);g.lineTo(700,36);g.lineTo(730,54);g.lineTo(724,398);
+    g.lineTo(44,407);g.lineTo(39,60);g.closePath();g.stroke();
     g.strokeRect(w*(.5-.31/1.9),h*(1-(3.44-2.95)/1.1),w*.62/1.9,h*.36/1.1);
-    for(let i=0;i<83;i++){
-      const x=32+random()*(w-64),y=random()*h;
-      g.fillStyle=i%2?"rgba(94,66,41,.11)":"rgba(232,216,176,.16)";g.fillRect(x,y,1+random()*6,1+random()*13);
-    }
-    // Ball scuffs collect around the aim box, and exposed grain follows the edge of chipped paint.
-    for(let i=0;i<57;i++){
-      const x=w*(.50+(random()+random()-1)*.22),y=h*(.67+(random()+random()-1)*.28);
-      g.lineWidth=.5+random()*2.4;g.strokeStyle=i%4?"rgba(58,46,34,.39)":"rgba(226,205,154,.64)";
-      g.beginPath();g.moveTo(x,y);g.quadraticCurveTo(x+3,y-4,x+13+random()*18,y+1+random()*5);g.stroke();
+    // Dry-brush flaking & ball scuffs around the aiming box.
+    for(let i=0;i<90;i++){
+      const x=34+random()*(w-68),y=random()*h;
+      g.fillStyle=i%2?"rgba(88,62,38,.14)":"rgba(232,216,176,.17)";g.fillRect(x,y,1+random()*7,1+random()*14);
     }
     for(let i=0;i<64;i++){
-      const edge=i%4,x=edge===0?39+random()*8:edge===1?720+random()*10:54+random()*655;
-      const y=edge===2?37+random()*6:edge===3?403+random()*8:53+random()*348;
-      g.fillStyle=i%2?"rgba(85,62,36,.45)":"rgba(167,135,84,.59)";
-      g.fillRect(x,y,.7+random()*6,1+random()*2.4);
+      const x=w*(.50+(random()+random()-1)*.22),y=h*(.67+(random()+random()-1)*.28);
+      g.lineWidth=.6+random()*2.5;g.strokeStyle=i%4?"rgba(55,42,31,.42)":"rgba(226,205,154,.62)";
+      g.beginPath();g.moveTo(x,y);g.quadraticCurveTo(x+3,y-4,x+13+random()*18,y+1+random()*5);g.stroke();
     }
-    // Rust and runoff sit below the fasteners that anchor each board.
-    for(const x of [78,w-88])for(const y of [75,h-65]){
-      const grad=g.createLinearGradient(x,y,x+5,y+62);
-      grad.addColorStop(0,"#634128");grad.addColorStop(1,"rgba(81,48,29,0)");
-      g.fillStyle=grad;g.fillRect(x-3,y,7,63);
-      g.beginPath();g.arc(x,y,6.5,0,tau);g.fillStyle="#555954";g.fill();
-      g.fillStyle="#aaa395";g.fillRect(x-3,y-3,4,2);
+    // Faint alpine moss/dampness along the bottom live-edge.
+    const damp=g.createLinearGradient(0,h*.84,0,h);
+    damp.addColorStop(0,"rgba(58,76,42,0)");damp.addColorStop(1,"rgba(54,72,38,.36)");
+    g.fillStyle=damp;g.fillRect(0,h*.84,w,h*.16);
+    // Rust streaks below forged bolt points.
+    for(const x of [130,w-130])for(const y of [68,158,248,338,402]){
+      const grad=g.createLinearGradient(x,y,x+4,y+44);
+      grad.addColorStop(0,"rgba(96,58,34,.75)");grad.addColorStop(1,"rgba(81,48,29,0)");
+      g.fillStyle=grad;g.fillRect(x-3,y,6,45);
     }
     const map=new THREE.CanvasTexture(canvas);map.encoding=THREE.sRGBEncoding;
     map.anisotropy=Math.min(8,renderer.capabilities.getMaxAnisotropy());
-    return map;
+    const bump=new THREE.CanvasTexture(canvas);bump.encoding=THREE.LinearEncoding;
+    return {map,bump};
   }
 
-  function board(s,z,dir){
-    const outline=[[-.94,.10],[-.95,.99],[-.88,1.078],[-.66,1.10],[-.18,1.091],[.11,1.10],
-      [.57,1.081],[.88,1.077],[.943,1.011],[.949,.55],[.936,.31],[.947,.11],[.89,.017],
-      [.58,.001],[.15,.016],[-.03,.006],[-.55,.003],[-.894,.023]];
-    const shape=new THREE.Shape();
-    outline.forEach(([x,y],i)=>i?shape.lineTo(x,y):shape.moveTo(x,y));shape.closePath();
-    const geo=new THREE.ExtrudeGeometry(shape,{depth:.094,steps:1,bevelEnabled:true,bevelSize:.010,bevelThickness:.010,bevelSegments:1});
-    const p=geo.attributes.position,uv=geo.attributes.uv;
-    for(let i=0;i<p.count;i++)uv.setXY(i,clamp(.5+p.getX(i)/1.92,0,1),clamp(p.getY(i)/1.12,0,1));
-    const material=new THREE.MeshStandardMaterial({map:woodMap(s.r),color:0xffffff,roughness:.86});
-    const mesh=new THREE.Mesh(geo,material);mesh.name="meadowWeatheredBackboard";
-    mesh.position.set(0,2.95,z-dir*.046);mesh.rotation.y=dir>0?0:Math.PI;
-    mesh.castShadow=true;mesh.receiveShadow=true;s.root.add(mesh);
-    return material;
+  function timberLogTexture(random){
+    const cv=document.createElement("canvas");cv.width=192;cv.height=512;
+    const g=cv.getContext("2d");
+    g.fillStyle="#786148";g.fillRect(0,0,192,512);
+    for(let i=0;i<240;i++){
+      const x=random()*192,y=random()*512,len=20+random()*120;
+      g.strokeStyle=i%3?"rgba(52,38,24,.32)":"rgba(196,170,132,.22)";
+      g.lineWidth=.8+random()*2.2;g.beginPath();
+      g.moveTo(x,y);g.bezierCurveTo(x+(random()-.5)*6,y+len*.35,x+(random()-.5)*6,y+len*.7,x+(random()-.5)*4,y+len);g.stroke();
+    }
+    // Weathering checks & damp moss staining near base of log.
+    const moss=g.createLinearGradient(0,410,0,512);
+    moss.addColorStop(0,"rgba(58,78,42,0)");moss.addColorStop(1,"rgba(52,70,36,.58)");
+    g.fillStyle=moss;g.fillRect(0,410,192,102);
+    const tex=new THREE.CanvasTexture(cv);tex.encoding=THREE.sRGBEncoding;
+    tex.wrapS=tex.wrapT=THREE.RepeatWrapping;tex.anisotropy=4;
+    return tex;
+  }
+
+  function forgedIronTexture(random){
+    const cv=document.createElement("canvas");cv.width=128;cv.height=128;
+    const g=cv.getContext("2d");
+    g.fillStyle="#353835";g.fillRect(0,0,128,128);
+    for(let i=0;i<140;i++){
+      const x=random()*128,y=random()*128,rad=2+random()*11;
+      const rg=g.createRadialGradient(x,y,0,x,y,rad);
+      rg.addColorStop(0,i%3===0?"rgba(128,74,38,.58)":"rgba(24,25,24,.48)");
+      rg.addColorStop(1,"rgba(0,0,0,0)");
+      g.fillStyle=rg;g.fillRect(x-rad,y-rad,rad*2,rad*2);
+    }
+    const tex=new THREE.CanvasTexture(cv);tex.encoding=THREE.sRGBEncoding;
+    tex.wrapS=tex.wrapT=THREE.RepeatWrapping;return tex;
+  }
+
+  /* 5 块横向天然活边松木大板（Live-Edge Horizontal Slabs）+ 锻铁角码 + 背面木楞 + 螺栓 */
+  function board(s,z,dir,ironMat,logMat){
+    const nearPivot=dir>0?scene.getObjectByName("boardPivot"):null;
+    const panelRig=new THREE.Group(),panel=new THREE.Group();
+    panel.name=dir>0?"meadowNearTimberBoard":"meadowFarTimberBoard";
+    s.root.add(panelRig);panelRig.add(panel);
+    if(nearPivot)panelRig.position.copy(nearPivot.position);
+    panel.position.set(0,2.95-panelRig.position.y,(z-dir*.048)-panelRig.position.z);
+    panel.rotation.y=dir>0?0:Math.PI;
+
+    const {map,bump}=woodMap(s.r);
+    const material=new THREE.MeshStandardMaterial({map,bumpMap:bump,bumpScale:.016,color:0xffffff,roughness:.88,metalness:.02});
+    // 5 horizontal slabs with organic live-edge top/bottom, hand-sawn end stagger, and slight Z relief.
+    const slabDefs=[
+      {y0:.008,y1:.212,l:-.942,r:.956,zOff:.002,wobble:.012},
+      {y0:.220,y1:.432,l:-.962,r:.936,zOff:-.003,wobble:.007},
+      {y0:.440,y1:.654,l:-.938,r:.964,zOff:.003,wobble:.006},
+      {y0:.662,y1:.876,l:-.956,r:.940,zOff:-.002,wobble:.007},
+      {y0:.884,y1:1.094,l:-.932,r:.948,zOff:.001,wobble:.014}
+    ];
+    for(let row=0;row<slabDefs.length;row++){
+      const {y0,y1,l,r:rx,zOff,wobble}=slabDefs[row];
+      const shape=new THREE.Shape(),steps=10;
+      const topWave=(u)=>row===4?(Math.sin(u*Math.PI*2.4+.5)*wobble+Math.cos(u*Math.PI*5.2)*.005):(Math.sin(u*Math.PI*3+row)*.003);
+      const botWave=(u)=>row===0?(Math.sin(u*Math.PI*2.8+1.1)*wobble-Math.cos(u*Math.PI*4.7)*.005):(Math.sin(u*Math.PI*3+row+2)*.003);
+      shape.moveTo(l,y0+botWave(0));
+      for(let k=1;k<=steps;k++){const u=k/steps;shape.lineTo(lerp(l,rx,u),y0+botWave(u));}
+      shape.lineTo(rx+(row%2?.008:-.006),(y0+y1)*.5);
+      for(let k=steps;k>=0;k--){const u=k/steps;shape.lineTo(lerp(l,rx,u),y1+topWave(u));}
+      shape.lineTo(l+(row%2?-.007:.006),(y0+y1)*.5);
+      shape.closePath();
+      const geo=new THREE.ExtrudeGeometry(shape,{depth:.082,steps:1,bevelEnabled:true,bevelSize:.007,bevelThickness:.007,bevelSegments:1});
+      const p=geo.attributes.position,uv=geo.attributes.uv;
+      for(let i=0;i<p.count;i++)uv.setXY(i,clamp(.5+p.getX(i)/1.94,0,1),clamp(p.getY(i)/1.11,0,1));
+      const slab=new THREE.Mesh(geo,material);
+      slab.name="meadowHorizontalSlab";slab.position.z=-.041+zOff;
+      slab.castShadow=true;slab.receiveShadow=true;panel.add(slab);
+    }
+
+    // Two rear vertical/angled timber battens holding the 5 horizontal slabs together.
+    for(const [bx,ang] of [[-.64,.035],[.64,-.035]]){
+      const batten=new THREE.Mesh(new THREE.BoxGeometry(.105,1.02,.058),logMat);
+      batten.position.set(bx,.55,-.072);batten.rotation.z=ang;
+      batten.castShadow=true;batten.receiveShadow=true;panel.add(batten);
+    }
+    // Diagonal timber Z-brace across the back.
+    const diag=new THREE.Mesh(new THREE.BoxGeometry(1.38,.082,.042),logMat);
+    diag.position.set(0,.55,-.082);diag.rotation.z=.46;
+    diag.castShadow=true;diag.receiveShadow=true;panel.add(diag);
+
+    // 4 forged iron L-corner brackets wrapping the outer corners of the pasture board.
+    for(const sx of [-1,1])for(const sy of [0,1]){
+      const cy=sy?1.04:.06,cx=sx*.90;
+      const armH=new THREE.Mesh(new THREE.BoxGeometry(.22,.052,.112),ironMat);
+      armH.position.set(cx-sx*.07,cy,0);panel.add(armH);
+      const armV=new THREE.Mesh(new THREE.BoxGeometry(.052,.22,.112),ironMat);
+      armV.position.set(cx+sx*.03,cy+(sy?-.08:.08),0);panel.add(armV);
+    }
+
+    // Forged iron rim mounting flange + triangular gussets behind the hoop neck.
+    const flange=new THREE.Mesh(new THREE.BoxGeometry(.25,.22,.028),ironMat);
+    flange.position.set(0,.14,.050);panel.add(flange);
+    for(const sx of [-1,1]){
+      const gusset=new THREE.Mesh(new THREE.BoxGeometry(.024,.12,.09),ironMat);
+      gusset.position.set(sx*.082,.11,.085);gusset.rotation.x=.32;panel.add(gusset);
+    }
+
+    // 20 instanced forged iron bolt heads & washers anchoring each horizontal slab to the battens.
+    const boltGeo=new THREE.CylinderGeometry(.016,.018,.024,6);
+    boltGeo.rotateX(Math.PI/2);
+    const bolts=new THREE.InstancedMesh(boltGeo,ironMat,20);
+    const stamp=new THREE.Object3D();
+    let bi=0;
+    for(const bx of [-.64,.64]){
+      for(let row=0;row<5;row++){
+        const by=.11+row*.22;
+        for(const side of [-1,1]){
+          stamp.position.set(bx+(s.r()-.5)*.018,by+(s.r()-.5)*.014,side>0?.049:-.104);
+          stamp.rotation.set(0,0,s.r()*tau);stamp.updateMatrix();
+          bolts.setMatrixAt(bi++,stamp.matrix);
+        }
+      }
+    }
+    bolts.name="meadowForgedBolts";panel.add(bolts);
+
+    // 12 hand-bent iron wire net-hooks around the underside of the rim (adds close-up artisan detail).
+    const rimLocalZ=.56;
+    const hookGeo=new THREE.TorusGeometry(.014,.0032,5,8,Math.PI*1.35);
+    const hooks=new THREE.InstancedMesh(hookGeo,ironMat,12);
+    for(let i=0;i<12;i++){
+      const a=i*tau/12+(s.r()-.5)*.06;
+      stamp.position.set(Math.cos(a)*.302,.084+(s.r()-.5)*.004,rimLocalZ+Math.sin(a)*.302);
+      stamp.rotation.set(Math.PI/2,a,0);stamp.updateMatrix();
+      hooks.setMatrixAt(i,stamp.matrix);
+    }
+    hooks.name="meadowHandBentRimHooks";panel.add(hooks);
+
+    return {material,panelRig,nearPivot};
   }
 
   function buildHoops(s,supports,batch){
-    const base=batch(),drips=[],boards=[];
-    const steel=new THREE.MeshStandardMaterial({color:0x384c43,roughness:.76,metalness:.32});
-    const band=new THREE.MeshStandardMaterial({color:0x8c6d4a,roughness:.78,metalness:.30});
+    const base=batch(),drips=[],boards=[],motions=[];
+    const logTex=timberLogTexture(s.r);
+    const ironTex=forgedIronTexture(s.r);
+    const logMat=new THREE.MeshStandardMaterial({map:logTex,roughness:.90,metalness:.02});
+    const ironMat=new THREE.MeshStandardMaterial({map:ironTex,color:0x4a4d49,roughness:.74,metalness:.46});
+    const ropeMat=new THREE.MeshStandardMaterial({color:0x9e845c,roughness:.95,metalness:.02});
     const axis=new THREE.Vector3(0,1,0);
-    function tube(r0,r1,from,to,mat=steel){
+    function curvedLog(pts,radius,segs,mat=logMat,name="meadowTimberPost"){
+      const curve=new THREE.CatmullRomCurve3(pts.map(p=>new THREE.Vector3(...p)));
+      const mesh=new THREE.Mesh(new THREE.TubeGeometry(curve,segs,radius,9,false),mat);
+      mesh.name=name;mesh.castShadow=true;mesh.receiveShadow=true;s.root.add(mesh);
+      return mesh;
+    }
+    function rod(r0,r1,from,to,mat=ironMat){
       const start=new THREE.Vector3(...from),tip=new THREE.Vector3(...to),v=tip.clone().sub(start);
       const mesh=new THREE.Mesh(new THREE.CylinderGeometry(r1,r0,v.length(),8),mat);
       mesh.position.copy(start).lerp(tip,.5);mesh.quaternion.setFromUnitVectors(axis,v.normalize());
       mesh.castShadow=true;mesh.receiveShadow=true;s.root.add(mesh);
     }
     for(const [z,dir] of supports){
-      boards.push(board(s,z,dir));
-      const foot=z-dir*1.55;
-      base.add("rock",0x66675c,-.071,.073,foot,.97,.25,.79,0,.48,.075);
-      base.add("rock",0x827e66,.22,.074,foot+.20,.43,.18,.59,.14,.82,-.09);
-      base.add("rock",0x706e5b,-.29,.048,foot-.23,.49,.17,.52,0,1.1,-.11);
-      tube(.145,.105,[0,.17,foot],[0,3.46,foot]);
-      tube(.107,.081,[0,3.46,foot],[0,3.46,z-dir*.061]);
-      tube(.055,.046,[-.05,2.40,foot],[-.21,3.39,z-dir*.16]);
-      tube(.039,.037,[.074,2.60,foot],[.24,3.35,z-dir*.12]);
-      tube(.132,.131,[0,.35,foot],[0,.47,foot],band);
-      tube(.117,.117,[0,2.66,foot],[0,2.74,foot],band);
+      const b=board(s,z,dir,ironMat,logMat);
+      boards.push(b.material);
+      if(b.nearPivot)motions.push({panelRig:b.panelRig,nearPivot:b.nearPivot});
+
+      const foot=z-dir*1.62;
+      // River-stone cairn footing anchoring the A-frame twin spruce logs into the alpine meadow.
+      const rockTints=[0x68695e,0x7e7b67,0x5f6356,0x89846f,0x545d4a];
+      for(let k=0;k<12;k++){
+        const a=k*tau/12+(s.r()-.5)*.28,rad=.22+s.r()*.62;
+        const rx=Math.cos(a)*rad*1.25,rz=foot+Math.sin(a)*rad*.72;
+        const sc=.24+s.r()*.34;
+        base.add("rock",rockTints[k%rockTints.length],rx,s.heightAt(rx,rz)+sc*.22,rz,
+          sc*(1.05+s.r()*.45),sc*(.48+s.r()*.32),sc*(.95+s.r()*.4),
+          (s.r()-.5)*.3,s.r()*tau,(s.r()-.5)*.3);
+      }
+
+      // Twin naturally bowed peeled alpine spruce logs forming an A-frame pasture support.
+      for(const side of [-1,1]){
+        const gx=side*.62,gy=s.heightAt(gx,foot)-.06;
+        curvedLog([
+          [gx,gy,foot+dir*.05],
+          [side*.46,1.35,foot-dir*.04],
+          [side*.24,2.60,foot+dir*.03],
+          [side*.10,3.52,foot+dir*.08]
+        ],.092,14,logMat,"meadowAFrameSpruceLog");
+        // Iron diagonal tension rods bracing the A-frame to the timber backboard.
+        rod(.026,.024,[side*.30,2.38,foot+dir*.02],[side*.48,3.26,z-dir*.12],ironMat);
+      }
+      // Horizontal spruce cross-ties locking the A-frame legs together.
+      rod(.058,.054,[-.52,.98,foot],[.52,1.02,foot],logMat);
+      rod(.052,.048,[-.34,2.24,foot],[.34,2.20,foot],logMat);
+
+      // Heavy cantilever top timber beam reaching forward to the backboard.
+      curvedLog([
+        [0,3.50,foot-dir*.32],
+        [.015,3.52,foot+dir*.45],
+        [0,3.49,z-dir*.10]
+      ],.096,10,logMat,"meadowCantileverTimber");
+
+      // Hemp rope / forged iron lashing wraps at the A-frame apex & cross-tie joints.
+      for(const [lx,ly,lz,rad] of [[0,3.48,foot+dir*.05,.155],[-.45,1.00,foot,.098],[.45,1.01,foot,.098]]){
+        for(let w=0;w<3;w++){
+          const wrap=new THREE.Mesh(new THREE.TorusGeometry(rad,.016,6,14),w===1?ironMat:ropeMat);
+          wrap.position.set(lx,ly+(w-1)*.032,lz);
+          wrap.rotation.set(Math.PI/2+(w-1)*.18,0,(w-1)*.22);
+          s.root.add(wrap);
+        }
+      }
+
       for(const x of [-.90,-.73,-.37,.20,.58,.89])drips.push({x,y:2.956,z:z+dir*.05});
       const rimZ=dir>0?HOOP.z:COURT.farHoopZ;
       for(const x of [-.24,-.10,.11,.25])drips.push({x,y:HOOP.y-.024,z:rimZ+dir*(.31-Math.abs(x)*.55)});
     }
     base.finish(s.root,"meadowFieldstoneFootings").castShadow=true;
-    return {boards,drips};
+    return {boards,drips,motions};
   }
 
   function instances(s,name,geometry,color,opacity,limit){
@@ -316,10 +482,10 @@
   }
 
   function build(s,supports,batch){
-    const {boards,drips}=buildHoops(s,supports,batch);
+    const {boards,drips,motions}=buildHoops(s,supports,batch);
     buildPastureProps(s,batch);
     const ripple=new THREE.RingGeometry(.88,1,24);ripple.rotateX(-Math.PI/2);
-    return {boards,drips,random:s.r,transform:new THREE.Object3D(),heightAt:s.heightAt,wet:0,rain:0,dripClock:0,poolClock:0,
+    return {boards,drips,motions,random:s.r,transform:new THREE.Object3D(),heightAt:s.heightAt,wet:0,rain:0,dripClock:0,poolClock:0,
       drops:instances(s,"meadowHoopDrips",new THREE.SphereGeometry(1,5,4),0xb7cdd1,.73,s.mobile?24:48),
       splash:instances(s,"meadowBallSplash",new THREE.SphereGeometry(1,5,4),0xd5e6e5,.73,s.mobile?68:138),
       rings:instances(s,"meadowWaterRipples",ripple,0xb8c8c6,.43,s.mobile?20:40),
@@ -443,8 +609,13 @@
   function update(c,time,dt,rain,wet,clear){
     c.rain=rain;c.wet=wet;
     for(const mat of c.boards){
-      mat.roughness=lerp(.86,.49,wet);
+      mat.roughness=lerp(.88,.48,wet);
       mat.color.setScalar(lerp(1,.72,wet));
+    }
+    if(c.motions){
+      for(const {panelRig,nearPivot} of c.motions){
+        panelRig.rotation.copy(nearPivot.rotation);
+      }
     }
     updateWater(c,dt);
     const fair=smoothstep(clear,.13,.67)*(1-smoothstep(rain,.008,.18));
@@ -452,5 +623,10 @@
     updateButterflies(c,time,fair);
   }
 
-  global.AIBAMeadowCourt=Object.freeze({build,update,reset,ballImpact,waterGLSL});
+  function poolLiquidAt(x,z,wet){
+    if(wet<.045||Math.abs(x)>10||z<COURT.nearBaseline-2||z>COURT.farBaseline+2)return 0;
+    return smoothstep(wet,.045,.77)*(.27+.73*(1-smoothstep(poolShape(x,z),.38,1.44)));
+  }
+
+  global.AIBAMeadowCourt=Object.freeze({build,update,reset,ballImpact,poolLiquidAt,waterGLSL});
 })(window);

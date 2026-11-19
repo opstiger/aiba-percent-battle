@@ -82,8 +82,8 @@
     Object.freeze({name:"scenery",min:[-7.5,0,-13.21],max:[7.5,1.1,-13.05],e:.35})
   ]);
   const TUNING_PRESETS=Object.freeze({
-    firm:Object.freeze({eRim:.55,muRim:.30,eBoard:.62,muBoard:.25,eSupport:.45,eFloor:.78,muFloor:.45,rollDrag:1.2,backspin:12}),
-    soft:Object.freeze({eRim:.32,muRim:.40,eBoard:.58,muBoard:.25,eSupport:.45,eFloor:.78,muFloor:.45,rollDrag:1.2,backspin:12})
+    firm:Object.freeze({eRim:.55,eRimHard:.68,muRim:.28,eBoard:.62,muBoard:.25,eSupport:.45,eFloor:.78,muFloor:.45,rollDrag:1.2,backspin:12}),
+    soft:Object.freeze({eRim:.32,eRimHard:.68,muRim:.40,eBoard:.58,muBoard:.25,eSupport:.45,eFloor:.78,muFloor:.45,rollDrag:1.2,backspin:12})
   });
   const DEFAULT_TUNING=TUNING_PRESETS.soft;
 
@@ -123,7 +123,15 @@
     const qx=rim.x+ox*rim.R,qz=rim.z+oz*rim.R;
     const dx=s.x-qx,dy=s.y-rim.y,dz=s.z-qz,d=len3(dx,dy,dz),reach=r+rim.tube;
     if(d>=reach||d<1e-7)return 0;
-    return resolveContact(s,dx/d,dy/d,dz/d,reach-d,tu.eRim,tu.muRim);
+    const nx=dx/d,ny=dy/d,nz=dz/d;
+    // Inner-lip grazes keep realistic shooter's roll; front/side/outer bricks rebound sharply and far off the steel iron.
+    const vn=-(s.vx*nx+s.vy*ny+s.vz*nz);
+    const outward=clamp((rh-(rim.R+.028))/.065,0,1)*(nz>-.35?1:.35);
+    const hardT=clamp((vn-3.0)/2.5,0,1)*outward;
+    const eHard=tu.eRimHard!=null?tu.eRimHard:tu.eRim;
+    const eRim=tu.eRim+(eHard-tu.eRim)*hardT;
+    const muRim=tu.muRim*(1-.42*hardT);
+    return resolveContact(s,nx,ny,nz,reach-d,eRim,muRim);
   }
 
   function contactBox(s,box,e,mu){
@@ -252,7 +260,10 @@
       s.vy-=G*DT;
 
       let imp=contactRim(s,tu);
-      if(imp>0){if(note("rim",t,imp))state.rimHits++;}
+      if(imp>0){
+        const added=note("rim",t,imp);
+        if(added){last.rim.ev.hitIndex=state.rimHits;state.rimHits++;}
+      }
       if(timber){
         imp=contactRainforestBoard(s,tu);
         if(imp>0&&note("board",t,imp))state.boardHits++;
@@ -289,7 +300,13 @@
       const netPush=applyNet(s,state);
       if(netPush>.05)note("net",t,netPush);
       if(!state.made&&state.entered&&s.y<rim.y-.42){
-        state.made=true;state.madeT=t;note("made",t,0);
+        state.made=true;state.madeT=t;
+        if(note("made",t,Math.abs(s.vy))){
+          last.made.ev.speed=Math.abs(s.vy);
+          last.made.ev.rimHits=state.rimHits;
+          last.made.ev.boardHits=state.boardHits;
+          last.made.ev.offset=clamp(h/Math.max(.05,rim.R-rim.tube),0,1);
+        }
         if(!state.decided){state.decided=true;state.decidedT=t;note("decided",t,0);}
       }
       if(!state.decided&&!state.entered&&s.y<rim.y-.45&&prevY>=rim.y-.45){
