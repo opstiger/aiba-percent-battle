@@ -171,13 +171,14 @@
             float flakes=mossNoise(vForestWorld*vec3(3.3,6.3,3.3));
             float fineRidges=pow(abs(sin(vBarkUV.x*193.0+flakes*.92)),13.0);
             vec3 baseBark=diffuseColor.rgb;
-            if(vBarkForm>.5&&vBarkForm<1.5){
+            float barkType=floor(vBarkForm+.001);
+            if(barkType==1.0){
               vec3 pale=vec3(.094,.093,.078)*(.77+barkGrain*.43);
               diffuseColor.rgb=mix(baseBark,pale,.76)*(1.0-split*.12);
-            }else if(vBarkForm<2.5&&vBarkForm>1.5){
+            }else if(barkType==2.0){
               diffuseColor.rgb=mix(baseBark,vec3(.145,.127,.105),.43)*
                 (.81+.28*flakes)*(1.0-split*.19-fineRidges*.085);
-            }else if(vBarkForm>2.5){
+            }else if(barkType>2.0){
               float scars=smoothstep(.60,.80,flakes+split*.11);
               diffuseColor.rgb=mix(baseBark*(.68+.46*barkGrain-fineRidges*.16),vec3(.13,.079,.044),scars*.62);
             }else{
@@ -190,8 +191,13 @@
             float reach=(1.0-smoothstep(.8,8.2,vForestWorld.y))*.12;
             float mossCover=smoothstep(.62,.83,moist*.67+grain*.34+silt*.14+reach);
             vec3 mossColor=mossTint(moist,silt)*(.60+.54*clamp(diffuseColor.g*3.0,0.0,1.0));
-            float lichen=smoothstep(.69,.82,mossNoise(site*3.8)+silt*.18)*(1.0-mossCover);
-            diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.18,.192,.153),lichen*.37);
+            ${bark?`
+              float hasLichen=step(.2,fract(vBarkForm));
+              float patches=smoothstep(.70,.85,mossNoise(site*2.9)+silt*.15);
+              float below=1.0-smoothstep(1.4,6.1,vForestWorld.y);
+              float lichen=hasLichen*patches*below*(1.0-mossCover);
+              diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.169,.181,.151),lichen*.29);
+            `:""}
             diffuseColor.rgb=mix(diffuseColor.rgb,mossColor,mossCover*.79);`:""}
         `).replace("#include <lights_fragment_end>",`#include <lights_fragment_end>
           float daylight=leafLight(vForestWorld);
@@ -246,7 +252,7 @@
       const row=[];
       for(let i=0;i<=sides;i++){
         const theta=i/sides*TAU,normal=right.clone().multiplyScalar(Math.cos(theta)).addScaledVector(across,Math.sin(theta));
-        const irregular=shape?.wood===1?.56:1;
+        const irregular=Math.floor(shape?.wood||0)===1?.56:1;
         const ribs=.88+irregular*(.11*Math.sin(theta*5.0+t*2)+.05*Math.cos(theta*7-t*4));
         const skirt=roots?1+Math.pow(1-t,9)*(.63+.46*Math.cos(theta*4)):1;
         const rad=lerp(radius,r1,t)*ribs*skirt;
@@ -356,25 +362,262 @@
     return map;
   }
 
+  function reclaimedBoardTexture(planks,seed){
+    const r=mulberry32(seed),w=1024,h=768,cv=document.createElement("canvas");
+    cv.width=w;cv.height=h;
+    const g=cv.getContext("2d");
+    const px=x=>(x+1.09)*w/2.18,py=y=>(4.30-y)*h/1.40;
+    const colors=["#6e6551","#998066","#745e49","#8e816a","#a89070","#7c6852","#8c7157","#77644f","#8f775c"];
+    g.fillStyle="#746451";g.fillRect(0,0,w,h);
+    for(const [plank,{left:x0,right:x1,outline,top}] of planks.entries()){
+      const left=px(x0),right=px(x1),span=right-left;
+      g.save();g.beginPath();g.rect(left,0,span,h);g.clip();
+      const stain=g.createLinearGradient(left,0,right,h);
+      stain.addColorStop(0,colors[plank]);stain.addColorStop(.57,colors[plank]);stain.addColorStop(1,"#4d4f3e");
+      g.fillStyle=stain;g.fillRect(left,0,span,h);
+      const grainBase=left+r()*span,grainY=128+r()*538;
+      for(let i=0;i<180;i++){
+        let x=left+r()*span,y=-50+r()*(h+50);
+        const len=37+r()*610,wiggle=(r()-.5)*14;
+        const k=Math.exp(-(((x-grainBase)/(span*.31))**2))*Math.sin((y-grainY)*.017)*(plank%2?11:6);
+        g.strokeStyle=i%4===0?"rgba(227,202,153,.19)":"rgba(48,35,27,.20)";
+        g.lineWidth=.46+r()*2.0;g.beginPath();g.moveTo(x,y);
+        g.bezierCurveTo(x+wiggle+k,y+len*.34,x-wiggle+k*.66,y+len*.65,x+wiggle*.38,y+len);
+        g.stroke();
+      }
+      if(plank%3!==2){
+        g.save();g.translate(left+span*(.24+r()*.51),grainY);g.rotate((r()-.5)*.31);
+        for(let j=11;j>0;j--){
+          g.strokeStyle=j%2?"rgba(52,39,27,.36)":"rgba(194,161,112,.24)";
+          g.lineWidth=.9;g.beginPath();g.ellipse(0,0,2+j*1.27,3+j*3.31,.03,0,TAU);g.stroke();
+        }
+        g.fillStyle="rgba(44,34,25,.60)";g.beginPath();g.ellipse(0,0,2.9,7.3,0,0,TAU);g.fill();
+        g.restore();
+      }
+      const edge=g.createLinearGradient(left,0,left+span,0);
+      edge.addColorStop(0,"rgba(38,30,23,.56)");edge.addColorStop(.032,"rgba(234,203,151,.21)");
+      edge.addColorStop(.11,"rgba(85,62,42,0)");edge.addColorStop(.88,"rgba(85,62,42,0)");edge.addColorStop(1,"rgba(38,30,23,.63)");
+      g.fillStyle=edge;g.fillRect(left,0,span,h);
+      g.beginPath();
+      outline.forEach(([x,y],i)=>{if(i)g.lineTo(px(x),py(y));else g.moveTo(px(x),py(y));});
+      g.closePath();g.clip();
+      for(let i=1;i<top.length;i++){
+        const [x0,y0]=top[i-1],[x1,y1]=top[i];
+        for(let j=0;j<12;j++){
+          const t=r(),x=px(lerp(x0,x1,t)),start=py(lerp(y0,y1,t)),length=4+r()*27;
+          g.fillStyle=j%3?"rgba(215,184,133,.26)":"rgba(47,35,26,.52)";
+          g.beginPath();g.moveTo(x-(.7+r()*2),start-1);
+          g.lineTo(x+1.2+r()*2.8,start-1);g.lineTo(x+(r()-.5)*3.5,start+length);g.closePath();g.fill();
+        }
+        if(y1<y0-.034||y1>y0+.045){
+          g.strokeStyle="rgba(224,191,140,.33)";g.lineWidth=3;
+          g.beginPath();g.moveTo(px(x0),py(y0)+2);g.lineTo(px(x1),py(y1)+3);g.stroke();
+        }
+      }
+      for(let i=0;i<16;i++){
+        const xx=left+r()*span,yy=h*(.85+r()*.15);
+        g.strokeStyle=i%3?"rgba(46,34,26,.47)":"rgba(205,172,124,.25)";
+        g.lineWidth=.9+r()*1.65;g.beginPath();g.moveTo(xx,yy);
+        g.lineTo(xx+(r()-.5)*4,yy-4-r()*22);g.stroke();
+      }
+      g.restore();
+    }
+    for(let i=0;i<60;i++){
+      const x=r()*w,y=r()*h,rad=11+r()*70,fade=g.createRadialGradient(x,y,1,x,y,rad);
+      fade.addColorStop(0,i%3===1?"rgba(109,113,76,.28)":"rgba(41,38,31,.24)");
+      fade.addColorStop(1,"rgba(61,57,44,0)");
+      g.fillStyle=fade;g.fillRect(x-rad,y-rad,rad*2,rad*2);
+    }
+    const aim=document.createElement("canvas");aim.width=w;aim.height=h;
+    const a=aim.getContext("2d");
+    a.strokeStyle="#cfc3a6";a.globalAlpha=.76;a.lineWidth=12;a.lineCap="round";a.lineJoin="round";
+    a.beginPath();a.moveTo(px(-.294),py(3.072));a.lineTo(px(-.309),py(3.411));a.lineTo(px(.309),py(3.428));
+    a.lineTo(px(.303),py(3.076));a.lineTo(px(-.294),py(3.072));a.stroke();
+    a.globalCompositeOperation="destination-out";
+    for(let i=0;i<11000;i++){
+      const x=px(-.36+r()*.72),y=py(3.01+r()*.47);
+      a.globalAlpha=.25+r()*.75;a.fillRect(x,y,.8+r()*4.2,.8+r()*12);
+    }
+    for(const [x,y,ww,hh] of [[-.31,3.18,9,34],[.16,3.426,29,6],[.308,3.26,10,27],[-.13,3.080,26,7]]){
+      a.globalAlpha=.84;a.fillRect(px(x)-ww*.5,py(y)-hh*.5,ww,hh);
+    }
+    g.drawImage(aim,0,0);
+    for(let i=0;i<7600;i++){
+      g.fillStyle=i%3?"rgba(50,43,32,.12)":"rgba(238,216,170,.14)";
+      g.fillRect(r()*w,r()*h,.3+r()*2,.6+r()*4);
+    }
+    const map=new THREE.CanvasTexture(cv);map.encoding=THREE.sRGBEncoding;map.anisotropy=5;
+    return map;
+  }
+
+  function reclaimedHoops(s,uniforms){
+    const shape=AIBABallPhysics.RAINFOREST_HOOP,nearPivot=scene.getObjectByName("boardPivot");
+    const {planks,face,back,radius,pole,brace,braceRadius}=shape;
+    function attach(group,geometry,material,name){
+      const mesh=new THREE.Mesh(geometry,material);mesh.name=name;
+      mesh.castShadow=true;mesh.receiveShadow=true;group.add(mesh);
+      return mesh;
+    }
+    function tube(group,points,radius,material,name,segments){
+      const spline=new THREE.CatmullRomCurve3(points);
+      return attach(group,new THREE.TubeGeometry(spline,segments,radius,12,false),material,name);
+    }
+
+    const r=mulberry32(240178),w=192,h=512,cv=document.createElement("canvas");cv.width=w;cv.height=h;
+    const g=cv.getContext("2d");
+    g.fillStyle="#4c5854";g.fillRect(0,0,w,h);
+    for(let i=0;i<215;i++){
+      const x=r()*w,y=r()*h,rad=3+r()*21;
+      const rust=g.createRadialGradient(x,y,0,x,y,rad);
+      rust.addColorStop(0,i%4===1?"rgba(45,39,31,.65)":"rgba(125,80,46,.68)");
+      rust.addColorStop(.52,"rgba(88,61,42,.28)");rust.addColorStop(1,"rgba(88,61,42,0)");
+      g.fillStyle=rust;g.fillRect(x-rad,y-rad,rad*2,rad*2);
+    }
+    for(let i=0;i<270;i++){
+      g.fillStyle=i%3===1?"rgba(167,162,133,.13)":"rgba(29,29,21,.23)";
+      g.fillRect(r()*w,r()*h,.3+r()*2.7,2+r()*34);
+    }
+    const ironTex=new THREE.CanvasTexture(cv);ironTex.encoding=THREE.sRGBEncoding;ironTex.anisotropy=4;
+    const iron=new THREE.MeshPhongMaterial({map:ironTex,shininess:13,specular:0x444039});
+    const hardware=new THREE.MeshPhongMaterial({color:0x5c5545,shininess:17,specular:0x555551});
+    const straps=new THREE.MeshPhongMaterial({color:0x48514a,shininess:8,specular:0x302b24});
+    const stoneTex=texture("assets/meadow/alpine-rock.jpg");
+    const footing=new THREE.MeshPhongMaterial({color:0x88877a,map:stoneTex,shininess:4});
+    surfaceLight(iron,uniforms);surfaceLight(hardware,uniforms);surfaceLight(footing,uniforms,{moss:true});
+    for(const dir of [1,-1]){
+      const z=dir===1?(back+face)*.5:COURT.farBaseline-.96;
+      const fixed=new THREE.Group();fixed.name=dir===1?"rainforestNearSupport":"rainforestFarSupport";
+      const panelRig=new THREE.Group(),panel=new THREE.Group();
+      panel.name=dir===1?"rainforestNearTimberBoard":"rainforestFarTimberBoard";
+      s.root.add(panelRig,fixed);panelRig.add(panel);
+      if(dir===1&&nearPivot)panelRig.position.copy(nearPivot.position);
+      panel.position.set(0,-panelRig.position.y,z-panelRig.position.z);
+      panel.rotation.y=dir===1?0:Math.PI;
+      if(dir===1&&nearPivot)s.rainforest.boardMotion={panelRig,nearPivot};
+      const map=reclaimedBoardTexture(planks,68179+dir*373);
+      const bump=map.clone();bump.encoding=THREE.LinearEncoding;bump.needsUpdate=true;
+      const timber=new THREE.MeshPhongMaterial({map,bumpMap:bump,bumpScale:.019,
+        shininess:8,specular:0x31291f});
+      surfaceLight(timber,uniforms);
+      const plankDepth=face-back;
+      for(const [j,{outline}] of planks.entries()){
+        const cut=new THREE.Shape(outline.map(([x,y])=>new THREE.Vector2(x,y)));
+        const geom=new THREE.ExtrudeGeometry(cut,{depth:plankDepth,bevelEnabled:false,curveSegments:1});
+        const p=geom.attributes.position,uv=geom.attributes.uv;
+        for(let i=0;i<p.count;i++){
+          uv.setXY(i,(p.getX(i)+1.09)/2.18,(p.getY(i)-2.90)/1.40);
+        }
+        const slab=attach(panel,geom,timber,"reclaimedBoardPlank");
+        slab.position.z=-plankDepth*.5;
+        slab.userData.plank=j;
+      }
+
+      const fasteners=[];
+      const patina=mulberry32(740137+dir*263);
+      for(const [row,[y,width,angle]] of [[3.18,1.88,-.033],[3.63,1.48,.048]].entries()){
+        const strap=attach(panel,new THREE.BoxGeometry(width,.083,.039),straps,"reclaimedRearStrap");
+        strap.position.set(.021,y,-.068);strap.rotation.z=angle;
+        for(const [i,{left,right}] of planks.entries()){
+          const x=lerp(left,right,.26+patina()*.48);
+          if(Math.abs(x)>width*.48||(row===1&&i%4===2))continue;
+          const height=y+angle*x+(patina()-.5)*.032;
+          for(const side of [-1,1]){
+            const tint=pick([0x756452,0x9a7653,0x66645a,0x50483b,0xa48b65],patina);
+            fasteners.push({x,height,side,tint,roll:patina()*Math.PI});
+          }
+        }
+      }
+      const fastenerMat=new THREE.MeshPhongMaterial({color:0xb6aaa0,shininess:14,specular:0x463c32});
+      for(const [name,size,thickness,sides,zOffset] of [["oldWashers",.020,.008,10,0],["oldBolts",.012,.014,6,.009]]){
+        const mesh=new THREE.InstancedMesh(new THREE.CylinderGeometry(size,size,thickness,sides),fastenerMat,fasteners.length);
+        const stamp=new THREE.Object3D();
+        for(const [i,{x,height,side,tint,roll}] of fasteners.entries()){
+          stamp.position.set(x,height-3.41,side*((side===1?.067:.09)+zOffset));
+          stamp.rotation.set(Math.PI*.5,roll,0);
+          stamp.updateMatrix();
+          mesh.setMatrixAt(i,stamp.matrix);
+          mesh.setColorAt(i,color(tint));
+        }
+        mesh.name=name;mesh.receiveShadow=true;mesh.position.y=3.41;
+        panel.add(mesh);
+      }
+      const mount=attach(panel,new THREE.BoxGeometry(.23,.205,.06),hardware,"weldedHoopPlate");
+      mount.position.set(.022,3.50,-.086);
+      const anchor=points=>points.map(([x,y,worldZ])=>new THREE.Vector3(dir*x,y,z+dir*(worldZ-(back+face)*.5)));
+      const stem=anchor(pole),stay=anchor(brace);
+      tube(fixed,stem,radius,iron,"rainforestCurvedSteelPole",30);
+      tube(fixed,stay,braceRadius,iron,"rainforestWeldedBrace",11);
+      const bottom=stem[0];
+      const base=new THREE.IcosahedronGeometry(.53,1),v=base.attributes.position;
+      for(let i=0;i<v.count;i++){
+        const x=v.getX(i),y=v.getY(i),zz=v.getZ(i);
+        const erosion=.89+.11*Math.sin(x*17+zz*8)+.07*Math.cos(y*30+zz*4);
+        v.setXYZ(i,x*erosion,Math.min(.245,y*.51)*erosion,zz*erosion);
+      }
+      base.computeVertexNormals();
+      const pad=attach(fixed,base,footing,"rainforestWeatheredFooting");
+      pad.position.set(bottom.x,elevation(bottom.x,bottom.z)+.065,bottom.z);pad.rotation.y=dir*.18;
+      for(const x of [-.19,.21])for(const dz of [-.19,.17]){
+        const anchor=attach(fixed,new THREE.CylinderGeometry(.033,.037,.075,6),hardware,"rustedGroundAnchor");
+        anchor.position.set(bottom.x+x,pad.position.y+.154,bottom.z+dz);
+      }
+    }
+  }
+
   function marks(){
     const canvas=document.createElement("canvas");canvas.width=960;canvas.height=1536;
     const g=canvas.getContext("2d"),{nearBaseline,farBaseline,halfWidth,midZ}=COURT;
+    const r=mulberry32(72601);
     g.scale(canvas.width/20,canvas.height/35);g.translate(10,13);
-    g.lineCap="round";g.lineWidth=.061;g.strokeStyle="#d2cdb2";
-    g.setLineDash([.89,.041,1.64,.096,.46,.049]);
-    g.globalAlpha=.62;g.strokeRect(-halfWidth,nearBaseline,halfWidth*2,farBaseline-nearBaseline);
-    g.beginPath();g.moveTo(-halfWidth,midZ);g.lineTo(halfWidth,midZ);g.stroke();
-    g.beginPath();g.arc(0,midZ,1.8,0,TAU);g.stroke();
+    g.lineCap="round";g.strokeStyle="#bfb5a0";
+    function wornPath(point,length,weight){
+      const count=Math.ceil(length/.17);
+      let last=point(0);
+      for(let i=1;i<=count;i++){
+        const pos=point(i/count);
+        pos[0]+=(r()-.5)*.026;pos[1]+=(r()-.5)*.029;
+        const where=Math.sin(pos[0]*.94+pos[1]*1.05)*Math.cos(pos[0]*.36-pos[1]*.32);
+        const used=1-.34*Math.exp(-((pos[1]-3.04)**2)/16)*Math.exp(-(pos[0]**2)/15);
+        const exposure=(.59+.38*where)*used;
+        if(r()> .055+.14*(1-exposure)){
+          const opening=r()<.18?.12+r()*.24:0;
+          g.globalAlpha=weight*(.36+r()*.49)*exposure;
+          g.lineWidth=.037+r()*.035;
+          g.beginPath();
+          g.moveTo(lerp(last[0],pos[0],opening),lerp(last[1],pos[1],opening));
+          g.lineTo(pos[0],pos[1]);g.stroke();
+        }
+        last=pos;
+      }
+    }
+    const line=(ax,az,bx,bz,w)=>wornPath(t=>[lerp(ax,bx,t),lerp(az,bz,t)],Math.hypot(bx-ax,bz-az),w);
+    function rectangle(x,z,w,d,opacity){
+      line(x,z,x+w,z,opacity);line(x+w,z,x+w,z+d,opacity);
+      line(x+w,z+d,x,z+d,opacity);line(x,z+d,x,z,opacity);
+    }
+    const arc=(z,radius,start,end,w)=>wornPath(t=>{
+      const a=lerp(start,end,t);return [Math.cos(a)*radius,z+Math.sin(a)*radius];
+    },Math.abs(end-start)*radius,w);
+    rectangle(-halfWidth,nearBaseline,halfWidth*2,farBaseline-nearBaseline,.94);
+    line(-halfWidth,midZ,halfWidth,midZ,.69);
+    arc(midZ,1.8,0,TAU,.69);
     for(const [z,base,sign] of [[HOOP.z,nearBaseline,1],[COURT.farHoopZ,farBaseline,-1]]){
       const free=base+sign*5.79,dir=sign===1?0:Math.PI;
-      g.globalAlpha=.55;g.strokeRect(-2.45,Math.min(base,free),4.9,5.79);
-      g.beginPath();g.arc(0,free,1.8,dir,dir+Math.PI);g.stroke();
-      g.globalAlpha=.85;g.lineWidth=.072;
+      rectangle(-2.45,Math.min(base,free),4.9,5.79,.82);
+      arc(free,1.8,dir,dir+Math.PI,.74);
       const radius=7.24,side=6.71,angle=Math.acos(side/radius);
       const join=z+sign*Math.sqrt(radius*radius-side*side);
-      g.beginPath();g.arc(0,z,radius,dir+angle,dir+Math.PI-angle);g.stroke();
-      for(const x of [-side,side]){g.beginPath();g.moveTo(x,base);g.lineTo(x,join);g.stroke();}
+      arc(z,radius,dir+angle,dir+Math.PI-angle,1.02);
+      for(const x of [-side,side])line(x,base,x,join,1.02);
     }
+    g.resetTransform();
+    const paint=g.getImageData(0,0,canvas.width,canvas.height);
+    for(let i=3;i<paint.data.length;i+=4){
+      if(!paint.data[i])continue;
+      const grit=r();
+      paint.data[i]*=grit<.22?.06+r()*.38:.57+r()*.43;
+    }
+    g.putImageData(paint,0,0);
     const map=new THREE.CanvasTexture(canvas);map.encoding=THREE.sRGBEncoding;map.anisotropy=4;
     return map;
   }
@@ -422,37 +665,49 @@
     function plantTree(x,z,h,rad,near,wider,formIndex,outer=false){
       const treeWood=outer?outerWood:wood,treeLeaf=outer?outerLeaf:leaf;
       const form=treeForms[formIndex];
-      h*=form.height;rad*=form.girth;
+      const candidate=h*form.height;
+      const establishedEmergent=form.wood===2&&near&&rad>1.01&&h>30;
+      rad*=form.girth;
+      if(establishedEmergent)rad=Math.max(rad,candidate*.027);
+      h=Math.min(candidate,5.0+31*rad);
       const y=elevation(x,z),base=new THREE.Vector3(x,y,z);
-      const lean=(r()-.5)*(near?5.3:6.5)*form.lean;
-      const apex=base.clone().add(new THREE.Vector3(lean,h,(r()-.5)*4*form.lean));
+      const mature=smoothstep(rad,.45,1.16);
+      const bend=lerp(1.57,.41,mature)*form.bend+.41*(1-mature);
+      const lean=(r()-.5)*lerp(7.7,3.5,mature)*form.lean;
+      const lightSide=Math.sin(z*.34+x*.87)*h*.109*(1-mature);
+      const apex=base.clone().add(new THREE.Vector3(lean+lightSide,h,(r()-.5)*lerp(6.2,2.1,mature)*form.lean));
       const tint=color(pick(form.bark,r));
+      const moisture=Math.sin(x*.29+z*.076)*Math.cos(z*.13-x*.18);
+      const barkStyle=form.wood+(form.wood!==2&&moisture>.47?.25:0);
       const buttresses=near&&rad>.70;
-      const waist=base.clone().lerp(apex,.37).add(new THREE.Vector3(Math.sin(x*1.9)*form.bend*1.6,0,Math.cos(z*2.3)*form.bend*1.13));
-      const shoulder=base.clone().lerp(apex,.72).add(new THREE.Vector3(-Math.sin(x*1.9)*form.bend*1.23,0,Math.sin(z*.8+.4)*form.bend*1.49));
+      const waist=base.clone().lerp(apex,.33).add(new THREE.Vector3(Math.sin(x*1.9)*bend*1.66,0,Math.cos(z*2.3)*bend*1.38));
+      const shoulder=base.clone().lerp(apex,.70).add(new THREE.Vector3(-Math.sin(x*1.9+.5)*bend*1.23,0,Math.sin(z*.8+.4)*bend*1.73));
       const stem=new THREE.CatmullRomCurve3([base,waist,shoulder,apex]);
       const trunk=limb(treeWood,base,apex,rad,rad*(form.leaf?.16:.28),tint,0,buttresses,near?12:outer?5:7,
-        {curve:outer?null:stem,wood:form.wood,rows:near?12:outer?3:5});
+        {curve:stem,wood:barkStyle,rows:near?12:outer?4:7});
       if(buttresses)mossyBark.push({rings:trunk,reach:.23,density:1.65});
       if(buttresses)for(let j=0;j<5;j++){
         const a=TAU*(j+r()*.42)/5,d=rad*(2.4+r()*1.6);
         const foot=new THREE.Vector3(x+Math.cos(a)*d,y+.03,z+Math.sin(a)*d);
         foot.y=elevation(foot.x,foot.z)+.03;
         const root=limb(treeWood,foot,stem.getPoint((1.7+1.7*r())/h),.06+r()*.07,rad*(.30+r()*.17),tint,.10,false,7,
-          {wood:form.wood});
+          {wood:barkStyle});
         mossyBark.push({rings:root,reach:1,density:.39});
       }
       const branches=outer?3:near?form.branches:wider?Math.max(4,form.branches-3):4;
+      const crownStart=lerp(form.fork*.74,form.fork,mature);
       for(let i=0;i<branches;i++){
-        const t=lerp(form.fork,.944,(i+r()*.52)/branches),angle=i*2.399+r()*1.06+x*.22+z*.31;
-        const a=outer?base.clone().lerp(apex,t):stem.getPoint(t);
-        const span=(1.8+r()*4.1)*h/25*(1.21-i*.045)*form.spread;
+        const t=lerp(crownStart,.944,(i+r()*.52)/branches),angle=i*2.399+r()*1.06+x*.22+z*.31;
+        const a=stem.getPoint(t);
+        const level=(t-crownStart)/(.95-crownStart);
+        const envelope=Math.sin(Math.PI*(.17+level*.77));
+        const span=(1.8+r()*4.1)*h/25*(.58+.54*envelope)*form.spread;
         const droop=form.wood===3||form.wood===1;
         const end=a.clone().add(new THREE.Vector3(Math.cos(angle)*span,h*((droop?-.035:.01)+r()*.145),Math.sin(angle)*span));
         const elbow=a.clone().lerp(end,.53).add(new THREE.Vector3(Math.sin(angle)*span*.23,span*(droop?.31:.17),-Math.cos(angle)*span*.22));
         const branch=new THREE.CatmullRomCurve3([a,elbow,end]);
         limb(treeWood,a,end,rad*(.14+.13*r()),.025,tint,span*.078,false,near?8:5,
-          {curve:near?branch:null,wood:form.wood,rows:near?7:3});
+          {curve:near?branch:null,wood:barkStyle,rows:near?7:3});
         if(!form.leaf){
           const spur=a.clone().lerp(end,.59);
           limb(treeWood,spur,spur.clone().add(new THREE.Vector3(.32,span*.48+.33,-.24)),rad*.072,.014,tint,span*.05,false,5);
@@ -1382,6 +1637,7 @@
     canopySky(s,uniforms);
     s.root.getObjectByName("rainforestCanopySky").material.addEventListener("dispose",()=>state.airMaterial.dispose());
     ground(s,uniforms);cliffs(s,uniforms,batch);trees(s,uniforms,batch);waterfall(s,uniforms);motes(s,uniforms);
+    reclaimedHoops(s,uniforms);
     state.falling=fallingLeaves(s);
     updateFalling(state.falling,s.time);
     updatePerches(state.perches,s.time);
@@ -1390,6 +1646,8 @@
 
   function update(s){
     s.rainforest.uniforms.forestTime.value=s.time;
+    const board=s.rainforest.boardMotion;
+    if(board)board.panelRig.rotation.x=board.nearPivot.rotation.x;
     updateFalling(s.rainforest.falling,s.time);
     updatePerches(s.rainforest.perches,s.time);
   }

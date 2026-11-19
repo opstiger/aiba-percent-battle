@@ -299,7 +299,7 @@ function newPhysicsBall(p0,L,res,material,fields){
 }
 function physicsLaunchOpts(extra){
   const PHYS=globalThis.AIBABallPhysics;
-  return Object.assign({map:PHYS.DIFF_MAPS[G.diff]||PHYS.DEFAULT_MAP,tuning:physicsTuning(),colliders:physicsColliders()},extra||{});
+  return Object.assign({map:PHYS.DIFF_MAPS[G.diff]||PHYS.DEFAULT_MAP,tuning:physicsTuning(),colliders:physicsColliders(),venue:currentScenePreset},extra||{});
 }
 /* 按既有判定（进 / 不进）找一条真实轨迹：对手、AI 表演、绝杀防守改判用。 */
 function physicsBallForOutcome(p0,simP0,tf,want,rng,material,fields,extra){
@@ -321,7 +321,7 @@ function forcePhysicsOutcome(b,want,uCenter){
 function resimPhysicsBall(b,p,v,w,t0){
   const PHYS=globalThis.AIBABallPhysics;if(!b||!b.physics)return false;
   const tuning=physicsTuning();
-  const res=PHYS.simulate({p,v,w:w||[0,0,0]},{tuning,colliders:physicsColliders()});
+  const res=PHYS.simulate({p,v,w:w||[0,0,0]},{tuning,colliders:physicsColliders(),venue:currentScenePreset});
   applyPhysicsResult(b,res,t0);
   return res;
 }
@@ -338,7 +338,7 @@ function spawnPhysicsBall(shot,err,latErr,zone,isDeep,faceAim,faceYawRad){
   // ball-physics.js 里 +ang 往 +X(右)偏，而视觉/相机/player.rotation.y 里 +yawRad 往 -X(左)转，故取反并按弧度换算
   if(faceYawRad)lOpts.lat=(latErr-(faceAim||0))-(faceYawRad*dist)/latM;
   const L=PHYS.launch([sim.x,sim.y,sim.z],lOpts);
-  const res=PHYS.simulate(L,{colliders:physicsColliders(),tuning:physicsTuning()});
+  const res=PHYS.simulate(L,lOpts);
   L.tf=tf0;L.u=u;
   return newPhysicsBall(p0,L,res,shotMat(shot),{
     val:shot.val,baseVal:shot.baseVal||shot.val,bonus:shot.bonus||0,money:shot.money,deep:isDeep,super:!!shot.super,rush:G.mode==="rackrush",
@@ -775,8 +775,10 @@ function updBalls(dt){
       spinBall(b,dt,.42);
       const p=b.mesh.position;
       // backboard
-      if(b.phase==="free"&&b.vel.z<0&&p.z<(-8.5+SHOT_BALL_RADIUS)&&p.z>(-8.78-SHOT_BALL_RADIUS)&&Math.abs(p.x)<(.98+SHOT_BALL_RADIUS)&&p.y>(2.9-SHOT_BALL_RADIUS)&&p.y<(4.1+SHOT_BALL_RADIUS)){
-        p.z=-8.5;b.vel.z*=-0.45;sBoard();
+      if(b.phase==="free"&&b.vel.z<0&&p.z<(-8.5+SHOT_BALL_RADIUS)&&p.z>(-8.78-SHOT_BALL_RADIUS)){
+        const onBoard=currentScenePreset==="rainforest"?AIBABallPhysics.hitsRainforestBoard(p.x,p.y):
+          Math.abs(p.x)<(.98+SHOT_BALL_RADIUS)&&p.y>(2.9-SHOT_BALL_RADIUS)&&p.y<(4.1+SHOT_BALL_RADIUS);
+        if(onBoard){p.z=-8.5;b.vel.z*=-0.45;sBoard();}
       }
       // floor
       if(p.y<BALL_FLOOR_PHYSICS.y&&b.vel.y<0){

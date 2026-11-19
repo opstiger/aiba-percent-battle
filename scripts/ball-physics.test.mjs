@@ -165,6 +165,21 @@ for (const diff of ["easy", "normal", "hard"]) {
   }
 }
 
+const boardShot = (x,y,venue) => P.simulate(
+  {p:[x,y,-8.035],v:[0,0,-7],w:[0,0,0]}, {venue,maxT:.15,tuning:TUNING}
+);
+if (!boardShot(0,3.65,"rainforest").boardHits)
+  failures.push("雨林拼木篮板中心缺少打板碰撞");
+if (!boardShot(.98,4.125,"indoor").boardHits || boardShot(.98,4.125,"rainforest").boardHits)
+  failures.push("雨林篮板缺角应穿过，标准方篮板应反弹");
+if (!boardShot(-.30,4.30,"rainforest").boardHits || boardShot(.43,4.30,"rainforest").boardHits)
+  failures.push("相同高度的来球应撞到高木板，并越过矮板的断口");
+for (const [name,p0] of SPOTS) {
+  const shot = P.launch(p0,{u:0,lat:0,noise:0,tf:.78+Math.hypot(p0[0],p0[2]+8)*.062,tuning:TUNING});
+  if (P.simulate(shot,{venue:"rainforest",tuning:TUNING}).kind!=="swish")
+    failures.push(`雨林 ${name} 零误差没有空心`);
+}
+
 if (failures.length) {
   console.log(`\n❌ ball-physics 未通过 ${failures.length} 项：`);
   failures.slice(0, 40).forEach(f => console.log("  - " + f));

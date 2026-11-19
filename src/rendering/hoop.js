@@ -1,12 +1,16 @@
 /* hoop & net */
 let netMesh,farNet,netPulse=0,netPulseAge=99,netPulseDir=0,lastNetPulse=0;
 const courtHoopRigs=[];
-function setPlaceHoops(active){
-  courtHoopRigs.forEach(rig=>rig.children.forEach(child=>{
+function setPlaceHoops(active,replaceBoard=false){
+  const setVisible=child=>{
     if(child.userData.keepOutdoor)return;
     if(active){if(child.userData.indoorVisibility===undefined)child.userData.indoorVisibility=child.visible;child.visible=false;}
     else if(child.userData.indoorVisibility!==undefined){child.visible=child.userData.indoorVisibility;delete child.userData.indoorVisibility;}
-  }));
+  };
+  courtHoopRigs.forEach(rig=>{
+    rig.children.forEach(setVisible);
+    if(!active||replaceBoard)rig.getObjectByName("boardPivot")?.children.forEach(setVisible);
+  });
 }
 const NET_HEIGHT=.45;
 const netEase=t=>{t=Math.max(0,Math.min(1,t));return t*t*(3-2*t);};

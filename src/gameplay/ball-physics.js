@@ -34,6 +34,47 @@
     ])
   });
 
+  function reclaimedPlank(left,right,bottomLeft,bottomRight,edge){
+    const point=([t,y])=>Object.freeze([left+(right-left)*t,y]);
+    const top=Object.freeze(edge.map(point));
+    const base=[
+      [0,bottomLeft+.042],[.11,bottomLeft],[.23,bottomLeft+.018],
+      [.71,bottomRight-.008],[.89,bottomRight+.019],[1,bottomRight+.052]
+    ].map(point);
+    const outline=Object.freeze([
+      ...base,point([1,edge[edge.length-1][1]-.046]),point([.966,edge[edge.length-1][1]-.026]),
+      ...top.slice().reverse(),point([.019,edge[0][1]-.032]),point([0,edge[0][1]-.051])
+    ]);
+    return Object.freeze({left,right,top,outline});
+  }
+
+  // Shared silhouettes for the weathered geometry and contact solver.
+  const RAINFOREST_HOOP=Object.freeze({
+    planks:Object.freeze([
+      reclaimedPlank(-1.044,-.829,3.051,2.992,[[0,3.537],[.09,3.59],[.16,3.592],[.28,3.712],[.43,3.757],[.49,3.746],[.53,3.771],[.71,3.787],[.82,3.809],[1,3.817]]),
+      reclaimedPlank(-.821,-.619,2.984,2.952,[[0,3.903],[.1,3.938],[.25,3.957],[.31,3.939],[.38,3.971],[.49,3.977],[.73,4.007],[.78,3.964],[.86,4.002],[1,4.012]]),
+      reclaimedPlank(-.610,-.407,3.013,2.961,[[0,3.923],[.12,3.948],[.25,3.948],[.36,3.963],[.51,3.964],[.58,3.948],[.64,3.968],[.85,3.97],[1,3.967]]),
+      reclaimedPlank(-.399,-.171,2.974,2.934,[[0,4.155],[.11,4.187],[.26,4.189],[.32,4.16],[.4,4.2],[.58,4.212],[.67,4.199],[.78,4.218],[.89,4.217],[1,4.204]]),
+      reclaimedPlank(-.163,.073,2.945,2.951,[[0,4.125],[.18,4.147],[.29,4.143],[.42,4.149],[.51,4.108],[.57,4.14],[.75,4.13],[.89,4.141],[1,4.13]]),
+      reclaimedPlank(.083,.317,2.942,2.969,[[0,4.154],[.12,4.176],[.28,4.183],[.42,4.176],[.48,4.162],[.54,4.171],[.64,4.142],[.76,4.104],[.83,4.103],[1,4.089]]),
+      reclaimedPlank(.328,.527,2.993,2.965,[[0,4.052],[.13,4.065],[.31,4.064],[.39,4.036],[.45,4.051],[.67,4.037],[.77,4.01],[.82,4.03],[1,4.014]]),
+      reclaimedPlank(.536,.775,2.975,2.945,[[0,4.108],[.14,4.118],[.25,4.097],[.3,4.108],[.49,4.086],[.63,4.048],[.71,4.045],[.79,3.997],[.9,3.959],[1,3.939]]),
+      reclaimedPlank(.787,1.045,2.999,3.082,[[0,3.83],[.11,3.839],[.23,3.816],[.36,3.761],[.42,3.754],[.55,3.694],[.62,3.683],[.76,3.607],[.82,3.602],[1,3.523]])
+    ]),
+    radius:.119,
+    pole:Object.freeze([
+      [-.15,-.06,-11.15],[-.15,1.35,-11.13],[-.14,2.64,-11.03],
+      [-.11,3.28,-10.73],[-.04,3.54,-10.13],[.012,3.52,-9.36],[.025,3.51,-8.68]
+    ].map(row=>Object.freeze(row))),
+    brace:Object.freeze([Object.freeze([-.15,2.04,-11.12]),Object.freeze([-.025,3.46,-9.63])]),
+    braceRadius:.058,
+    face:-8.56,back:-8.68
+  });
+  const timberPoints=RAINFOREST_HOOP.planks.flatMap(plank=>plank.outline);
+  const timberMinY=Math.min(...timberPoints.map(p=>p[1]));
+  const timberMaxY=Math.max(...timberPoints.map(p=>p[1]));
+  const forestSupport=[Object.freeze({name:"support",min:[-.53,0,-11.55],max:[.29,.21,-10.76]})];
+
   /* 手感参数。rim 的 e/mu 就是"软筐/硬筐"那一档：
      真实比赛篮筐弹性约 .55；街机游戏普遍做"friendly rim"（更软、更容易滚进）。 */
   /* 室内球馆底线后的媒体区挡板（src/rendering/arena.js：nearBaseline−3.55，高 1.1m，宽 ±7.5m）。 */
@@ -98,6 +139,60 @@
     return resolveContact(s,dx/d,dy/d,dz/d,r-d,e,mu);
   }
 
+  function nearestBoardEdge(x,y,out){
+    let best=Infinity;
+    out.inside=false;
+    for(const {outline,left,right} of RAINFOREST_HOOP.planks){
+      const reach=Math.sqrt(best);
+      if(x<left-reach||x>right+reach)continue;
+      let inside=false,closest=Infinity,bx=x,by=y;
+      for(let i=0,j=outline.length-1;i<outline.length;j=i++){
+        const a=outline[j],b=outline[i];
+        const vx=b[0]-a[0],vy=b[1]-a[1];
+        if((a[1]>y)!==(b[1]>y)&&x<a[0]+(y-a[1])*vx/vy)inside=!inside;
+        const t=clamp(((x-a[0])*vx+(y-a[1])*vy)/(vx*vx+vy*vy),0,1);
+        const px=a[0]+t*vx,py=a[1]+t*vy,d=(x-px)**2+(y-py)**2;
+        if(d<closest){closest=d;bx=px;by=py;}
+      }
+      if(inside||closest<best){
+        best=closest;out.x=bx;out.y=by;out.inside=inside;
+      }
+      if(inside)break;
+    }
+    return best;
+  }
+  function hitsRainforestBoard(x,y){
+    const hit={};
+    return nearestBoardEdge(x,y,hit)<GEOM.ballR**2||hit.inside;
+  }
+  function contactRainforestBoard(s,tu){
+    const r=GEOM.ballR,{back,face}=RAINFOREST_HOOP;
+    if(s.z<back-r||s.z>face+r||Math.abs(s.x)>1.21||s.y<timberMinY-r||s.y>timberMaxY+r)return 0;
+    const edge={};
+    const edgeDistance=nearestBoardEdge(s.x,s.y,edge);
+    const dz=s.z-clamp(s.z,back,face);
+    const dx=edge.inside?0:s.x-edge.x,dy=edge.inside?0:s.y-edge.y;
+    const d=len3(dx,dy,dz);
+    if(d>=r)return 0;
+    if(d>1e-7)return resolveContact(s,dx/d,dy/d,dz/d,r-d,tu.eBoard,tu.muBoard);
+    const front=face-s.z,rear=s.z-back,side=Math.sqrt(edgeDistance);
+    if(edge.inside&&side<Math.min(front,rear)&&side>1e-7)
+      return resolveContact(s,(edge.x-s.x)/side,(edge.y-s.y)/side,0,r+side,tu.eBoard,tu.muBoard);
+    return resolveContact(s,0,0,front<=rear?1:-1,r+Math.min(front,rear),tu.eBoard,tu.muBoard);
+  }
+  function contactPole(s,points,thickness,tu){
+    const reach=GEOM.ballR+thickness;
+    let impact=0;
+    for(let i=1;i<points.length;i++){
+      const a=points[i-1],b=points[i],ux=b[0]-a[0],uy=b[1]-a[1],uz=b[2]-a[2];
+      const t=clamp(((s.x-a[0])*ux+(s.y-a[1])*uy+(s.z-a[2])*uz)/(ux*ux+uy*uy+uz*uz),0,1);
+      const x=s.x-a[0]-t*ux,y=s.y-a[1]-t*uy,z=s.z-a[2]-t*uz,d=len3(x,y,z);
+      if(d>=reach||d<1e-7)continue;
+      impact=Math.max(impact,resolveContact(s,x/d,y/d,z/d,reach-d,tu.eSupport,.3));
+    }
+    return impact;
+  }
+
   /* 篮网：只约束"从上方穿过圈口"的球。锥形——圈口 R，往下 depth 收到 bottomR。
      进网的球被兜住、减速、回中，像真网那样把横向速度吃掉。 */
   function applyNet(s,state){
@@ -138,6 +233,8 @@
       wx:init.w?init.w[0]:0,wy:init.w?init.w[1]:0,wz:init.w?init.w[2]:0};
     const state={entered:false,netDone:false,made:false,decided:false,decidedT:0,madeT:0,rimHits:0,boardHits:0,supportHits:0};
     const events=[],last={},maxT=opts.maxT||6,tail=opts.tail==null?2.4:opts.tail,extra=opts.colliders||null;
+    const timber=opts.venue==="rainforest";
+    const boxes=timber?[GEOM.boxes[1],...forestSupport]:GEOM.boxes;
     const samples=[];
     const rec=t=>samples.push(t,s.x,s.y,s.z,s.wx,s.wy,s.wz);
     const note=(type,t,imp)=>{
@@ -156,7 +253,16 @@
 
       let imp=contactRim(s,tu);
       if(imp>0){if(note("rim",t,imp))state.rimHits++;}
-      for(const box of GEOM.boxes){
+      if(timber){
+        imp=contactRainforestBoard(s,tu);
+        if(imp>0&&note("board",t,imp))state.boardHits++;
+        if(Math.abs(s.x)<.48&&s.z>-11.46&&s.z<-8.38&&s.y<3.86){
+          const support=contactPole(s,RAINFOREST_HOOP.pole,RAINFOREST_HOOP.radius,tu);
+          const brace=contactPole(s,RAINFOREST_HOOP.brace,RAINFOREST_HOOP.braceRadius,tu);
+          if(Math.max(support,brace)>0&&note("support",t,Math.max(support,brace)))state.supportHits++;
+        }
+      }
+      for(const box of boxes){
         const isBoard=box.name==="board";
         imp=contactBox(s,box,isBoard?tu.eBoard:tu.eSupport,isBoard?tu.muBoard:.3);
         if(imp>0&&note(box.name,t,imp)){if(isBoard)state.boardHits++;else if(box.name==="support")state.supportHits++;}
@@ -446,7 +552,7 @@
     opts=opts||{};
     const want=!!opts.want,rng=opts.rng||Math.random,tries=opts.maxTries||14;
     const base={tf:opts.tf,map:opts.map,tuning:opts.tuning};
-    const simOpts={tuning:opts.tuning,colliders:opts.colliders};
+    const simOpts={tuning:opts.tuning,colliders:opts.colliders,venue:opts.venue};
     for(let i=0;i<tries;i++){
       const spread=.35+i*.12,sign=rng()<.5?-1:1;
       let u;
@@ -476,7 +582,7 @@
     }
   }
 
-  const api=Object.freeze({GEOM,INDOOR_COLLIDERS,TUNING_PRESETS,DEFAULT_TUNING,DEFAULT_MAP,DIFF_MAPS,DT,SAMPLE_DT,STRIDE,
+  const api=Object.freeze({GEOM,RAINFOREST_HOOP,hitsRainforestBoard,INDOOR_COLLIDERS,TUNING_PRESETS,DEFAULT_TUNING,DEFAULT_MAP,DIFF_MAPS,DT,SAMPLE_DT,STRIDE,
     simulate,sampleAt,aimVelocity,backspinFor,crossOffset,scaleForDepth,calibrate,designMake,equalize,prewarm,launch,launchForOutcome,legacyOutcome});
   if(typeof module!=="undefined"&&module.exports)module.exports=api;
   if(global)global.AIBABallPhysics=api;

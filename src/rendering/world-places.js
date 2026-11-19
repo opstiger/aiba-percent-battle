@@ -264,7 +264,7 @@
     setPlaceHoops(false);
   }
   function themeHoops(s,b,faceMarks=b){
-    const beach=s.name==="beachSunset",lunar=s.name==="lunarCrater",tokyo=s.name==="tokyoRooftop",wood=s.name==="rainforest",rain=s.name==="rainyCourt",color=beach?0x8e969e:lunar?0xeef1f5:tokyo?0x1f2530:wood?0x574b38:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
+    const beach=s.name==="beachSunset",lunar=s.name==="lunarCrater",tokyo=s.name==="tokyoRooftop",rain=s.name==="rainyCourt",color=beach?0x8e969e:lunar?0xeef1f5:tokyo?0x1f2530:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
     hoopSupports().forEach(([z,dir])=>{
       const base=z-dir*1.55;
       if(beach){
@@ -290,9 +290,8 @@
       }
       b.box(color,0,1.75,base,.24,3.5,.24);b.box(color,0,3.46,z-dir*.76,.22,.22,1.55);
       b.box(lunar?0xcfd5de:color,0,2.955,base+dir*.505,.13,1.48,.13,dir*Math.PI/4);b.box(lunar?0xa9a8a6:0x757b76,0,.1,base,.75,.2,.75);
-      b.box(lunar?0xdce2ea:tokyo?0x283242:wood?0x9b7752:rain?0xc5c1a9:s.name==="spanishQuarter"?0x91988c:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
-      const ink=lunar?0xc68059:tokyo?0xff4d32:wood?0xd8c8a2:rain?0x704f40:0x384f56;
-      if(wood)for(let j=-2;j<=2;j++)b.box(0x553b2c,j*.34,3.50,z+dir*.063,.012,1.06,.008);
+      b.box(lunar?0xdce2ea:tokyo?0x283242:rain?0xc5c1a9:s.name==="spanishQuarter"?0x91988c:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
+      const ink=lunar?0xc68059:tokyo?0xff4d32:rain?0x704f40:0x384f56;
       const aimInk=lunar?0xf5d18d:ink,aimWidth=lunar?.042:.035;
       for(const a of [-1,1]){
         faceMarks.box(ink,0,3.5+a*.51,z+dir*.066,1.86,.035,.012);
@@ -1217,6 +1216,8 @@
       face.material=new THREE.MeshStandardMaterial({
         vertexColors:true,roughness:.7,emissive:0xe6b77f,emissiveIntensity:.15
       });
+    }else if(name==="rainforest"){
+      setPlaceHoops(true,true);
     }else{
       themeHoops(s,b);
     }
