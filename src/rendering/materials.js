@@ -430,7 +430,25 @@ const ballGeo=(()=>{
   pos.needsUpdate=true;geo.computeVertexNormals();
   return geo;
 })();
+const venueDeepTextures=new Map();
+const venueSpecialPalette={
+  lunarCrater:["#79c4a9","#235545","lunar"],
+  rainforest:["#7d9f48","#3b5525"],
+  flowerCourt:["#94bd65","#3b6755","flower"],
+  rainyCourt:["#73ab9d","#315c5d"],
+  beachSunset:["#d7ae64","#6b511f"],
+  arcticSnow:["#72b7ad","#31576a"],
+  shonanCoast:["#76a9a1","#355d69"],
+  medCliff:["#72afbc","#325e75"],
+  spanishQuarter:["#c7865a","#713d26"],
+  tokyoRooftop:["#839fdb","#3a4e84"],
+  outdoorSunny:["#a3aa58","#515930"]
+};
 function syncBallVenue(name){
+  const deep=venueSpecialPalette[name];
+  if(deep&&!venueDeepTextures.has(name))venueDeepTextures.set(name,realBallTex(...deep));
+  const deepMap=venueDeepTextures.get(name)||texDeep;
+  if(matDeep.map!==deepMap){matDeep.map=deepMap;matDeep.needsUpdate=true;}
   const wantLunar=name==="lunarCrater";
   const wantFlower=name==="flowerCourt";
   if(wantLunar&&!texLunarBall)texLunarBall=realBallTex("#c95a2e","#77351c","lunar");
@@ -455,15 +473,20 @@ const SUPER_BALL_SKINS=Object.freeze([
   {n:"土豪金",base:"#ffc02e",dark:"#8a5c07",spec:0x4d3508},
   {n:"暴力紫",base:"#a86bff",dark:"#4a1f8c",spec:0x2e1852}
 ]);
-const superBallMats=new Array(SUPER_BALL_SKINS.length).fill(null);
+const superBallMats=new Map();
 function superBallMaterial(index){
   const i=((index|0)%SUPER_BALL_SKINS.length+SUPER_BALL_SKINS.length)%SUPER_BALL_SKINS.length;
-  if(!superBallMats[i]){
-    const c=SUPER_BALL_SKINS[i];
-    superBallMats[i]=new THREE.MeshPhongMaterial({map:realBallTex(c.base,c.dark),
-      bumpMap:texBallRelief,bumpScale:.003,shininess:2.2,specular:c.spec});
+  const venue=venueSpecialPalette[currentScenePreset]?currentScenePreset:"indoor";
+  const key=venue+":"+i;
+  if(!superBallMats.has(key)){
+    const c=SUPER_BALL_SKINS[i],palette=venueSpecialPalette[venue];
+    const tint=(color,local)=>"#"+new THREE.Color(color).lerp(new THREE.Color(local),.20).getHexString();
+    const base=palette?tint(c.base,palette[0]):c.base;
+    const dark=palette?tint(c.dark,palette[1]):c.dark;
+    superBallMats.set(key,new THREE.MeshPhongMaterial({map:realBallTex(base,dark,palette?.[2]),
+      bumpMap:texBallRelief,bumpScale:.003,shininess:2.2,specular:c.spec}));
   }
-  return superBallMats[i];
+  return superBallMats.get(key);
 }
 /* 走可复现随机通道:?seed=N 固定时,同一局开出的颜色序列也固定。 */
 function rollSuperBallSkin(){

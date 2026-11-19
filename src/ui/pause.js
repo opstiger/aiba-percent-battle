@@ -51,7 +51,7 @@
     if(event){event.preventDefault();event.stopPropagation();}
     if(PAUSE.on||!pauseableState())return;
     PAUSE.on=true;PAUSE.state=G.state;PAUSE.mode=G.mode;PAUSE.wasRunning=G.running;PAUSE.canShoot=G.canShoot;
-    PAUSE.rushVariant=G.rush&&G.rush.variant?G.rush.variant:null;PAUSE.practice=!!G.practice;
+    PAUSE.rushVariant=G.rush?.variant;PAUSE.rushSpot=G.rush?.spot;PAUSE.practice=!!G.practice;
     cancelLiveChargeForPause();G.running=false;G.canShoot=false;
     if(G.mode==="battle")global.pauseBattleClock();
     updatePauseButton();
@@ -80,10 +80,10 @@
   }
   function restartPausedMode(){
     if(!PAUSE.on)return;
-    const mode=PAUSE.mode,variant=PAUSE.rushVariant||"classic",practice=PAUSE.practice;
+    const mode=PAUSE.mode,variant=PAUSE.rushVariant||"classic",spot=PAUSE.rushSpot,practice=PAUSE.practice;
     PAUSE.on=false;global.hidePanel();clearLiveObjectsForMenu();updatePauseButton();
     if(mode==="battle"){global.startBattle();return;}
-    if(mode==="rackrush"){global.startRackRush(variant);return;}
+    if(mode==="rackrush"){global.startRackRush(variant,spot);return;}
     if(practice){global.startPractice();return;}
     global.startRound();
   }

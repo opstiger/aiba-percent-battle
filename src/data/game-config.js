@@ -1,6 +1,6 @@
 "use strict";
 
-const GAME_VERSION="v2.41.2";
+const GAME_VERSION="v2.42.0";
 const GAME_NAME="aiBA·百分大战";
 const CONFIG=window.AIBA_CONFIG||{};
 const COURT={
@@ -89,7 +89,7 @@ let SHARED_RACK_RUSH=null;
 try{
   const q=new URLSearchParams(location.search),diff=q.get("diff");
   if(q.get("mode")==="rackrush"&&DIFFS[diff]){
-    SHARED_RACK_RUSH={diff,star:q.get("star"),submode:q.get("submode"),opened:false};
+    SHARED_RACK_RUSH={diff,star:q.get("star"),submode:q.get("submode"),spot:q.get("spot"),opened:false};
   }
 }catch(e){}
 const seedRng=mulberry32(GAME_SEED);

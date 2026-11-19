@@ -21,6 +21,8 @@
 
   function cleanup(options){
     cancelPregame();
+    global.clearRackRushSupply?.();
+    global.AIBAPasserAvatar?.resetPose();
     tweens.length=0;
     if(typeof stopVictoryCine==="function")stopVictoryCine();
     else if(typeof VICTORY_CINE!=="undefined")VICTORY_CINE.on=false;

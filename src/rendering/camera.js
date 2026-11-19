@@ -251,7 +251,11 @@ function applyCamMode(){
   const inPlay=cameraInPlay();
   hands.visible=CAM.mode===0&&inPlay;
   player.g.visible=CAM.mode!==0&&inPlay;
-  passer.g.visible=inPlay;
+  const support=G.mode==="battle"||G.mode==="lastshot"||
+    (G.mode==="rackrush"&&!!G.rush?.supply)||
+    ["pregame","bootshot","wincine","victorycine"].includes(G.state)||
+    (typeof passing!=="undefined"&&passing&&!passing.pickup);
+  passer.g.visible=inPlay&&!!support;
   oppPasser.g.visible=inPlay&&G.mode==="battle";
   $("camBtn").style.display=inPlay?"block":"none";
   camSnap=true; // 切换机位时下一帧硬切,避免跨场平滑造成大幅扫镜

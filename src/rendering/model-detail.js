@@ -88,22 +88,22 @@
     const k=(RACK_SLOTS-1)/2;
     return {x:(i-k)*RACK_SLOT_DX,y:RACK_BALL_Y+(k-i)*RACK_SLOT_DROP};
   }
-  /* 端面与长边的高精度航空金属涂装贴图：偏白钛合金拉丝质感 + 细腻铆钉线与赛事标牌 */
+  /* 端面与长边的高精度赛事涂装贴图：带金属包边、斜向赛会饰条与 LED 像素纹理 */
   let rackEndTexCache=null,rackLongTexCache=null;
   function rackEndTex(){
     if(rackEndTexCache)return rackEndTexCache;
     rackEndTexCache=pixTex(192,192,(g,w,h)=>{
       const gr=g.createLinearGradient(0,0,0,h);
-      gr.addColorStop(0,"#eef2f7");gr.addColorStop(0.5,"#e1e6ee");gr.addColorStop(1,"#cfd6e1");
+      gr.addColorStop(0,"#0d182e");gr.addColorStop(0.5,"#132342");gr.addColorStop(1,"#091120");
       g.fillStyle=gr;g.fillRect(0,0,w,h);
-      g.fillStyle="rgba(255,255,255,.35)";
-      for(let y=0;y<h;y+=6)g.fillRect(0,y,w,1.5);
-      g.strokeStyle="#9aa6b8";g.lineWidth=6;g.strokeRect(6,6,w-12,h-12);
-      g.fillStyle="#e06d24";g.fillRect(14,h*.52-3,w-28,5);
-      g.fillStyle="#64748b";g.fillRect(14,h*.52+5,w-28,2);
+      g.fillStyle="rgba(255,255,255,.04)";
+      for(let y=0;y<h;y+=6)g.fillRect(0,y,w,2);
+      g.strokeStyle="#2e4d82";g.lineWidth=6;g.strokeRect(6,6,w-12,h-12);
+      g.fillStyle="#ffd23f";g.fillRect(14,h*.52-3,w-28,5);
+      g.fillStyle="#5fd8ff";g.fillRect(14,h*.52+5,w-28,2);
       g.font="bold 46px Orbitron, monospace";g.textAlign="center";g.textBaseline="middle";
-      g.fillStyle="#1e293b";g.fillText("aiBA",w/2,h*.30);
-      g.font="bold 26px Orbitron, monospace";g.fillStyle="#475569";
+      g.fillStyle="#ffd23f";g.fillText("aiBA",w/2,h*.30);
+      g.font="bold 26px Orbitron, monospace";g.fillStyle="#f2f6ff";
       g.fillText("3PT PRO",w/2,h*.73);
     },{smooth:true,mipmaps:true});
     return rackEndTexCache;
@@ -112,31 +112,31 @@
     if(rackLongTexCache)return rackLongTexCache;
     rackLongTexCache=pixTex(512,160,(g,w,h)=>{
       const gr=g.createLinearGradient(0,0,w,h);
-      gr.addColorStop(0,"#eef2f7");gr.addColorStop(0.5,"#dfe5ee");gr.addColorStop(1,"#cdd5e0");
+      gr.addColorStop(0,"#0a1324");gr.addColorStop(0.5,"#15274a");gr.addColorStop(1,"#0c162b");
       g.fillStyle=gr;g.fillRect(0,0,w,h);
-      g.fillStyle="rgba(255,255,255,.28)";
+      g.fillStyle="rgba(126,231,255,.05)";
       for(let i=-h;i<w;i+=28){
         g.beginPath();g.moveTo(i,h);g.lineTo(i+14,h);g.lineTo(i+14+h*.55,0);g.lineTo(i+h*.55,0);g.closePath();g.fill();
       }
-      g.strokeStyle="#94a3b8";g.lineWidth=6;g.strokeRect(5,5,w-10,h-10);
-      g.fillStyle="#e06d24";g.fillRect(16,14,w-32,4);g.fillRect(16,h-18,w-32,4);
-      g.fillStyle="#1e293b";g.font="bold 44px Orbitron, monospace";g.textAlign="center";g.textBaseline="middle";
+      g.strokeStyle="#2b4a7f";g.lineWidth=6;g.strokeRect(5,5,w-10,h-10);
+      g.fillStyle="#ffd23f";g.fillRect(16,14,w-32,4);g.fillRect(16,h-18,w-32,4);
+      g.fillStyle="#ffd23f";g.font="bold 44px Orbitron, monospace";g.textAlign="center";g.textBaseline="middle";
       g.fillText("aiBA  3PT CONTEST",w/2,h*.45);
-      g.fillStyle="#475569";g.font="bold 18px Orbitron, monospace";
-      g.fillText("OFFICIAL SHOOTING RACK  ·  AERO SERIES",w/2,h*.78);
+      g.fillStyle="#8fd8ff";g.font="bold 18px Orbitron, monospace";
+      g.fillText("OFFICIAL SHOOTING RACK  ·  CHAMPIONSHIP SERIES",w/2,h*.78);
     },{smooth:true,mipmaps:true});
     return rackLongTexCache;
   }
   function rack(teamMat){
     const g=new THREE.Group();g.name="detailBallRack";
-    const baseHex=(teamMat&&teamMat.color)?teamMat.color.getHex():0xe4e8ee;
-    const steel=stdMat(0xd6dde6,0.24,0.74,0.72);
-    const darkSteel=stdMat(0x737f90,0.34,0.62,0.55);
-    const rubber=stdMat(0x222730,0.76,0.08,0.20);
-    const skirt=stdMat(0xd4dce6,0.30,0.42,0.50);
-    const coat=stdMat(baseHex,0.26,0.48,0.62);
-    const adLong=new THREE.MeshBasicMaterial({map:rackLongTex(),color:0xf4f6fa});
-    const adEnd=new THREE.MeshBasicMaterial({map:rackEndTex(),color:0xf4f6fa});
+    const baseHex=(teamMat&&teamMat.color)?teamMat.color.getHex():0x2255aa;
+    const steel=stdMat(0x8c98a8,0.25,0.78,0.70);
+    const darkSteel=stdMat(0x28303d,0.38,0.58,0.50);
+    const rubber=stdMat(0x181c22,0.76,0.08,0.20);
+    const skirt=stdMat(0x111722,0.44,0.28,0.42);
+    const coat=stdMat(baseHex,0.32,0.22,0.55);
+    const adLong=new THREE.MeshBasicMaterial({map:rackLongTex(),color:0xa6b2c2});
+    const adEnd=new THREE.MeshBasicMaterial({map:rackEndTex(),color:0xa6b2c2});
 
     const hi=rackSlotLocal(0),lo=rackSlotLocal(RACK_SLOTS-1);
     const railDrop=.115;
@@ -204,11 +204,11 @@
   }
   function pedestal(width,height,mat,ballBottom=height-.01){
     const g=new THREE.Group();g.name="detailSingleBallStand";
-    const baseHex=(mat&&mat.color)?mat.color.getHex():0xe6eaef;
-    const steel=stdMat(0xd9e0ea,0.25,0.72,0.68);
-    const chrome=stdMat(0xedf1f7,0.18,0.84,0.78);
-    const accent=stdMat(baseHex,0.26,0.52,0.64);
-    const rubber=stdMat(0x222730,0.75,0.10,0.20);
+    const baseHex=(mat&&mat.color)?mat.color.getHex():0x1f7a28;
+    const steel=stdMat(0x3a4350,0.30,0.72,0.60);
+    const chrome=stdMat(0x9aa6b5,0.22,0.82,0.70);
+    const accent=stdMat(baseHex,0.32,0.24,0.55);
+    const rubber=stdMat(0x161a20,0.75,0.10,0.20);
     // 阶梯式配重底座（最低点严格在 -height/2）
     box(g,width,.055,width,0,-height/2+.0275,0,steel);
     prism(g,width*.88,.045,width*.88,0,-height/2+.0775,0,accent,0.76,0.76,0);

@@ -8,7 +8,7 @@ const childProcess=require("child_process");
 
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
-const snapshot="block-3pt-kingv2.41.2-modular.html";
+const snapshot="block-3pt-kingv2.42.0-modular.html";
 const requiredFiles=[
   entry,
   snapshot,
@@ -504,9 +504,9 @@ for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"]
 if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js"></script>'))fail("Percent Battle opponent cache version missing");
 if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js"></script>')>entryHtml.indexOf('<script src="src/game-flow.js"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
-for(const token of ["v2.41.2 MODULAR","MODULAR / v2.41.2"])
+for(const token of ["v2.42.0 MODULAR","MODULAR / v2.42.0"])
   if(!entryHtml.includes(token))fail("visible version token missing "+token);
-if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.41.2";'))fail("GAME_VERSION must be v2.41.2");
+if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.42.0";'))fail("GAME_VERSION must be v2.42.0");
 /* GAME_VERSION 会随成绩上报(见 percent-battle/state.js 的 version 字段)。以前靠手工让
    game-config.js 的 ?v= 跟着发版号走；现在 v 是内容 hash，改常量就会换 v，上面已校验不过期。 */
 const playerMeterGradient='<linearGradient id="ppGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#2e8bff"/><stop offset="55%" stop-color="#39d3ff"/><stop offset="78%" stop-color="#ffd23f"/><stop offset="100%" stop-color="#ff4040"/></linearGradient>';
@@ -1088,8 +1088,9 @@ for(const token of ["function buildStands(","function buildNearCourtCrowd(","fun
 const renderingProps=read("src/rendering/props.js");
 for(const token of ['runtime.register("rendering:props"',"function buildRacks","function resetRackBalls","function buildHands"])
   if(!renderingProps.includes(token))fail("rendering props token missing "+token);
-for(const token of ["rackStands=[]","deepStands=[]",'showRacks=G.mode!=="battle"',"halfCourtBall.visible=false"])
-  if(!renderingProps.includes(token))fail("Percent Battle rack hiding missing "+token);
+for(const token of ["rackStands=[]","deepStands=[]",'single===null&&G.mode!=="battle"',
+  'G.mode==="rackrush"?G.rush?.spot','stand.visible=course||i===single',"halfCourtBall.visible=false"])
+  if(!renderingProps.includes(token))fail("Rack visibility by mode missing "+token);
 const renderingCharacters=read("src/rendering/characters.js");
 for(const token of ['runtime.register("rendering:characters"',"function voxelGuy","function applyStarStyle","function buildCharacters","function benchSetup"])
   if(!renderingCharacters.includes(token))fail("rendering characters token missing "+token);
@@ -1269,17 +1270,11 @@ try{
 
   /* 压腕必须晚于球脱手：ballGrip 在掌心前方 19cm，压腕会把球从掌上翻到掌下。
      两个常量必须对齐，否则球会在 release 前先掉下去。 */
-  /* 传球飞行时长与 shots.js 的供球间隔预算必须同步，否则调快慢传球会连带改掉整关节奏。 */
-  const rushPass=/PASS_FLIGHT_RUSH=Object\.freeze\(\{([^}]*)\}\)/.exec(sharedShotPose);
-  if(!rushPass)fail("rack rush pass flight timing must be declared as PASS_FLIGHT_RUSH");
-  else{
-    const num=key=>parseFloat((new RegExp(key+":([\\d.]+)").exec(rushPass[1])||[])[1]);
-    const mid=(num("min")+num("max"))/2;
-    if(!(num("min")>=.3))fail(`rack rush pass flight ${num("min")}s is too fast to read`);
-    if(Math.abs(num("budget")-mid)>.03)fail(`pass flight budget ${num("budget")} does not track the ${mid} midpoint`);
-    if(!read("src/gameplay/shots.js").includes("PASS_FLIGHT_RUSH.budget"))
-      fail("rack rush feed delay must derive its flight budget from PASS_FLIGHT_RUSH");
-  }
+  const pickupSeconds=/const RACK_PICKUP_SECONDS=([.\d]+);/.exec(sharedShotPose);
+  if(!pickupSeconds||Number(pickupSeconds[1])<.3||!sharedShotPose.includes("pickup?RACK_PICKUP_SECONDS:"))
+    fail("rack take animation needs a shared pickup duration");
+  if(!read("src/gameplay/shots.js").includes("feed-expectedCharge-RACK_PICKUP_SECONDS"))
+    fail("rack rush feed delay must budget for the take animation");
   /* 出手跟随与接球必须叠加，二选一会把跟随姿势整个丢掉。 */
   if(!/if\(follow\.active\)applyFollowThroughPose/.test(shotMotionScript))
     fail("follow-through must keep posing while the catch reaches out");

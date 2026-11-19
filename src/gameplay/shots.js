@@ -99,6 +99,7 @@ function shotMat(shot){
   }
   return shot.deep!=null?matDeep:(shot.money?matGold:matBall);
 }
+window.AIBARuntimeSupplyMaterial=money=>money?matGold:matBall;
 function shotIdeal(shot){
   if(shot&&shot.super)return IDEAL_HALF;
   return shot&&shot.deep!=null?IDEAL_DEEP:IDEAL;
@@ -460,14 +461,12 @@ function afterBallSpawn(B,shot,err,isBattle,isRush,isDeep){
   }
   if(isRush){
     const rush=G.rush;if(!rush)return;
+    B.rushRunId=rush.id;
     rush.attempts++;rush.levelAttempts++;rush.shotNo++;G.shotIdx++;G.canShoot=false;
     const cfg=RACK_RUSH_LEVELS[rush.level],expectedCharge=shotIdeal(shot)/Math.max(1,playerChargeRate());
     const speedFeed=G.diff==="easy"?1.16:(G.diff==="hard"?.96:1.06);
     const feed=isRackRushSpeed(rush)?speedFeed:cfg.feed;
-    // 供球节奏 = 蓄力 + 传球飞行 + 这里的间隔；飞行预算跟着 PASS_FLIGHT_RUSH 走。
-    const flightBudget=typeof PASS_FLIGHT_RUSH!=="undefined"?PASS_FLIGHT_RUSH.budget:.27;
-    const delay=Math.max(60,(feed-expectedCharge-flightBudget)*1000);
-    afterPlayerLands(delay,()=>{if(G.state==="rackrush"&&G.running&&!G.buzzed)readyBall();});
+    if(rush.supply)rush.supply.readyIn=Math.max(.06,feed-expectedCharge-RACK_PICKUP_SECONDS);
     window.AIBAHeroMoments?.onRackRushBallSpawn(B);
     return;
   }
@@ -685,6 +684,7 @@ function updPhysicsBall(b,dt,index){
   omega.set(s.wx,s.wy,s.wz);rotateBallWorld(b,omega,dt,1);
   while(b.evi<b.events.length&&b.events[b.evi].t<=lt)physicsBallEvent(b,b.events[b.evi++]);
   if(b.t>=b.endT){
+    if(b.rushRunId)window.queueRackRushReturn?.(b);
     scene.remove(b.mesh);scene.remove(b.blob);
     if(!b.silent)G.shots.push(b);
     balls.splice(index,1);return true;
@@ -765,6 +765,7 @@ function updBalls(dt){
       rollBall(b,dt);
       b.rollT=(b.rollT||0)+dt;b.life-=dt;
       if(b.life<=0||(b.rollT>=BALL_FLOOR_PHYSICS.rollLife&&Math.hypot(b.vel.x,b.vel.z)<.12)){
+        if(b.rushRunId)window.queueRackRushReturn?.(b);
         scene.remove(b.mesh);scene.remove(b.blob);
         if(!b.silent)G.shots.push(b);
         balls.splice(i,1);continue;
@@ -788,6 +789,7 @@ function updBalls(dt){
       }
       b.life-=dt;
       if(b.life<=0){
+        if(b.rushRunId)window.queueRackRushReturn?.(b);
         scene.remove(b.mesh);scene.remove(b.blob);
         if(!b.silent)G.shots.push(b);
         balls.splice(i,1);continue;

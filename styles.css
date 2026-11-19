@@ -429,6 +429,15 @@ table.std tr.adv td{box-shadow:inset 0 0 0 2px #ffd23f}
 .clipExport{width:88%;margin:10px auto 6px;display:grid;grid-template-columns:minmax(0,1fr);gap:6px;justify-items:center}
 .clipExport small{display:block;color:#9ab2c5;font-size:10px;letter-spacing:1px}.clipExport .btn{min-width:190px}
 .rushLevels td:first-child{text-align:left}.rushLevels td:last-child{color:#ffd23f;text-align:right}
+.rushSpots{margin:13px 0 4px;padding:8px 0 0;border:0;min-width:0;text-align:left}
+.rushSpots legend{padding:0;color:#e6edf4;font-size:12px;font-weight:700}
+.rushSpots>div{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:5px}
+.rushSpot{display:block;position:relative;cursor:pointer}
+.rushSpot input{position:absolute;opacity:0;inset:0}
+.rushSpot span{display:grid;place-items:center;min-height:36px;padding:3px;color:#d1dfec;
+  font-size:11px;line-height:1.2;text-align:center;background:#1b222e;border:1px solid #3d4758;border-radius:4px}
+.rushSpot input:checked+span{border-color:#ffd23f;background:#46391d;color:#ffe18a}
+.rushSpot input:focus-visible+span{outline:2px solid #9ae9ff;outline-offset:2px}
 .rushModeGrid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin:12px 0}
 .rushModeCard{position:relative;min-height:156px;padding:14px 12px;text-align:left;font-family:inherit;color:#eef7ff;background:#151922;border:3px solid #000;
   box-shadow:0 0 0 2px #454e5c,inset 0 0 24px rgba(255,210,63,.08);cursor:pointer}

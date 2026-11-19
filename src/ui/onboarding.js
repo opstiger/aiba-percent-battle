@@ -87,7 +87,7 @@
       '<h1 class="title" style="font-size:22px">玩法说明</h1>'+
       '<div class="card"><b>基本操作</b><br>按住屏幕蓄力 → 松开出手,力量条停在绿色甜区就是空心。低精力时出手更难,记得停手休息。</div>'+
       '<div class="card"><b>百分大战</b><br>与 AI 同场对投,先到 100 分获胜。点击场上光圈(或 ←→ 键)换点位;普通点 3 分、彩球点 5 分、中场 LOGO 球 10 分。</div>'+
-      '<div class="card"><b>投篮机 RACK RUSH</b><br>弧顶连续供球:闯关挑战逐关达标冲 FINAL RUSH;百分竞速比谁先到 100 分,用时上榜。</div>'+
+      '<div class="card"><b>投篮机 RACK RUSH</b><br>选定点位后连续供球:闯关挑战逐关达标冲 FINAL RUSH;百分竞速比谁先到 100 分,用时上榜。</div>'+
       '<div class="card"><b>三分大赛</b><br>70 秒投完 5 个球架+2 个深远彩球,花球和深远球分值更高。</div>'+
       '<div class="card"><b>体感控制</b><br>难度页切"体感控制"用摄像头投篮:双手入框锁定 → 举高蓄力 → 越线出手。画面只在本机处理,不上传。</div>'+
       '<button class="btn green" data-aiba-icon="rotate-ccw" data-aiba-label="重看新手引导" onclick="AIBAOnboard.replay()">重看新手引导</button>'+

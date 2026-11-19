@@ -81,14 +81,14 @@ function rackHalfExtent(ri){
   st.updateMatrixWorld(true);
   const inv=new THREE.Matrix4().copy(st.matrixWorld).invert();
   const lb=new THREE.Box3();
-  st.traverse(c=>{
+  st.children.filter(part=>part.visible).forEach(part=>part.traverse(c=>{
     if(!c.isMesh||!c.geometry)return;
     c.updateMatrixWorld(true);
     c.geometry.computeBoundingBox();
     const b=c.geometry.boundingBox.clone();
     b.applyMatrix4(new THREE.Matrix4().copy(inv).multiply(c.matrixWorld));
     lb.union(b);
-  });
+  }));
   if(lb.isEmpty())return null;
   return (rackFootprint[ri]={minx:lb.min.x,maxx:lb.max.x,minz:lb.min.z,maxz:lb.max.z});
 }
@@ -151,10 +151,12 @@ function seatRackBalls(ri,nextIndex,animate){
   const spec=rackSlotSpec(),last=spec.SLOTS-1;
   rackNextIndex[ri]=nextIndex;
   const target=new THREE.Vector3();
+  const stock=typeof activeRushSupply==="function"?activeRushSupply(ri)?.stock:null;
   for(let b=0;b<balls.length;b++){
     const m=balls[b];if(!m)continue;
-    if(b<nextIndex){m.visible=false;continue;}
-    const slot=Math.max(0,last-(b-nextIndex));
+    const order=stock?stock.indexOf(b):b-nextIndex;
+    if(order<0){m.visible=false;continue;}
+    const slot=Math.max(0,last-order);
     rackSlotWorld(ri,slot,target);
     if(!animate){m.position.copy(target);continue;}
     const from=m.position.clone(),to=target.clone();
@@ -185,6 +187,7 @@ function takeRackBall(ri,index,out,deferRoll){
   pos.rackIndex=ri;
   pos.nextIndex=b+1;
   if(m)m.visible=false;
+  if(typeof consumeRackRushBall==="function")consumeRackRushBall(ri,b);
   if(!deferRoll)seatRackBalls(ri,b+1,true);
   return pos;
 }
@@ -194,11 +197,136 @@ function refillRackBalls(ri){
   balls.forEach(m=>{if(m)m.visible=true;});
   seatRackBalls(ri,0,false);
 }
+const rackThemeNames={
+  shonanCoast:{body:0x777863,frame:0x52717a,trim:0xa28760,metalness:.28},
+  outdoorSunny:{body:0x526a61,frame:0x434b4f,trim:0xb5a289,metalness:.36},
+  lunarCrater:{body:0xb5ac94,frame:0xb4bac5,trim:0xc0903e,metalness:.74},
+  rainforest:{body:0x65533c,frame:0x42443b,trim:0x9a8060,metalness:.05},
+  flowerCourt:{body:0x9d8059,frame:0x416451,trim:0xb0a383,metalness:.09},
+  rainyCourt:{body:0x67635c,frame:0x495550,trim:0x9e8355,metalness:.47},
+  beachSunset:{body:0x778789,frame:0x556163,trim:0xc5a772,metalness:.48},
+  medCliff:{body:0x88846e,frame:0x6e775c,trim:0xac9063,metalness:.12},
+  spanishQuarter:{body:0x867357,frame:0x435858,trim:0xbe8358,metalness:.19},
+  arcticSnow:{body:0x7b9cae,frame:0xa2b4be,trim:0xa77346,metalness:.55},
+  tokyoRooftop:{body:0x4a545f,frame:0x777988,trim:0xb37e47,metalness:.48}
+};
+const defaultRackTheme={body:0xe4e8ee,frame:0x9ba6b6,trim:0x274e75,metalness:.44};
+function rackVenuePalette(name=currentScenePreset){
+  if(name==="indoor")return defaultRackTheme;
+  return rackThemeNames[name]||{body:0x7c7564,frame:0x596263,trim:0x9f7850,metalness:.36};
+}
+function rackWithVenueModel(model,kind,height=0){
+  const mount=new THREE.Group();
+  mount.userData.rackModel=model;mount.userData.rackKind=kind;mount.userData.rackHeight=height;
+  mount.add(model);return mount;
+}
+let localRackWoodMap;
+function localRackWood(){
+  if(!localRackWoodMap){
+    const random=mulberry32(77982);
+    localRackWoodMap=pixTex(256,96,(g,w,h)=>{
+      g.fillStyle="#c2b798";g.fillRect(0,0,w,h);
+      for(let i=0;i<142;i++){
+        const x=random()*w,y=random()*h,len=13+random()*164;
+        g.strokeStyle=i%3===0?"rgba(217,192,151,.42)":"rgba(79,65,47,.24)";
+        g.lineWidth=.45+random()*1.38;
+        g.beginPath();g.moveTo(x,y);
+        g.quadraticCurveTo(x+len*.48,y+(random()-.5)*3.5,x+len,y+(random()-.5)*5);g.stroke();
+      }
+    },{smooth:true,mipmaps:true});
+  }
+  return localRackWoodMap;
+}
+function buildVenueEquipment(root,name,theme){
+  const moon=name==="lunarCrater",timber=name==="rainforest"||name==="flowerCourt";
+  const skin=new THREE.Group();skin.name="rackVenue:"+name;
+  const frame=new THREE.MeshStandardMaterial({color:theme.frame,roughness:moon?.36:.71,metalness:theme.metalness});
+  const body=new THREE.MeshStandardMaterial({color:theme.body,roughness:moon?.38:.81,metalness:theme.metalness});
+  const trim=new THREE.MeshStandardMaterial({color:theme.trim,roughness:.64,metalness:moon?.5:.12});
+  if(timber){body.map=localRackWood();trim.map=body.map;}
+  const box=(w,h,d,x,y,z,mat=body)=>{
+    const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+    mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;skin.add(mesh);return mesh;
+  };
+  const rod=(x,y,z,rad,height,mat=frame)=>{
+    const mesh=new THREE.Mesh(new THREE.CylinderGeometry(rad,rad*1.16,height,moon?8:9),mat);
+    mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;skin.add(mesh);return mesh;
+  };
+  const bolt=(x,y,z)=>rod(x,y,z,.018,.025,trim);
+  if(root.userData.rackKind==="rack"){
+    for(const x of [-.57,.57])for(const z of [-.16,.16]){
+      rod(x,-.37,z,moon?.063:.045,.16);
+      box(timber?.18:.15,.05,.13,x+z*.08,-.423,z,moon?frame:trim);
+      const railY=.41-x*.14-.12;
+      box(moon?.083:.070,railY+.34,.071,x,(railY-.34)*.5,z,moon?body:frame);
+      bolt(x,railY+.03,z);
+    }
+    for(const z of [-.145,.145]){
+      const beam=box(1.39,timber?.063:.047,.057,0,.41-.113,z,frame);
+      beam.rotation.z=-.139;
+      const guard=box(1.44,.042,.058,0,.335,z*1.31,trim);
+      guard.rotation.z=-.139;
+    }
+    box(.043,.13,.38,.77,.246,0,moon?trim:body);
+    if(timber){
+      for(const [i,y] of [.131,.028,-.085].entries()){
+        const plank=box(1.32-i*.05,.087,.052,i%2?.022:-.025,y,.211,i===1?trim:body);
+        plank.rotation.z=(i-1)*.024;
+      }
+      for(const x of [-.54,.54])box(.053,.31,.06,x,.026,.222,frame).rotation.z=x*.11;
+    }else{
+      box(1.28,.245,.353,0,-.047,0,body);
+      if(moon){
+        for(const x of [-.46,-.20,.08,.32,.53]){
+          box(.058,.158,.013,x,-.009,.183,frame).rotation.z=-.22;
+        }
+        for(const x of [-.60,.60])for(const z of [-.17,.17])bolt(x,.091,z);
+        box(.71,.023,.347,0,-.15,0,trim);
+      }
+    }
+  }else{
+    const h=root.userData.rackHeight,y=-h/2;
+    const mid=root.userData.rackKind==="middle",foot=mid?.33:.243;
+    rod(0,y+.07,0,foot,.14,moon?frame:body);
+    if(timber){
+      for(const s of [-1,1])for(const z of [-1,1]){
+        const post=box(.095,h-.19,.10,s*.106,y+h*.50,z*.103,s===z?body:trim);
+        post.rotation.x=z*.074;post.rotation.z=s*.063;
+      }
+      box(.33,.092,.32,0,y+h-.04,0,frame);
+    }else{
+      rod(0,y+h*.51,0,mid?.127:.096,h-.18,body);
+      for(const ry of [.25,.61,.82])rod(0,y+h*ry,0,mid?.147:.122,.041,trim);
+      rod(0,y+h-.026,0,mid?.214:.172,.054,frame);
+      if(moon)for(const s of [-1,1])for(const z of [-1,1])bolt(s*foot*.60,y+.145,z*foot*.60);
+    }
+    for(const x of [-.131,.131])for(const z of [-.131,.131])rod(x,y+h+.009,z,.025,.051,trim);
+  }
+  return skin;
+}
+function applyRackVenue(name){
+  for(const root of [...rackStands,...deepStands,halfCourtBall?.ped]){
+    if(!root?.userData.rackModel||root.userData.rackVenue===name)continue;
+    const old=root.userData.venueSkin;
+    if(old){
+      root.remove(old);
+      const mats=new Set();
+      old.traverse(o=>{if(o.isMesh){o.geometry.dispose();mats.add(o.material);}});
+      mats.forEach(m=>m.dispose());
+    }
+    root.userData.rackModel.visible=name==="indoor";
+    root.userData.venueSkin=name==="indoor"?null:buildVenueEquipment(root,name,rackVenuePalette(name));
+    if(root.userData.venueSkin)root.add(root.userData.venueSkin);
+    root.userData.rackVenue=name;
+  }
+  rackFootprint.length=0;
+}
+
 function buildRacks(){
-  const standM=new THREE.MeshLambertMaterial({color:0xe4e8ee});
+  const standM=new THREE.MeshLambertMaterial({color:0x2255aa});
   RACKS.forEach((r,ri)=>{
-    const stand=window.AIBAModelDetail?.enabled?AIBAModelDetail.rack(standM):
-      new THREE.Mesh(new THREE.BoxGeometry(1.5,0.55,0.5),standM);
+    const stand=rackWithVenueModel(window.AIBAModelDetail?.enabled?AIBAModelDetail.rack(standM):
+      new THREE.Mesh(new THREE.BoxGeometry(1.5,0.55,0.5),standM),"rack");
     scene.add(stand);rackStands[ri]=stand;
     rackBalls[ri]=[];
     for(let b=0;b<5;b++){
@@ -210,9 +338,9 @@ function buildRacks(){
   });
   placeRacks(currentRackSide());
   DEEPS.forEach((d,i)=>{
-    const pedMat=new THREE.MeshLambertMaterial({color:0xe6eaef});
-    const ped=window.AIBAModelDetail?.enabled?AIBAModelDetail.pedestal(.45,.9,pedMat):
-      new THREE.Mesh(new THREE.BoxGeometry(0.45,0.9,0.45),pedMat);
+    const pedMat=new THREE.MeshLambertMaterial({color:0x1f7a28});
+    const ped=rackWithVenueModel(window.AIBAModelDetail?.enabled?AIBAModelDetail.pedestal(.45,.9,pedMat):
+      new THREE.Mesh(new THREE.BoxGeometry(0.45,0.9,0.45),pedMat),"deep",.9);
     const dir=HOOP.clone().sub(d.p);dir.y=0;dir.normalize();
     const base=d.p.clone().addScaledVector(dir,-0.8);
     ped.position.set(base.x,0.45,base.z);scene.add(ped);deepStands[i]=ped;
@@ -222,22 +350,28 @@ function buildRacks(){
   });
   const hdir=HOOP.clone().sub(HALFCOURT.p);hdir.y=0;hdir.normalize();
   const hbase=HALFCOURT.p.clone().addScaledVector(hdir,-0.8);
-  const hpedMat=new THREE.MeshLambertMaterial({color:0xe6eaef});
-  const hped=window.AIBAModelDetail?.enabled?AIBAModelDetail.pedestal(.62,1,hpedMat,1):
-    new THREE.Mesh(new THREE.BoxGeometry(0.62,1.0,0.62),hpedMat);
+  const hpedMat=new THREE.MeshLambertMaterial({color:0x1f7a28});
+  const hped=rackWithVenueModel(window.AIBAModelDetail?.enabled?AIBAModelDetail.pedestal(.62,1,hpedMat,1):
+    new THREE.Mesh(new THREE.BoxGeometry(0.62,1.0,0.62),hpedMat),"middle",1);
   hped.position.set(hbase.x,0.5,hbase.z);hped.visible=false;scene.add(hped);
   halfCourtBall=new THREE.Mesh(ballGeo,matDeep);
   halfCourtBall.position.set(hbase.x,1.16,hbase.z);halfCourtBall.visible=false;scene.add(halfCourtBall);
   halfCourtBall.ped=hped;
 }
 function resetRackBalls(){
-  // 绝杀时刻模拟的是真实比赛回合,场上不该有投篮架和备用球
-  const showRacks=G.mode!=="battle"&&G.mode!=="lastshot";
-  rackStands.forEach(stand=>{stand.visible=showRacks;});
-  deepStands.forEach(stand=>{stand.visible=showRacks;});
-  if(showRacks)placeRacks(currentRackSide());
-  rackBalls.forEach((r,ri)=>{r.forEach(m=>{m.visible=showRacks;});if(showRacks)seatRackBalls(ri,0,false);});
-  deepBalls.forEach(m=>{m.visible=showRacks;});
+  const single=G.mode==="rackrush"?G.rush?.spot??2:G.practice?2:null;
+  const course=single===null&&G.mode!=="battle"&&G.mode!=="lastshot";
+  rackStands.forEach((stand,i)=>{stand.visible=course||i===single;});
+  deepStands.forEach(stand=>{stand.visible=course;});
+  placeRacks(currentRackSide());
+  rackBalls.forEach((row,i)=>{
+    row.forEach((m,b)=>{
+      m.visible=rackStands[i].visible&&(!G.practice||b<3);
+      m.material=!G.practice&&(b===4||(G.mode==="contest"&&i===G.moneyRack))?matGold:matBall;
+    });
+    if(rackStands[i].visible)seatRackBalls(i,0,false);
+  });
+  deepBalls.forEach(m=>{m.visible=course;});
   if(halfCourtBall){halfCourtBall.visible=false;halfCourtBall.ped.visible=false;}
 }
 
@@ -268,7 +402,7 @@ function buildHands(){
 
 
 window.AIBA.runtime.register("rendering:props",Object.freeze({
-  buildRacks,resetRackBalls,buildHands,placeRacks,currentRackSide,rackSlotWorld,
+  buildRacks,resetRackBalls,buildHands,placeRacks,currentRackSide,rackSlotWorld,applyRackVenue,rackVenuePalette,
   rackDetourWaypoint,rackPointDist,rackSegDist,
   getRackSide:()=>rackSide,seatRackBalls,takeRackBall,refillRackBalls,
   getRackBalls:()=>({regular:rackBalls,deep:deepBalls,regularStands:rackStands,deepStands,halfCourt:halfCourtBall}),

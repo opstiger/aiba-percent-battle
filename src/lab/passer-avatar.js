@@ -1,20 +1,12 @@
-/* ---------------- 3D 传球员 (赤木晴子) ----------------
-   将传球员从原先的方块人替换为写实/动漫 3D 模型 (assets/models/passer_qingzi.glb)。
-   Mixamo 65 根骨骼绑骨，身穿湘北 10 号球衣与 Jordan 1 芝加哥球鞋，自带双手大力传球动画。
-   - 待机时：双手置于胸腹前托球，呼吸微动。
-   - 传球时：执行 Mixamo Throw 动作双手推球送出，与篮球飞行物理完全对齐。
-   - 投完球后：平滑回到待机接球姿态。
-   - 自动隐藏 passer.g 原先的方块体网格。
-*/
+/* Qingzi's skinned avatar. Game poses preserve the model's bind lengths and use
+   actual palm contacts; pregame choreography still uses its existing pose data. */
 (function(global){
   "use strict";
 
   const MODEL_URL = "assets/models/passer_qingzi.glb";
   const LOADER_URL = "vendor/GLTFLoader.r128.js";
 
-  const THROW_START_TIME = 0.20;
-  const THROW_RELEASE_TIME = 0.765;
-  const THROW_TIME_SCALE = 2.0;
+  const THROW_RELEASE_TIME=.34,THROW_DURATION=.72;
 
   const DANCE_BONES=["Hips","Spine","Spine1","Spine2","Neck","Head","LeftShoulder","LeftArm","LeftForeArm","LeftHand","RightShoulder","RightArm","RightForeArm","RightHand","LeftUpLeg","LeftLeg","LeftFoot","LeftToeBase","RightUpLeg","RightLeg","RightFoot","RightToeBase"];
 
@@ -23,33 +15,25 @@
     ready: false,
     root: null,
     mesh: null,
-    mixer: null,
-    throwAction: null,
     bones: {},
     restLocal: {},
     restWorld: {},
-    hipY: 0.95,
-    rHand: null,
-    rPalm: null,
-    lHand: null,
-    isThrowing: false,
-    released: false,
-    throwTime: 0,
-    throwDuration: 0,
-    releaseDelay: (THROW_RELEASE_TIME - THROW_START_TIME) / THROW_TIME_SCALE,
+    chains: {},
+    hipY:.95,
+    isThrowing:false,
+    released:false,
+    throwTime:0,
+    rackPose:null,
+    ballCenter:null,
     attachedGuy: null
   };
 
-  const _vR = new THREE.Vector3();
-  const _vL = new THREE.Vector3();
   const _vMid = new THREE.Vector3();
-  const _vFwd = new THREE.Vector3();
   const _qWorld = new THREE.Quaternion();
   const _dq = new THREE.Quaternion();
   const _dc = new THREE.Quaternion();
   const _pq = new THREE.Quaternion();
   const _eul = new THREE.Euler();
-  const _qOff = new THREE.Quaternion();
 
   function ensureLoader(cb){
     if(global.THREE && global.THREE.GLTFLoader) return cb();
@@ -104,41 +88,17 @@
         state.restLocal = restLocal;
         state.restWorld = restWorld;
 
-        let rHand = gltf.scene.getObjectByName("mixamorigRightHand") || gltf.scene.getObjectByName("mixamorig:RightHand");
-        let rPalm = gltf.scene.getObjectByName("mixamorigRightHandMiddle1") || gltf.scene.getObjectByName("mixamorig:RightHandMiddle1");
-        let lHand = gltf.scene.getObjectByName("mixamorigLeftHand") || gltf.scene.getObjectByName("mixamorig:LeftHand");
-        if(!rHand || !lHand || !rPalm){
-          gltf.scene.traverse(c=>{
-            if(!rHand && /RightHand$/.test(c.name)) rHand = c;
-            if(!rPalm && /RightHandMiddle1$/.test(c.name)) rPalm = c;
-            if(!lHand && /LeftHand$/.test(c.name)) lHand = c;
-          });
-        }
-
-        let mixer = null;
-        let throwAction = null;
-        let dur = 1.4;
-        if(gltf.animations && gltf.animations.length > 0){
-          mixer = new THREE.AnimationMixer(gltf.scene);
-          throwAction = mixer.clipAction(gltf.animations[0]);
-          throwAction.loop = THREE.LoopOnce;
-          throwAction.clampWhenFinished = true;
-          throwAction.timeScale = THROW_TIME_SCALE;
-          dur = Math.max(0.2, (gltf.animations[0].duration - THROW_START_TIME) / THROW_TIME_SCALE);
-          // 初始停在第 1 帧持球预备姿态
-          throwAction.play();
-          mixer.update(0.033);
-          throwAction.paused = true;
-        }
-
         state.root = root;
         state.mesh = mesh;
-        state.mixer = mixer;
-        state.throwAction = throwAction;
-        state.rHand = rHand;
-        state.rPalm = rPalm || rHand;
-        state.lHand = lHand;
-        state.throwDuration = dur;
+        for(const side of ["Left","Right"]){
+          const arm=bones[side+"Arm"],elbow=bones[side+"ForeArm"],hand=bones[side+"Hand"];
+          const thigh=bones[side+"UpLeg"],shin=bones[side+"Leg"],foot=bones[side+"Foot"];
+          if(!arm||!elbow||!hand||!thigh||!shin||!foot)continue;
+          state.chains[side]={
+            arm:bindChain(arm,elbow,hand),leg:bindChain(thigh,shin,foot),
+            foot:root.worldToLocal(foot.getWorldPosition(new THREE.Vector3()))
+          };
+        }
         state.ready = true;
         state.loading = false;
 
@@ -179,61 +139,120 @@
       state.root.rotation.y = 0;
       state.root.scale.set(1, 1, 1);
       state.attachedGuy = guy;
+      if(typeof passerBall!=="undefined"&&passerBall)passerBall.name="passerBall";
       hideVoxelMeshes(guy);
     }
   }
 
-  const _vPalm = new THREE.Vector3();
-  const _vRight = new THREE.Vector3();
-
-  function getBallWorldPos(out){
-    if(!state.ready || !state.root || !state.rHand || !state.lHand) return null;
+  const v=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
+  const slerpSpace=new THREE.Quaternion();
+  const jointFrame=new THREE.Matrix4();
+  const localBall=v();
+  function bindChain(start,joint,tip){
+    const a=start.getWorldPosition(v()),b=joint.getWorldPosition(v()),c=tip.getWorldPosition(v());
+    return {start,joint,tip,a:a.distanceTo(b),b:b.distanceTo(c),
+      startAxis:joint.position.clone().normalize(),jointAxis:tip.position.clone().normalize()};
+  }
+  function setWorldRotation(bone,q){
+    bone.parent.getWorldQuaternion(slerpSpace).invert();
+    bone.quaternion.copy(slerpSpace).multiply(q);
+    bone.updateMatrixWorld(true);
+  }
+  function aimBone(bone,axis,direction){
+    const at=bone.parent.getWorldQuaternion(new THREE.Quaternion()).multiply(state.restLocal[bone.name.replace(/^mixamorig:?/,"")]);
+    const restAxis=axis.clone().applyQuaternion(at);
+    const aim=new THREE.Quaternion().setFromUnitVectors(restAxis,direction);
+    setWorldRotation(bone,aim.multiply(at));
+  }
+  function solveChain(chain,target,pole){
+    const origin=chain.start.getWorldPosition(v());
+    const along=target.clone().sub(origin);
+    const length=THREE.MathUtils.clamp(along.length(),Math.abs(chain.a-chain.b)+.001,chain.a+chain.b-.001);
+    along.normalize();
+    const bend=pole.clone().addScaledVector(along,-pole.dot(along)).normalize();
+    const above=(chain.a*chain.a-chain.b*chain.b+length*length)/(2*length);
+    const elbow=origin.clone().addScaledVector(along,above).addScaledVector(bend,Math.sqrt(Math.max(0,chain.a*chain.a-above*above)));
+    const end=origin.clone().addScaledVector(along,length);
+    aimBone(chain.start,chain.startAxis,elbow.clone().sub(origin).normalize());
+    aimBone(chain.joint,chain.jointAxis,end.sub(elbow).normalize());
+  }
+  function poseGrip(center,dip,lean,relax=0){
+    restoreRestPose();
+    state.root.position.y=-dip;
     state.root.updateMatrixWorld(true);
-    state.rHand.getWorldPosition(_vR);
-    state.lHand.getWorldPosition(_vL);
-    const target = out || new THREE.Vector3();
-    target.addVectors(_vR, _vL).multiplyScalar(0.5);
     state.root.getWorldQuaternion(_qWorld);
-    _vFwd.set(0, 0.02, 0.07).applyQuaternion(_qWorld);
-    target.add(_vFwd);
+    setBoneCharDelta("Spine1",_qChar.setFromEuler(_eul.set(lean,0,0,"XYZ")));
+    for(const side of ["Left","Right"]){
+      const limb=state.chains[side];
+      if(!limb)continue;
+      const sign=side==="Left"?1:-1;
+      const planted=limb.foot.clone();planted.y+=dip;
+      state.root.localToWorld(planted);
+      solveChain(limb.leg,planted,v(sign*.04,.04,1).applyQuaternion(_qWorld));
+      setWorldRotation(limb.leg.tip,_qWorld.clone().multiply(state.restWorld[side+"Foot"]));
 
-    if(state.isThrowing){
-      const blend = Math.min(1, Math.max(0, state.throwTime / 0.12));
-      if(state.rPalm){
-        state.rPalm.getWorldPosition(_vPalm);
-        _vRight.addVectors(_vR, _vPalm).multiplyScalar(0.5);
-      }else{
-        _vRight.copy(_vR);
-      }
-      _vFwd.set(0, 0.04, 0.09).applyQuaternion(_qWorld);
-      _vRight.add(_vFwd);
-      target.lerp(_vRight, blend);
+      const radial=v(sign*.126,-.073,-.069).normalize().applyQuaternion(_qWorld);
+      const gripNormal=radial.clone().negate();
+      const normal=gripNormal.clone().lerp(v(-sign,.08,.16).applyQuaternion(_qWorld),relax).normalize();
+      const fingerGuide=v(sign*-.14,.29,1).applyQuaternion(_qWorld);
+      const gripFingers=fingerGuide.clone().addScaledVector(gripNormal,-fingerGuide.dot(gripNormal)).normalize();
+      const fingers=fingerGuide.lerp(v(0,-1,.19).applyQuaternion(_qWorld),relax);
+      fingers.addScaledVector(normal,-fingers.dot(normal)).normalize();
+      const palm=center.clone().addScaledVector(radial,.164);
+      const wrist=palm.clone().addScaledVector(gripFingers,-.046).addScaledVector(gripNormal,-.010);
+      if(relax>0)wrist.lerp(state.attachedGuy.g.localToWorld(v(sign*.224,1.072,.049)),relax);
+      const pole=v(sign*.88,-.74,-.09).applyQuaternion(_qWorld);
+      solveChain(limb.arm,wrist,pole);
+      const across=v().crossVectors(fingers,normal).normalize();
+      jointFrame.makeBasis(across,fingers,normal);
+      setWorldRotation(limb.arm.tip,new THREE.Quaternion().setFromRotationMatrix(jointFrame));
     }
-    return target;
+    state.ballCenter=relax>.99?null:center.clone();
   }
-
+  function chestPoint(y,z,x=0){
+    return state.attachedGuy.g.localToWorld(localBall.set(x,y,z));
+  }
+  function idleGrip(){
+    const t=typeof G!=="undefined"?G.tNow:0;
+    const helper=!!state.attachedGuy.g.userData.rushHelper;
+    poseGrip(chestPoint(1.108+.006*Math.sin(t*1.65),.273),helper?.018:.073,helper?.028:.114,helper?1:0);
+  }
+  function getBallWorldPos(out){
+    if(!state.ready||!state.ballCenter)return null;
+    return (out||v()).copy(state.ballCenter);
+  }
   function playThrow(){
-    if(!state.ready || !state.throwAction) return;
-    state.isThrowing = true;
-    state.released = false;
-    state.throwTime = 0;
-    state.throwAction.reset();
-    state.throwAction.time = THROW_START_TIME;
-    state.throwAction.timeScale = THROW_TIME_SCALE;
-    state.throwAction.paused = false;
-    state.throwAction.play();
-    if(state.mixer){
-      state.mixer.update(0);
-      if(state.root) state.root.updateMatrixWorld(true);
+    if(!state.ready||!state.chains.Left||!state.chains.Right)return;
+    state.rackPose=null;
+    state.isThrowing=true;state.released=false;state.throwTime=0;
+    idleGrip();
+  }
+  function markReleased(){state.released=true;}
+  function getReleaseDelay(){return state.isThrowing?THROW_RELEASE_TIME:0;}
+  function poseThrow(dt){
+    state.throwTime+=dt;
+    const t=state.throwTime;
+    const smooth=THREE.MathUtils.smoothstep;
+    if(t>=THROW_DURATION){
+      state.isThrowing=false;state.released=false;
+      idleGrip();return;
+    }
+    const wind=smooth(t,0,.13),push=smooth(t,.13,THROW_RELEASE_TIME);
+    const easeOut=1-smooth(t,.38,THROW_DURATION);
+    const y=1.108+(.047*wind+.069*push)*easeOut;
+    const z=.273+(-.038*wind+.152*push)*easeOut;
+    poseGrip(chestPoint(y,z),.073+.030*wind*easeOut-.042*push*easeOut,.114+.10*push*easeOut);
+  }
+  function setRackPose(center,relax=0){
+    state.rackPose=center;
+    if(center&&state.ready&&state.attachedGuy?.g.visible){
+      const dip=THREE.MathUtils.clamp(.075+(1.12-center.y)*.68,.07,.215);
+      poseGrip(center,THREE.MathUtils.lerp(dip,.018,relax),THREE.MathUtils.lerp(.14+(dip-.07)*.61,.028,relax),relax);
     }
   }
-
-  function markReleased(){
-    state.released = true;
-  }
-
-  function getReleaseDelay(){
-    return state.ready && state.throwAction ? state.releaseDelay : 0;
+  function resetPose(){
+    state.rackPose=null;state.isThrowing=false;state.released=false;state.throwTime=0;
+    state.ballCenter=null;
   }
 
   function restoreRestPose(){
@@ -246,10 +265,11 @@
     const w = Math.max(0, Math.min(1, dn.w == null ? 1 : dn.w));
     if(w <= 0 || !dn.q || !state.root) return;
     state.root.updateMatrixWorld(true);
+    state.root.getWorldQuaternion(_qWorld);
     for(let i = 0; i < DANCE_BONES.length; i++){
       const n = DANCE_BONES[i], bone = state.bones[n], rw = state.restWorld[n];
       if(!bone || !rw || !bone.parent) continue;
-      _dq.set(dn.q[i*4], dn.q[i*4+1], dn.q[i*4+2], dn.q[i*4+3]).multiply(rw);
+      _dq.set(dn.q[i*4], dn.q[i*4+1], dn.q[i*4+2], dn.q[i*4+3]).multiply(rw).premultiply(_qWorld);
       const targetQ = w < 1 ? bone.getWorldQuaternion(_dc).slerp(_dq, w) : _dq;
       bone.parent.getWorldQuaternion(_pq).invert();
       bone.quaternion.copy(_pq).multiply(targetQ);
@@ -363,38 +383,28 @@
     const inShow = gameState === "pregame" || gameState === "wincine" || gameState === "victorycine";
 
     if(dn && dw > 0.001){
+      state.ballCenter=null;
       applyDance(dn);
-    }else if(state.isThrowing && state.mixer){
-      state.throwTime += dt;
-      state.mixer.update(dt);
-      if(state.throwTime >= state.throwDuration){
-        state.isThrowing = false;
-        state.released = false;
-        state.throwAction.time = 0.033;
-        state.mixer.update(0);
-        state.throwAction.paused = true;
-      }
     }else if(inShow){
+      state.ballCenter=null;
       applyLimbMotion(guy);
-    }else if(state.mixer){
-      state.throwAction.enabled = true;
-      state.throwAction.setEffectiveWeight(1);
-      state.throwAction.time = 0.033;
-      state.mixer.update(0);
-      state.throwAction.paused = true;
-      const t = (typeof G !== "undefined" && G.tNow) || 0;
-      const breath = Math.sin(t * 1.8) * 0.02;
-      state.root.position.y = breath * 0.5;
+    }else if(state.rackPose){
+      return;
+    }else if(state.isThrowing){
+      poseThrow(dt);
+    }else{
+      idleGrip();
     }
 
-    // 手部持球点对齐（待机及推球蓄力出手前，球始终紧贴双手掌心）
-    const ball = typeof passerBall !== "undefined" ? passerBall : null;
-    if(ball && (!state.isThrowing || !state.released)){
-      if(state.rHand && state.lHand && ball.parent && getBallWorldPos(_vMid)){
-        ball.parent.updateMatrixWorld(true);
-        ball.parent.worldToLocal(_vMid);
-        ball.position.copy(_vMid);
-        ball.updateMatrixWorld(true);
+    const ball=typeof passerBall!=="undefined"?passerBall:null;
+    if(ball?.parent&&ball.visible&&(!state.isThrowing||!state.released)){
+      if(state.ballCenter){
+        ball.position.copy(ball.parent.worldToLocal(_vMid.copy(state.ballCenter)));
+      }else if(inShow&&state.chains.Right){
+        const right=state.chains.Right.arm.tip,left=state.chains.Left?.arm.tip;
+        right.getWorldPosition(_vMid);
+        if(left)_vMid.lerp(left.getWorldPosition(v()),.5);
+        ball.position.copy(ball.parent.worldToLocal(_vMid));
       }
     }
   }
@@ -404,6 +414,8 @@
     markReleased,
     getReleaseDelay,
     getBallWorldPos,
+    setRackPose,
+    resetPose,
     update,
     get state(){ return state; }
   });

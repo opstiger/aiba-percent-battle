@@ -509,6 +509,7 @@ function applyScenePreset(name,opts){
     }
   }
   if(typeof syncBallVenue==="function")syncBallVenue(name);
+  if(typeof applyRackVenue==="function")applyRackVenue(name);
   const rainforest=name==="rainforest";
   const preset=SCENE_PRESETS[name],outdoor=preset.type==="outdoor",rainy=preset.weather==="rain",flower=preset.progression==="flowerBloom",beach=preset.progression==="sunsetToNight";
   currentWeather=preset.weather;

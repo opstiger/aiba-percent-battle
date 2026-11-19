@@ -17,6 +17,211 @@
     scoreQuoteMarkup,showPanel,startVictoryCine
   }=ctx;
 
+  const props=runtime.service("rendering:props");
+  const slotCount=5,defaultSpot=2;
+  let lastSpot=defaultSpot,runId=0;
+  const v=(x=0,y=0,z=0)=>new THREE.Vector3(x,y,z);
+  function normalizeRushSpot(value,fallback=defaultSpot){
+    const index=Number(value);
+    return value!=null&&value!==""&&Number.isInteger(index)&&RACKS[index]?index:fallback;
+  }
+  function clearRackRushSupply(){
+    const supply=G.rush?.supply;
+    if(!supply)return;
+    scene.remove(supply.root);
+    supply.root.traverse(mesh=>{if(mesh.isMesh&&mesh.userData.ownedSupplyGeometry)mesh.geometry.dispose();});
+    supply.materials.forEach(m=>m.dispose());
+    G.rush.supply=null;
+    global.AIBAPasserAvatar?.resetPose();
+    if(passer.g.userData.rushHelper){
+      delete passer.g.userData.rushHelper;
+      passer.g.position.set(1.75,0,-6.85);
+    }
+  }
+  function prepareRackRushSupply(rush){
+    clearRackRushSupply();
+    const top=props.rackSlotWorld(rush.spot,0),base=RACKS[rush.spot].p;
+    if(!top)return;
+    const axis=HOOP.clone().sub(base).setY(0).normalize();
+    const outward=v(axis.z,0,-axis.x).multiplyScalar(props.getRackSide());
+    const station=top.clone().setY(0).addScaledVector(outward,.36).addScaledVector(axis,-.14);
+    const pickup=station.clone().setY(1.005).addScaledVector(axis,-.32);
+    const basket=pickup.clone().setY(0).addScaledVector(axis,-.43);
+    const root=new THREE.Group();
+    root.name="rackRushSupply";
+    const frame=new THREE.Group();
+    frame.name="rackRushReturnCart";
+    frame.position.copy(basket);frame.rotation.y=Math.atan2(-axis.z,axis.x);
+    root.add(frame);scene.add(root);
+    const theme=props.rackVenuePalette();
+    const metal=new THREE.MeshStandardMaterial({color:theme.frame,metalness:.47,roughness:.56});
+    const liner=new THREE.MeshStandardMaterial({color:theme.body,metalness:theme.metalness,roughness:.79});
+    const wood=(w,h,d,x,y,z,mat=metal)=>{
+      const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+      m.userData.ownedSupplyGeometry=true;m.position.set(x,y,z);frame.add(m);
+      m.castShadow=true;m.receiveShadow=true;return m;
+    };
+    wood(.87,.045,.68,0,.739,0,liner);
+    for(const x of [-.38,.38])for(const z of [-.28,.28])wood(.045,.78,.045,x,.40,z);
+    for(const z of [-.31,.31]){
+      wood(.90,.037,.035,0,.93,z);
+      for(const x of [-.31,-.21,-.11,0,.11,.21,.31])wood(.016,.19,.013,x,.83,z);
+    }
+    wood(.04,.036,.68,-.42,.925,0);
+    wood(.04,.035,.68,.46,.83,0);
+    for(const x of [-.36,.36])wood(.095,.075,.70,x,.069,0,liner);
+    const entrySide=-props.getRackSide();
+    for(const x of [-.22,.08]){
+      const guide=wood(.035,.042,.80,x,.403,entrySide*.49);
+      guide.rotation.x=entrySide*-.94;
+    }
+    const supply={root,materials:[metal,liner],axis,station,pickup,top,basket,outward,
+      stock:[0,1,2,3,4],spares:[],returns:[],nextBall:6,feed:null,waiting:false,readyIn:null};
+    rush.supply=supply;
+    const stored=props.getRackBalls().regular[rush.spot];
+    for(let i=0;i<slotCount;i++)stored[i].material=shotMaterialForSupply(i+1);
+    for(const number of [6,7,8,9,10,11,12,13,15]){
+      const mesh=spareBall(number%5===0);
+      storeRushSpare(supply,mesh);root.add(mesh);
+    }
+    passer.g.position.copy(station);passer.g.rotation.y=faceTo(station,top);
+    passer.g.userData.rushHelper=true;
+    passerBall.visible=false;
+    global.AIBAPasserAvatar?.resetPose();
+  }
+  function shotMaterialForSupply(number){return global.AIBARuntimeSupplyMaterial(number%5===0);}
+  function spareBall(money){
+    const mesh=new THREE.Mesh(pBall.geometry,global.AIBARuntimeSupplyMaterial(money));
+    mesh.name="rackRushSpareBall";mesh.userData.money=money;mesh.castShadow=true;
+    return mesh;
+  }
+  function spareLanding(supply,index){
+    const tier=Math.floor(index/6),col=index%3,row=Math.floor(index%6/3);
+    return supply.basket.clone().addScaledVector(supply.axis,(col-1)*.309+(tier?.085:0))
+      .addScaledVector(supply.outward,(row-.5)*.31).setY(.90+tier*.255);
+  }
+  function freeSpareSlot(supply){
+    const occupied=new Set([...supply.spares.map(ball=>ball.userData.cartSlot),
+      ...supply.returns.map(entry=>entry.dock).filter(index=>index!=null)]);
+    let index=0;
+    while(occupied.has(index))index++;
+    return index;
+  }
+  function storeRushSpare(supply,mesh,index=freeSpareSlot(supply)){
+    mesh.userData.cartSlot=index;
+    mesh.position.copy(spareLanding(supply,index));
+    supply.spares.push(mesh);
+  }
+  function activeRushSupply(ri){
+    if(G.mode!=="rackrush"||G.rush?.spot!==ri)return null;
+    return G.rush.supply;
+  }
+  function consumeRackRushBall(ri,index){
+    const supply=activeRushSupply(ri);
+    if(supply?.stock[0]===index)supply.stock.shift();
+  }
+  function queueRackRushReturn(shot){
+    const rush=G.rush,supply=rush?.supply;
+    if(!supply||shot.rushRunId!==rush.id||!G.running||G.state!=="rackrush")return;
+    const mesh=spareBall(!!shot.money);
+    mesh.material=shot.mesh.material;
+    mesh.position.copy(shot.mesh.position);
+    mesh.position.y=Math.max(.16,mesh.position.y);
+    const from=mesh.position.clone(),release=supply.basket.clone().addScaledVector(supply.outward,.40).addScaledVector(supply.axis,-.30);
+    const side=release.clone();
+    side.z=from.z<release.z?Math.min(-9.2,from.z):Math.max(release.z+.45,from.z);
+    side.y=.16;release.y=.16;
+    supply.root.add(mesh);supply.returns.push({mesh,from,side,release,t:0});
+  }
+  function moveRushReturns(supply,dt){
+    for(let i=supply.returns.length-1;i>=0;i--){
+      const entry=supply.returns[i],{mesh,from,side,release}=entry;
+      entry.t+=dt;
+      const k=Math.min(1,entry.t/1.7);
+      if(k<.82){
+        const u=k/.82;
+        mesh.position.copy(from).lerp(side,u*.67).lerp(release,u*u);
+        mesh.position.y=THREE.MathUtils.lerp(from.y,.16,Math.min(1,u*4));
+      }else{
+        if(entry.dock==null)entry.dock=freeSpareSlot(supply);
+        const dock=spareLanding(supply,entry.dock);
+        mesh.position.copy(release).lerp(dock,THREE.MathUtils.smoothstep(k,.82,1));
+      }
+      mesh.rotation.x-=dt*8.4;
+      if(k<1)continue;
+      supply.returns.splice(i,1);storeRushSpare(supply,mesh,entry.dock);
+    }
+  }
+  function tickRackRushSupply(rush,dt){
+    const supply=rush.supply;
+    if(!supply)return;
+    moveRushReturns(supply,dt);
+    if(supply.retract){
+      const move=supply.retract;
+      move.t+=dt;
+      const k=THREE.MathUtils.smoothstep(move.t,0,.33);
+      passer.g.position.copy(move.stand).lerp(supply.station,k);
+      const yaw=faceTo(supply.station,supply.pickup);
+      passer.g.rotation.y=move.yaw+Math.atan2(Math.sin(yaw-move.yaw),Math.cos(yaw-move.yaw))*k;
+      const rest=passer.g.localToWorld(v(0,1.10,.255));
+      global.AIBAPasserAvatar?.setRackPose(move.from.clone().lerp(rest,k),k);
+      if(k<1)return;
+      supply.retract=null;
+      global.AIBAPasserAvatar?.setRackPose(null);
+    }
+    if(!supply.feed&&supply.stock.length<=3){
+      const money=supply.nextBall%5===0;
+      const spareIndex=supply.spares.findIndex(ball=>ball.userData.money===money);
+      if(spareIndex>=0){
+        const ball=supply.spares.splice(spareIndex,1)[0];
+        supply.feed={ball,t:0,from:ball.position.clone(),goal:null};
+      }
+    }
+    const feed=supply.feed;
+    if(!feed)return;
+    feed.t+=dt;
+    const {ball,from}=feed;
+    const smooth=THREE.MathUtils.smoothstep;
+    const nextSlot=props.rackSlotWorld(rush.spot,slotCount-1-supply.stock.length);
+    if(!nextSlot)return;
+    if(!feed.goal)feed.goal=nextSlot.clone();
+    const goal=feed.goal.lerp(nextSlot,Math.min(1,dt*14));
+    // Place into the next free groove from the assistant's side of the rail.
+    const stand=supply.station.clone().addScaledVector(supply.axis,Math.max(0,goal.clone().sub(supply.top).dot(supply.axis))*.80);
+    const turn=smooth(feed.t,.24,.59);
+    passer.g.position.copy(supply.station).lerp(stand,turn);
+    const yaw0=faceTo(supply.station,supply.pickup),yaw1=faceTo(stand,goal);
+    passer.g.rotation.y=yaw0+Math.atan2(Math.sin(yaw1-yaw0),Math.cos(yaw1-yaw0))*turn;
+    if(feed.t<.24){
+      ball.position.copy(from).lerp(supply.pickup,smooth(feed.t,0,.24));
+      const reach=passer.g.localToWorld(v(0,1.074,.26)).lerp(supply.pickup,smooth(feed.t,.06,.24));
+      global.AIBAPasserAvatar?.setRackPose(reach,1-smooth(feed.t,.02,.22));
+      return;
+    }
+    const center=passer.g.localToWorld(v(0,1.11,.253));
+    if(feed.t<.56){
+      ball.position.copy(supply.pickup).lerp(center,smooth(feed.t,.24,.56));
+    }else{
+      ball.position.copy(center).lerp(goal,smooth(feed.t,.56,.97));
+    }
+    global.AIBAPasserAvatar?.setRackPose(ball.position);
+    if(feed.t<.97||goal.distanceTo(nextSlot)>.022)return;
+    // Let the shooter's hands clear the released ball before adding to the queue.
+    const grabbing=ctx.getPassing();
+    if(grabbing?.pickup&&!grabbing.rackRolled)return;
+    const rack=props.getRackBalls().regular[rush.spot];
+    const index=rack.findIndex(m=>!m.visible);
+    if(index<0)return;
+    const slot=rack[index];
+    slot.position.copy(nextSlot);slot.material=shotMaterialForSupply(supply.nextBall);
+    slot.visible=true;supply.stock.push(index);supply.nextBall++;
+    supply.root.remove(ball);supply.feed=null;
+    supply.retract={t:0,from:nextSlot.clone(),stand:passer.g.position.clone(),yaw:passer.g.rotation.y};
+    if(supply.waiting&&!ctx.getPassing()&&!G.buzzed){
+      supply.waiting=false;readyBall();
+    }
+  }
+
   function isRackRushSpeed(thing){
     if(typeof thing==="string")return thing==="speed100";
     return !!thing&&(thing.variant==="speed100"||thing.mode==="rack-rush-speed100");
@@ -31,48 +236,57 @@
     return cfg?(cfg.final?"FINAL":("L"+(level+1))):"-";
   }
   function showRackRushIntro(){
+    const shared=ctx.getSharedRackRush?.();
+    const spot=normalizeRushSpot(shared?.spot,lastSpot);
+    const spots=RACKS.map((rack,i)=>`<label class="rushSpot"><input name="rushSpot" type="radio" value="${i}" ${i===spot?"checked":""}><span>${rack.n}</span></label>`).join("");
     const targets=RACK_RUSH_LEVELS.slice(0,5).map((cfg,i)=>"L"+(i+1)+" "+cfg.targets[G.diff]).join(" · ");
     showPanel(`<h1 class="title" style="font-size:22px">RACK RUSH</h1>
       <div class="sub">投篮机挑战 · ${DIFFS[G.diff].n}</div>
       <div class="card"><b>${G.myStar.n}</b> #${G.myNum}<br><span style="color:#9ab;font-size:11px">${shotProfileText(G.myStar)}</span></div>
+      <fieldset class="rushSpots"><legend>选投篮点</legend><div>${spots}</div></fieldset>
       <div class="rushModeGrid">
-        <button class="rushModeCard" onclick="startRackRush('classic')">
-          <small>LEVEL RUN</small><b>闯关挑战</b><span>固定弧顶连续供球。普通 2 分，花球 3 分，逐关达标进入 FINAL RUSH。</span>
+        <button class="rushModeCard" onclick="startRackRushFromPicker('classic')">
+          <small>LEVEL RUN</small><b>闯关挑战</b><span>普通 2 分，花球 3 分，逐关达标进入 FINAL RUSH。</span>
         </button>
-        <button class="rushModeCard speed" onclick="startRackRush('speed100')">
-          <small>SPEED 100</small><b>百分竞速</b><span>普通命中 3 分，彩球 4 分。先冲到 100 分，停表排时间榜。</span>
+        <button class="rushModeCard speed" onclick="startRackRushFromPicker('speed100')">
+          <small>SPEED 100</small><b>百分竞速</b><span>普通球 3 分，彩球 4 分，先冲到 100 分。</span>
         </button>
       </div>
-      <div class="note">闯关晋级线 · ${targets}<br>百分竞速排行榜按用时越短排名越高。</div>
+      <div class="note">闯关晋级线 · ${targets}</div>
       <button class="btn sm" onclick="goDiff('rackrush',true)">返回设置</button>`);
   }
-  function resetRackRushState(variant){
+  function startRackRushFromPicker(variant){
+    startRackRush(variant,document.querySelector('input[name="rushSpot"]:checked')?.value);
+  }
+  function resetRackRushState(variant,spot=lastSpot){
+    clearRackRushSupply();
     variant=variant==="speed100"?"speed100":"classic";
     resetFinalRun();resetAudioCueMemory();
     G.practice=false;G.battleCut=null;
     G.seq=[];G.shotIdx=0;G.score=0;G.streak=0;G.timer=0;G.running=false;G.buzzed=false;
     G.shots=[];G.canShoot=false;G.blindToasted=false;G.cutQ=[];G.cutAway=null;G.missRun=0;
-    G.stats={best:0,moneyM:0,moneyT:0,deepM:0,deepT:0};G.rush={level:0,total:0,levelScore:0,shotNo:0,attempts:0,makes:0,levelAttempts:0,levelMakes:0,
+    G.stats={best:0,moneyM:0,moneyT:0,deepM:0,deepT:0};G.rush={id:++runId,spot,level:0,total:0,levelScore:0,shotNo:0,attempts:0,makes:0,levelAttempts:0,levelMakes:0,
       bestStreak:0,elapsed:0,levels:[],levelCleared:false,finalTen:false,levelEnding:false,uiAcc:0,
       control:VISION.enabled?"vision":"touch",completed:false,variant,target:variant==="speed100"?RACK_RUSH_SPEED_TARGET:null};
     G.rushResultRecord=null;
     balls.slice().forEach(ball=>{scene.remove(ball.mesh);scene.remove(ball.blob);});balls.length=0;
     const passing=ctx.getPassing();if(passing){scene.remove(passing.mesh);ctx.setPassing(null);}
-    resetRackBalls();confPts.visible=false;
+    resetRackBalls();prepareRackRushSupply(G.rush);confPts.visible=false;
     rivals.forEach(rival=>{rival.active=false;rival.g.visible=false;});
     if(player._celeb)stopCelebrate(player);
   }
-  function startRackRush(variant){
+  function startRackRush(variant,spot){
     if(global.ensurePlayerShoeKit)global.ensurePlayerShoeKit();
     G.mode="rackrush";
     variant=variant==="speed100"?"speed100":"classic";
-    ensureAudio(false);hidePanel();music(false);resetProgressiveSceneForRun();resetRackRushState(variant);
+    lastSpot=normalizeRushSpot(spot,lastSpot);
+    ensureAudio(false);hidePanel();music(false);resetProgressiveSceneForRun();resetRackRushState(variant,lastSpot);
     CAM.mode=1;global.AIBASetIcon("camBtn","camera",CAM.names[1]);ctx.setCamSnap(true);
     enterArenaAudio(.86);
     $("hud").dataset.mode="rackrush";$("hud").style.display="block";$("battleControls").style.display="none";$("battleScore").style.display="none";
     $("midBtn").style.display="none";$("hudTimer").style.display="block";$("hudStreak").style.display="none";
     $("scoreNum").textContent="0";$("hudTarget").textContent="";
-    const base=RACKS[2].p;
+    const base=RACKS[G.rush.spot].p;
     P.pos.copy(base);P.face=faceTo(base,HOOP);P.walking=false;P.jump=0;P.eyeDip=0;
     player.g.visible=true;passer.g.visible=true;hands.visible=false;
     G.state="rushintro";applyCamMode();
@@ -94,6 +308,7 @@
   }
   function startRackRushLevel(level){
     const rush=G.rush,cfg=RACK_RUSH_LEVELS[level];if(!rush||!cfg)return;
+    if(level!==rush.level){clearRackRushSupply();resetRackBalls();prepareRackRushSupply(rush);}
     rush.level=level;rush.levelScore=0;rush.shotNo=0;rush.levelAttempts=0;rush.levelMakes=0;
     rush.levelCleared=!!cfg.final;rush.finalTen=false;rush.levelEnding=false;rush.uiAcc=0;
     G.timer=cfg.time;G.running=false;G.buzzed=false;G.canShoot=false;G.charging=false;G.power=0;G.blindToasted=false;
@@ -116,13 +331,16 @@
       else toast(RACK_RUSH_LEVELS[G.rush.level].final?"FINAL RUSH · 尽可能多拿分":"达标后不停表 · 继续刷总分","#ffd23f");
       return;
     }
-    el.textContent=n;el.style.display="flex";sBeep();setTimeout(()=>countdownRackRush(n-1),650);
+    const rush=G.rush,level=rush.level;
+    el.textContent=n;el.style.display="flex";sBeep();
+    setTimeout(()=>{if(G.rush===rush&&rush.level===level)countdownRackRush(n-1);},650);
   }
   function rackRushShot(){
     const rush=G.rush;if(!rush)return null;
     const number=rush.shotNo+1,money=number%5===0,finalTen=!isRackRushSpeed(rush)&&G.timer<=10;
-    if(isRackRushSpeed(rush))return {rack:2,ball:(number-1)%5,val:money?4:3,baseVal:money?4:3,bonus:0,money,deep:null,p:RACKS[2].p,rush:true,number};
-    return {rack:2,ball:(number-1)%5,val:(money?3:2)+(finalTen?1:0),baseVal:money?3:2,bonus:finalTen?1:0,money,deep:null,p:RACKS[2].p,rush:true,number};
+    const pick={rack:rush.spot,ball:rush.supply?.stock[0]??null,money,deep:null,p:RACKS[rush.spot].p,rush:true,number};
+    if(isRackRushSpeed(rush))return {...pick,val:money?4:3,baseVal:money?4:3,bonus:0};
+    return {...pick,val:(money?3:2)+(finalTen?1:0),baseVal:money?3:2,bonus:finalTen?1:0};
   }
   function rackRushBarHidden(){
     const rush=G.rush,cfg=rush&&RACK_RUSH_LEVELS[rush.level];if(!rush||!cfg)return false;
@@ -154,6 +372,17 @@
   }
   function updateRackRush(dt){
     const rush=G.rush;if(!rush||G.state!=="rackrush")return;
+    if(G.running&&!G.buzzed){
+      tickRackRushSupply(rush,dt);
+      const supply=rush.supply;
+      if(supply?.readyIn!=null){
+        supply.readyIn-=dt;
+        if(supply.readyIn<=0&&!global.AIBAShotPhysics?.isAirborne()){
+          supply.readyIn=null;
+          readyBall();
+        }
+      }
+    }
     if(isRackRushSpeed(rush)){
       if(G.running){
         if(rush.total>=88&&global.AIBARecorder&&AIBARecorder.arm)AIBARecorder.arm("百分竞速最后三球");rush.elapsed+=dt;G.timer=rush.elapsed;rush.uiAcc+=dt;
@@ -210,7 +439,7 @@
     const stats=global.summarizeResultStats?global.summarizeResultStats():{};
     return Object.assign({schema:1,version:GAME_VERSION,mode:speed?"rack-rush-speed100":"rack-rush",variant:speed?"speed100":"classic",
       target:speed?RACK_RUSH_SPEED_TARGET:null,total:rush.total,highestLevel:speed?1:rush.level+1,completed:!!rush.completed,
-      elapsedMs:Math.round(rush.elapsed*1000),attempts:rush.attempts,makes:rush.makes,accuracy,bestStreak:rush.bestStreak,
+      rackSpot:rush.spot,rackSpotName:RACKS[rush.spot].n,elapsedMs:Math.round(rush.elapsed*1000),attempts:rush.attempts,makes:rush.makes,accuracy,bestStreak:rush.bestStreak,
       levels:rush.levels.slice(),difficulty:G.diff,control:rush.control,playerId:G.myStar&&(G.myStar.id||G.myStar.n),
       playerName:G.myStar&&G.myStar.n,shotSpeed:profile.speed,sweetWindow:profile.window,shotArc:profile.arc,shotArcLabel:profile.arcLabel,
       scene:ctx.getScenePreset(),weather:ctx.getWeather(),seed:GAME_SEED,completedAt:new Date().toISOString()},stats);
@@ -240,7 +469,7 @@
       <div class="rushMeta">${speed?`<span>${record.total} / ${RACK_RUSH_SPEED_TARGET} 分</span><span>命中 ${record.makes}/${record.attempts}</span><span>命中率 ${accuracy}%</span><span>连中 x${record.bestStreak}</span><span>${DIFFS[record.difficulty].n}</span>`:`<span>最高 ${record.completed?"FINAL":"L"+record.highestLevel}</span><span>命中 ${record.makes}/${record.attempts}</span><span>命中率 ${accuracy}%</span><span>连中 x${record.bestStreak}</span><span>${formatRackRushTime(record.elapsedMs)}</span>`}</div>
       ${global.AIBAResultBadgeMarkup?AIBAResultBadgeMarkup(record):""}<details class="resultDetails"><summary>查看闯关数据 (VIEW DATA)</summary><table class="std rushLevels">${rackRushLevelRows(record)}</table></details>
       ${global.AIBACloudRankMarkup?AIBACloudRankMarkup(record):""}${scoreQuoteMarkup()}${global.AIBARecorder?AIBARecorder.resultMarkup():""}
-      <button class="btn gold" onclick="startRackRush('${speed?"speed100":"classic"}')">重新挑战</button>
+      <button class="btn gold" onclick="startRackRush('${speed?"speed100":"classic"}',${normalizeRushSpot(record.rackSpot)})">重新挑战</button>
       <button class="btn green" onclick="showOnlineLeaderboardForRecord(G.rushResultRecord)">全球排行榜</button>
       <button class="btn sm" onclick="shareRackRushResult()">分享成绩</button>
       <button class="btn sm" onclick="showMenu()">返回封面</button>`);
@@ -294,13 +523,14 @@
     const text=speed?`aiBA RACK RUSH · 百分竞速\n${formatRackRushClock(record.elapsedMs/1000)} 达成100分 · 命中率 ${Math.round(rackRushAccuracy(record)*100)}%\n${global.AIBARecordRankText?AIBARecordRankText(record):"全球排名同步中"}`:
       `aiBA RACK RUSH · ${DIFFS[record.difficulty].n}\n${record.total}分 · ${record.completed?"完成 FINAL RUSH":"最高 L"+record.highestLevel} · 命中率 ${Math.round(rackRushAccuracy(record)*100)}%\n${global.AIBARecordRankText?AIBARecordRankText(record):"全球排名同步中"}`;
     let url=location.href;
-    try{const nextUrl=new URL(location.href);nextUrl.searchParams.set("mode","rackrush");nextUrl.searchParams.set("diff",record.difficulty);nextUrl.searchParams.set("seed",record.seed);nextUrl.searchParams.set("scene",record.scene);nextUrl.searchParams.set("star",record.playerId);if(speed)nextUrl.searchParams.set("submode","speed100");else nextUrl.searchParams.delete("submode");url=nextUrl.toString();}catch(e){}
+    try{const nextUrl=new URL(location.href);nextUrl.searchParams.set("mode","rackrush");nextUrl.searchParams.set("diff",record.difficulty);nextUrl.searchParams.set("seed",record.seed);nextUrl.searchParams.set("scene",record.scene);nextUrl.searchParams.set("spot",normalizeRushSpot(record.rackSpot));nextUrl.searchParams.set("star",record.playerId);if(speed)nextUrl.searchParams.set("submode","speed100");else nextUrl.searchParams.delete("submode");url=nextUrl.toString();}catch(e){}
     try{if(navigator.share){await navigator.share({title:speed?"aiBA SPEED 100":"aiBA RACK RUSH",text,url});return;}}catch(e){if(e&&e.name==="AbortError")return;}
     try{await navigator.clipboard.writeText(text+"\n"+url);toast("成绩与挑战链接已复制","#7CFC6B");}catch(e){toast(text,"#ffd23f");}
   }
 
   const api={
-    isRackRushSpeed,rackRushStorageKey,rackRushTarget,rackRushLevelLabel,showRackRushIntro,
+    isRackRushSpeed,rackRushStorageKey,rackRushTarget,rackRushLevelLabel,showRackRushIntro,startRackRushFromPicker,
+    activeRushSupply,consumeRackRushBall,clearRackRushSupply,queueRackRushReturn,
     resetRackRushState,startRackRush,startRackRushSpeed,startRackRushLevel,countdownRackRush,
     rackRushShot,rackRushBarHidden,updateRackRushHUD,rackRushClearFlash,updateRackRush,
     finishRackRushLevel,finishRackRushSpeed,loadRackRushRuns,rackRushAccuracy,formatRackRushClock,
@@ -314,7 +544,7 @@
     start:startRackRush,
     update:updateRackRush,
     finish:finishRackRushRun,
-    exit:()=>resetRackRushState(G.rush&&G.rush.variant),
+    exit:clearRackRushSupply,
     api:Object.freeze(api)
   }));
 })(window);
