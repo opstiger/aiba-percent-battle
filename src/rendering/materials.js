@@ -282,8 +282,13 @@ function applyHybridPanels(g,w,h,surfaceMode){
     for(let lb=0;lb<panel;lb++){
       const B=basis[lb];if(!B)continue;
       const ang=0.5*Math.atan2(2*B.cxy,B.cxx-B.cyy),ca=Math.cos(ang),sa=Math.sin(ang);
-      B.lx=ca*B.t1x+sa*B.t2x;B.ly=ca*B.t1y+sa*B.t2y;B.lz=ca*B.t1z+sa*B.t2z;
-      B.sx=-sa*B.t1x+ca*B.t2x;B.sy=-sa*B.t1y+ca*B.t2y;B.sz=-sa*B.t1z+ca*B.t2z;
+      const s0=-sa*B.t1x+ca*B.t2x,s1=-sa*B.t1y+ca*B.t2y,s2=-sa*B.t1z+ca*B.t2z;
+      const ax=Math.abs(s0),ay=Math.abs(s1),az=Math.abs(s2);
+      B.axis=ax>=ay&&ax>=az?0:(ay>=az?1:2);
+      const nl=Math.hypot(sx[lb],sy[lb],sz[lb])||1,Nx=sx[lb]/nl,Ny=sy[lb]/nl,Nz=sz[lb]/nl;
+      if(B.axis===0){const l=Math.hypot(Ny,Nz)||1;B.ux=0;B.uy=Ny/l;B.uz=Nz/l;B.vx=0;B.vy=-B.uz;B.vz=B.uy;}
+      else if(B.axis===1){const l=Math.hypot(Nx,Nz)||1;B.ux=Nx/l;B.uy=0;B.uz=Nz/l;B.vx=-B.uz;B.vy=0;B.vz=B.ux;}
+      else{const l=Math.hypot(Nx,Ny)||1;B.ux=Nx/l;B.uy=Ny/l;B.uz=0;B.vx=-B.uy;B.vy=B.ux;B.vz=0;}
     }
     const hexRgb=hx=>{const n=parseInt(hx.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255];};
     const cols=["#f5efe6","#f2b84b","#9b72cf","#2d9c92"].map(hexRgb);
@@ -292,8 +297,9 @@ function applyHybridPanels(g,w,h,surfaceMode){
     for(let p=0;p<w*h;p++){
       const lb=labels[p];if(lb<0||!basis[lb])continue;
       const B=basis[lb],nx=pxArr[p],ny=pyArr[p],nz=pzArr[p];
-      const along=nx*B.lx+ny*B.ly+nz*B.lz;
-      const across=nx*B.sx+ny*B.sy+nz*B.sz;
+      const nc=B.axis===0?nx:(B.axis===1?ny:nz);
+      const across=Math.asin(Math.max(-1,Math.min(1,nc)));
+      const along=Math.atan2(nx*B.vx+ny*B.vy+nz*B.vz,nx*B.ux+ny*B.uy+nz*B.uz);
       const rgb=sampleFlowerSilkAt(along,across,warp,r,cols);
       const i=p*4,grain=0.92+0.12*((outImg.data[i]-160)/80);
       outImg.data[i]=Math.max(0,Math.min(255,rgb[0]*grain));
