@@ -1629,9 +1629,13 @@ function poseGuy(o,c,lk,landingImpact){
     setFootRoll(o,1,hang*.88,hang*.30);
   }
   const shotTurnK=clamp((c.lift||0)*0.65+(c.jmp||0)*0.55-(land||0)*0.85,0,1);
-  const shotTurnY=0.175*shotTurnK;
+  const shotTurnY=0.34*shotTurnK;
+  const shotAirSway=clamp((c.jmp||0)*(1-clamp(land,0,1)),0,1);
   if(o.torso)o.torso.rotation.y=shotTurnY*0.55;
-  if(o.headRoot)o.headRoot.rotation.y=-shotTurnY*0.45;
+  if(o.headRoot){
+    o.headRoot.rotation.y=-shotTurnY*0.48;
+    o.headRoot.rotation.x=-0.10*clamp((c.lift||0)*0.6+(c.jmp||0)*0.5-(land||0)*0.7,0,1);
+  }
   if(o.g){
     o.g.userData.readyAnklePitch=[o.ankles[0].rotation.x,o.ankles[1].rotation.x];
     o.g.userData.readyFootRoll=readyPulse?READY_FOOT_ROLL:0;
@@ -1644,6 +1648,7 @@ function poseGuy(o,c,lk,landingImpact){
     o.g.userData.shotLoad=load;
     o.g.userData.shotDip=c.dip||0;
     o.g.userData.shotTurnY=shotTurnY;
+    o.g.userData.shotAirSway=shotAirSway;
   }
   /* 待机呼吸:站定时人不该是一尊雕像。用 G.tNow 驱动,不需要额外状态。
      **只在完全没有投篮动作时生效**:蓄力/举球/起跳/跟随/落地任何一项一介入就退到 0。
@@ -1893,15 +1898,11 @@ function updWalkSpeed(dt){
 function resetWalkSpeed(){walkPrevX=null;walkPrevZ=null;walkSpeed=0;}
 function currentWalkDecel(){return typeof walk!=="undefined"&&walk?Number(walk.decel)||0:0;}
 
-/* ---------------- passer & pass ----------------
-   传球飞行时长。Rack Rush 原本是 .22–.32 秒，5 米传球等于 20m/s，在方块画风下就是
-   一道残影，和 0.78 秒的举球、0.725 秒的出手跟随完全不是一个节奏。放慢到 12m/s 量级。
-   PASS_FLIGHT_RUSH.budget 是 shots.js 排下一球时给飞行预留的时间，必须跟着 min/max
-   的中值走，否则改了飞行时长会连带改掉整关的供球节奏(check.js 有断言)。 */
-const PASS_FLIGHT_RUSH=Object.freeze({base:.26,perMeter:.03,min:.36,max:.5,budget:.43});
+/* ---------------- passer & pass ---------------- */
+const RACK_PICKUP_SECONDS=.64;
 const PASS_FLIGHT_NORMAL=Object.freeze({base:.3,perMeter:.045,min:.4,max:.75});
 function passFlightSeconds(distance){
-  const p=G.mode==="rackrush"?PASS_FLIGHT_RUSH:PASS_FLIGHT_NORMAL;
+  const p=PASS_FLIGHT_NORMAL;
   return clamp(p.base+distance*p.perMeter,p.min,p.max);
 }
 function passCatchPointAt(pos,face){
@@ -1992,10 +1993,10 @@ function rackPickupSource(shot){
   const stands=props.getRackBalls&&props.getRackBalls().regularStands;
   const stand=stands&&stands[shot.rack];
   if(!stand||!stand.visible)return null;          // 架子没显示就还是走传球
-  /* 无限球模式(投篮机/百分大战)出手时不摘球,架子会被拿空 —— 空了就补满,
-     视觉上永远是一架球,但"最低那颗被抽走"的动作照常发生。 */
+  // Rack Rush waits for the assistant to place the next ball when the rack is empty.
   const balls=props.getRackBalls().regular[shot.rack]||[];
   const next=balls.findIndex(m=>m&&m.visible);
+  if(next<0&&shot.rush)return null;
   if(next<0){props.refillRackBalls(shot.rack);}
   const idx=Number.isFinite(shot.ball)&&shot.ball>=0&&balls[shot.ball]&&balls[shot.ball].visible
     ?shot.ball:Math.max(0,props.getRackBalls().regular[shot.rack].findIndex(m=>m&&m.visible));
@@ -2023,6 +2024,12 @@ function startPass(targetPos,face){
      三分大赛一个架子 5 球都在同一点位,5 次里有 4 次走的是这条无走位分支,
      那正是"球从身体穿过去"最常出现的一次。 */
   const pickup=rackPickupSource(s);
+  if(s.rush&&!pickup){
+    const supply=typeof activeRushSupply==="function"?activeRushSupply(s.rack):null;
+    if(supply)supply.waiting=true;
+    return;
+  }
+  if(pickup&&!s.rush){passer.g.visible=false;passerBall.visible=false;}
   const props0=window.AIBA.runtime.service("rendering:props");
   const pickSide=(pickup&&props0&&props0.getRackSide)?props0.getRackSide():1;
   const anchor=hasTarget?target:P.pos.clone();
@@ -2035,20 +2042,21 @@ function startPass(targetPos,face){
   let handFrom=null;
   const av=window.AIBAPasserAvatar;
   if(!pickup){
+    passer.g.visible=true;
     passer.g.rotation.y=faceTo(passer.g.position,hasTarget?target:P.pos);
     passer.g.updateMatrixWorld(true);
+    if(av&&av.playThrow)av.playThrow();
     if(av&&av.getBallWorldPos)handFrom=av.getBallWorldPos(new THREE.Vector3());
     if(!handFrom&&passerBall&&passerBall.parent)handFrom=passerBall.getWorldPosition(new THREE.Vector3());
   }
   const from=pickup||handFrom||V3(passer.g.position.x,1.25,passer.g.position.z);
   let releaseDelay=0;
   if(!pickup){
-    if(av&&av.playThrow)av.playThrow();
     releaseDelay=(av&&av.getReleaseDelay)?av.getReleaseDelay():0;
     passerBall.visible=releaseDelay>0;
   }
   /* 取球要给足时间才读得出"转身伸手触球—双手抓球端回—余球滚落"三拍因果。 */
-  const dur=pickup?.64:passFlightSeconds(from.distanceTo(catchP));
+  const dur=pickup?RACK_PICKUP_SECONDS:passFlightSeconds(from.distanceTo(catchP));
   const mesh=new THREE.Mesh(ballGeo,shotMat(s));
   mesh.position.copy(from);
   mesh.visible=!pickup&&releaseDelay<=0; // 3D传球员蓄力推球期间、或球架取球触球前，飞行网格先隐藏
