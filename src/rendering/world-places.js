@@ -1202,7 +1202,7 @@
     AIBAWorldLife.build(s,b,{batch,rng});
     if(name==="flowerCourt"){
       s.meadow.court=AIBAMeadowCourt.build(s,hoopSupports(),batch);
-      setPlaceHoops(true);
+      setPlaceHoops(true,true);
     }else if(name==="lunarCrater"){
       const hb=batch(),marks=batch();themeHoops(s,hb,marks);
       const hm=hb.finish(root,`placeHoop:${name}`);

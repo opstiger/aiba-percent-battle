@@ -131,17 +131,22 @@
       col=mix(col,mix(vec3(.25,.325,.41),vec3(.53,.57,.60),a),veil);
       col=mix(col,col*vec3(.075,.103,.185)+vec3(.006,.010,.025),meadowStorm.y*.91);
       col+=vec3(.58,.70,.98)*meadowAir.w*flash*.81;
-      // A primary bow is an angular band centred on the anti-solar direction.
+      // A primary bow is a continuous angular arc centred on the anti-solar direction;
+      // passing clouds and valley mist softly blur and dim sections without breaking the arc.
       if(meadowAir.z>.003){
         float angle=acos(clamp(dot(ray,-meadowSun),-1.0,1.0));
-        float band=exp(-pow((angle-.728)*57.0,2.0));
-        // Uneven rain and passing low cloud hide parts of the arc.
-        float tail=cloudDensity(ray.xz*530.0+vec2(ray.y*930.0,46.0));
-        float rainVeil=smoothstep(.401,.535,tail)*(1.0-.86*smoothstep(.56,.86,cloud));
-        vec3 spectrum=vec3(exp(-pow((angle-.739)*111.0,2.0)),
-          exp(-pow((angle-.726)*151.0,2.0)),exp(-pow((angle-.713)*112.0,2.0)));
-        float strength=rainVeil*band*meadowAir.z*smoothstep(.002,.072,ray.y);
-        col+=strength*(vec3(.032,.034,.037)+spectrum*vec3(.065,.042,.058));
+        float mistPatch=cloudDensity(ray.xz*260.0+vec2(ray.y*420.0,46.0));
+        float blurAmt=clamp(smoothstep(.35,.88,cloud)*.72+veil*.58+(1.0-mistPatch)*.32,0.0,1.0);
+        // Mist widens and diffuses the spectral bands rather than cutting the bow into pieces.
+        float spread=mix(1.0,.46,blurAmt);
+        float band=exp(-pow((angle-.728)*54.0*spread,2.0));
+        vec3 spectrum=vec3(
+          exp(-pow((angle-.740)*108.0*spread,2.0)),
+          exp(-pow((angle-.726)*144.0*spread,2.0)),
+          exp(-pow((angle-.712)*108.0*spread,2.0)));
+        float hazeFade=mix(1.0,.28,blurAmt);
+        float strength=hazeFade*band*meadowAir.z*smoothstep(-.012,.062,ray.y);
+        col+=strength*(vec3(.028,.031,.035)+spectrum*vec3(.070,.046,.062));
       }
       return col;
     }

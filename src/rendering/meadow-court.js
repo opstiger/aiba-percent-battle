@@ -51,10 +51,8 @@
         g.lineWidth=1.1;g.strokeStyle=i?"rgba(60,38,21,.24)":"#4e331c";g.stroke();
       }
     }
-    // Hand-brushed pasture lime-white outer frame & aiming box (dry-brush bristle texture).
-    g.strokeStyle="#e8dcb8";g.lineWidth=11;g.lineJoin="round";
-    g.beginPath();g.moveTo(46,44);g.lineTo(700,36);g.lineTo(730,54);g.lineTo(724,398);
-    g.lineTo(44,407);g.lineTo(39,60);g.closePath();g.stroke();
+    // Hand-brushed pasture lime-white aiming box only (leave outer live-edge wood raw and natural).
+    g.strokeStyle="#e4d6b0";g.lineWidth=10;g.lineJoin="round";
     g.strokeRect(w*(.5-.31/1.9),h*(1-(3.44-2.95)/1.1),w*.62/1.9,h*.36/1.1);
     // Dry-brush flaking & ball scuffs around the aiming box.
     for(let i=0;i<90;i++){
@@ -127,35 +125,46 @@
     panel.rotation.y=dir>0?0:Math.PI;
 
     const {map,bump}=woodMap(s.r);
-    const material=new THREE.MeshStandardMaterial({map,bumpMap:bump,bumpScale:.016,color:0xffffff,roughness:.88,metalness:.02});
-    // 5 horizontal slabs with organic live-edge top/bottom, hand-sawn end stagger, and slight Z relief.
+    const material=new THREE.MeshStandardMaterial({map,bumpMap:bump,bumpScale:.024,color:0xffffff,roughness:.94,metalness:0});
+    // 5 raw, uneven horizontal live-edge spruce slabs: varied widths, rough hand-sawn ends,
+    // organic tree-bark top/bottom silhouette, visible dry-wood gaps, and slight Z relief.
     const slabDefs=[
-      {y0:.008,y1:.212,l:-.942,r:.956,zOff:.002,wobble:.012},
-      {y0:.220,y1:.432,l:-.962,r:.936,zOff:-.003,wobble:.007},
-      {y0:.440,y1:.654,l:-.938,r:.964,zOff:.003,wobble:.006},
-      {y0:.662,y1:.876,l:-.956,r:.940,zOff:-.002,wobble:.007},
-      {y0:.884,y1:1.094,l:-.932,r:.948,zOff:.001,wobble:.014}
+      {y0:-.015,y1:.215,l:-.975,r:1.015,zOff:.005,wobble:.034,tilt:.009},
+      {y0:.226,y1:.426,l:-1.022,r:.918,zOff:-.006,wobble:.013,tilt:-.006},
+      {y0:.437,y1:.668,l:-.932,r:.992,zOff:.006,wobble:.011,tilt:.005},
+      {y0:.680,y1:.882,l:-.998,r:.936,zOff:-.005,wobble:.014,tilt:-.008},
+      {y0:.895,y1:1.108,l:-.915,r:.968,zOff:.003,wobble:.038,tilt:.011}
     ];
     for(let row=0;row<slabDefs.length;row++){
-      const {y0,y1,l,r:rx,zOff,wobble}=slabDefs[row];
-      const shape=new THREE.Shape(),steps=10;
-      const topWave=(u)=>row===4?(Math.sin(u*Math.PI*2.4+.5)*wobble+Math.cos(u*Math.PI*5.2)*.005):(Math.sin(u*Math.PI*3+row)*.003);
-      const botWave=(u)=>row===0?(Math.sin(u*Math.PI*2.8+1.1)*wobble-Math.cos(u*Math.PI*4.7)*.005):(Math.sin(u*Math.PI*3+row+2)*.003);
-      shape.moveTo(l,y0+botWave(0));
+      const {y0,y1,l,r:rx,zOff,wobble,tilt}=slabDefs[row];
+      const shape=new THREE.Shape(),steps=14;
+      const topWave=(u)=>row===4
+        ?(Math.sin(u*Math.PI*2.3+.4)*wobble+Math.cos(u*Math.PI*5.7+1.2)*.014-Math.pow(Math.abs(u-.5)*2,2.2)*.028)
+        :(Math.sin(u*Math.PI*3.4+row*1.7)*.007+Math.cos(u*Math.PI*7.1+row)*.003);
+      const botWave=(u)=>row===0
+        ?(Math.sin(u*Math.PI*2.7+1.3)*wobble-Math.cos(u*Math.PI*5.1+.6)*.014+Math.pow(Math.abs(u-.5)*2,2.0)*.018)
+        :(Math.sin(u*Math.PI*3.1+row*2.1)*.007-Math.cos(u*Math.PI*6.3+row)*.003);
+      const midY=(y0+y1)*.5;
+      shape.moveTo(l+(s.r()-.5)*.016,y0+botWave(0));
       for(let k=1;k<=steps;k++){const u=k/steps;shape.lineTo(lerp(l,rx,u),y0+botWave(u));}
-      shape.lineTo(rx+(row%2?.008:-.006),(y0+y1)*.5);
+      // Rough hand-sawn jagged right end.
+      shape.lineTo(rx+(row%2?.020:-.018),lerp(y0,y1,.36));
+      shape.lineTo(rx+(row%2?-.010:.014),lerp(y0,y1,.72));
       for(let k=steps;k>=0;k--){const u=k/steps;shape.lineTo(lerp(l,rx,u),y1+topWave(u));}
-      shape.lineTo(l+(row%2?-.007:.006),(y0+y1)*.5);
+      // Rough hand-sawn jagged left end.
+      shape.lineTo(l+(row%2?-.022:.016),lerp(y0,y1,.68));
+      shape.lineTo(l+(row%2?.012:-.014),lerp(y0,y1,.32));
       shape.closePath();
-      const geo=new THREE.ExtrudeGeometry(shape,{depth:.082,steps:1,bevelEnabled:true,bevelSize:.007,bevelThickness:.007,bevelSegments:1});
+      const geo=new THREE.ExtrudeGeometry(shape,{depth:.082,steps:1,bevelEnabled:true,bevelSize:.006,bevelThickness:.006,bevelSegments:1});
       const p=geo.attributes.position,uv=geo.attributes.uv;
-      for(let i=0;i<p.count;i++)uv.setXY(i,clamp(.5+p.getX(i)/1.94,0,1),clamp(p.getY(i)/1.11,0,1));
+      for(let i=0;i<p.count;i++)uv.setXY(i,clamp(.5+p.getX(i)/2.04,0,1),clamp(p.getY(i)/1.12,0,1));
       const slab=new THREE.Mesh(geo,material);
-      slab.name="meadowHorizontalSlab";slab.position.z=-.041+zOff;
+      slab.name="meadowHorizontalSlab";slab.position.set(0,0,-.041+zOff);
+      slab.rotation.z=tilt;
       slab.castShadow=true;slab.receiveShadow=true;panel.add(slab);
     }
 
-    // Two rear vertical/angled timber battens holding the 5 horizontal slabs together.
+    // Two rear vertical/angled timber battens holding the 5 raw horizontal slabs together.
     for(const [bx,ang] of [[-.64,.035],[.64,-.035]]){
       const batten=new THREE.Mesh(new THREE.BoxGeometry(.105,1.02,.058),logMat);
       batten.position.set(bx,.55,-.072);batten.rotation.z=ang;
@@ -166,16 +175,7 @@
     diag.position.set(0,.55,-.082);diag.rotation.z=.46;
     diag.castShadow=true;diag.receiveShadow=true;panel.add(diag);
 
-    // 4 forged iron L-corner brackets wrapping the outer corners of the pasture board.
-    for(const sx of [-1,1])for(const sy of [0,1]){
-      const cy=sy?1.04:.06,cx=sx*.90;
-      const armH=new THREE.Mesh(new THREE.BoxGeometry(.22,.052,.112),ironMat);
-      armH.position.set(cx-sx*.07,cy,0);panel.add(armH);
-      const armV=new THREE.Mesh(new THREE.BoxGeometry(.052,.22,.112),ironMat);
-      armV.position.set(cx+sx*.03,cy+(sy?-.08:.08),0);panel.add(armV);
-    }
-
-    // Forged iron rim mounting flange + triangular gussets behind the hoop neck.
+    // Forged iron rim mounting flange + triangular gussets behind the hoop neck (no artificial corner frame).
     const flange=new THREE.Mesh(new THREE.BoxGeometry(.25,.22,.028),ironMat);
     flange.position.set(0,.14,.050);panel.add(flange);
     for(const sx of [-1,1]){
