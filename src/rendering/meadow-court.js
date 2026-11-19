@@ -159,14 +159,171 @@
     return {bodies,wings,centers:centers.slice(0,s.mobile?4:8)};
   }
 
+  function buildPastureProps(s,batch){
+    const props=batch(),h=s.heightAt;
+    const timber=[0x7d654b,0x6e5841,0x8a7257,0x63503b];
+    // Split-rail weathered ranch fence curving along two outer meadow hillsides.
+    const fenceLines=[
+      [[-15.8,-10.5],[-15.2,-4.8],[-14.9,1.2],[-15.5,7.4],[-16.6,13.6]],
+      [[15.2,-9.6],[15.8,-3.5],[16.4,2.8],[15.9,9.2],[16.8,15.0]]
+    ];
+    for(const line of fenceLines){
+      for(let i=0;i<line.length;i++){
+        const [x,z]=line[i],y=h(x,z),lean=(s.r()-.5)*.08;
+        props.add("cyl",timber[i%timber.length],x,y+.54,z,.065,1.18,.065,lean,s.r()*tau,(s.r()-.5)*.07);
+        if(i<line.length-1){
+          const [nx,nz]=line[i+1],ny=h(nx,nz),mx=(x+nx)*.5,mz=(z+nz)*.5,my=(y+ny)*.5;
+          const dx=nx-x,dz=nz-z,len=Math.hypot(dx,dz)+.18,yaw=Math.atan2(dx,dz);
+          const slope=Math.atan2(ny-y,len);
+          for(const rh of [.40,.84]){
+            props.box(timber[(i+1)%timber.length],mx,my+rh,mz,.058,.082,len,-slope,yaw,(s.r()-.5)*.03);
+          }
+        }
+      }
+    }
+    // Two rustic split-log benches at the meadow sideline seating spots.
+    const benches=[[-11.2,-5.2,Math.PI/2+.12],[5.8,21.6,.08]];
+    for(const [bx,bz,rot] of benches){
+      const by=h(bx,bz),ca=Math.cos(rot),sa=Math.sin(rot);
+      props.box(0x886d4f,bx,by+.42,bz,1.95,.095,.38,0,rot,0);
+      for(const off of [-.68,.68]){
+        props.add("cyl",0x5f4b38,bx+ca*off,by+.20,bz-sa*off,.12,.42,.12,0,0,0);
+      }
+    }
+    // Weathered canvas court bag and metal water canteen by the main hoop stone footing.
+    const bagX=1.42,bagZ=-9.85,bagY=h(bagX,bagZ);
+    props.box(0x6e735c,bagX,bagY+.16,bagZ,.54,.27,.28,.04,-.38,.05);
+    props.box(0x4b4a3d,bagX+.02,bagY+.30,bagZ,.50,.04,.10,0,-.38,0);
+    props.add("cyl",0x9aa3a1,bagX+.38,bagY+.12,bagZ+.12,.048,.24,.048,0,0,.04);
+    props.add("cyl",0x343a38,bagX+.38,bagY+.25,bagZ+.12,.030,.04,.030,0,0,.04);
+    // Two weathered wooden wind-poles outside the baseline corners.
+    const poles=[[-10.6,-11.4],[11.1,-10.9]];
+    for(const [px,pz] of poles){
+      const py=h(px,pz);
+      props.add("cyl",0x6b5641,px,py+1.45,pz,.048,3.05,.048,.02,0,-.02);
+    }
+    const built=props.finish(s.root,"meadowPastureProps");
+    if(built){built.castShadow=true;built.receiveShadow=true;}
+
+    // Fluttering cloth wind-ribbons on the pasture poles (visualizes alpine wind direction & gusts).
+    const ribbonGeo=new THREE.PlaneGeometry(.95,.14,12,1);
+    ribbonGeo.translate(.475,0,0);
+    const ribbonColors=[0xd97a4a,0xe8d9b5,0x5e8fa3,0xc79d4b];
+    const ribbonUniforms={meadowClock:s.meadow.time,meadowWind:s.meadow.wind,meadowSky:s.meadow.uniforms.meadowSky};
+    const ribbonGroup=new THREE.Group();ribbonGroup.name="meadowWindRibbons";
+    poles.forEach(([px,pz],pi)=>{
+      const py=h(px,pz);
+      for(let ri=0;ri<2;ri++){
+        const col=new THREE.Color(ribbonColors[(pi*2+ri)%ribbonColors.length]);
+        const mat=new THREE.ShaderMaterial({
+          side:THREE.DoubleSide,transparent:false,
+          uniforms:{...ribbonUniforms,ribbonColor:{value:col},phase:{value:pi*2.1+ri*1.3}},
+          vertexShader:`
+            uniform float meadowClock,meadowWind,phase;
+            varying vec2 vUv;
+            void main(){
+              vUv=uv;
+              vec3 p=position;
+              float flex=uv.x*uv.x;
+              float spd=4.2+meadowWind*6.5;
+              p.z+=(sin(meadowClock*spd-uv.x*7.5+phase)*.11+cos(meadowClock*spd*1.7-uv.x*12.0+phase)*.04)*flex*(.55+meadowWind*.9);
+              p.y-=(1.0-min(1.0,.35+meadowWind*.85))*.18*flex;
+              gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
+            }`,
+          fragmentShader:`
+            uniform vec3 ribbonColor;uniform vec4 meadowSky;varying vec2 vUv;
+            void main(){
+              float shade=(.82+.18*sin(vUv.x*18.0))*(1.0-meadowSky.w*.22);
+              gl_FragColor=vec4(ribbonColor*shade,1.0);
+              #include <tonemapping_fragment>
+              #include <encodings_fragment>
+            }`
+        });
+        const rMesh=new THREE.Mesh(ribbonGeo,mat);
+        rMesh.position.set(px,py+2.82-ri*.22,pz);
+        rMesh.rotation.y=-.45+ri*.12;
+        ribbonGroup.add(rMesh);
+      }
+    });
+    s.root.add(ribbonGroup);
+  }
+
+  function buildButterflies(s){
+    const count=s.mobile?4:8;
+    const shape=new THREE.Shape();
+    shape.moveTo(0,0);shape.quadraticCurveTo(.45,.45,.95,.28);
+    shape.quadraticCurveTo(1.0,-.05,.55,-.20);shape.quadraticCurveTo(.72,-.48,.22,-.52);shape.lineTo(0,0);
+    const geo=new THREE.ShapeGeometry(shape,4);
+    const mat=new THREE.MeshStandardMaterial({
+      color:0xffffff,roughness:.55,side:THREE.DoubleSide,emissive:0xffe8b5,emissiveIntensity:.14
+    });
+    const wings=new THREE.InstancedMesh(geo,mat,count*2);
+    const palette=[0xfff2c2,0xf6d57a,0xd8ecfa,0xf7e4b6];
+    const c=new THREE.Color();
+    for(let i=0;i<count;i++){
+      c.set(palette[i%palette.length]).convertSRGBToLinear();
+      wings.setColorAt(i*2,c);wings.setColorAt(i*2+1,c);
+    }
+    wings.instanceColor.needsUpdate=true;
+    wings.name="meadowButterflies";wings.count=0;wings.frustumCulled=false;
+    wings.instanceMatrix.setUsage(THREE.DynamicDrawUsage);s.root.add(wings);
+    const homes=[[-8.6,-4.2],[8.8,1.8],[-9.1,7.5],[9.4,11.6],[-6.8,-10.2],[7.2,18.4],[-10.8,14.2],[10.4,-6.5]];
+    return {wings,homes:homes.slice(0,count)};
+  }
+
+  function buildPollen(s){
+    const count=s.mobile?55:135,pos=[],seed=[];
+    for(let i=0;i<count;i++){
+      pos.push((s.r()-.5)*28,.35+s.r()*3.4,COURT.midZ+(s.r()-.5)*34);
+      seed.push(s.r(),.6+s.r()*.9);
+    }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute("position",new THREE.Float32BufferAttribute(pos,3));
+    geo.setAttribute("mote",new THREE.Float32BufferAttribute(seed,2));
+    const mat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+      uniforms:{clock:s.meadow.time,wind:s.meadow.wind,meadowSky:s.meadow.uniforms.meadowSky},
+      vertexShader:`
+        attribute vec2 mote;
+        uniform float clock,wind;
+        uniform vec4 meadowSky;
+        varying float vAlpha;
+        void main(){
+          float t=clock*(.22+.12*mote.y)+mote.x*62.8;
+          vec3 p=position;
+          p.x+=sin(t)*.9+mod(clock*(.35+.5*wind)+mote.x*28.0,28.0)-14.0;
+          p.y+=sin(t*1.3+mote.x*19.0)*.28;
+          p.z+=cos(t*.85)*.8;
+          vec4 mv=modelViewMatrix*vec4(p,1.0);
+          gl_Position=projectionMatrix*mv;
+          gl_PointSize=clamp(34.0*mote.y/max(4.0,-mv.z),1.4,4.8);
+          float vis=smoothstep(.20,.72,meadowSky.x)*(1.0-smoothstep(.04,.22,meadowSky.z));
+          vAlpha=vis*(.35+.65*sin(t*2.1)*.5+.5)*smoothstep(1.5,5.0,-mv.z)*(1.0-smoothstep(22.0,36.0,-mv.z));
+        }`,
+      fragmentShader:`
+        uniform vec4 meadowSky;
+        varying float vAlpha;
+        void main(){
+          float r=length(gl_PointCoord*2.0-1.0);
+          float glow=exp(-r*r*3.8)*(1.0-smoothstep(.65,1.0,r));
+          vec3 col=mix(vec3(1.0,.96,.82),vec3(1.0,.76,.42),meadowSky.y);
+          gl_FragColor=vec4(col,glow*vAlpha*.52);
+        }`
+    });
+    const pts=new THREE.Points(geo,mat);
+    pts.name="meadowGoldenPollen";pts.frustumCulled=false;pts.renderOrder=2;s.root.add(pts);
+    return pts;
+  }
+
   function build(s,supports,batch){
     const {boards,drips}=buildHoops(s,supports,batch);
+    buildPastureProps(s,batch);
     const ripple=new THREE.RingGeometry(.88,1,24);ripple.rotateX(-Math.PI/2);
     return {boards,drips,random:s.r,transform:new THREE.Object3D(),heightAt:s.heightAt,wet:0,rain:0,dripClock:0,poolClock:0,
       drops:instances(s,"meadowHoopDrips",new THREE.SphereGeometry(1,5,4),0xb7cdd1,.73,s.mobile?24:48),
       splash:instances(s,"meadowBallSplash",new THREE.SphereGeometry(1,5,4),0xd5e6e5,.73,s.mobile?68:138),
       rings:instances(s,"meadowWaterRipples",ripple,0xb8c8c6,.43,s.mobile?20:40),
-      insects:buildInsects(s)};
+      insects:buildInsects(s),butterflies:buildButterflies(s),pollen:buildPollen(s)};
   }
 
   function reset(court){
@@ -260,6 +417,29 @@
     if(count){bodies.instanceMatrix.needsUpdate=true;wings.instanceMatrix.needsUpdate=true;}
   }
 
+  function updateButterflies(c,time,visibility){
+    if(!c.butterflies)return;
+    const {wings,homes}=c.butterflies,m=c.transform;
+    const count=Math.round(homes.length*visibility);
+    wings.count=count*2;
+    for(let i=0;i<count;i++){
+      const [hx,hz]=homes[i],t=time*(.55+i*.04)+i*3.7;
+      const bx=hx+1.45*Math.sin(t*.72)+.42*Math.cos(t*1.65);
+      const bz=hz+1.35*Math.cos(t*.58)+.36*Math.sin(t*1.32);
+      const by=c.heightAt(bx,bz)+.52+.26*Math.sin(t*1.9+i)+.12*Math.cos(t*3.1);
+      const yaw=Math.atan2(1.45*.72*Math.cos(t*.72),-1.35*.58*Math.sin(t*.58));
+      const flap=.22+Math.sin(time*(11.5+i*.7)+i*2.1)*.92;
+      for(let side=0;side<2;side++){
+        const dir=side?1:-1;
+        m.position.set(bx,by,bz);
+        m.rotation.set(0,yaw+(dir<0?Math.PI:0),dir*flap,"YXZ");
+        m.scale.set(.068,.068,.068);m.updateMatrix();
+        wings.setMatrixAt(i*2+side,m.matrix);
+      }
+    }
+    if(count)wings.instanceMatrix.needsUpdate=true;
+  }
+
   function update(c,time,dt,rain,wet,clear){
     c.rain=rain;c.wet=wet;
     for(const mat of c.boards){
@@ -267,7 +447,9 @@
       mat.color.setScalar(lerp(1,.72,wet));
     }
     updateWater(c,dt);
-    updateInsects(c,time,smoothstep(clear,.13,.67)*(1-smoothstep(rain,.008,.18)));
+    const fair=smoothstep(clear,.13,.67)*(1-smoothstep(rain,.008,.18));
+    updateInsects(c,time,fair);
+    updateButterflies(c,time,fair);
   }
 
   global.AIBAMeadowCourt=Object.freeze({build,update,reset,ballImpact,waterGLSL});

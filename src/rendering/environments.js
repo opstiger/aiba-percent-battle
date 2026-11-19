@@ -10,7 +10,12 @@ function disposeEnvironmentRoot(root){
     }
   });
   geometries.forEach(g=>g.dispose());
-  materials.forEach(m=>{if(m.map&&m.map.dispose)m.map.dispose();if(m.bumpMap&&m.bumpMap.dispose)m.bumpMap.dispose();if(m.dispose)m.dispose();});
+  materials.forEach(m=>{
+    for(const k of ["map","bumpMap","normalMap","roughnessMap","alphaMap"]){
+      if(m[k]&&m[k].dispose)m[k].dispose();
+    }
+    if(m.dispose)m.dispose();
+  });
   while(root.children.length)root.remove(root.children[0]);
   root.userData={};
 }
@@ -225,9 +230,36 @@ function buildFlowerCourt(){
     stemMat:new THREE.MeshLambertMaterial({side:THREE.DoubleSide}),leafMat:new THREE.MeshLambertMaterial({side:THREE.DoubleSide,vertexColors:true}),
     petalMat:new THREE.MeshLambertMaterial({side:THREE.DoubleSide,vertexColors:true,map:flowerVeinTexture(),emissive:0xffd7bc,emissiveIntensity:.038}),
     coreMat:new THREE.MeshLambertMaterial({emissive:0xc29b41,emissiveIntensity:.025}),
-    pulse:0,revealProgress:0,visualProgress:0,visible:0,structureVisible:0,
+    pulse:0,revealProgress:0,visualProgress:0,visualVel:0,visible:0,structureVisible:0,
     weedTotal:place?.root.getObjectByName("alpineSwayingGrass")?.count||0
   };
+  if(place?.meadow?.uniforms){
+    const addPetalSSS=(mat,strength,warmMix)=>{
+      mat.onBeforeCompile=shader=>{
+        shader.uniforms.meadowSun=place.meadow.uniforms.meadowSun;
+        shader.uniforms.meadowSky=place.meadow.uniforms.meadowSky;
+        shader.vertexShader="varying vec3 vFlowerWorld;\n"+shader.vertexShader.replace("#include <begin_vertex>",`
+          #include <begin_vertex>
+          vec4 fw=vec4(transformed,1.0);
+          #ifdef USE_INSTANCING
+            fw=instanceMatrix*fw;
+          #endif
+          vFlowerWorld=(modelMatrix*fw).xyz;
+        `);
+        shader.fragmentShader="uniform vec3 meadowSun;\nuniform vec4 meadowSky;\nvarying vec3 vFlowerWorld;\n"+
+          shader.fragmentShader.replace("#include <dithering_fragment>",`
+            vec3 fView=normalize(cameraPosition-vFlowerWorld);
+            float back=pow(clamp(dot(-fView,meadowSun),0.0,1.0),3.2);
+            float sunLit=.25+.75*meadowSky.x;
+            vec3 sssCol=mix(vec3(1.0,.96,.84),vec3(1.0,.76,.44),meadowSky.y*${warmMix.toFixed(2)});
+            gl_FragColor.rgb+=diffuseColor.rgb*sssCol*back*sunLit*${strength.toFixed(3)};
+            #include <dithering_fragment>
+          `);
+      };
+    };
+    addPetalSSS(state.petalMat,.46,.85);
+    addPetalSSS(state.leafMat,.30,.65);
+  }
   const greens=[0x4d733e,0x628d48,0x547e42,0x698e4d];
   const flower=(x,y,z,h,size,form,axis=new THREE.Vector3(r(-.10,.10),1,r(-.11,.11)).normalize())=>({
     x,y,z,h,size,axis,form,stem:r(.0045,.0079),phase:r(0,Math.PI*2),rot:r(0,Math.PI*2),
@@ -451,11 +483,25 @@ function updateRain(dt){
   }
   rainState.geometry.attributes.position.needsUpdate=true;
 }
+function smoothDampScalar(current,target,obj,velKey,smoothTime,maxSpeed,dt){
+  if(dt<=0)return current;
+  const st=Math.max(0.0001,smoothTime),omega=2/st,x=omega*dt;
+  const exp=1/(1+x+0.48*x*x+0.235*x*x*x);
+  const maxChange=maxSpeed*st;
+  const change=clamp(current-target,-maxChange,maxChange);
+  const clampedTarget=current-change;
+  const temp=(obj[velKey]+omega*change)*dt;
+  obj[velKey]=(obj[velKey]-omega*temp)*exp;
+  let output=clampedTarget+(change+temp)*exp;
+  if((target-current>0)===(output>target)){output=target;obj[velKey]=0;}
+  return output;
+}
 function updateFlowerCourt(progress,dt){
   const state=environmentRoot.userData.flowerState;
   if(!state)return;
+  const isBattle=typeof G!=="undefined"&&!!G&&G.mode==="battle";
   state.revealProgress=Math.max(state.revealProgress,Math.pow(clamp(progress,0,1),.88));
-  state.visualProgress+=(state.revealProgress-state.visualProgress)*(1-Math.exp(-.99*dt));
+  state.visualProgress=smoothDampScalar(state.visualProgress,state.revealProgress,state,"visualVel",isBattle?4.6:2.2,isBattle?.028:.08,dt);
   const meadow=environmentRoot.userData.placeState?.meadow;
   if(meadow){
     meadow.flowerProgress=state.visualProgress;
@@ -482,7 +528,8 @@ function updateFlowerCourt(progress,dt){
 function bloomOnScore(points){
   const state=environmentRoot.userData.flowerState;
   if(!state)return;
-  const value=Math.max(1,points||3),bump=value>=10?.055:(value>=5?.032:.019);
+  const isBattle=typeof G!=="undefined"&&!!G&&G.mode==="battle";
+  const value=Math.max(1,points||3),bump=(value>=10?.055:(value>=5?.032:.019))*(isBattle?.22:1);
   state.revealProgress=clamp(state.revealProgress+bump,0,1);state.pulse=1;
 }
 function meadowBallWetness(){

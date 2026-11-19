@@ -12,6 +12,21 @@
     [1275,8.34,294.39],[1290,5.86,296.80],[1305,3.44,299.25]
   ];
   const courtNorth=325; // True bearing of the +Z axis, looking away from the main hoop.
+  function smoothDamp(current,target,state,velKey,smoothTime,maxSpeed,dt){
+    if(dt<=0)return current;
+    const st=Math.max(0.0001,smoothTime),omega=2/st,x=omega*dt;
+    const exp=1/(1+x+0.48*x*x+0.235*x*x*x);
+    let change=current-target;
+    const maxChange=maxSpeed*st;
+    change=clamp(change,-maxChange,maxChange);
+    const clampedTarget=current-change;
+    const temp=(state[velKey]+omega*change)*dt;
+    state[velKey]=(state[velKey]-omega*temp)*exp;
+    let output=clampedTarget+(change+temp)*exp;
+    if((target-current>0)===(output>target)){output=target;state[velKey]=0;}
+    return output;
+  }
+
   function moveSun(w,p){
     const minute=1185+34*curve(p,.08,.63)+86*curve(p,.60,1);
     const i=Math.min(sunPath.length-2,Math.floor((minute-1185)/15));
@@ -86,17 +101,23 @@
         vec3 atCloud=eye+ray*((62.0-eye.y)/ray.y);
         cloud*=1.0-sunWindow(atCloud,.25)*meadowAir.y*.76;
       }
-      float sunSide=pow(max(0.0,dot(ray,meadowSun)),11.0);
+      float sunCos=max(0.0,dot(ray,meadowSun));
+      float sunSide=pow(sunCos,11.0);
+      float mieHalo=pow(sunCos,6.0)*.24+pow(sunCos,48.0)*.42;
+      float sunDisc=smoothstep(.9986,.9996,sunCos);
       vec3 day=mix(vec3(.075,.205,.36),vec3(.33,.48,.58),haze);
       vec3 dusk=mix(vec3(.025,.075,.100),vec3(.16,.25,.28),haze);
       vec3 sky=mix(day,dusk,meadowSky.w*.14+meadowSky.y*.76);
       sky=mix(sky,vec3(.60,.39,.21),sunSide*meadowSky.x*.48);
+      vec3 sunGlowCol=mix(vec3(1.0,.90,.72),vec3(1.0,.66,.34),meadowSky.y);
+      sky+=sunGlowCol*(mieHalo*.34+sunDisc*.85)*meadowSky.x*(1.0-cloud*.72);
       float roll=smoothstep(.16,.73,a+(a-litEdge)*.71);
       vec3 storm=mix(vec3(.103,.139,.186),vec3(.47,.50,.53),roll);
       storm*=1.04-meadowSky.z*.36;
       vec3 open=mix(vec3(.23,.295,.36),vec3(.72,.68,.58),roll);
       open=mix(open,vec3(.63,.39,.22),sunSide*meadowSky.y*.48);
       vec3 col=mix(sky,mix(storm,open,meadowSky.x),cloud);
+      col+=sunGlowCol*pow(sunCos,18.0)*cloud*(1.0-roll)*.22*meadowSky.x;
       float flash=pow(max(0.0,dot(ray,normalize(vec3(-.44,.20,-.91)))),13.0);
       float bank=0.0;
       for(int i=0;i<3;i++){
@@ -341,7 +362,7 @@
     const uniforms={meadowClouds:{value:cloudMap()},meadowSky:{value:new THREE.Vector4()},
       meadowAir:{value:new THREE.Vector4()},meadowStorm:{value:new THREE.Vector2()},meadowSun:{value:new THREE.Vector3()},meadowOpening:{value:new THREE.Vector2()},
       meadowClock:{value:0},meadowWind:{value:0}};
-    const w={uniforms,progress:0,flowerProgress:0,score:0,stage:"cloudy",wind:uniforms.meadowWind,
+    const w={uniforms,progress:0,progressVel:0,sunProgress:0,sunProgressVel:0,flowerProgress:0,score:0,stage:"cloudy",wind:uniforms.meadowWind,
       wetness:0,ballWetness:0,previousRain:0,
       sunColor:new THREE.Color(0xffe7c5),skyColor:new THREE.Color(0xc1c9d5),wetColor:new THREE.Color(0xa5baca),
       warmColor:new THREE.Color(0xffb06b),coolFog:new THREE.Color(0x879eab),clearingFog:new THREE.Color(0x9aafb7),
@@ -354,7 +375,7 @@
   }
 
   function reset(w){
-    w.score=w.progress=w.flowerProgress=0;
+    w.score=w.progress=w.progressVel=w.sunProgress=w.sunProgressVel=w.flowerProgress=0;
     w.wetness=w.ballWetness=w.previousRain=0;
     if(w.court)AIBAMeadowCourt.reset(w.court);
     w.stormAt=w.thunderAt=null;w.nextStrike=0;w.flashAt=-100;
@@ -362,9 +383,10 @@
 
   function update(w,time,dt){
     const score=w.score,step=Math.max(0,dt);
-    // Even a super shot changes the atmosphere over several seconds.
-    const delta=(score-w.progress)*(1-Math.exp(-step*.92));
-    w.progress+=clamp(delta,-step*.065,step*.065);
+    // Critically damped spring (SmoothDamp) gives atmospheric inertia without staircase jumps per basket.
+    const isBattle=typeof G!=="undefined"&&!!G&&G.mode==="battle";
+    w.progress=smoothDamp(w.progress,score,w,"progressVel",isBattle?6.2:3.6,isBattle?.020:.036,step);
+    w.sunProgress=smoothDamp(w.sunProgress,score,w,"sunProgressVel",isBattle?8.5:4.8,isBattle?.015:.028,step);
     const p=w.progress;
     const rain=curve(p,.17,.24)*lerp(.42,1,curve(p,.33,.43))*(1-curve(p,.525,.635));
     const clear=curve(p,.53,.795),gold=curve(p,.767,.907);
@@ -402,8 +424,8 @@
     u.meadowSky.value.set(clear,gold,rain,wet);
     u.meadowAir.value.set(mist,beams,rainbow,flash);
     u.meadowStorm.value.set(bank,blackout);
-    moveSun(w,p);
-    const sweep=curve(p,.53,.745);
+    moveSun(w,w.sunProgress);
+    const sweep=curve(w.sunProgress,.53,.745);
     u.meadowOpening.value.set(lerp(-42,15,sweep)+Math.sin(time*.26)*2.8,lerp(-63,-24,sweep));
     w.rain.visible=rain>.018;w.bolt.visible=flash>.035;
     w.stage=stages.find(([cut])=>score>=cut)[1];

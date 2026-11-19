@@ -12,7 +12,7 @@
   function resetFlower(){
     const state=environmentRoot&&environmentRoot.userData&&environmentRoot.userData.flowerState;
     if(!state)return false;
-    state.revealProgress=0;state.visualProgress=0;state.pulse=0;state.visible=0;state.structureVisible=0;state.elapsed=0;
+    state.revealProgress=0;state.visualProgress=0;state.visualVel=0;state.pulse=0;state.visible=0;state.structureVisible=0;state.elapsed=0;
     resetFlowerLayer(state.ground);resetFlowerLayer(state.structure);
     state.petalMat.emissiveIntensity=.038;
     state.coreMat.emissiveIntensity=.025;

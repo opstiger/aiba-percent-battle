@@ -1267,7 +1267,22 @@
     s.vehicles.forEach(v=>{v.g.position.z+=v.dir*v.speed*dt;if(v.g.position.z>59)v.g.position.z=-55;if(v.g.position.z< -59)v.g.position.z=55;});
     birds(s,dt);
     if(s.name==="beachSunset"){
-      const p=clamp01(progress),u=p*3,i=Math.min(2,Math.floor(u));s.skyColor.copy(s.nightColors[i]).lerp(s.nightColors[i+1],u-i);scene.background.copy(s.skyColor);scene.fog.color.copy(s.skyColor).lerp(s.fogTint,.2);
+      const targetP=clamp01(progress);
+      if(s.beachProgress===undefined){s.beachProgress=targetP;s.beachProgressVel=0;}
+      if(dt<=0){s.beachProgress=targetP;s.beachProgressVel=0;}
+      else{
+        const isBattle=typeof G!=="undefined"&&!!G&&G.mode==="battle";
+        const st=isBattle?6.0:2.6,maxSpd=isBattle?.020:.065,omega=2/st,x=omega*dt;
+        const exp=1/(1+x+0.48*x*x+0.235*x*x*x);
+        const change=THREE.MathUtils.clamp(s.beachProgress-targetP,-maxSpd*st,maxSpd*st);
+        const clampedT=s.beachProgress-change;
+        const temp=(s.beachProgressVel+omega*change)*dt;
+        s.beachProgressVel=(s.beachProgressVel-omega*temp)*exp;
+        let out=clampedT+(change+temp)*exp;
+        if((targetP-s.beachProgress>0)===(out>targetP)){out=targetP;s.beachProgressVel=0;}
+        s.beachProgress=clamp01(out);
+      }
+      const p=s.beachProgress,u=p*3,i=Math.min(2,Math.floor(u));s.skyColor.copy(s.nightColors[i]).lerp(s.nightColors[i+1],u-i);scene.background.copy(s.skyColor);scene.fog.color.copy(s.skyColor).lerp(s.fogTint,.2);
       if(s.sky){const attr=s.sky.geometry.attributes.color;for(let j=0;j<attr.count;j++){const a=j*3,base=s.skyBase;s.skyVertex.setRGB(base[a],base[a+1],base[a+2]).lerp(s.skyColor,clamp01(.18+p*.92));attr.setXYZ(j,s.skyVertex.r,s.skyVertex.g,s.skyVertex.b);}attr.needsUpdate=true;}
       s.sunDisc.position.y=7.5-p*10;s.sunDisc.material.opacity=1-clamp01((p-.48)/.25);
       if(s.oceanShader){s.oceanShader.uniforms.uTime.value=s.time;s.oceanShader.uniforms.uProgress.value=p;}

@@ -1132,7 +1132,7 @@
       geo.setAttribute("color",new THREE.Float32BufferAttribute(c,3));
       geo.setAttribute("terrainHorizon",new THREE.Float32BufferAttribute(horizon,1));
       geo.computeVertexNormals();
-      const mat=new THREE.MeshLambertMaterial({vertexColors:true,map:courtMarks()});
+      const mat=new THREE.MeshStandardMaterial({vertexColors:true,map:courtMarks(),roughness:.93,metalness:0});
       const grass=terrainTexture("leafy-grass.jpg");
       mat.addEventListener("dispose",()=>{
         grass.dispose();
@@ -1156,6 +1156,8 @@
           vec3 patches = mapTexelToLinear(texture2D(grassDetail, m*0.085+vec2(0.26,0.31))).rgb;
           float fine = dot(blades,vec3(0.22,0.70,0.08));
           float coarse = dot(patches,vec3(0.22,0.70,0.08));
+          float meadowLiquid = 0.0;
+          float meadowCapillary = 0.0;
         `).replace("#include <color_fragment>",`
           #include <color_fragment>
           vec2 w=m-vec2(.44,4.63);
@@ -1166,6 +1168,13 @@
           float worn=(1.0-smoothstep(.59,1.25,margin))*(.30+coarse*.63);
           worn=max(worn,.61*exp(-dot(w-vec2(-.75,-8.4),w-vec2(-.75,-8.4))/11.0));
           worn=max(worn,.48*exp(-dot(w-vec2(1.9,3.6),w-vec2(1.9,3.6))/10.0));
+          // Winding pasture dirt footpath leading off the court into the eastern and western hills.
+          float eastCurve=8.8+(m.y-13.5)*.46+2.2*sin(m.y*.16+.5);
+          float eastPath=exp(-pow((m.x-eastCurve)/1.05,2.0))*smoothstep(10.5,14.5,m.y)*(1.0-smoothstep(48.0,68.0,m.y));
+          float westCurve=-9.2-(m.y+6.0)*.38+1.8*cos(m.y*.19);
+          float westPath=exp(-pow((m.x-westCurve)/.95,2.0))*smoothstep(-3.0,-8.5,m.y)*(1.0-smoothstep(-34.0,-52.0,m.y));
+          float trail=max(eastPath,westPath)*(.42+.58*coarse);
+          worn=max(worn,trail*.72);
           float closeGrain = 1.0-smoothstep(25.0,115.0,length(cameraPosition.xz-m));
           diffuseColor.rgb *= 0.77 + coarse*1.72 + (fine-.095)*1.16*closeGrain;
           diffuseColor.rgb = mix(diffuseColor.rgb,vec3(0.205,0.191,0.111),worn);
@@ -1191,6 +1200,11 @@
           if(meadowSky.w>.025&&abs(m.x)<8.7&&abs(m.y-4.8)<15.0){
             float edge=poolShape(m)+.072*sin(m.x*17.0+m.y*11.0)+.089*sin(m.y*21.0-m.x*7.0);
             float liquid=(1.0-smoothstep(.15+meadowSky.w*.65,.39+meadowSky.w*.70,edge))*smoothstep(.045,.63,meadowSky.w);
+            float rim=(1.0-smoothstep(.35+meadowSky.w*.68,.62+meadowSky.w*.74,edge))*(1.0-liquid)*smoothstep(.045,.55,meadowSky.w);
+            meadowLiquid=liquid;
+            meadowCapillary=rim;
+            // Capillary damp darkening right outside the puddle edge.
+            diffuseColor.rgb*=1.0-rim*.34;
             vec3 eye=normalize(cameraPosition-vMeadowPos);
             float fresnel=pow(1.0-max(0.0,eye.y),4.0);
             float ripples=sin(m.x*82.0+m.y*27.0-meadowClock*5.0)*
@@ -1201,6 +1215,13 @@
             mirror+=vec3(.46,.39,.24)*glint*meadowSky.x*horizonSun;
             diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*.48+mirror*.52,liquid*.89);
           }
+        `).replace("#include <roughnessmap_fragment>",`
+          #include <roughnessmap_fragment>
+          float dryRough=clamp(.95-fine*.08,0.82,0.97);
+          float wetRough=clamp(.44+fine*.14,0.34,0.64);
+          roughnessFactor=mix(dryRough,wetRough,meadowSky.w);
+          roughnessFactor=mix(roughnessFactor,.32,meadowCapillary);
+          roughnessFactor=mix(roughnessFactor,.06,meadowLiquid);
         `);
       };
       const mesh=new THREE.Mesh(geo,mat);mesh.name="alpineMeadowGround";mesh.receiveShadow=true;
@@ -1275,21 +1296,29 @@
     function spruceAtlas(){
       const atlas=document.createElement("canvas");atlas.width=256;atlas.height=256;
       const g=atlas.getContext("2d"),r=mulberry32(0x4f6c835d);
-      g.fillStyle="#a5a79d";g.fillRect(0,0,192,256);
-      for(let i=0;i<265;i++){
-        const x=r()*210-9,y=r()*270-7,len=6+r()*31,direction=i%2?1:-1;
-        g.strokeStyle=i%3?"rgba(39,53,40,.31)":"rgba(237,240,205,.53)";
-        g.lineWidth=.75+r()*1.5;g.beginPath();
-        g.moveTo(x,y);g.quadraticCurveTo(x+direction*len*.22,y-len*.37,x+direction*len*.43,y-len);g.stroke();
-        for(let j=1;j<5;j++){
-          const a=j/5,cx=x+direction*len*.43*a,cy=y-len*a,needle=(1-a)*(3+r()*8);
-          g.beginPath();g.moveTo(cx-needle,cy-4);g.lineTo(cx,cy);g.lineTo(cx+needle,cy-5);g.stroke();
+      // Needle region (0..192) uses alpha cutout along the outer bough tips for natural jagged silhouettes.
+      g.clearRect(0,0,192,256);
+      // Core dense inner foliage (top/center of UV) tapering to jagged hanging boughs at the bottom.
+      g.fillStyle="#8a9180";
+      g.beginPath();g.moveTo(0,0);g.lineTo(192,0);g.lineTo(192,165);
+      for(let x=192;x>=0;x-=8)g.lineTo(x,150+34*Math.sin(x*.09)+r()*36);
+      g.closePath();g.fill();
+      for(let i=0;i<420;i++){
+        const x=r()*190,y=r()*236,len=10+r()*36,direction=i%2?1:-1;
+        const bright=i%4===0;
+        g.strokeStyle=bright?"rgba(218,228,184,.92)":(i%3?"rgba(46,66,48,.92)":"rgba(128,144,110,.95)");
+        g.lineWidth=1.1+r()*2.1;g.beginPath();
+        g.moveTo(x,y);g.quadraticCurveTo(x+direction*len*.24,y+len*.42,x+direction*len*.46,y+len);g.stroke();
+        for(let j=1;j<6;j++){
+          const a=j/6,cx=x+direction*len*.46*a,cy=y+len*a,needle=(1-a*.65)*(3.5+r()*9);
+          g.beginPath();g.moveTo(cx-needle,cy+3.5);g.lineTo(cx,cy);g.lineTo(cx+needle,cy+4);g.stroke();
         }
       }
-      g.fillStyle="#8c8980";g.fillRect(192,0,64,256);
-      for(let i=0;i<145;i++){
-        const x=193+r()*63,y=r()*256,h=11+r()*75,shade=i%3?58:191;
-        g.strokeStyle=`rgba(${shade},${shade},${shade},.45)`;g.lineWidth=.5+r()*2.3;
+      // Bark strip (192..256) stays fully opaque.
+      g.fillStyle="#7f7568";g.fillRect(192,0,64,256);
+      for(let i=0;i<165;i++){
+        const x=193+r()*63,y=r()*256,h=11+r()*75,shade=i%3?46:178;
+        g.strokeStyle=`rgba(${shade},${shade-4},${shade-8},.50)`;g.lineWidth=.6+r()*2.4;
         g.beginPath();g.moveTo(x,y);g.lineTo(x+(r()-.5)*3,y+h*.68);g.lineTo(x+(r()-.5)*4,y+h);g.stroke();
       }
       const map=new THREE.CanvasTexture(atlas);map.encoding=THREE.sRGBEncoding;
@@ -1298,89 +1327,301 @@
 
     function spruceForest(s){
       const p=[],colors=[],uv=[],seg=s.mobile?10:14;
-      const dark=linear(0x364d41),tipColor=linear(0x82916a),bark=linear(0x716256),c=new THREE.Color();
+      const dark=linear(0x2a4035),tipColor=linear(0x7c8e63),bark=linear(0x6b5a4e),c=new THREE.Color();
       function surface(triangle,coords,color){
         for(let i=0;i<3;i++){p.push(...triangle[i]);uv.push(...coords[i]);colors.push(color.r,color.g,color.b);}
       }
       const barkUV=[[.76,.03],[.99,.03],[.76,.95],[.99,.95]];
       for(let j=0;j<6;j++){
         const point=(k,y,r)=>[Math.cos(k*tau/6)*r,y,Math.sin(k*tau/6)*r];
-        const a=point(j,0,.026),b=point(j+1,0,.026),m=point(j,.94,.009),n=point(j+1,.94,.009);
+        const a=point(j,0,.028),b=point(j+1,0,.028),m=point(j,.94,.009),n=point(j+1,.94,.009);
         surface([a,b,m],[barkUV[0],barkUV[1],barkUV[2]],bark);
         surface([b,n,m],[barkUV[1],barkUV[3],barkUV[2]],bark);
       }
-      for(let tier=0;tier<7;tier++){
-        const y=.17+tier*.108,width=.28*Math.pow(1-tier/7.9,.86),turn=tier*.63;
+      for(let tier=0;tier<8;tier++){
+        const y=.15+tier*.098,width=.30*Math.pow(1-tier/8.8,.84),turn=tier*.79;
         for(let j=0;j<seg;j++){
           const rim=(k,outer)=>{
-            const a=k/seg*tau+turn,gap=.83+.15*Math.sin(k*7.7+tier*2.67);
-            const r=width*gap*(outer?1:.47);
-            return [.009*tier+Math.cos(a)*r,y+(outer?-width*.11+Math.sin(k*9+tier)*.034:.12),Math.sin(a)*r];
+            const a=k/seg*tau+turn,gap=.76+.24*Math.sin(k*7.7+tier*2.67)+.11*Math.cos(k*13.1-tier*1.9);
+            const r=width*gap*(outer?1:.45);
+            return [.009*tier+Math.cos(a)*r,y+(outer?-width*.14+Math.sin(k*9+tier)*.042:.12),Math.sin(a)*r];
           };
-          const tip=[.012*tier,y+.205,0],a=rim(j,true),b=rim(j+1,true),m=rim(j,false),n=rim(j+1,false);
-          const left=.04+(j%3)*.13,right=left+.37;
+          const tip=[.012*tier,y+.21,0],a=rim(j,true),b=rim(j+1,true),m=rim(j,false),n=rim(j+1,false);
+          const left=.03+(j%3)*.13,right=left+.36;
+          // Outer rim maps near v=0.08 (jagged alpha-cutout branch tips), inner crown near v=0.92 (dense).
           const t0=[left,.08],t1=[right,.08],t2=[left+.035,.59],t3=[right-.03,.62],top=[(left+right)*.5,.92];
-          c.copy(dark).lerp(tipColor,.19+.66*(Math.cos(j/seg*tau+turn)*.5+.5));
+          const ao=.62+.38*(tier/7);
+          c.copy(dark).lerp(tipColor,.18+.64*(Math.cos(j/seg*tau+turn)*.5+.5)).multiplyScalar(ao);
           surface([m,b,a],[t2,t1,t0],c);surface([m,n,b],[t2,t3,t1],c);surface([tip,n,m],[top,t3,t2],c);
         }
       }
       const geo=new THREE.BufferGeometry();geo.setAttribute("position",new THREE.Float32BufferAttribute(p,3));
       geo.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));
       geo.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));geo.computeVertexNormals();
-      const mat=new THREE.MeshLambertMaterial({vertexColors:true,map:spruceAtlas(),side:THREE.DoubleSide});
-      const forest=new THREE.InstancedMesh(geo,mat,s.mobile?295:580);
+      const mat=new THREE.MeshLambertMaterial({vertexColors:true,map:spruceAtlas(),alphaTest:.42,side:THREE.DoubleSide});
+      mat.onBeforeCompile=shader=>{
+        shader.uniforms.meadowTime=s.meadow.time;
+        shader.uniforms.meadowWind=s.meadow.wind;
+        shader.uniforms.meadowSun=s.meadow.uniforms.meadowSun;
+        shader.uniforms.meadowSky=s.meadow.uniforms.meadowSky;
+        shader.vertexShader="uniform float meadowTime,meadowWind;\nvarying float vSpruceH;\nvarying vec3 vSpruceWorld;\n"+
+          shader.vertexShader.replace("#include <begin_vertex>",`
+            #include <begin_vertex>
+            vSpruceH=clamp(position.y,0.0,1.0);
+            vec2 root=instanceMatrix[3].xz;
+            float sway=(sin(meadowTime*1.15+root.x*.09+root.y*.07)*.024+meadowWind*.028)*vSpruceH*vSpruceH;
+            transformed.x+=sway;
+            transformed.z+=sway*.45;
+            vSpruceWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
+          `);
+        shader.fragmentShader="uniform vec3 meadowSun;\nuniform vec4 meadowSky;\nvarying float vSpruceH;\nvarying vec3 vSpruceWorld;\n"+
+          shader.fragmentShader.replace("#include <dithering_fragment>",`
+            float crownAO=mix(.56,1.08,smoothstep(.04,.88,vSpruceH));
+            vec3 viewDir=normalize(cameraPosition-vSpruceWorld);
+            float rim=pow(clamp(dot(-viewDir,meadowSun),0.0,1.0),3.5)*vSpruceH*meadowSky.x;
+            vec3 rimCol=mix(vec3(.24,.34,.18),vec3(.88,.54,.24),meadowSky.y);
+            gl_FragColor.rgb=gl_FragColor.rgb*crownAO*(1.0-meadowSky.w*.14)+rimCol*rim*.26;
+            #include <dithering_fragment>
+          `);
+      };
+      const heroSpruces=[[-22.5,-24.5,11.6],[25.5,-19.5,10.4],[-26.5,22.5,12.2],[27.0,26.0,9.8]];
+      const count=(s.mobile?310:610)+heroSpruces.length;
+      const forest=new THREE.InstancedMesh(geo,mat,count);
       const tree=new THREE.Object3D(),tone=new THREE.Color();
       const ridges=[[-1.04,61,17],[-.68,82,23],[.35,67,14],[.71,86,23],[1.59,82,31],[-1.81,78,23],[2.7,88,30],[-2.66,97,32]];
-      for(let i=0;i<forest.count;i++){
-        const [heading,radius,width]=ridges[i%ridges.length],r=radius+(s.r()-.5)*31;
+      let idx=0;
+      for(const [hx,hz,hh] of heroSpruces){
+        tree.position.set(hx,elevation(hx,hz)-.08*hh,hz);
+        tree.rotation.set((s.r()-.5)*.035,s.r()*tau,(s.r()-.5)*.035);
+        tree.scale.set(hh*.76,hh,hh*.76);tree.updateMatrix();
+        forest.setMatrixAt(idx,tree.matrix);
+        tone.setScalar(.84+.16*s.r());forest.setColorAt(idx,tone);
+        idx++;
+      }
+      for(;idx<forest.count;idx++){
+        const [heading,radius,width]=ridges[idx%ridges.length],r=radius+(s.r()-.5)*31;
         const a=heading+(s.r()+s.r()-1)*width/r;
         const x=Math.sin(a)*r,z=COURT.midZ-Math.cos(a)*r,h=4.2+6.9*Math.pow(s.r(),1.45);
         tree.position.set(x,elevation(x,z)-.09*h,z);
         tree.rotation.set((s.r()-.5)*.045,s.r()*tau,(s.r()-.5)*.05);
         tree.scale.set(h*(.68+s.r()*.4),h,h*(.68+s.r()*.4));tree.updateMatrix();
-        forest.setMatrixAt(i,tree.matrix);
-        tone.setScalar(.64+.36*s.r());forest.setColorAt(i,tone);
+        forest.setMatrixAt(idx,tree.matrix);
+        tone.setScalar(.64+.36*s.r());forest.setColorAt(idx,tone);
       }
       forest.name="alpineSpruceBelts";forest.frustumCulled=false;s.root.add(forest);
     }
 
     function meadowGrass(s){
-      const positions=[],indices=[];
-      for(let blade=0;blade<4;blade++){
-        const a=blade*2.4,dx=Math.sin(a),dz=Math.cos(a),start=positions.length/3;
-        for(let row=0;row<=4;row++){
-          const t=row/4,h=(.66+blade*.095)*t,lean=.32*t*t,w=.075*Math.pow(1-t,.66);
-          for(const side of [-1,1])positions.push(dx*(.035+lean)+dz*w*side,h,dz*(.035+lean)-dx*w*side);
-          if(row<4){const k=start+row*2;indices.push(k,k+1,k+2,k+1,k+3,k+2);}
+      function buildTuftGeo(blades,segs,widthScale){
+        const positions=[],normals=[],bladeH=[],indices=[];
+        for(let blade=0;blade<blades;blade++){
+          const a=blade*(tau/blades)+blade*.47,dx=Math.sin(a),dz=Math.cos(a),start=positions.length/3;
+          const heightScale=.72+(blade%3)*.16;
+          for(let row=0;row<=segs;row++){
+            const t=row/segs,h=heightScale*t,lean=(.24+.14*(blade%2))*t*t,w=.052*widthScale*Math.pow(1-t,.68);
+            for(const side of [-1,1]){
+              positions.push(dx*(.025+lean)+dz*w*side,h,dz*(.025+lean)-dx*w*side);
+              // Blend blade normals strongly upward so grass catches sunlight softly like real meadow turf.
+              normals.push(dx*.22,1.0,dz*.22);
+              bladeH.push(t);
+            }
+            if(row<segs){const k=start+row*2;indices.push(k,k+1,k+2,k+1,k+3,k+2);}
+          }
         }
+        const geo=new THREE.BufferGeometry();geo.setIndex(indices);
+        geo.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+        geo.setAttribute("normal",new THREE.Float32BufferAttribute(normals,3));
+        geo.setAttribute("bladeH",new THREE.Float32BufferAttribute(bladeH,1));
+        return geo;
       }
-      const geo=new THREE.BufferGeometry();geo.setIndex(indices);geo.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));geo.computeVertexNormals();
       const mat=new THREE.MeshLambertMaterial({side:THREE.DoubleSide}),time=s.meadow.time;
       mat.onBeforeCompile=shader=>{
+        Object.assign(shader.uniforms,s.meadow.uniforms);
         shader.uniforms.meadowTime=time;
         shader.uniforms.meadowWind=s.meadow.wind;
-        shader.vertexShader="uniform float meadowTime,meadowWind;\n"+shader.vertexShader.replace("#include <begin_vertex>",`
-          #include <begin_vertex>
-          vec2 root = instanceMatrix[3].xz;
-          float wind = (0.12*sin(meadowTime*1.55-root.x*.27-root.y*.12)+0.063*sin(meadowTime*2.1+root.y*.65))
-            *(1.0+meadowWind*1.4)+meadowWind*.18;
-          transformed.x += wind * position.y * position.y;
-          transformed.z += wind * position.y * position.y * 0.52;
-        `);
+        shader.vertexShader="attribute float bladeH;\nuniform float meadowTime,meadowWind;\nuniform sampler2D meadowClouds;\nvarying float vBladeH;\nvarying vec3 vGrassWorld;\n"+
+          shader.vertexShader.replace("#include <begin_vertex>",`
+            #include <begin_vertex>
+            vBladeH=bladeH;
+            vec2 root=instanceMatrix[3].xz;
+            // Dual-layer wind: sweeping gust waves + local blade flutter.
+            vec2 gustUV=root*.014+vec2(meadowTime*.055,-meadowTime*.028);
+            float gust=(texture2D(meadowClouds,gustUV).r-.35)*1.8;
+            float wave=sin(meadowTime*1.65-root.x*.24-root.y*.13)+.42*sin(meadowTime*3.1+root.x*.55-root.y*.42);
+            float bend=(wave*.11+gust*.24)*(1.0+meadowWind*1.35)+meadowWind*.16;
+            float flex=bladeH*bladeH;
+            transformed.x+=bend*flex;
+            transformed.z+=bend*.52*flex;
+            transformed.y-=abs(bend)*.12*flex;
+            vGrassWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
+          `);
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+"varying float vBladeH;\nvarying vec3 vGrassWorld;\n"+
+          shader.fragmentShader.replace("#include <color_fragment>",`
+            #include <color_fragment>
+            // Root ambient occlusion anchors tufts into soil; sunlit tips warm up slightly.
+            float rootAO=mix(.34,1.06,smoothstep(0.0,.68,vBladeH));
+            vec3 tipTint=mix(vec3(.78,.86,.72),vec3(1.12,1.10,.86),vBladeH);
+            float cloudLight=.74+.26*sunWindow(vGrassWorld,1.0);
+            diffuseColor.rgb*=rootAO*tipTint*cloudLight*(1.0-meadowSky.w*.22);
+          `).replace("#include <dithering_fragment>",`
+            // Backlit subsurface scattering (SSS): sunlit blades glow warm chartreuse/gold.
+            vec3 gView=normalize(cameraPosition-vGrassWorld);
+            float sss=pow(clamp(dot(-gView,meadowSun),0.0,1.0),3.0)*vBladeH*(.22+.78*meadowSky.x);
+            vec3 sssCol=mix(vec3(.68,.84,.28),vec3(1.0,.76,.32),meadowSky.y);
+            gl_FragColor.rgb+=sssCol*sss*.38;
+            #include <dithering_fragment>
+          `);
       };
-      const mesh=new THREE.InstancedMesh(geo,mat,s.mobile?270:530),dummy=new THREE.Object3D(),color=new THREE.Color();
-      const green=[0x6b8a47,0x778e4d,0x829c55,0x53783e,0xa1aa69];
-      for(let i=0;i<mesh.count;i++){
-        const a=s.r()*tau,r=9.5+30*Math.pow(s.r(),1.8);
+      const dummy=new THREE.Object3D(),color=new THREE.Color();
+      const green=[0x5c7c3d,0x6b8a47,0x78924d,0x4d7038,0x8c9b56,0x648042];
+      // Near/mid dense grass sea (up to 7,200 5-blade tufts = 36,000 blades on desktop).
+      const nearGeo=buildTuftGeo(5,4,1.0);
+      const nearMesh=new THREE.InstancedMesh(nearGeo,mat,s.mobile?2400:6800);
+      for(let i=0;i<nearMesh.count;i++){
+        const a=s.r()*tau,r=7.8+32*Math.pow(s.r(),1.45);
         let x=Math.sin(a)*r,z=COURT.midZ-Math.cos(a)*r;
-        if(Math.abs(x)<8.15&&z>-10.1&&z<19.65)x=Math.sign(x)*8.2;
-        const h=.095+s.r()*.28;
-        dummy.position.set(x,elevation(x,z),z);dummy.rotation.y=s.r()*tau;
-        dummy.scale.set(h,h,h);dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);
-        mesh.setColorAt(i,color.set(green[i%green.length]).convertSRGBToLinear());
+        const dx=Math.max(0,Math.abs(x)-7.55),dz=Math.max(0,Math.abs(z-COURT.midZ)-14.3);
+        const edgeDist=Math.hypot(dx,dz);
+        if(edgeDist<.18){x=Math.sign(x||1)*(7.75+s.r()*1.8);z=COURT.midZ+(s.r()-.5)*30;}
+        const edgeTaper=smooth(edgeDist,0,2.4);
+        const h=(.11+s.r()*.30)*(.38+.62*edgeTaper);
+        dummy.position.set(x,elevation(x,z)-.015,z);dummy.rotation.y=s.r()*tau;
+        dummy.scale.set(h*(.85+s.r()*.45),h,h*(.85+s.r()*.45));dummy.updateMatrix();nearMesh.setMatrixAt(i,dummy.matrix);
+        nearMesh.setColorAt(i,color.set(green[i%green.length]).convertSRGBToLinear().multiplyScalar(.82+.32*s.r()));
       }
-      mesh.name="alpineSwayingGrass";mesh.frustumCulled=false;s.root.add(mesh);
+      nearMesh.name="alpineSwayingGrass";nearMesh.frustumCulled=false;s.root.add(nearMesh);
+      // Far LOD ring (wider 3-blade tufts covering rolling hillside out to 78m).
+      const farGeo=buildTuftGeo(3,2,1.65);
+      const farMesh=new THREE.InstancedMesh(farGeo,mat,s.mobile?950:2600);
+      for(let i=0;i<farMesh.count;i++){
+        const a=s.r()*tau,r=34+44*Math.pow(s.r(),1.15);
+        const x=Math.sin(a)*r,z=COURT.midZ-Math.cos(a)*r;
+        const h=.28+s.r()*.44;
+        dummy.position.set(x,elevation(x,z)-.03,z);dummy.rotation.y=s.r()*tau;
+        dummy.scale.set(h*1.2,h,h*1.2);dummy.updateMatrix();farMesh.setMatrixAt(i,dummy.matrix);
+        farMesh.setColorAt(i,color.set(green[(i*3)%green.length]).convertSRGBToLinear().multiplyScalar(.76+.34*s.r()));
+      }
+      farMesh.name="alpineFarGrass";farMesh.frustumCulled=false;s.root.add(farMesh);
       s.meadowWind=time;
+    }
+
+    function meadowRocks(s,rockTex){
+      const geo=new THREE.IcosahedronGeometry(1,1);
+      const pos=geo.attributes.position;
+      for(let i=0;i<pos.count;i++){
+        const vx=pos.getX(i),vy=pos.getY(i),vz=pos.getZ(i);
+        const n=.76+.24*Math.sin(vx*3.7+vz*2.9)+.14*Math.cos(vy*4.3-vx*2.1);
+        pos.setXYZ(i,vx*n,vy*(vy<0?.42:.78)*n,vz*n);
+      }
+      geo.computeVertexNormals();
+      const mat=new THREE.MeshStandardMaterial({map:rockTex,roughness:.92,metalness:.03,flatShading:true});
+      mat.onBeforeCompile=shader=>{
+        Object.assign(shader.uniforms,s.meadow.uniforms);
+        shader.vertexShader="varying vec3 vBoulderNormal;\n"+shader.vertexShader.replace("#include <begin_vertex>",`
+          #include <begin_vertex>
+          vBoulderNormal=normalize(mat3(instanceMatrix)*normal);
+        `);
+        shader.fragmentShader="uniform vec4 meadowSky;\nvarying vec3 vBoulderNormal;\n"+
+          shader.fragmentShader.replace("#include <color_fragment>",`
+            #include <color_fragment>
+            // Alpine moss clings to upward-facing weathered granite faces.
+            float moss=smoothstep(.46,.84,vBoulderNormal.y);
+            diffuseColor.rgb=mix(diffuseColor.rgb*vec3(.78,.77,.73),vec3(.24,.35,.15),moss*.68);
+            diffuseColor.rgb*=1.0-meadowSky.w*.26;
+          `).replace("#include <roughnessmap_fragment>",`
+            #include <roughnessmap_fragment>
+            roughnessFactor=mix(.92,.48,meadowSky.w);
+          `);
+      };
+      const count=s.mobile?20:38;
+      const mesh=new THREE.InstancedMesh(geo,mat,count);
+      const dummy=new THREE.Object3D(),tone=new THREE.Color();
+      const anchors=[
+        [-11.8,-10.5,1.25],[12.4,-9.8,1.05],[-13.5,2.5,1.45],[14.2,6.2,1.15],
+        [-12.8,17.8,1.35],[13.0,19.4,1.20],[-18.5,-15.0,2.1],[19.5,-14.0,1.85],
+        [-21.0,9.5,2.3],[22.5,14.5,1.95],[0.5,-16.5,1.4],[-6.5,25.5,1.65]
+      ];
+      for(let i=0;i<count;i++){
+        let x,z,sc;
+        if(i<anchors.length){
+          [x,z,sc]=anchors[i];
+        }else{
+          const a=s.r()*tau,r=14.5+38*Math.pow(s.r(),1.2);
+          x=Math.sin(a)*r;z=COURT.midZ-Math.cos(a)*r;
+          if(Math.abs(x)<10.2&&z>-12&&z<22)x=Math.sign(x||1)*11.2;
+          sc=.45+s.r()*1.55;
+        }
+        dummy.position.set(x,elevation(x,z)+sc*.12,z);
+        dummy.rotation.set((s.r()-.5)*.28,s.r()*tau,(s.r()-.5)*.28);
+        dummy.scale.set(sc*(.9+s.r()*.5),sc*(.48+s.r()*.36),sc*(.85+s.r()*.45));
+        dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);
+        tone.setScalar(.74+.32*s.r());mesh.setColorAt(i,tone);
+      }
+      mesh.castShadow=true;mesh.receiveShadow=true;mesh.name="alpineMossyBoulders";mesh.frustumCulled=false;s.root.add(mesh);
+    }
+
+    function meadowShrubs(s){
+      const p=[],c=[],hAttr=[];
+      const low=linear(0x284326),high=linear(0x637d3e),col=new THREE.Color();
+      const lobes=[[0,.34,0,.44],[-.26,.25,.14,.32],[.25,.28,-.12,.34],[.06,.48,.16,.28],[-.15,.44,-.18,.27],[.20,.18,.22,.24]];
+      const unit=new THREE.IcosahedronGeometry(1,1);
+      const uPos=unit.attributes.position;
+      for(const [lx,ly,lz,lr] of lobes){
+        for(let i=0;i<uPos.count;i++){
+          const vx=uPos.getX(i),vy=uPos.getY(i),vz=uPos.getZ(i);
+          const jag=.82+.24*Math.sin(vx*5.2+vz*4.1+ly*9);
+          const x=lx+vx*lr*jag,y=Math.max(0,ly+vy*lr*.85*jag),z=lz+vz*lr*jag;
+          p.push(x,y,z);
+          const h=THREE.MathUtils.clamp(y/.78,0,1);
+          hAttr.push(h);
+          col.copy(low).lerp(high,h*(.72+.28*(vy*.5+.5)));
+          c.push(col.r,col.g,col.b);
+        }
+      }
+      unit.dispose();
+      const geo=new THREE.BufferGeometry();
+      geo.setAttribute("position",new THREE.Float32BufferAttribute(p,3));
+      geo.setAttribute("color",new THREE.Float32BufferAttribute(c,3));
+      geo.setAttribute("shrubH",new THREE.Float32BufferAttribute(hAttr,1));
+      geo.computeVertexNormals();
+      const mat=new THREE.MeshLambertMaterial({vertexColors:true});
+      mat.onBeforeCompile=shader=>{
+        shader.uniforms.meadowTime=s.meadow.time;
+        shader.uniforms.meadowWind=s.meadow.wind;
+        shader.uniforms.meadowSun=s.meadow.uniforms.meadowSun;
+        shader.uniforms.meadowSky=s.meadow.uniforms.meadowSky;
+        shader.vertexShader="attribute float shrubH;\nuniform float meadowTime,meadowWind;\nvarying float vShrubH;\nvarying vec3 vShrubWorld;\n"+
+          shader.vertexShader.replace("#include <begin_vertex>",`
+            #include <begin_vertex>
+            vShrubH=shrubH;
+            vec2 root=instanceMatrix[3].xz;
+            float sway=(sin(meadowTime*1.85+root.x*.31+root.y*.19)*.055+meadowWind*.07)*shrubH*shrubH;
+            transformed.x+=sway;transformed.z+=sway*.5;
+            vShrubWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
+          `);
+        shader.fragmentShader="uniform vec3 meadowSun;\nuniform vec4 meadowSky;\nvarying float vShrubH;\nvarying vec3 vShrubWorld;\n"+
+          shader.fragmentShader.replace("#include <dithering_fragment>",`
+            vec3 sv=normalize(cameraPosition-vShrubWorld);
+            float back=pow(clamp(dot(-sv,meadowSun),0.0,1.0),3.2)*vShrubH*meadowSky.x;
+            vec3 glow=mix(vec3(.42,.56,.20),vec3(.92,.62,.28),meadowSky.y);
+            gl_FragColor.rgb=gl_FragColor.rgb*(1.0-meadowSky.w*.18)+glow*back*.28;
+            #include <dithering_fragment>
+          `);
+      };
+      const count=s.mobile?42:86;
+      const mesh=new THREE.InstancedMesh(geo,mat,count);
+      const dummy=new THREE.Object3D(),tone=new THREE.Color();
+      for(let i=0;i<count;i++){
+        const a=s.r()*tau,r=14+52*Math.pow(s.r(),1.25);
+        let x=Math.sin(a)*r,z=COURT.midZ-Math.cos(a)*r;
+        if(Math.abs(x)<10.6&&z>-12.5&&z<22.5)x=Math.sign(x||1)*(11.4+s.r()*4);
+        const sc=.78+s.r()*1.25;
+        dummy.position.set(x,elevation(x,z)-.06,z);dummy.rotation.y=s.r()*tau;
+        dummy.scale.set(sc*(.95+s.r()*.4),sc*(.72+s.r()*.45),sc*(.95+s.r()*.4));
+        dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);
+        tone.setScalar(.72+.36*s.r());mesh.setColorAt(i,tone);
+      }
+      mesh.name="alpineShrubs";mesh.frustumCulled=false;s.root.add(mesh);
     }
 
     function driftCoverage(instances){
@@ -1413,12 +1654,17 @@
     ];
 
     function driftGeometry(plant,mobile){
-      const verts=[],colors=[],stem=linear(0x4e783a),heart=linear(0xeab74a);
+      const verts=[],colors=[],stem=linear(0x4e783a),leafDark=linear(0x3a5f2d),heart=linear(0xeab74a);
       const petals=plant.petals.map(linear);
       const tri=(a,b,c,color)=>{
         verts.push(...a,...b,...c);
         for(let i=0;i<3;i++)colors.push(color.r,color.g,color.b);
       };
+      // Basal rosette leaves anchor each wildflower clump into the turf.
+      for(let l=0;l<3;l++){
+        const a=l*tau/3+.4,dx=Math.cos(a),dz=Math.sin(a),px=-dz*.055,pz=dx*.055;
+        tri([px,0,pz],[-px,0,-pz],[dx*.21,.15,dz*.21],leafDark);
+      }
       const spire=plant.name==="lavender";
       const heads=[[-.195,-.12,.31,.122],[.18,.13,.43,.107],[.053,-.205,.55,.105]];
       for(const [i,[x,z,height,r]] of heads.entries()){
@@ -1527,15 +1773,31 @@
       }
       const bloom={value:0},mat=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide,emissive:0xdcd2a4,emissiveIntensity:.042});
       mat.onBeforeCompile=shader=>{
+        Object.assign(shader.uniforms,weather.uniforms);
         shader.uniforms.meadowTime=weather.time;shader.uniforms.meadowBloom=bloom;shader.uniforms.meadowWind=weather.wind;
-        shader.vertexShader="uniform float meadowTime,meadowBloom,meadowWind;\nattribute float bloomStart;\n"+
+        shader.vertexShader="uniform float meadowTime,meadowBloom,meadowWind;\nattribute float bloomStart;\nvarying float vPetalH;\nvarying vec3 vPetalWorld;\n"+
           shader.vertexShader.replace("#include <begin_vertex>",`
             #include <begin_vertex>
+            vPetalH=clamp(position.y*1.8,0.0,1.0);
             vec2 root=instanceMatrix[3].xz;
             float wind=sin(meadowTime*1.55-root.x*.23-root.y*.125)*(.15+meadowWind*.15)+meadowWind*.15;
             transformed.x+=wind*position.y*position.y;
             transformed.z+=wind*.53*position.y*position.y;
             transformed*=max(.001,smoothstep(bloomStart,bloomStart+.145,meadowBloom));
+            vPetalWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
+          `);
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+"varying float vPetalH;\nvarying vec3 vPetalWorld;\n"+
+          shader.fragmentShader.replace("#include <color_fragment>",`
+            #include <color_fragment>
+            float baseAO=mix(.46,1.04,smoothstep(0.0,.55,vPetalH));
+            float cloudLit=.76+.24*sunWindow(vPetalWorld,1.0);
+            diffuseColor.rgb*=baseAO*cloudLit*(1.0-meadowSky.w*.18);
+          `).replace("#include <dithering_fragment>",`
+            vec3 pView=normalize(cameraPosition-vPetalWorld);
+            float pBack=pow(clamp(dot(-pView,meadowSun),0.0,1.0),3.0)*vPetalH*(.22+.78*meadowSky.x);
+            vec3 pGlow=mix(vec3(1.0,.96,.82),vec3(1.0,.74,.40),meadowSky.y);
+            gl_FragColor.rgb+=diffuseColor.rgb*pGlow*pBack*.48;
+            #include <dithering_fragment>
           `);
       };
       const dummy=new THREE.Object3D(),point=new THREE.Vector3(),beds=[];
@@ -1645,11 +1907,16 @@
           float opticalDepth=travel*meadowStorm.x*meadowStorm.x*(.15+billow*.086);
           float through=exp(-opticalDepth);
           float distanceHaze=smoothstep(105.0,590.0,distanceToRock)*.29;
-          diffuseColor.rgb=mix(alpineSky(ray,cameraPosition),col*(1.0-meadowStorm.y*.78),through*(1.0-distanceHaze));
+          // Soft valley-floor mist at the mountain foothills blends the rock base into the meadow hills.
+          float footMist=smoothstep(16.0,-5.0,vRockWorld.y)*(.30+.34*meadowAir.x);
+          vec3 skyCol=alpineSky(ray,cameraPosition);
+          vec3 rockOut=mix(skyCol,col*(1.0-meadowStorm.y*.78),through*(1.0-distanceHaze));
+          vec3 mistCol=mix(vec3(.48,.58,.64),vec3(.74,.68,.56),meadowSky.y*.65)*(1.0-meadowStorm.y*.72);
+          diffuseColor.rgb=mix(rockOut,mistCol,footMist);
         `);
       };
       mountainRange(s,true,mountain);mountainRange(s,false,mountain);
-      spruceForest(s);meadowGrass(s);
+      spruceForest(s);meadowGrass(s);meadowRocks(s,rock);meadowShrubs(s);
       s.meadow.drifts=distantFlowers(s,s.meadow);
       updateMeadow(s,0);
     }
