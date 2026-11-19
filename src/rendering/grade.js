@@ -148,40 +148,55 @@
 
   const focusMat=new THREE.ShaderMaterial({
     uniforms:{
-      tScene:{value:null},tDepth:{value:null},camNear:{value:0.1},camFar:{value:160},
+      tScene:{value:null},tDepth:{value:null},tFoliage:{value:null},camNear:{value:0.1},camFar:{value:160},
       clearRange:{value:new THREE.Vector2()},radius:{value:new THREE.Vector2()},foreground:{value:0}
     },
     vertexShader:VERT,
     fragmentShader:`
-      uniform sampler2D tScene,tDepth;
+      uniform sampler2D tScene,tDepth,tFoliage;
       uniform float camNear,camFar;
       uniform vec2 clearRange,radius;
       uniform float foreground;
       varying vec2 vUv;
-      float depthAt(vec2 uv){
-        float z=texture2D(tDepth,uv).r;
-        return camNear*camFar/mix(camFar,camNear,z);
+      float linearDepth(float z){return camNear*camFar/mix(camFar,camNear,z);}
+      float depthAt(vec2 uv){return linearDepth(texture2D(tDepth,uv).r);}
+      float plantAt(vec2 uv,float depth){
+        float leaves=linearDepth(texture2D(tFoliage,uv).r);
+        return (1.0-smoothstep(.010+depth*.008,.036+depth*.025,abs(leaves-depth)))*
+          (1.0-step(camFar*.97,leaves));
       }
-      // Near silhouettes scatter into adjacent sharp pixels as the lens defocuses.
+      float lensRadius(float depth){
+        float focus=1.0/clearRange.y;
+        float radius=clamp((1.0/max(camNear,depth)-focus)/(1.0/clearRange.x-focus),0.0,1.0);
+        return pow(radius,.73);
+      }
       vec4 scatterNear(float depth){
-        float center=1.0-smoothstep(clearRange.x,clearRange.y,depth);
-        vec3 nearSum=vec3(0.0),farSum=vec3(0.0);
-        float nearWeight=0.0,farWeight=0.0;
-        for(int i=0;i<16;i++){
+        float leaf=plantAt(vUv,depth);
+        float center=leaf*lensRadius(depth);
+        // Player, ball and other near opaque surfaces retain their original color and edges.
+        if(leaf<.007&&depth<clearRange.y)return vec4(0.0);
+        vec3 source=texture2D(tScene,vUv).rgb,nearSum=source*center*.65,farSum=vec3(0.0);
+        float nearWeight=center*.65,farWeight=0.0;
+        for(int i=0;i<18;i++){
           float angle=float(i)*2.399963;
-          float r=sqrt((float(i)+.45)/16.0);
-          vec2 uv=vUv+vec2(cos(angle),sin(angle))*radius*r;
-          float w=(1.0-smoothstep(clearRange.x,clearRange.y,depthAt(uv)));
+          float ring=sqrt((float(i)+.55)/18.0);
+          float dst=ring*mix(.48,1.0,center);
+          vec2 uv=vUv+vec2(cos(angle),sin(angle))*radius*dst;
+          float tap=depthAt(uv),tapLeaf=plantAt(uv,tap),tapSize=lensRadius(tap);
+          float kernel=1.0-smoothstep(tapSize*.60,tapSize+.075,dst);
+          float front=1.0-smoothstep(depth+.08,depth+.34,tap);
+          float weight=tapLeaf*tapSize*kernel*mix(front,1.0,leaf);
+          float background=(1.0-tapLeaf)*smoothstep(depth-.1,depth+.05,tap);
           vec3 c=texture2D(tScene,uv).rgb;
-          nearSum+=c*w;nearWeight+=w;
-          farSum+=c*(1.0-w);farWeight+=1.0-w;
+          nearSum+=c*weight;nearWeight+=weight;
+          farSum+=c*background;farWeight+=background;
         }
-        float coverage=nearWeight/16.0;
-        vec3 source=texture2D(tScene,vUv).rgb;
-        vec3 background=mix(source,farSum/max(.001,farWeight),center*smoothstep(.2,1.4,farWeight));
-        vec3 color=mix(background,nearSum/max(.001,nearWeight),coverage);
-        float mask=max(center,smoothstep(0.0,.30,coverage));
-        return vec4(color*mask,mask);
+        float coverage=clamp(nearWeight/(2.0+8.0*center),0.0,1.0);
+        float amount=max(center*.98,smoothstep(0.0,.57,coverage)*.57);
+        if(amount<.001)return vec4(0.0);
+        vec3 background=mix(source,farSum/max(.001,farWeight),center*smoothstep(.15,1.9,farWeight));
+        vec3 color=mix(background,nearSum/max(.001,nearWeight),max(coverage,center*.69));
+        return vec4(color*amount,amount);
       }
       void main(){
         float depth=depthAt(vUv),blur=smoothstep(clearRange.x,clearRange.y,depth);
@@ -213,6 +228,7 @@
     uniforms:{
       tScene:{value:null},tBlur:{value:null},tDepth:{value:null},tFocus:{value:null},
       tVenueAir:{value:null},useVenueAir:{value:0},airStart:{value:15},airEnd:{value:30},
+      tFoliage:{value:null},forestGrade:{value:0},
       useDepth:{value:0},camNear:{value:0.1},camFar:{value:120},
       exposure:{value:1},contrast:{value:1},saturation:{value:1},lift:{value:0},
       warm:{value:new THREE.Vector3(1,1,1)},
@@ -223,7 +239,8 @@
     },
     vertexShader:VERT,
     fragmentShader:`
-      uniform sampler2D tScene,tBlur,tDepth,tFocus,tVenueAir;
+      uniform sampler2D tScene,tBlur,tDepth,tFocus,tVenueAir,tFoliage;
+      uniform float forestGrade;
       uniform float useDepth,useVenueAir,airStart,airEnd,camNear,camFar;
       uniform float exposure,contrast,saturation,lift;
       uniform vec3 warm;
@@ -249,7 +266,14 @@
         vec3 col=base;
         if(coc>.001||dofNearCoverage>.5){
           vec4 lens=texture2D(tFocus,vUv);
-          float amount=dofNearCoverage>.5?dofStrength:coc;
+          float amount=coc;
+          if(dofNearCoverage>.5){
+            float plantZ=texture2D(tFoliage,vUv).r;
+            float plant=camNear*camFar/mix(camFar,camNear,plantZ);
+            float visible=1.0-smoothstep(.015+lin*.008,.064+lin*.026,abs(plant-lin));
+            // Run the protection at full resolution after upsampling the bokeh.
+            amount=dofStrength*mix(visible,1.0,smoothstep(dofFar-.08,dofFar+.075,lin));
+          }
           col=mix(base,lens.rgb/max(.001,lens.a),lens.a*amount);
         }
 
@@ -268,6 +292,14 @@
         col=mix(col,graded,mix(shadowKeep,1.0,smoothstep(0.0,toeEnd,luma(col))));
         col=mix(vec3(luma(col)),col,saturation);
         col*=warm;
+        if(forestGrade>.5){
+          float luminance=luma(col);
+          float shade=1.0-smoothstep(.055,.43,luminance);
+          float sun=smoothstep(.29,.84,luminance);
+          vec3 cooled=col*(1.0-.10*shade)+vec3(.004,.012,.018)*shade;
+          vec3 warmed=cooled*mix(vec3(1.0),vec3(1.045,1.014,.94),sun);
+          col=mix(warmed,warmed/(.91+.16*max(.0,luminance)),sun*.46);
+        }
 
         vec2 d=(vUv-0.5)*vec2(aspect,1.0);
         col*=1.0-vigStrength*smoothstep(vigInner,vigOuter,length(d)/0.72);
@@ -277,7 +309,7 @@
     depthTest:false,depthWrite:false
   });
 
-  let rtScene=null,rtA=null,rtB=null,rtAir=null,rtFocus=null,rtW=0,rtH=0;
+  let rtScene=null,rtA=null,rtB=null,rtAir=null,rtFocus=null,rtFoliage=null,rtW=0,rtH=0;
   let focusActive=false;
   const focusDirection=new THREE.Vector3(),focusOffset=new THREE.Vector3();
   const focus={near:0,far:0,strength:0,foreground:false};
@@ -309,8 +341,8 @@
     renderer.getDrawingBufferSize(size);
     const w=Math.max(2,size.x|0),h=Math.max(2,size.y|0);
     if(w===rtW&&h===rtH&&rtScene)return;
-    disposeRT(rtScene);disposeRT(rtA);disposeRT(rtB);disposeRT(rtAir);disposeRT(rtFocus);
-    rtAir=rtFocus=null;
+    disposeRT(rtScene);disposeRT(rtA);disposeRT(rtB);disposeRT(rtAir);disposeRT(rtFocus);disposeRT(rtFoliage);
+    rtAir=rtFocus=rtFoliage=null;
     rtW=w;rtH=h;
     rtScene=makeRT(w,h,{depthBuffer:true,depthTexture:hasDepth});
     if(!FULL){rtA=rtB=null;return;}
@@ -365,7 +397,25 @@
     return .93*(1-THREE.MathUtils.smoothstep(height,.55,1.24));
   }
 
-  function drawFocus(weather,foreground,forest){
+  function drawFoliageDepth(forest){
+    if(!rtFoliage)rtFoliage=makeRT(Math.max(2,rtW>>1),Math.max(2,rtH>>1),{depthBuffer:true,depthTexture:true});
+    const mask=camera.layers.mask,background=scene.background,shadows=renderer.shadowMap.autoUpdate;
+    try{
+      camera.layers.set(forest.foregroundLayer);
+      scene.background=null;
+      renderer.shadowMap.autoUpdate=false;
+      renderer.setRenderTarget(rtFoliage);
+      renderer.clear(false,true,false);
+      baseRender(scene,camera);
+    }finally{
+      camera.layers.mask=mask;
+      scene.background=background;
+      renderer.shadowMap.autoUpdate=shadows;
+    }
+    return rtFoliage.depthTexture;
+  }
+
+  function drawFocus(weather,foreground,forest,foliage){
     if(!rtFocus){
       rtFocus=makeRT(Math.max(2,rtW>>2),Math.max(2,rtH>>2),{depthBuffer:false});
       rtFocus.texture.encoding=THREE.LinearEncoding;
@@ -373,9 +423,8 @@
     const meadow=weather&&!lookLocked;
     focus.foreground=foreground>.001;
     if(focus.foreground){
-      // A fixed near lens in the forest works on every object at the same depth.
-      focus.near=forest?.95:foregroundRange.x;
-      focus.far=forest?2.42:foregroundRange.y;
+      focus.near=forest ? .34 : foregroundRange.x;
+      focus.far=forest ? 4.15 : foregroundRange.y;
       focus.strength=foreground*(COARSE?.87:1);
     }else{
       camera.getWorldDirection(focusDirection);
@@ -384,10 +433,11 @@
       focus.far=Math.max(P.dofFar,focus.near+(meadow?57:30));
       focus.strength=(meadow?.53:P.dof)*(COARSE?.83:1);
     }
-    const u=focusMat.uniforms,pixels=focus.foreground?(forest?30:34):meadow?13.5:9.0;
+    const u=focusMat.uniforms,pixels=focus.foreground?(forest?39:34):meadow?13.5:9.0;
     u.foreground.value=focus.foreground?(forest?2:1):0;
     const scale=rtH/Math.max(1,renderer.domElement.clientHeight);
     u.tScene.value=rtScene.texture;u.tDepth.value=rtScene.depthTexture;
+    u.tFoliage.value=foliage;
     u.camNear.value=camera.near;u.camFar.value=camera.far;
     u.clearRange.value.set(focus.near,focus.far);
     u.radius.value.set(pixels*scale/rtW,pixels*scale/rtH);
@@ -395,9 +445,10 @@
     return rtFocus.texture;
   }
 
-  function composite(air,lens,forest){
+  function composite(air,lens,forest,foliage){
     const u=compMat.uniforms;
     u.tVenueAir.value=air;u.useVenueAir.value=air?1:0;
+    u.forestGrade.value=forest&&!lookLocked?1:0;u.tFoliage.value=foliage;
     u.airStart.value=forest?0:15.0;u.airEnd.value=forest?2.0:30.0;
     u.tScene.value=rtScene.texture;u.tBlur.value=(rtB||rtScene).texture;
     u.tDepth.value=rtScene.depthTexture||null;
@@ -429,6 +480,7 @@
     if(failed||!P.enabled||(!FULL&&!wantsFocus&&!(forest&&hasDepth))){
       if(atmosphere)atmosphere.fallback.visible=true;
       if(rtAir){disposeRT(rtAir);rtAir=null;}
+      if(rtFoliage){disposeRT(rtFoliage);rtFoliage=null;}
       return baseRender(sc,cam);
     }
     try{
@@ -448,9 +500,11 @@
       }
 
       const air=useAir?drawVenueAir(atmosphere):null;
-      const lens=wantsFocus&&rtScene.depthTexture?drawFocus(weather,foreground,forest):null;
+      const foliage=forest&&wantsFocus?drawFoliageDepth(forest):null;
+      if(!foliage&&rtFoliage){disposeRT(rtFoliage);rtFoliage=null;}
+      const lens=wantsFocus&&rtScene.depthTexture?drawFocus(weather,foreground,forest,foliage):null;
       focusActive=!!lens;
-      composite(air,lens,forest);
+      composite(air,lens,forest,foliage);
       renderer.setRenderTarget(null);
     }catch(e){
       /* 后期挂了不能连累游戏:退回直出,并且不再重试。 */
@@ -484,7 +538,7 @@
     get(){return Object.assign({},P);},
     setEnabled(on){P.enabled=!!on;},
     isActive(){return P.enabled&&!failed&&(FULL||focusActive);},
-    focusInfo(){return focusActive?{...focus}:null;},
+    focusInfo(){return focusActive?{...focus,vegetationOnly:!!rtFoliage}:null;},
     hasDepth,coarse:COARSE,weak:WEAK,mode:FX_MODE,
     /* 给回归测试用:场景 RT 到底有没有 Z-buffer。
        没有的话整场就没有遮挡判定 —— 这条只在 pointer:coarse 的 lite 档翻过车,

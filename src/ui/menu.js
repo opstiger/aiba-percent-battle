@@ -44,7 +44,7 @@
             </div>
           </div>${global.AIBALeaderboardHomeMarkup?global.AIBALeaderboardHomeMarkup():""}
         </div></div>
-        <div class="coverCredit">aiBA PERCENT BATTLE · ${typeof GAME_VERSION!=="undefined"?GAME_VERSION:"v2.39.0"}</div>
+        <div class="coverCredit">aiBA PERCENT BATTLE · ${typeof GAME_VERSION!=="undefined"?GAME_VERSION:"v2.40.0"}</div>
       </div>
     `);
     if(!global.BOOT_GATE_ACTIVE)global.scheduleCoverVideo();

@@ -95,7 +95,7 @@ try{
     if(result.low.firstPerson||!result.low.focus?.foreground||result.low.focus.far>=result.low.subjectDistance)
       throw Error("The meadow's low camera must soften only the foreground, preserving the player and hoop");
     const forest=result.rainforest.focus;
-    if(result.rainforest.firstPerson||!forest?.foreground||forest.near<.2||forest.far>=3||
+    if(result.rainforest.firstPerson||!forest?.foreground||!forest.vegetationOnly||!result.forestFirst.vegetationOnly||forest.near<.2||forest.far<=3||forest.far>6||
         forest.near!==result.forestFirst.near||forest.far!==result.forestFirst.far)
       throw Error("The rainforest lens must use the same depth range across cameras");
   }
