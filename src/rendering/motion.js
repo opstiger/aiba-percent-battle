@@ -830,6 +830,47 @@ function captureShotPose(o){
     guide:{arm:capturePoseNode(guide),elbow:capturePoseNode(guideEl),hand:capturePoseNode(o.handRoots&&o.handRoots[1],o.g)}
   };
 }
+// 求解肩到球心的两段链。第二段包含前臂与球在掌内的偏移，
+// 让手腕放松时球心留在原轨迹上，辅助手也能沿用原握球点。
+const shotWristIK={
+  axis:new THREE.Vector3(),palm:new THREE.Vector3(),fore:new THREE.Vector3(),
+  target:new THREE.Vector3(),toward:new THREE.Vector3(),pole:new THREE.Vector3(),
+  upper:new THREE.Vector3(),lower:new THREE.Vector3(),goal:new THREE.Vector3(),
+  wrist:new THREE.Quaternion(),turn:new THREE.Quaternion()
+};
+function relaxShotWrist(o,weight){
+  const limit=o.shotStyle&&o.shotStyle.wristLimit;
+  if(!limit||weight<=0)return;
+  const arm=o.arms[0],elbow=o.elbows[0],hand=o.handRoots&&o.handRoots[0],grip=o.ballGrips&&o.ballGrips[0];
+  if(!hand||!grip)return;
+  const {axis,palm,fore,target,toward,pole,upper,lower,goal,wrist,turn}=shotWristIK;
+  palm.set(0,-1,0).applyQuaternion(hand.quaternion);
+  fore.copy(hand.position).normalize();
+  const bend=palm.angleTo(fore);
+  if(bend<=limit)return;
+  axis.crossVectors(palm,fore);
+  if(axis.lengthSq()<1e-8)return;
+  wrist.copy(hand.quaternion).premultiply(turn.setFromAxisAngle(axis.normalize(),(bend-limit)*weight));
+  upper.copy(elbow.position).applyQuaternion(arm.quaternion);
+  target.copy(grip.position).applyQuaternion(hand.quaternion).add(hand.position)
+    .applyQuaternion(elbow.quaternion).applyQuaternion(arm.quaternion).add(upper);
+  lower.copy(grip.position).applyQuaternion(wrist).add(hand.position);
+  const a=upper.length(),b=lower.length(),distance=target.length();
+  if(distance<1e-6)return;
+  toward.copy(target).multiplyScalar(1/distance);
+  const reach=clamp(distance,Math.abs(a-b)+.001,a+b-.001);
+  const along=(reach*reach+a*a-b*b)/(2*reach);
+  pole.copy(upper).addScaledVector(toward,-upper.dot(toward));
+  if(pole.lengthSq()<1e-8)return;
+  goal.copy(toward).multiplyScalar(along)
+    .addScaledVector(pole.normalize(),Math.sqrt(Math.max(0,a*a-along*along)));
+  arm.quaternion.premultiply(turn.setFromUnitVectors(upper.normalize(),axis.copy(goal).normalize()));
+  fore.copy(toward).multiplyScalar(reach).sub(goal)
+    .applyQuaternion(turn.copy(arm.quaternion).invert()).normalize();
+  palm.copy(lower).applyQuaternion(elbow.quaternion).normalize();
+  elbow.quaternion.premultiply(turn.setFromUnitVectors(palm,fore));
+  hand.quaternion.copy(wrist);
+}
 function applyShotSetPose(o,c,active){
   const curve=c||{};
   const isPlayer=typeof player!=="undefined"&&o===player;
@@ -882,6 +923,7 @@ function applyShotSetPose(o,c,active){
   // 下蹲蓄力时双臂随身体轻微沉一下；(1-k) 保证到最高点时这份修饰已经归零。
   addParentXRot(shoot,-.12*dip*(1-k));
   addParentXRot(guide,-.20*dip*(1-k));
+  relaxShotWrist(o,Math.max(holdIn,k));
 
   // 握球方式从持球帧起就与最高点一致，手指只在非玩家淡入时才从松弛态收拢。
   const grip=Math.max(holdIn,k);
@@ -922,6 +964,8 @@ function applyShotFollowThroughPose(o,state,pose){
   applyQuat(guide,guideStart.arm,SHOT_FOLLOW_POSE.guide.armQuat,shoulderK);
   applyQuat(guideEl,guideStart.elbow,SHOT_FOLLOW_POSE.guide.elbowQuat,elbowK);
   applyShootingHandWorldFollow(o,state,release.hand);
+  if(state.age!=null&&!state.recover)
+    relaxShotWrist(o,1-ease01((state.age-SHOT_WRIST_SNAP_DELAY)/SHOT_WRIST_SNAP_SECONDS));
   holdGuideHandActorPose(o,state,guideStart.hand);
   applyFollowThroughFingers(o,fingerK);
 }
@@ -1637,6 +1681,7 @@ function poseGuy(o,c,lk,landingImpact){
     o.g.userData.shotReadyLowerBlend=loadBlend;
     o.g.userData.shotLoad=load;
     o.g.userData.shotDip=c.dip||0;
+    o.g.userData.shotJump=c.jmp||0;
   }
   /* 待机呼吸:站定时人不该是一尊雕像。用 G.tNow 驱动,不需要额外状态。
      **只在完全没有投篮动作时生效**:蓄力/举球/起跳/跟随/落地任何一项一介入就退到 0。
@@ -1747,6 +1792,7 @@ function poseCatchHands(o,state,dt){
     fromCatch(shootHand,rightHandCatch||
       (tstageCatch&&tstageCatch.shooting||SHOT_CATCH_POSE.shooting).handQuat);
     fromCatch(guideHand,(tstageCatch&&tstageCatch.guide||SHOT_CATCH_POSE.guide).handQuat);
+    relaxShotWrist(o,1);
     (o.fingerJoints||[]).forEach((fingers,handIndex)=>fingers.forEach((finger,fingerIndex)=>{
       const targetX=fingerCurlValue(finger);
       setFingerTarget(o,handIndex,fingerIndex,
@@ -1798,6 +1844,7 @@ function poseCatchHands(o,state,dt){
     }));
     if(o.g)o.g.userData.catchPoseSource="legacy";
   }
+  relaxShotWrist(o,ease01((progress-.78)/.22));
   if(o.g)o.g.userData.catchPosePhase="incoming";
 }
 /* 出手点高低。偏移随 lift 淡入 —— 持球待机和蓄力的球心保持原值,

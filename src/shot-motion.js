@@ -171,18 +171,20 @@
     const shot=typeof curShot==="function"?curShot():null;
     return shot&&shot.super?1.15:(shot&&shot.deep!=null?1.08:1);
   }
+  function followRecovery(){
+    const style=typeof player!=="undefined"&&player&&player.shotStyle;
+    const hold=style&&Number.isFinite(style.followHold)?style.followHold:(followLong?FLOW_FOLLOW_HOLD:FOLLOW_HOLD);
+    const fade=style&&(style.flow||Number.isFinite(style.followHold))?FLOW_FOLLOW_FADE:FOLLOW_FADE;
+    return ease01((followAge-FOLLOW_EXTEND-hold)/fade);
+  }
   function followState(dt){
     const force=followForce();
     if(!followActive)return {active:false,extend:0,follow:0,recover:1,age:followAge,force};
     followAge+=Math.max(0,Math.min(.08,dt||0));
     const extend=ease01(followAge/FOLLOW_EXTEND);
-    /* 连贯版(style.flow):收手放慢,不要一甩到底再急停 */
-    const fade=(typeof player!=="undefined"&&player&&player.shotStyle&&player.shotStyle.flow)?FLOW_FOLLOW_FADE:FOLLOW_FADE;
-    /* 真人出手后投篮手会一直举到落地之后(约 0.5 秒以上)才放下 */
-    const hold=followLong?FLOW_FOLLOW_HOLD:FOLLOW_HOLD;
-    const recover=ease01((followAge-FOLLOW_EXTEND-hold)/fade);
+    const recover=followRecovery();
     const follow=extend*(1-recover);
-    if(followAge>=FOLLOW_EXTEND+hold+fade){
+    if(recover>=1){
       followActive=false;
       return {active:false,extend:1,follow:0,recover:1,age:followAge,force};
     }
@@ -589,7 +591,7 @@
        模式层想在出手后接自己的定格姿势时，按它渐入，别在跟随中途硬切。 */
     followRecover(){
       if(!followActive)return 1;
-      return ease01((followAge-FOLLOW_EXTEND-FOLLOW_HOLD)/FOLLOW_FADE);
+      return followRecovery();
     },
     captureShotPose:o=>typeof captureShotPose==="function"?captureShotPose(o):null
   });

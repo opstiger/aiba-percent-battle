@@ -38,7 +38,16 @@
   const DANCE_BONES=["Hips","Spine","Spine1","Spine2","Neck","Head","LeftShoulder","LeftArm","LeftForeArm","LeftHand","RightShoulder","RightArm","RightForeArm","RightHand","LeftUpLeg","LeftLeg","LeftFoot","LeftToeBase","RightUpLeg","RightLeg","RightFoot","RightToeBase"];
   const HEIGHT=1.84;                 // 游戏单位。AIBA 方块人约 1.8
   const BALL_R=.16,BALL_VIS=.78;     // 游戏球半径 0.16 偏大;手里的球只在画面上缩到 0.78(和切面皮套一致),不碰物理
+  const SHOT_WRIST_LIMIT=Math.PI/4;
+  const SHOT_AIR={
+    star30:{hip:.10,chest:.15,lean:.055,roll:.025},
+    star8:{hip:.18,chest:.23,lean:.145,roll:.045},
+    star1:{hip:.10,chest:.17,lean:.083,roll:.021},
+    // 15 号跟随汤普森的主骨架胸腔，写实层只补轻微开髋。
+    star15:{hip:.045,chest:0,lean:0,roll:0}
+  };
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+  const smooth=v=>{const k=clamp(v,0,1);return k*k*(3-2*k);};
   const V=(x,y,z)=>new T.Vector3(x,y,z);
   const sceneNow=()=>typeof scene!=="undefined"?scene:null;
   const holdingNow=b=>!!(b&&b.visible&&b.parent&&b.parent.name==="ballGrip");
@@ -118,6 +127,17 @@
       }
       aim(L.fore,L.hand,TV().copy(wrist).sub(wpos(L.fore)).normalize());
       return wrist;
+    }
+    /* 限制前臂到掌骨的夹角。掌向和指向共用同一旋转，球心由修正后的掌坐标重新求出。 */
+    function shootingWrist(A,f,n,limit){
+      A.F.copy(f);A.N.copy(n);
+      const fore=wpos(A.L.hand).sub(wpos(A.L.fore)).normalize();
+      const bend=fore.angleTo(f);
+      if(bend<=limit)return;
+      const axis=TV().crossVectors(f,fore);
+      if(axis.lengthSq()<1e-8)axis.copy(n);
+      const q=TQ().setFromAxisAngle(axis.normalize(),bend-limit);
+      A.F.applyQuaternion(q);A.N.applyQuaternion(q);
     }
     const LIMB={};
     const FINGERS=["Index","Middle","Ring","Pinky"],FEET=["LeftFoot","RightFoot","LeftToeBase","RightToeBase","LeftToe_End","RightToe_End"];
@@ -336,7 +356,7 @@
     const I0=new T.Quaternion(),Xax=V(1,0,0),Yax=V(0,1,0),Zax=V(0,0,1);
     const _armSlots={R:{},L:{}},_prevPole={R:new T.Vector3(),L:new T.Vector3(),hasR:false,hasL:false};
     const _guideOff=new T.Vector3(),_ballWorld=new T.Vector3(),_ballShift=new T.Vector3();
-    function retarget(){
+    function retarget(atRelease=false){
       _vPtr=0;_qPtr=0;
       const guy=state.player,g=guy.g,ball=ballNow(),root=state.root,M=state.M;
       g.updateWorldMatrix(true,true);
@@ -397,6 +417,25 @@
         qPel.multiply(ax(.4));qSp.multiply(ax(.45));qCh.multiply(ax(.15));
       }
       const qH=guy.headRoot?rot(guy.headRoot):TQ().copy(qCh);
+      const airborneShot=air>.004&&ud.shotJump>0&&!moving&&!pregameLift(guy);
+      if(airborneShot){
+        const sig=SHOT_AIR[state.modelId==="star30b"?"star30":state.modelId]||SHOT_AIR.star1;
+        const hip=smooth(air/.15),chest=smooth((air-.022)/.18);
+        // 起跳先开髋，胸肩稍后到位。下肢仍以原脚踝目标反解，落地平滑卸掉这些角度。
+        qPel.premultiply(TQ().setFromAxisAngle(Yax,sig.hip*hip));
+        qPel.premultiply(TQ().setFromAxisAngle(Xax,-sig.lean*.30*hip));
+        qPel.premultiply(TQ().setFromAxisAngle(Zax,-sig.roll*.55*hip));
+        qCh.premultiply(TQ().setFromAxisAngle(Yax,sig.chest*chest));
+        qCh.premultiply(TQ().setFromAxisAngle(Xax,-sig.lean*chest));
+        qCh.premultiply(TQ().setFromAxisAngle(Zax,sig.roll*chest));
+        qSp.copy(qPel).slerp(qCh,.55);
+        const aim=typeof HOOP!=="undefined"
+          ?TV().copy(HOOP).applyMatrix4(gInv).multiply(Sc).sub(restPos.Head)
+          :TV(0,.17,1);
+        const yaw=clamp(Math.atan2(aim.x,aim.z),-.40,.40);
+        const pitch=clamp(Math.atan2(aim.y,Math.hypot(aim.x,aim.z)),-.05,.29);
+        qH.slerp(TQ().setFromAxisAngle(Yax,yaw).multiply(TQ().setFromAxisAngle(Xax,-pitch)),hip);
+      }
       const put=(n,q)=>{if(B[n])setW(B[n],TQ().copy(q).multiply(restW[n]));};
       const putShallow=(n,q)=>{
         const bone=B[n];if(!bone)return;
@@ -451,20 +490,38 @@
       const setHand=A=>setW(B[A.L.hand],basisQ(A.F,A.N).multiply(A.L.restBasisInv).multiply(restW[A.L.hand]));
       curlFingers("Right",LIMB.armR,.2+.3*rw*(1-state.armHold)+state.holdCurl*hw);curlFingers("Left",LIMB.armL,.2+.3*rw*(1-state.armHold)+state.holdCurl*hw);
       const R=_armSlots.R,Lf=_armSlots.L;
-      solveLimb(R.L,R.free,R.pole);setHand(R);
+      solveLimb(R.L,R.free,R.pole);
       /* 球:贴在投篮手掌心。辅助手按 AIBA 里"手腕相对球心"的关系摆到这颗球旁边 */
       let ballK=null,ballR=0;
       const grip=guy.ballGrips&&guy.ballGrips[R.a];
-      /* 出手瞬间:手腕已经压下去了,球要从指尖滚出去,不能还停在掌心 */
-      let roll=0;if(cfg.player)try{const st=window.AIBAMotion&&AIBAMotion.stats&&AIBAMotion.stats();if(st&&st.pendingRelease&&st.followActive)roll=clamp(st.followAge/.092,0,1);}catch(e){}
+      /* 球仍在手上时逐渐从掌根移到指腹；压腕沿用主动作的离球后时序。 */
+      const shot=cfg.player&&window.AIBAMotion?window.AIBAMotion.stats():null;
+      const following=shot&&shot.followActive&&(!holding||shot.pendingRelease||atRelease);
+      const roll=following?smooth(shot.followAge/SHOT_WRIST_SNAP_DELAY):0;
+      const wristFollow=following?1-smooth((shot.followAge-SHOT_WRIST_SNAP_DELAY)/.16):0;
       if(holding&&ball){
-        const br=BALL_R*Math.max(ball.scale.x,.01);ballR=br;
+        const br=BALL_R*BALL_VIS*Math.max(ball.scale.x,.01);ballR=br;
         /* 球心相对手腕的向量直接取自 AIBA 那只手(方块手里球本来就在掌心),手的朝向已经抄过来了 */
         /* 这只手比方块手小,AIBA 手腕到球心的距离照搬会让球悬在掌心外面:只保留侧向偏移,沿指向/掌心法向按这只手的尺寸重新定 */
         const rel0=grip?loc(grip).sub(R.Wa):TV();
         const side=TV().copy(rel0).addScaledVector(R.F,-rel0.dot(R.F)).addScaledVector(R.N,-rel0.dot(R.N)).multiplyScalar(.4);
-        ballK=wpos(R.L.hand).add(side).addScaledVector(R.F,state.ballAlong+.11*roll*roll).addScaledVector(R.N,br+state.ballLift+.01*roll);
+        const along=state.ballAlong+.055*roll,lift=br+state.ballLift;
+        const f=TV().copy(R.F),n=TV().copy(R.N);
+        const limit=SHOT_WRIST_LIMIT-.15*roll;
+        const wrist=wpos(R.L.hand);
+        const original=TV().copy(wrist).addScaledVector(f,along).addScaledVector(n,lift);
+        shootingWrist(R,f,n,limit);
+        const target=original.addScaledVector(R.F,-along).addScaledVector(R.N,-lift);
+        // 保住接球后的持球点及举球线，允许肘部让出空间，与腕部一起调整。
+        solveLimb(R.L,TV().copy(wrist).lerp(target,.82),R.pole);
+        shootingWrist(R,f,n,limit);
+        ballK=wpos(R.L.hand).add(side).addScaledVector(R.F,along).addScaledVector(R.N,lift);
+      }else if(airborneShot||wristFollow>0){
+        // 离球后延续手腕的伸展，在自然随挥中放宽限幅。
+        const limit=SHOT_WRIST_LIMIT-.15*roll*wristFollow;
+        shootingWrist(R,TV().copy(R.F),TV().copy(R.N),limit);
       }
+      setHand(R);
       const tL=TV().copy(Lf.free);
       if(ballK&&grip){
         const rel=TV().copy(Lf.Wa).sub(loc(grip)).multiplyScalar(.86);
@@ -594,8 +651,8 @@
            表现为球员每隔几帧抽一下、像几个动作来回切。 */
         const mirror=(sc.scale&&sc.scale.y<0)||state.aux>0;
         const held=ballNow(),fpBall=fpBallNow();
-        shrinkBalls(guy.g,held,fpOn?fpBall:null);
         if(!mirror)try{retarget();}catch(e){oops(e);}
+        shrinkBalls(guy.g,held,fpOn?fpBall:null);
         root.visible=true;state.mesh.visible=tp;state.fp.visible=fpOn;
         if(tp)hideTree(guy.g,held,null);
         _movedN=0;
@@ -622,6 +679,14 @@
         }
       };
     }
+    if(cfg.player)state.heldBallPosition=(guy,out)=>{
+      if(!state.ready||state.player!==guy||state.modelId!==wantId()||!holdingNow(ballNow()))return false;
+      // 采本帧的真实掌上球位，沿用渲染的骨架。游戏时钟相同，随后渲染不会再推进一次过渡。
+      try{retarget(true);}catch(e){return false;}
+      if(!state.ballWorld)return false;
+      out.copy(state.ballWorld);
+      return true;
+    };
     ALL.push(state);
     hookRenderer();
     return state;

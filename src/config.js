@@ -124,6 +124,9 @@
        hold  随挥定格秒数（出手后投篮手臂定住）：雷·阿伦、汤普森长，艾弗森短
      turn 在 2026-09-24 整体放大 2.5 倍：原来最大 .11 弧度（6°），隔着半场看不出侧身。 */
   const DEFAULT_SHOT_STYLE=Object.freeze({kick:1,lean:0,turn:0,release:0,setPoint:0,drift:0,jump:1,fade:0,hold:0});
+  const THOMPSON_SHOT_STYLE=Object.freeze({
+    kick:.10,release:.015,jump:.90,wristLimit:Math.PI/4,followHold:.43
+  });
   const SHOT_STYLES=Object.freeze({
     /* 踢腿是这套差异里**唯一隔着半个球场都看得出来**的量,所以跨度给到 0.10~1.95(19.5 倍)。
        第一版我把这一项压在 0.20~1.60,而且把麦迪配成了倒数第二小 —— 完全配反了。
@@ -155,10 +158,10 @@
     bird:{kick:.35,lean:0,turn:0.075,release:.02,setPoint:.06,drift:0,jump:0.78,fade:0.05,hold:0.55},
     korver:{kick:.20,lean:0,turn:0.0,release:.02,setPoint:-.03,drift:0,jump:0.72,fade:0,hold:0.65},
     /* 写实模型试验角色:flow=1 走连贯版蓄力曲线(motion.js shotCurves / shot-physics.js),其他球星不受影响 */
-    star8:{flow:1},
-    star1:{flow:1},
-    star15:{flow:1},
-    star30:{flow:1},
+    star8:{flow:1,followHold:.44},
+    star1:{flow:1,followHold:.36},
+    star15:THOMPSON_SHOT_STYLE,
+    star30:{flow:1,followHold:.38},
     star3:{flow:1},
     star30b:{flow:1},
     cat1:{flow:1},
@@ -167,7 +170,7 @@
     "sue-bird":{kick:.18,lean:0,turn:0.0,release:-.01,setPoint:-.02,drift:0,jump:0.88,fade:0,hold:0.5},
     /* 库里 / 汤普森:几乎不踢腿。两个人是全表最小值,和麦迪拉开一个数量级 */
     curry:{kick:.15,lean:0,turn:0.05,release:-.01,setPoint:-.06,drift:.05,jump:0.85,fade:0,hold:0.35},
-    thompson:{kick:.10,lean:0,turn:0.0,release:.015,setPoint:0,drift:0,jump:0.9,fade:0,hold:0.75}
+    thompson:THOMPSON_SHOT_STYLE
   });
   /* 惯用手。没写 hand 的一律右手 —— 老球星因此逐位不变。 */
   function shootingHandFor(star){

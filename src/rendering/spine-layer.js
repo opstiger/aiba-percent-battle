@@ -51,7 +51,7 @@
       ref:canWeak?new WeakRef(o):o,legSet,
       pitch:spring(),yaw:spring(),roll:spring(),
       lastPos:null,speed:0,wasAir:false,lastBall:null,saved:[],applied:false,
-      groundY:null,jumpH:0,ballWasVisible:false,releaseT:-1,holdPose:null,sinceRelease:9
+      groundY:null,jumpH:0,shotAir:0,ballWasVisible:false,releaseT:-1,holdPose:null,sinceRelease:9
     });
   }
   function deref(a){return canWeak?a.ref.deref():a.ref;}
@@ -117,7 +117,14 @@
     // 签名：后仰（离地越高倒得越多）
     const fade=Number(st.fade)||0;
     if(fade)pitchT+=fade*clamp(a.jumpH/.28,0,1);
-    const yawT=air?0:clamp(swing*.32*(.35+.65*run),-.24,.24);
+    let yawT=air?0:clamp(swing*.32*(.35+.65*run),-.24,.24);
+    // 写实骨架在自己的髋、腰、胸骨上解算。分段球员仍用这里的胸腔叠加。
+    const freshPose=typeof G!=="undefined"&&Math.abs(G.tNow-o.poseT)<.06;
+    const shotAir=!st.flow&&air&&freshPose?clamp((o.g.userData.shotJump||0)/.8,0,1):0;
+    a.shotAir=shotAir*shotAir*(3-2*shotAir);
+    const shoulder=clamp(.06+(Number(st.turn)||0)*.32,.04,.15);
+    yawT+=shoulder*a.shotAir;
+    pitchT+=.038*a.shotAir;
     // 落地缓冲
     if(a.wasAir&&!air)a.pitch.v-=1.5;
     a.wasAir=air;
@@ -155,7 +162,8 @@
   }
 
   /* ---------- 应用 / 复原 ---------- */
-  const tmpQ=new THREE.Quaternion(),tmpE=new THREE.Euler(0,0,0,"YXZ"),tmpV=new THREE.Vector3();
+  const tmpQ=new THREE.Quaternion(),headQ=new THREE.Quaternion(),headAim=new THREE.Quaternion();
+  const tmpE=new THREE.Euler(0,0,0,"YXZ"),tmpV=new THREE.Vector3();
   const nodeBuf=[];
   function save(a,n){
     /* 存欧拉角原值，不存四元数：写回四元数时 three 会从它反算欧拉角，同一朝向有两种写法，
@@ -207,7 +215,12 @@
         save(a,n);
         tmpV.set(n.position.x,n.position.y-PIVOT_Y,n.position.z).applyQuaternion(tmpQ);
         n.position.set(tmpV.x,tmpV.y+PIVOT_Y,tmpV.z);
-        n.quaternion.premultiply(tmpQ);
+        if(n===o.headRoot&&a.shotAir>0){
+          // 头随上身位移，朝向只跟一小部分，让视线留在篮筐方向。
+          headAim.setFromEuler(tmpE.set(-.095,-.20,0,"YXZ"));
+          headQ.copy(tmpQ).slerp(headAim,a.shotAir*.78);
+          n.quaternion.premultiply(headQ);
+        }else n.quaternion.premultiply(tmpQ);
       }
     }
     a.applied=a.saved.length>0;
