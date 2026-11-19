@@ -68,13 +68,15 @@ async function probe(kind){
     await page.waitForFunction(()=>AIBAGrade.focusInfo()?.foreground&&
       environmentRoot.userData.placeState?.rainforest?.fallback.visible===false,null,{timeout:20000});
     const rainforest=await page.evaluate(()=>({
-      firstPerson:camera.userData.firstPerson,focus:AIBAGrade.focusInfo(),
-      subjectDepth:environmentRoot.userData.placeState.rainforest.uniforms.subjectScreen.value.z
+      firstPerson:camera.userData.firstPerson,focus:AIBAGrade.focusInfo()
     }));
+    await page.evaluate(()=>setCameraMode(0,{silent:true}));
+    await page.waitForFunction(()=>camera.userData.firstPerson&&AIBAGrade.focusInfo()?.foreground,null,{timeout:20000});
+    const forestFirst=await page.evaluate(()=>AIBAGrade.focusInfo());
     const lunar=await capture("lunarCrater",0,"round");
     const third=await capture(null,1,"round");
     const cinematic=await capture(null,0,"pregame");
-    return {coarse:await page.evaluate(()=>matchMedia("(pointer:coarse)").matches),indoor,meadow,meadowThird,low,rainforest,lunar,third,cinematic};
+    return {coarse:await page.evaluate(()=>matchMedia("(pointer:coarse)").matches),indoor,meadow,meadowThird,low,rainforest,forestFirst,lunar,third,cinematic};
   }finally{await ctx.close();}
 }
 
@@ -92,9 +94,10 @@ try{
     if(result.third.focus||result.meadowThird.focus||result.cinematic.focus)throw Error("Focus leaked into a standard third-person or cinematic camera");
     if(result.low.firstPerson||!result.low.focus?.foreground||result.low.focus.far>=result.low.subjectDistance)
       throw Error("The meadow's low camera must soften only the foreground, preserving the player and hoop");
-    if(result.rainforest.firstPerson||!result.rainforest.focus?.foreground||
-        result.rainforest.focus.far>=result.rainforest.subjectDepth)
-      throw Error("The rainforest lens must cover the foreground while keeping the tracked player sharp");
+    const forest=result.rainforest.focus;
+    if(result.rainforest.firstPerson||!forest?.foreground||forest.near<.2||forest.far>=3||
+        forest.near!==result.forestFirst.near||forest.far!==result.forestFirst.far)
+      throw Error("The rainforest lens must use the same depth range across cameras");
   }
 }finally{
   await B.close();

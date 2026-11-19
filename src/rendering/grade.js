@@ -162,8 +162,30 @@
         float z=texture2D(tDepth,uv).r;
         return camNear*camFar/mix(camFar,camNear,z);
       }
+      // Near silhouettes scatter into adjacent sharp pixels as the lens defocuses.
+      vec4 scatterNear(float depth){
+        float center=1.0-smoothstep(clearRange.x,clearRange.y,depth);
+        vec3 nearSum=vec3(0.0),farSum=vec3(0.0);
+        float nearWeight=0.0,farWeight=0.0;
+        for(int i=0;i<16;i++){
+          float angle=float(i)*2.399963;
+          float r=sqrt((float(i)+.45)/16.0);
+          vec2 uv=vUv+vec2(cos(angle),sin(angle))*radius*r;
+          float w=(1.0-smoothstep(clearRange.x,clearRange.y,depthAt(uv)));
+          vec3 c=texture2D(tScene,uv).rgb;
+          nearSum+=c*w;nearWeight+=w;
+          farSum+=c*(1.0-w);farWeight+=1.0-w;
+        }
+        float coverage=nearWeight/16.0;
+        vec3 source=texture2D(tScene,vUv).rgb;
+        vec3 background=mix(source,farSum/max(.001,farWeight),center*smoothstep(.2,1.4,farWeight));
+        vec3 color=mix(background,nearSum/max(.001,nearWeight),coverage);
+        float mask=max(center,smoothstep(0.0,.30,coverage));
+        return vec4(color*mask,mask);
+      }
       void main(){
         float depth=depthAt(vUv),blur=smoothstep(clearRange.x,clearRange.y,depth);
+        if(foreground>1.5){gl_FragColor=scatterNear(depth);return;}
         float mask=smoothstep(clearRange.x-1.6,clearRange.x+2.4,depth);
         if(foreground>.5)blur=mask=1.0-smoothstep(clearRange.x,clearRange.y,depth);
         if(mask<.002){gl_FragColor=vec4(0.0);return;}
@@ -191,26 +213,24 @@
     uniforms:{
       tScene:{value:null},tBlur:{value:null},tDepth:{value:null},tFocus:{value:null},
       tVenueAir:{value:null},useVenueAir:{value:0},airStart:{value:15},airEnd:{value:30},
-      lensBall:{value:new THREE.Vector4()},
       useDepth:{value:0},camNear:{value:0.1},camFar:{value:120},
       exposure:{value:1},contrast:{value:1},saturation:{value:1},lift:{value:0},
       warm:{value:new THREE.Vector3(1,1,1)},
       bloomThreshold:{value:.7},bloomStrength:{value:.35},
       shadowKeep:{value:.32},toeEnd:{value:.26},
       vigStrength:{value:.3},vigInner:{value:.45},vigOuter:{value:1.1},aspect:{value:1},
-      dofStrength:{value:.4},dofNear:{value:16},dofFar:{value:46},dofForeground:{value:0}
+      dofStrength:{value:.4},dofNear:{value:16},dofFar:{value:46},dofForeground:{value:0},dofNearCoverage:{value:0}
     },
     vertexShader:VERT,
     fragmentShader:`
       uniform sampler2D tScene,tBlur,tDepth,tFocus,tVenueAir;
       uniform float useDepth,useVenueAir,airStart,airEnd,camNear,camFar;
-      uniform vec4 lensBall;
       uniform float exposure,contrast,saturation,lift;
       uniform vec3 warm;
       uniform float bloomThreshold,bloomStrength;
       uniform float shadowKeep,toeEnd;
       uniform float vigStrength,vigInner,vigOuter,aspect;
-      uniform float dofStrength,dofNear,dofFar,dofForeground;
+      uniform float dofStrength,dofNear,dofFar,dofForeground,dofNearCoverage;
       varying vec2 vUv;
       float luma(vec3 c){return dot(c,vec3(0.2126,0.7152,0.0722));}
       void main(){
@@ -225,17 +245,12 @@
           lin=2.0*camNear*camFar/(camFar+camNear-z*(camFar-camNear));
           float blurAmount=smoothstep(dofNear,dofFar,lin);
           coc=mix(blurAmount,1.0-blurAmount,dofForeground)*dofStrength*useDepth;
-          if(lensBall.w>.5){
-            vec2 screen=(vUv*2.0-1.0)*vec2(aspect,1.0);
-            float inBall=(1.0-smoothstep(.10,.23,length(screen-lensBall.xy)))*
-              (1.0-smoothstep(.13,.37,abs(lin-lensBall.z)));
-            coc*=1.0-inBall;
-          }
         }
         vec3 col=base;
-        if(coc>.001){
+        if(coc>.001||dofNearCoverage>.5){
           vec4 lens=texture2D(tFocus,vUv);
-          col=mix(base,lens.rgb/max(.001,lens.a),lens.a*coc);
+          float amount=dofNearCoverage>.5?dofStrength:coc;
+          col=mix(base,lens.rgb/max(.001,lens.a),lens.a*amount);
         }
 
         col+=max(blur-bloomThreshold,0.0)*bloomStrength;
@@ -350,35 +365,27 @@
     return .93*(1-THREE.MathUtils.smoothstep(height,.55,1.24));
   }
 
-  function rainforestFocus(forest){
-    const u=forest.uniforms,subject=u.subjectScreen.value,hoop=u.hoopScreen.value;
-    const clearDepth=Math.min(subject.w?subject.z:100,hoop.w?hoop.z:100);
-    const end=Math.min(3.95,clearDepth-.70);
-    if(end<.57)return 0;
-    foregroundRange.set(Math.min(1.41,end*.58),end);
-    return .88;
-  }
-
   function drawFocus(weather,foreground,forest){
     if(!rtFocus){
       rtFocus=makeRT(Math.max(2,rtW>>2),Math.max(2,rtH>>2),{depthBuffer:false});
       rtFocus.texture.encoding=THREE.LinearEncoding;
     }
-    camera.getWorldDirection(focusDirection);
-    const rimDepth=focusOffset.copy(HOOP).sub(camera.position).dot(focusDirection);
     const meadow=weather&&!lookLocked;
-    // The sharp zone includes ball, shooter and rim. Looking around or following a shot doesn't rack the lens.
-    focus.near=Math.max(P.dofNear,Math.max(0,rimDepth)+7,meadow?23:12);
-    focus.far=Math.max(P.dofFar,focus.near+(meadow?57:30));
-    focus.strength=(meadow?.53:P.dof)*(COARSE?.83:1);
     focus.foreground=foreground>.001;
     if(focus.foreground){
-      focus.near=foregroundRange.x;
-      focus.far=foregroundRange.y;
+      // A fixed near lens in the forest works on every object at the same depth.
+      focus.near=forest?.95:foregroundRange.x;
+      focus.far=forest?2.42:foregroundRange.y;
       focus.strength=foreground*(COARSE?.87:1);
+    }else{
+      camera.getWorldDirection(focusDirection);
+      const rimDepth=focusOffset.copy(HOOP).sub(camera.position).dot(focusDirection);
+      focus.near=Math.max(P.dofNear,Math.max(0,rimDepth)+7,meadow?23:12);
+      focus.far=Math.max(P.dofFar,focus.near+(meadow?57:30));
+      focus.strength=(meadow?.53:P.dof)*(COARSE?.83:1);
     }
-    const u=focusMat.uniforms,pixels=focus.foreground?(forest?38:34):meadow?13.5:9.0;
-    u.foreground.value=focus.foreground?1:0;
+    const u=focusMat.uniforms,pixels=focus.foreground?(forest?30:34):meadow?13.5:9.0;
+    u.foreground.value=focus.foreground?(forest?2:1):0;
     const scale=rtH/Math.max(1,renderer.domElement.clientHeight);
     u.tScene.value=rtScene.texture;u.tDepth.value=rtScene.depthTexture;
     u.camNear.value=camera.near;u.camFar.value=camera.far;
@@ -391,9 +398,7 @@
   function composite(air,lens,forest){
     const u=compMat.uniforms;
     u.tVenueAir.value=air;u.useVenueAir.value=air?1:0;
-    u.airStart.value=forest?4.0:15.0;u.airEnd.value=forest?17.0:30.0;
-    if(forest)u.lensBall.value.copy(forest.uniforms.ballScreen.value);
-    else u.lensBall.value.w=0;
+    u.airStart.value=forest?0:15.0;u.airEnd.value=forest?2.0:30.0;
     u.tScene.value=rtScene.texture;u.tBlur.value=(rtB||rtScene).texture;
     u.tDepth.value=rtScene.depthTexture||null;
     u.tFocus.value=lens;u.useDepth.value=lens?1:0;
@@ -407,6 +412,7 @@
     u.aspect.value=rtW/Math.max(1,rtH);
     u.dofStrength.value=lens?focus.strength:0;u.dofNear.value=focus.near;u.dofFar.value=focus.far;
     u.dofForeground.value=focus.foreground?1:0;
+    u.dofNearCoverage.value=lens&&focus.foreground&&forest?1:0;
     drawPass(compMat,null);
   }
 
@@ -417,11 +423,7 @@
     if(sc!==scene||cam!==camera)return baseRender(sc,cam);
     const place=RT_SVC.environmentRoot.userData.placeState;
     const weather=place?.meadow,forest=place?.rainforest,atmosphere=forest||weather;
-    if(forest){
-      renderer.getDrawingBufferSize(size);
-      AIBARainforest.trackCamera(forest,camera,size.x,size.y);
-    }
-    const foreground=hasDepth&&P.dof>.001?(forest?rainforestFocus(forest):lowMeadowFocus(weather)):0;
+    const foreground=hasDepth&&P.dof>.001?(forest?.94:lowMeadowFocus(weather)):0;
     const wantsFocus=hasDepth&&P.dof>.001&&(camera.userData.firstPerson===true||foreground>.001);
     focusActive=false;
     if(failed||!P.enabled||(!FULL&&!wantsFocus&&!(forest&&hasDepth))){

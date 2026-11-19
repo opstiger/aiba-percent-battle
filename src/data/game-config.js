@@ -1,6 +1,6 @@
 "use strict";
 
-const GAME_VERSION="v2.36.0";
+const GAME_VERSION="v2.39.0";
 const GAME_NAME="aiBA·百分大战";
 const CONFIG=window.AIBA_CONFIG||{};
 const COURT={

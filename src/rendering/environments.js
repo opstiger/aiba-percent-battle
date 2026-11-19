@@ -503,7 +503,10 @@ function applyScenePreset(name,opts){
   currentScenePreset=name;
   if(typeof camera!=="undefined"&&camera){
     const wantFar=name==="tokyoRooftop"?920:name==="flowerCourt"?630:name==="rainforest"?290:160;
-    if(camera.far!==wantFar){camera.far=wantFar;camera.updateProjectionMatrix();}
+    const wantNear=name==="rainforest"?.065:.28;
+    if(camera.far!==wantFar||camera.near!==wantNear){
+      camera.far=wantFar;camera.near=wantNear;camera.updateProjectionMatrix();
+    }
   }
   if(typeof syncBallVenue==="function")syncBallVenue(name);
   const rainforest=name==="rainforest";

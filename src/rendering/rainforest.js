@@ -1,11 +1,21 @@
-/* Tropical canyon. Generated geometry and atmosphere belong to the venue root. */
+/* Tropical rainforest. Geometry and atmosphere belong to the venue root. */
 (function(global){
   "use strict";
   const {smoothstep,lerp}=THREE.MathUtils;
   const TAU=Math.PI*2;
   const light=new THREE.Vector3(-.33,.255,-.91).normalize();
-  const leaves=[0x4b7840,0x59854a,0x375c36,0x3a6841,0x728e48,0x377251,0x315d3a,0x7b9148];
-  const bark=[0x9d9587,0x857d69,0xa09b84,0x7c8572,0x899471];
+  const leaves=[0x355338,0x4a713c,0x799055,0x5e824c,0x88a258,0x356950,0x305740,0x607c36,0x88996b];
+  const shadedLeaves=[0x344539,0x244a3c,0x2e5a4e,0x456b53,0x546d43,0x3f6249];
+  const youngLeaves=[0x849e50,0x9ba65d,0x789e4b,0x65954c,0xa5a260,0x929352];
+  const fadedLeaves=[0xa18752,0x91683e,0xb1a268,0x8c825a,0xad8560,0x865631,0x746848];
+  // Height and girth vary independently; branching starts at a different level on each form.
+  const treeForms=[
+    {height:1.10,girth:1.21,lean:1.02,fork:.49,spread:1.18,bark:[0x93897a,0xa29273,0x867d72],leaf:leaves},
+    {height:1.14,girth:.57,lean:.56,fork:.66,spread:.75,bark:[0xc0bd9c,0xb7b09b,0xa3ad96],leaf:youngLeaves},
+    {height:.56,girth:.78,lean:1.01,fork:.39,spread:1.46,bark:[0x9e816b,0x8f7257,0x7d7263],leaf:youngLeaves},
+    {height:.90,girth:1.10,lean:1.72,fork:.42,spread:1.20,bark:[0x625344,0x74614f,0x817360],leaf:shadedLeaves},
+    {height:.72,girth:.82,lean:1.28,fork:.43,spread:.77,bark:[0x826f56,0x8c7c63,0x746d62],leaf:null}
+  ];
   const pick=(list,r)=>list[Math.floor(r()*list.length)];
   const floorTint=new THREE.Color(0x74845e).convertSRGBToLinear();
   const rockColor=new THREE.Color(0x46564b).convertSRGBToLinear();
@@ -14,7 +24,9 @@
     const edge=Math.hypot(Math.max(0,Math.abs(x)-9.1),Math.max(0,Math.abs(z-4.5)-15.4));
     const banks=2.1*Math.sin(x*.145+z*.056)+1.6*Math.cos(z*.13-x*.042)+.40*Math.sin(x*.72+z*.28);
     const gorge=-5.8*smoothstep(-z,36,113)*Math.exp(-x*x/2930);
-    return -.038+smoothstep(edge,0,13)*(banks+gorge);
+    const slope=smoothstep(edge,10,54);
+    const hills=(4.9*Math.sin(z*.041+x*.026)+3.5*Math.cos(x*.067-z*.031))*slope;
+    return -.038+smoothstep(edge,0,13)*(banks+gorge)+hills;
   }
 
   function texture(file){
@@ -54,13 +66,33 @@
     float leafLight(vec3 p){
       vec2 q=canopyFoot(p);
       float pools=lobe(q,vec2(-2.4,-.8),vec2(5.7,4.6))+
-        .72*lobe(q,vec2(4.15,5.9),vec2(7.3,3.8))+.64*lobe(q,vec2(2.1,-11.2),vec2(4.0,5.9));
+        .72*lobe(q,vec2(4.15,5.9),vec2(7.3,3.8))+.64*lobe(q,vec2(2.1,-11.2),vec2(4.0,5.9))+
+        .60*lobe(q,vec2(6.8,28.0),vec2(7.7,10.4))+.58*lobe(q,vec2(-12.1,39.0),vec2(11.0,7.3));
       float fine=sin(q.x*2.97+q.y*2.15)+sin(q.y*3.62-q.x*1.44)+.69*cos(q.x*5.83-q.y*4.94);
       return clamp(.24+pools*(.26+.51*smoothstep(-.62,1.23,fine))+.81*lightShaft(p),.24,1.0);
     }
   `;
 
-  function surfaceLight(mat,uniforms,{plant=false,marks=null,moss=false,guard=plant}={}){
+  const mossTexture=`
+    float mossHash(vec3 p){
+      p=fract(p*vec3(.1031,.1030,.0973));
+      p+=dot(p,p.yzx+33.33);
+      return fract((p.x+p.y)*p.z);
+    }
+    float mossNoise(vec3 p){
+      vec3 i=floor(p),f=fract(p);
+      f=f*f*(3.0-2.0*f);
+      vec4 x=mix(vec4(mossHash(i),mossHash(i+vec3(0,1,0)),mossHash(i+vec3(0,0,1)),mossHash(i+vec3(0,1,1))),
+        vec4(mossHash(i+vec3(1,0,0)),mossHash(i+vec3(1,1,0)),mossHash(i+vec3(1,0,1)),mossHash(i+vec3(1,1,1))),f.x);
+      return mix(mix(x.x,x.y,f.y),mix(x.z,x.w,f.y),f.z);
+    }
+    vec3 mossTint(float damp,float grit){
+      vec3 green=mix(vec3(.043,.084,.025),vec3(.159,.181,.047),smoothstep(.22,.61,damp));
+      green=mix(green,vec3(.059,.137,.077),smoothstep(.55,.82,damp));
+      return green*(.51+.88*grit);
+    }
+  `;
+  function surfaceLight(mat,uniforms,{plant=false,marks=null,moss=false,nearLeaves=false}={}){
     mat.onBeforeCompile=shader=>{
       Object.assign(shader.uniforms,uniforms);
       const marksUniform=marks?"uniform sampler2D forestMarks,forestMossMap;\n":"";
@@ -68,8 +100,10 @@
         shader.uniforms.forestMarks={value:marks.ink};
         shader.uniforms.forestMossMap={value:marks.moss};
       }
-      const shared="varying vec3 vForestWorld,vForestView;\n";
-      shader.vertexShader=shared+(plant?"uniform float forestTime;\nattribute float leafSway;\n":"")+shader.vertexShader.replace(
+      const fade=nearLeaves?"varying float vLeafOpacity;\n":"";
+      const shared="varying vec3 vForestWorld;\n"+fade;
+      shader.vertexShader=shared+(plant?"uniform float forestTime;\nattribute float leafSway;\n":"")+
+        (nearLeaves?"attribute vec4 leafBounds;\n":"")+shader.vertexShader.replace(
         "#include <begin_vertex>",`#include <begin_vertex>
           ${plant?"transformed.x+=sin(forestTime*1.29+position.z*.40+position.y*.26)*leafSway; transformed.z+=cos(forestTime*.89+position.x*.26)*leafSway*.54;":""}
           vec4 forestVertex=vec4(transformed,1.0);
@@ -77,48 +111,51 @@
             forestVertex=instanceMatrix*forestVertex;
           #endif
           vForestWorld=(modelMatrix*forestVertex).xyz;
-          vForestView=(modelViewMatrix*forestVertex).xyz;`);
-      shader.fragmentShader=forestLight+marksUniform+shared+(guard?
-        "uniform vec4 subjectScreen, hoopScreen, ballScreen; uniform vec2 leafViewport;\n":"")+
+          ${nearLeaves?`
+            vec3 leafCenter=(modelMatrix*vec4(leafBounds.xyz,1.0)).xyz;
+            float space=length(cameraPosition-leafCenter)-leafBounds.w;
+            vLeafOpacity=smoothstep(.075,.33,space);
+          `:""}`);
+      shader.fragmentShader=forestLight+(marks||moss?mossTexture:"")+marksUniform+shared+
         shader.fragmentShader.replace("#include <color_fragment>",`#include <color_fragment>
+          ${nearLeaves?`
+            // Fade an entire blade as the lens passes it, including in the depth pass.
+            vec2 j=mod(floor(gl_FragCoord.xy),4.0);
+            float threshold=fract(dot(j,vec2(.5,.75))+.124*floor(j.x*.5)+.063*floor(j.y*.5));
+            if(vLeafOpacity<threshold+.001)discard;
+          `:""}
           ${marks?`
             vec2 ground=vForestWorld.xz;
             float damp=sin(ground.x*.57+ground.y*.53)*cos(ground.y*.71-ground.x*.51);
             vec2 rotated=mat2(.86,-.51,.51,.86)*ground;
             vec3 mossAlbedo=mapTexelToLinear(texture2D(forestMossMap,rotated*.37)).rgb;
-            float border=max(abs(ground.x)-6.8,abs(ground.y-4.8)-13.1);
-            float carpet=smoothstep(-2.3,2.0,border+damp*1.48);
-            diffuseColor.rgb=mix(diffuseColor.rgb,mossAlbedo*vec3(.25,.43,.15),
-              clamp(.94*carpet+.12*damp,.10,.97));
-            diffuseColor.rgb*=mix(vec3(.77,.85,.78),vec3(1.30,1.25,.94),damp*.5+.5);
+            vec2 clearing=ground-vec2(.32,3.8);
+            clearing.x+=.95*sin(ground.y*.32)+.45*cos(ground.y*.86);
+            clearing.y+=1.08*sin(ground.x*.51);
+            float seam=length(clearing/vec2(9.75,19.8))+damp*.28;
+            float carpet=smoothstep(.48,1.18,seam);
+            float matMoisture=mossNoise(vec3(ground*.24,.6));
+            float broken=mossNoise(vec3(ground*.94,1.7));
+            float grit=mossNoise(vec3(ground*17.0,2.5));
+            float mossBed=smoothstep(.31,.69,matMoisture*.58+broken*.37+grit*.12);
+            float margin=carpet*(.29+.63*mossBed)+(1.0-carpet)*mossBed*.15;
+            vec3 living=mossTint(matMoisture,grit)*(.56+.66*max(mossAlbedo.g,mossAlbedo.r));
+            diffuseColor.rgb=mix(diffuseColor.rgb,living,clamp(margin,.023,.94));
+            diffuseColor.rgb*=mix(vec3(.80,.88,.78),vec3(1.22,1.17,.94),damp*.5+.5);
             vec2 uvLines=vec2(vForestWorld.x/20.0+.5,(22.0-vForestWorld.z)/35.0);
             if(all(greaterThan(uvLines,vec2(0.0)))&&all(lessThan(uvLines,vec2(1.0)))){
               vec4 line=mapTexelToLinear(texture2D(forestMarks,uvLines));
               diffuseColor.rgb=mix(diffuseColor.rgb,line.rgb,line.a*.71);
             }`:""}
           ${moss?`
-            float relief=sin(vForestWorld.y*2.8+vForestWorld.x*3.2)*sin(vForestWorld.z*2.4-vForestWorld.y*1.14);
-            float mossCover=(1.0-smoothstep(.2,4.7,vForestWorld.y))*smoothstep(-.20,.76,relief);
-            diffuseColor.rgb=mix(diffuseColor.rgb,diffuseColor.rgb*vec3(.65,1.27,.61),mossCover*.58);`:""}
-          ${guard?`
-            // Near foliage can frame the viewport. Keep the live shooter, rim and ball clear.
-            if(-vForestView.z<7.0){
-              vec2 ndc=(gl_FragCoord.xy/leafViewport)*2.0-1.0;
-              float d=-vForestView.z;
-              vec2 p=ndc*vec2(leafViewport.x/leafViewport.y,1.0);
-              float nearGate=1.0-smoothstep(4.3,7.0,d);
-              float corridor=smoothstep(.58,.83,abs(ndc.x));
-              float v=smoothstep(.14,.28,length(p-subjectScreen.xy));
-              float h=smoothstep(.13,.23,length(p-hoopScreen.xy));
-              float b=smoothstep(.115,.225,length(p-ballScreen.xy));
-              v=mix(1.0,v,subjectScreen.w*step(d-.12,subjectScreen.z));
-              h=mix(1.0,h,hoopScreen.w*step(d-.12,hoopScreen.z));
-              b=mix(1.0,b,ballScreen.w*step(d-.09,ballScreen.z));
-              float show=mix(v*h*b,min(corridor,v*h*b),nearGate);
-              float contour=.39+.11*sin(vForestWorld.y*11.6+vForestWorld.x*9.3)*
-                cos(vForestWorld.z*8.3-vForestWorld.y*7.1);
-              if(show<contour)discard;
-            }`:""}
+            vec3 site=vForestWorld*vec3(1.22,.77,1.22);
+            float moist=mossNoise(site*.67),grain=mossNoise(site*3.9),silt=mossNoise(site*12.5);
+            float reach=(1.0-smoothstep(.8,8.2,vForestWorld.y))*.12;
+            float mossCover=smoothstep(.62,.83,moist*.67+grain*.34+silt*.14+reach);
+            vec3 mossColor=mossTint(moist,silt)*(.60+.54*clamp(diffuseColor.g*3.0,0.0,1.0));
+            float lichen=smoothstep(.65,.77,mossNoise(site*2.6)+silt*.17)*(1.0-mossCover);
+            diffuseColor.rgb=mix(diffuseColor.rgb,vec3(.24,.26,.194),lichen*.49);
+            diffuseColor.rgb=mix(diffuseColor.rgb,mossColor,mossCover*.79);`:""}
         `).replace("#include <lights_fragment_end>",`#include <lights_fragment_end>
           float daylight=leafLight(vForestWorld);
           reflectedLight.directDiffuse*=daylight;
@@ -133,11 +170,11 @@
               +vec3(.49,.278,.055)*transmission;
           `:""}`);
     };
-    mat.customProgramCacheKey=()=>`rainforest:${plant}:${!!marks}:${moss}:${guard}`;
+    mat.customProgramCacheKey=()=>`rainforest:${plant}:${!!marks}:${moss}:${nearLeaves}`;
   }
 
-  function meshBuilder(){
-    return {p:[],n:[],uv:[],color:[],sway:[]};
+  function meshBuilder(trackLeaves=false){
+    return {p:[],n:[],uv:[],color:[],sway:[],leafBounds:trackLeaves?[]:null};
   }
   function vertex(out,p,n,u,v,c,sway=0){
     out.p.push(p.x,p.y,p.z);out.n.push(n.x,n.y,n.z);out.uv.push(u,v);
@@ -148,6 +185,7 @@
     for(const [key,source,size] of [["position",out.p,3],["normal",out.n,3],["uv",out.uv,2],["color",out.color,3],["leafSway",out.sway,1]]){
       geo.setAttribute(key,new THREE.Float32BufferAttribute(source,size));
     }
+    if(out.leafBounds)geo.setAttribute("leafBounds",new THREE.Float32BufferAttribute(out.leafBounds,4));
     geo.computeBoundingSphere();
     return geo;
   }
@@ -178,6 +216,7 @@
       const a=rings[j][i],b=rings[j][i+1],c=rings[j+1][i],d=rings[j+1][i+1];
       for(const item of [a,b,c,b,d,c])vertex(out,...item);
     }
+    return rings;
   }
   function blade(out,start,heading,length,width,rise,curve,tint,wind,steps=5,split=false){
     const dir=new THREE.Vector3(Math.cos(heading),0,Math.sin(heading)),across=new THREE.Vector3(-dir.z,0,dir.x);
@@ -197,9 +236,17 @@
       }
       rows.push(row);
     }
+    const firstVertex=out.p.length/3;
     for(let j=0;j<steps;j++)for(let i=0;i<2;i++){
       const a=rows[j][i],b=rows[j][i+1],c=rows[j+1][i],d=rows[j+1][i+1];
       for(const item of [a,b,c,b,d,c])vertex(out,...item);
+    }
+    if(out.leafBounds){
+      const mid=rows[Math.floor(steps*.5)][1][0];
+      let radius=0;
+      for(const row of rows)for(const [point] of row)radius=Math.max(radius,point.distanceTo(mid));
+      radius+=Math.abs(wind)*1.15;
+      for(let i=firstVertex;i<out.p.length/3;i++)out.leafBounds.push(mid.x,mid.y,mid.z,radius);
     }
   }
   function color(hex){return new THREE.Color(hex).convertSRGBToLinear();}
@@ -250,8 +297,15 @@
   function ground(s,uniforms){
     const geo=new THREE.PlaneGeometry(455,545,s.mobile?82:116,s.mobile?96:140);geo.rotateX(-Math.PI/2);
     const p=geo.attributes.position,uv=geo.attributes.uv,cols=[];
+    // Keep about half the terrain grid near the clearing where plants meet the ground.
+    function axis(t,inner,min,max){
+      const u=(Math.abs(t)-.59)/.41;
+      if(u<=0)return t*inner/.59;
+      return t<0?lerp(-inner,min,u):lerp(inner,max,u);
+    }
     for(let i=0;i<p.count;i++){
-      const x=p.getX(i),z=p.getZ(i)-83;
+      const x=axis(p.getX(i)/227.5,27,-227.5,227.5);
+      const z=axis(p.getZ(i)/272.5,33,-355.5,189.5);
       p.setXYZ(i,x,elevation(x,z),z);
       uv.setXY(i,x*.28,z*.28);
       const shade=.78+.13*Math.sin(x*.19+z*.28)+.09*Math.cos(x*.34-z*.28);
@@ -265,56 +319,82 @@
     const mesh=new THREE.Mesh(geo,floor);mesh.name="rainforestCourtGround";mesh.receiveShadow=true;s.root.add(mesh);
   }
 
-  function trees(s,uniforms){
-    const r=s.r,wood=meshBuilder(),leaf=meshBuilder(),hero=meshBuilder(),vines=meshBuilder();
+  function trees(s,uniforms,batch){
+    const r=s.r,wood=meshBuilder(),leaf=meshBuilder(),hero=meshBuilder(true),outerWood=meshBuilder(),outerLeaf=meshBuilder();
+    const mossyBark=[];
     const barkMat=new THREE.MeshPhongMaterial({map:texture("assets/rainforest/bark.jpg"),vertexColors:true,
       bumpMap:texture("assets/rainforest/bark.jpg"),bumpScale:.20,shininess:7,specular:0x2c281f});
     barkMat.bumpMap.encoding=THREE.LinearEncoding;
     const leafMat=new THREE.MeshPhongMaterial({map:leafTexture(r),vertexColors:true,
       shininess:19,specular:0x262a17,side:THREE.DoubleSide});
-    const vineMat=new THREE.MeshPhongMaterial({vertexColors:true,shininess:7,specular:0x253924});
-    surfaceLight(vineMat,uniforms,{guard:true});
     surfaceLight(barkMat,uniforms,{moss:true});
     surfaceLight(leafMat,uniforms,{plant:true});
+    const closeLeafMat=leafMat.clone();
+    closeLeafMat.map=leafMat.map.clone();
+    closeLeafMat.map.needsUpdate=true;
+    surfaceLight(closeLeafMat,uniforms,{plant:true,nearLeaves:true});
 
-    function plantTree(x,z,h,rad,near,wider){
+    function plantTree(x,z,h,rad,near,wider,formIndex,outer=false){
+      const treeWood=outer?outerWood:wood,treeLeaf=outer?outerLeaf:leaf;
+      const form=treeForms[formIndex];
+      h*=form.height;rad*=form.girth;
       const y=elevation(x,z),base=new THREE.Vector3(x,y,z);
-      const lean=(r()-.5)*(near?5.3:6.5),apex=base.clone().add(new THREE.Vector3(lean,h,(r()-.5)*4));
-      const tint=color(pick(bark,r));
-      limb(wood,base,apex,rad,rad*.18,tint,lean*.38,near,near?10:7);
-      if(near)for(let j=0;j<5;j++){
+      const lean=(r()-.5)*(near?5.3:6.5)*form.lean;
+      const apex=base.clone().add(new THREE.Vector3(lean,h,(r()-.5)*4*form.lean));
+      const tint=color(pick(form.bark,r));
+      const buttresses=near&&rad>.70;
+      const trunk=limb(treeWood,base,apex,rad,rad*(form.leaf?.18:.29),tint,
+        lean*(formIndex===3?.65:.32),buttresses,near?10:outer?5:7);
+      if(buttresses)mossyBark.push({rings:trunk,reach:.23,density:1.65});
+      if(buttresses)for(let j=0;j<5;j++){
         const a=TAU*(j+r()*.42)/5,d=rad*(2.4+r()*1.6);
         const foot=new THREE.Vector3(x+Math.cos(a)*d,y+.03,z+Math.sin(a)*d);
         foot.y=elevation(foot.x,foot.z)+.03;
-        limb(wood,foot,base.clone().add(new THREE.Vector3(0,1.7+1.7*r(),0)),.09,rad*.40,tint,.10,false,6);
+        const root=limb(treeWood,foot,base.clone().add(new THREE.Vector3(0,1.7+1.7*r(),0)),.09,rad*.40,tint,.10,false,6);
+        mossyBark.push({rings:root,reach:1,density:.39});
       }
-      const branches=near?9:wider?6:4;
+      const branches=outer?3:form.leaf?(near?9:wider?6:4):5;
       for(let i=0;i<branches;i++){
-        const t=.56+i/(branches-1)*.383,angle=i*2.399+r()*.64;
+        const t=lerp(form.fork,.944,i/(branches-1)),angle=i*2.399+r()*.64;
         const a=base.clone().lerp(apex,t);
-        const span=(1.8+r()*4.1)*h/25*(1.21-i*.039);
-        const end=a.clone().add(new THREE.Vector3(Math.cos(angle)*span,h*(.06+r()*.105),Math.sin(angle)*span));
-        limb(wood,a,end,rad*(.19+.05*r()),.027,tint,span*.067,false,near?6:5);
+        const span=(1.8+r()*4.1)*h/25*(1.21-i*.039)*form.spread;
+        const end=a.clone().add(new THREE.Vector3(Math.cos(angle)*span,h*(.03+r()*.12),Math.sin(angle)*span));
+        limb(treeWood,a,end,rad*(.18+.07*r()),.028,tint,span*.078,false,near?6:5);
+        if(!form.leaf){
+          const spur=a.clone().lerp(end,.59);
+          limb(treeWood,spur,spur.clone().add(new THREE.Vector3(.32,span*.48+.33,-.24)),rad*.072,.014,tint,span*.05,false,5);
+          continue;
+        }
         const bunches=near?3:2;
         for(let j=0;j<bunches;j++){
-          const center=a.clone().lerp(end,.63+.18*j);
-          center.y+=.32+r()*1.08;
-          const leafCount=near?11:wider?8:6;
+          const joint=a.clone().lerp(end,.58+.18*j);
+          const twigHeading=angle+(j%2?-1:1)*(.83+r()*.60);
+          const twigLength=span*(.16+r()*.19);
+          const twig=joint.clone().add(new THREE.Vector3(Math.cos(twigHeading)*twigLength,
+            span*(.08+r()*.17),Math.sin(twigHeading)*twigLength));
+          if(!outer)limb(treeWood,joint,twig,Math.min(.083,rad*.11),.012,tint,.024,false,4);
+          const leafCount=near?11:wider?8:outer?4:6;
           for(let k=0;k<leafCount;k++){
-            const p=center.clone().add(new THREE.Vector3((r()-.5)*span*.60,(r()-.5)*span*.27,(r()-.5)*span*.60));
+            const p=joint.clone().lerp(twig,.17+.81*k/(leafCount-1));
             const l=(.94+r()*1.55)*Math.pow(h/22,.74);
-            blade(leaf,p,k*2.39+r(),l,l*(.18+r()*.13),-.27*l,.12*l,
-              color(pick(leaves,r)).multiplyScalar(.78+r()*.38),.07+r()*.12,near?3:2);
+            const heading=twigHeading+(k%2?-1:1)*(.53+r()*1.26);
+            blade(treeLeaf,p,heading,l,l*(.18+r()*.13),-.27*l,.12*l,
+              color(pick(k%13===11?fadedLeaves:form.leaf,r)).multiplyScalar(.74+r()*.39),.07+r()*.12,near?3:2);
           }
         }
       }
+      return {base,apex,tint};
     }
 
     const giants=[[-13.5,-12,35,1.26],[13.1,-10,37,1.33],[-13.1,10.2,32,1.00],[14.3,6.7,31,1.02],
       [-15.8,-18,36,1.29],[13.8,-24,37,1.13],[8.2,-25,31,.83],[-5.8,-28.1,35,1.08],
       [1.3,-41,33,.81],[-20,-32,41,1.55],[19.3,-35,38,1.34],[-14,22,36,1.45],[17.7,20,37,1.38],
       [3.7,26.6,29,.89],[-6.2,26.7,32,1.11],[-22,4.8,36,1.32],[22,6.7,40,1.56]];
-    for(const args of giants)plantTree(...args,true,true);
+    const giantForms=[0,3,1,0,3,1,2,0,1,0,3,3,0,2,1,4,0];
+    giants.forEach((args,i)=>plantTree(...args,true,true,giantForms[i]));
+    const younger=[[-9.3,-16.3,19.7,.43,2],[-6.05,-17.7,24.4,.57,1],[6.31,-15.1,20.3,.55,2],
+      [9.6,-19.5,22.4,.74,3],[-11.2,-25.1,27.3,.74,4],[13.9,-15.0,21.7,.47,1],[9.5,13.0,17.4,.57,2]];
+    for(const [x,z,h,rad,form] of younger)plantTree(x,z,h,rad,true,true,form);
     for(let layer=0;layer<6;layer++){
       const count=(s.mobile?[13,18,20,24,25,26]:[19,27,33,40,41,43])[layer];
       const distance=[19,31,49,73,114,173][layer],spread=distance*.62+8;
@@ -323,23 +403,27 @@
         const opens=(z<-35&&z>-72&&Math.abs(x+10.8)<3.8)||(z>-34&&Math.abs(x)<4.4);
         if(opens)continue;
         if(giants.some(([gx,gz])=>Math.hypot(x-gx,z-gz)<3.4))continue;
-        plantTree(x,z,19+18*r()+layer*.6,.32+.42*r(),false,layer<3);
+        const sample=r(),form=sample<.34?0:sample<.59?1:sample<.81?2:sample<.95?3:4;
+        plantTree(x,z,15+25*r()+layer*.66,.27+.61*r(),false,layer<3,form);
       }
     }
     for(const sign of [-1,1])for(let i=0;i<(s.mobile?21:33);i++){
       const x=sign*(16+r()*36),z=-24+r()*67;
       if(giants.some(([gx,gz])=>Math.hypot(x-gx,z-gz)<3.4))continue;
-      plantTree(x,z,17+20*r(),.34+.67*r(),false,true);
+      const sample=r(),form=sample<.28?0:sample<.48?1:sample<.78?2:sample<.94?3:4;
+      plantTree(x,z,16+26*r(),.31+.74*r(),false,true,form);
     }
 
     function understory(out,x,z,sz,variant,flower=false){
       const start=new THREE.Vector3(x,elevation(x,z),z),n=variant===0?5+Math.floor(r()*3):5+Math.floor(r()*4);
       for(let j=0;j<n;j++){
-        const a=(j+r()*.52)/n*TAU,l=sz*(.57+.64*r()),c=color(pick(leaves,r));
+        const a=(j+r()*.52)/n*TAU,l=sz*(.57+.64*r());
+        const older=j===0||(j===2&&x*z>0&&variant===0);
+        const c=color(pick(older?fadedLeaves:variant===2?shadedLeaves:leaves,r));
         const base=start.clone();base.y+=sz*(.12+r()*.3);
-        const stem=base.clone().lerp(start,.6);stem.x+=.06;
         const tip=base.clone().add(new THREE.Vector3(Math.cos(a)*l*.28,sz*(.12+r()*.34),Math.sin(a)*l*.28));
-        limb(wood,stem,tip,sz*.019,sz*.011,color(0x809351),.037,false,5);
+        limb(out===outerLeaf?outerWood:wood,start,variant===0?base:tip,sz*.021,sz*.011,
+          color(0x809351),.037,false,5);
         if(variant===0){
           blade(out,base,a,l,l*.026,-.13*l,l*.36,c,.14*sz,5);
           for(let k=1;k<8;k++)for(const sign of [-1,1]){
@@ -372,34 +456,14 @@
       const z=-55+r()*79,sign=r()<.5?-1:1,x=sign*(10.9+r()*23);
       understory(leaf,x,z,.56+r()*2.24,i%3,i%14===0);
     }
-    // Rooted saplings around the playing area let nearby blades enter the sides of follow and
-    // broadcast shots. The screen clearance in the leaf material protects the ball and rim.
-    const frameSites=[[-7.93,-3.2],[8.13,-1.7],[-6.3,2.05],[5.54,2.74],[-3.8,4.8],[2.85,3.5],
-      [-8.8,7.1],[8.5,5.1],[-3.2,8.4],[3.75,9.4],[-7.9,12.4],[8.2,13.3],[-5.1,15.7]];
+    // The foliage stays rooted at the edges of the clearing, including when the camera passes it.
+    const frameSites=[[-8.95,-3.2],[8.85,-1.7],[-8.56,2.05],[8.65,2.74],[-10.35,4.8],[9.65,3.5],
+      [-9.25,7.1],[9.05,5.1],[-9.95,8.4],[9.75,9.4],[-8.85,12.4],[9.05,13.3],[-9.15,15.7]];
     frameSites.forEach(([x,z],i)=>{
       const scale=i%3===1?1.75:1.32;
       understory(hero,x,z,scale,i%4===0?0:2,i%5===0);
       if(i%2===0)understory(hero,x+.57,z-.32,scale*.81,0,false);
     });
-    const lianas=[[-3.63,1.22,2.14],[-1.43,1.44,2.55],[2.15,-1.03,2.38],
-      [-6.78,.02,2.32],[-3.63,-3.97,2.73],[1.02,-3.33,2.39],[4.63,1.28,2.38],
-      [-9.95,4.3,3.42],[11.16,4.65,3.54],[-10.6,11.45,4.82],[9.75,10.7,4.58]];
-    for(const [x,z,low] of lianas){
-      const drop=17+7*r(),swing=.49+r()*.23;
-      let prev=new THREE.Vector3(x+swing,low+drop,z);
-      for(let j=1;j<=14;j++){
-        const t=j/14,next=new THREE.Vector3(x+swing*Math.cos(t*4.6),low+drop*Math.pow(1-t,1.36),z+.29*Math.sin(t*7.9));
-        limb(vines,prev,next,.023-.015*t,.022-.015*t,color(0x43543c),.055,false,4);
-        if(j>8||j%2===0){
-          const center=next.clone().lerp(prev,.18);
-          for(let k=0;k<2;k++){
-            const angle=j*2.39+k*2.83,l=(.51+r()*.69)*(j>11?1.22:1);
-            blade(hero,center,angle,l,l*(.24+r()*.14),-.36*l,l*.16,color(pick(leaves,r)),.10,5);
-          }
-        }
-        prev=next;
-      }
-    }
     // A low fern layer overlaps wide alocasia and upright palms behind the sidelines.
     // Openings break up the undergrowth and leave the playable grass and shooting approach clear.
     const groups=[[-9.7,-7.7,1.8],[-9.8,-3.2,1.7],[-10.0,4.0,2.8],[-11.0,8.4,2.6],[-9.5,15.4,2.1],
@@ -453,7 +517,7 @@
           limb(wood,from,to,.023*(1-k/9),.012*(1-k/9),color(0x8a9651),.025,false,4);
           from=to;
         }
-        const tone=color(pick([0x7b9143,0x607e40,0x78944c,0x4f7840,0x799b4a],r));
+        const tone=color(pick(j===1?fadedLeaves:j%2===0?youngLeaves:shadedLeaves,r));
         const pairs=s.mobile?10:14;
         for(let k=1;k<=pairs;k++){
           const t=k/(pairs+1),start=point(t);
@@ -465,11 +529,303 @@
         }
       }
     }
+    mossTufts(s,leafMat);
+    leafLitter(s,leafMat);
+    s.rainforest.perches=makePerches(s,leafMat,barkMat,batch);
+
+    const framingTrees=[
+      {trunk:[-11.4,10.8,31,1.38,0],branches:[
+        {height:5.85,points:[[-8.6,5.2,6.4],[-5.5,4.75,3.46],[-3.94,4.28,1.85],[-3.14,3.91,1.21]]},
+        {height:5.34,points:[[-10.2,4.8,5.2],[-8.9,3.96,1.3],[-7.42,3.56,-1.65],[-6.22,3.40,-2.8]]}
+      ]},
+      {trunk:[11.8,12.1,34,1.47,3],branches:[
+        {height:6.45,points:[[8.95,5.75,8.2],[6.22,4.98,5.7],[4.9,4.25,3.03],[4.2,3.89,1.52]]},
+        {height:7.02,points:[[8.35,6.4,10.2],[5.42,5.65,8.0],[3.5,5.02,6.25],[2.20,4.67,4.52]]}
+      ]}
+    ];
+    const branchWood=meshBuilder(),branchLeaves=meshBuilder(true);
+    for(const {trunk,branches} of framingTrees){
+      const [x,z,h,radius,form]=trunk;
+      const {base,apex,tint}=plantTree(x,z,h,radius,true,true,form);
+      for(const {height,points} of branches){
+        const joint=base.clone().lerp(apex,height/(apex.y-base.y));
+        const curve=new THREE.CatmullRomCurve3([joint,...points.map(p=>new THREE.Vector3(...p))]);
+        const radiusAt=t=>lerp(radius*.37,.025,Math.pow(t,.77));
+        let from=joint;
+        for(let j=1;j<=14;j++){
+          const t=j/14,to=curve.getPoint(t);
+          limb(branchWood,from,to,radiusAt((j-1)/14),radiusAt(t),tint,.02,false,8);
+          from=to;
+        }
+        for(let j=0;j<8;j++){
+          const t=.30+j*.089,base=curve.getPoint(t),tangent=curve.getTangent(t);
+          const heading=Math.atan2(tangent.z,tangent.x),side=j%2?1:-1;
+          const angle=heading+side*(.69+r()*.70);
+          const length=lerp(1.75,.56,t)*(.83+r()*.60);
+          const tip=base.clone().add(new THREE.Vector3(Math.cos(angle)*length,-.29-r()*.43,Math.sin(angle)*length));
+          const elbow=base.clone().lerp(tip,.54);elbow.y+=.12;
+          limb(branchWood,base,elbow,radiusAt(t)*.39,.045,tint,.048,false,6);
+          limb(branchWood,elbow,tip,.045,.010,tint,.033,false,5);
+          for(let k=0;k<7;k++){
+            const leafPoint=elbow.clone().lerp(tip,k/6);
+            const direction=angle+(k%2?-1:1)*(.62+r()*.63);
+            const size=(.32+r()*.45)*Math.sin((.20+.74*k/7)*Math.PI)+.10;
+            blade(branchLeaves,leafPoint,direction,size,size*(.22+r()*.12),-.30*size,.21*size,
+              color(pick(k===4&&j%3===1?fadedLeaves:j%3===1?youngLeaves:shadedLeaves,r)),.035+r()*.033,5);
+          }
+        }
+      }
+    }
+
+    // Carry the woodland across the valley and around the end of the court.
+    const outerBands=[
+      {rear:true,distances:[27,41,60,86,119,158],span:[18,27,41,58,80,108],count:[13,15,19,23,26,25]},
+      {rear:false,sign:-1,distances:[45,59,81,115,151],span:[36,46,60,79,110],count:[17,19,22,26,24]},
+      {rear:false,sign:1,distances:[45,59,81,115,151],span:[36,46,60,79,110],count:[17,19,22,26,24]}
+    ];
+    const treeSites=[];
+    for(const {rear,sign,distances,span,count} of outerBands){
+      for(let layer=0;layer<distances.length;layer++){
+        const n=s.mobile?Math.ceil(count[layer]*.57):count[layer];
+        for(let i=0;i<n;i++){
+          const across=((i+r())/n*2-1)*span[layer];
+          const range=distances[layer]+(r()-.5)*(12+layer*5);
+          const x=rear?across:sign*range,z=rear?range:across;
+          if(giants.some(([gx,gz])=>Math.hypot(x-gx,z-gz)<4.0)||treeSites.some(([tx,tz])=>Math.hypot(x-tx,z-tz)<2.9))continue;
+          treeSites.push([x,z]);
+          const form=pick([0,0,1,1,2,2,3,3,4],r),radius=.31+r()*.80,height=14+r()*28;
+          plantTree(x,z,height,radius,false,layer===0,form,layer!==0);
+          if(layer<3){
+            understory(outerLeaf,x+(r()-.5)*5,z+(r()-.5)*5,.90+r()*2.1,1+i%2);
+            if(layer===0)understory(outerLeaf,x+1.15,z-1.31,.74+r()*1.44,0);
+          }
+        }
+      }
+    }
+    const midstory=[
+      [-4.3,22.5,15.6], [2.9,23.4,14.6], [-9.3,25.2,17.8], [10.8,24.9,17.0],
+      [-.8,30.3,20.2], [6.8,30.4,16.4], [-7.1,34.2,21.8], [3.7,36.8,18.0],
+      [-14.0,31.5,18.9], [14.1,32.9,20.6], [-6.2,40.0,20.4], [10.8,42.2,21.4],
+      [-15.3,44.7,21.7], [20.4,44.9,18.3], [-26,12.5,21.2], [25.9,17.3,20.6],
+      [-25.6,25.0,17.3], [24.6,28.4,19.1], [-33.9,11.5,21.1], [33.9,9.5,19.8]
+    ];
+    for(const [x,z,h] of midstory){
+      plantTree(x,z,h,.37+r()*.17,false,true,2);
+      for(let i=0;i<(s.mobile?2:4);i++){
+        understory(outerLeaf,x+(r()-.5)*5.7,z+(r()-.5)*4.4,1.0+r()*1.75,i%3);
+      }
+    }
+    for(let i=0;i<(s.mobile?38:71);i++){
+      const side=i%3;
+      const x=side===0?(r()-.5)*72:(side===1?-1:1)*(30+r()*23);
+      const z=side===0?40+r()*46:(r()-.32)*94;
+      if(treeSites.some(([tx,tz])=>Math.hypot(x-tx,z-tz)<2.3))continue;
+      treeSites.push([x,z]);
+      plantTree(x,z,15+r()*12,.29+r()*.26,false,false,2,true);
+    }
+
     finish(s.root,wood,barkMat,"rainforestButtressTrees",true);
     finish(s.root,leaf,leafMat,"rainforestCanopy");
-    finish(s.root,hero,leafMat,"rainforestForegroundLeaves");
-    finish(s.root,vines,vineMat,"rainforestHangingLianas");
-    mossTufts(s,leafMat);
+    finish(s.root,hero,closeLeafMat,"rainforestUnderstory");
+    finish(s.root,branchWood,barkMat,"rainforestOverhangingBranches",true);
+    finish(s.root,branchLeaves,closeLeafMat,"rainforestOverhangingLeaves");
+    finish(s.root,outerWood,barkMat,"rainforestOuterTrunks");
+    finish(s.root,outerLeaf,leafMat,"rainforestOuterCanopy");
+    forestFloor(s,uniforms,barkMat,mossyBark);
+  }
+
+  function forestFloor(s,uniforms,barkMat,mossyBark){
+    const r=s.r,wood=meshBuilder(),grain=meshBuilder();
+    const treeBrown=color(0x85715a),mossSites=[],rockSites=[],fungusSites=[[],[],[]];
+    const mossTones=[0x364833,0x48602e,0x597539,0x7c8042,0x7d934a,0xa89b57,0x3c6953,0x597c5e,0x5d6745];
+    const rockTones=[0x979389,0x777c69,0x817d6a,0xa09b82,0x686c68];
+    const capTones=[[0xc8ac79,0xd6cbb0,0xb8b49b],[0x9d6545,0xb37c50,0xa28463],[0xaa7651,0xb49d75,0xcead7a]];
+    const up=new THREE.Vector3(0,1,0);
+
+    function litterPatch(x,z,span,amount,tone){
+      for(let i=0;i<amount;i++){
+        const angle=i*2.399+r()*.65,distance=Math.sqrt(r())*span;
+        const px=x+Math.cos(angle)*distance,pz=z+Math.sin(angle)*distance;
+        const size=.14+r()*.34;
+        const worn=Math.abs(px)<7.88&&pz>-9.62&&pz<19.4;
+        mossSites.push({p:new THREE.Vector3(px,elevation(px,pz)+.009,pz),n:up,
+          sx:size*(.9+r()*.63),sy:size*(worn?.033+r()*.045:.10+r()*.28),sz:size*(.55+r()*.63),
+          tint:pick([tone,tone,mossTones[(mossTones.indexOf(tone)+1)%mossTones.length]],r)});
+      }
+    }
+    function barkPoint(rings,t,around){
+      const count=rings[0].length-1,row=Math.min(rings.length-2,Math.floor(t*(rings.length-1)));
+      const side=Math.min(count-1,Math.floor(around*count));
+      const u=around*count-side,v=t*(rings.length-1)-row;
+      const a=rings[row][side],b=rings[row][side+1],c=rings[row+1][side],d=rings[row+1][side+1];
+      const origin=u+v<=1?a:d;
+      const first=u+v<=1?u:1-v,second=u+v<=1?v:1-u;
+      const sample=key=>origin[key].clone().multiplyScalar(1-first-second)
+        .addScaledVector(b[key],first).addScaledVector(c[key],second);
+      return {p:sample(0),n:sample(1).normalize()};
+    }
+    function brokenEnd(ring,center,axis,hollow){
+      const rim=ring.slice(0,-1).map(entry=>entry[0]);
+      const bands=[1,.79,.57,.40,.22,0];
+      const lift=(p,ratio,i)=>center.clone().lerp(p,ratio)
+        .addScaledVector(axis,(hollow?-.23:-.09)*Math.pow(1-ratio,2)+Math.sin(i*2.4)*.058*ratio);
+      for(let band=0;band<bands.length-1;band++)for(let i=0;i<rim.length;i++){
+        const j=(i+1)%rim.length;
+        const tint=color(hollow&&band>=2?0x32271e:[0x9c794f,0xb39466,0x8b6b44,0xa48053,0x7e5d3c][band]);
+        tint.multiplyScalar(i===2||i===7?.56:.80+.23*r());
+        const a=lift(rim[i],bands[band],i),b=lift(rim[j],bands[band],j);
+        const c=lift(rim[i],bands[band+1],i),d=lift(rim[j],bands[band+1],j);
+        for(const p of [a,b,c,b,d,c])vertex(grain,p,axis,0,0,tint);
+      }
+    }
+
+    const fallen=[
+      [-10.7,.6,1.72,5.7,.56],[-10.6,5.6,1.39,5.8,.62],[9.8,-3.8,.98,5.2,.47],
+      [10.1,7.6,1.38,6.4,.58],[-8.7,-12.9,-2.13,4.5,.48],[3.9,-14.1,-.44,4.2,.49],
+      [-6.2,20.8,2.69,4.6,.51],[7.4,22.8,.48,7.0,.64],[-15.5,-18.6,3.0,4.1,.47],
+      [15.9,16.8,1.0,6.4,.63],[-14.4,17.7,2.03,6.6,.69],[13.5,-19.2,-1.34,4.6,.55]
+    ];
+    for(let i=0;i<fallen.length;i++){
+      const [x,z,heading,length,radius]=fallen[i],facing=new THREE.Vector3(Math.cos(heading),0,Math.sin(heading));
+      const a=new THREE.Vector3(x,elevation(x,z)+radius*.47,z),b=a.clone().addScaledVector(facing,length);
+      b.y=elevation(b.x,b.z)+radius*.32;
+      const axis=b.clone().sub(a).normalize();
+      const rings=limb(wood,a,b,radius,radius*(.53+r()*.27),treeBrown,.17+r()*.23,false,15);
+      brokenEnd(rings[0],a,axis.clone().negate(),i%3===0);
+      brokenEnd(rings[rings.length-1],b,axis,i%2===0);
+      mossyBark.push({rings,reach:1,density:1.7,log:true});
+      for(let j=0;j<3;j++){
+        const t=.24+j*.22,p=a.clone().lerp(b,t);
+        const fork=p.clone().add(new THREE.Vector3(-facing.z*(.43+r()*.9),.33+r()*.64,facing.x*(.43+r()*.8)));
+        const forkRings=limb(wood,p,fork,radius*.27,radius*.14,treeBrown,.08,false,7);
+        brokenEnd(forkRings[forkRings.length-1],fork,fork.clone().sub(p).normalize(),false);
+        litterPatch(p.x+facing.z*.51,p.z-facing.x*.51,1.1,s.mobile?9:18,pick(mossTones,r));
+      }
+    }
+    for(const [x,z,h,radius] of [[-9.6,-4.7,.8,.6],[9.6,4.9,1.36,.63],[-10.6,15.2,1.15,.70],[5.1,24.1,.68,.78],[10.9,-10.8,.99,.46]]){
+      const a=new THREE.Vector3(x,elevation(x,z)-.05,z),b=a.clone().add(new THREE.Vector3(.14,h,-.07));
+      const rings=limb(wood,a,b,radius,radius*.66,treeBrown,.08,true,13);
+      brokenEnd(rings[rings.length-1],b,b.clone().sub(a).normalize(),true);
+      mossyBark.push({rings,reach:1,density:.92,log:true});
+    }
+    finish(s.root,wood,barkMat,"rainforestFallenWood",true);
+    const exposed=new THREE.MeshPhongMaterial({vertexColors:true,side:THREE.DoubleSide,shininess:5,specular:0x2a2217});
+    surfaceLight(exposed,uniforms);
+    finish(s.root,grain,exposed,"rainforestBrokenWood");
+
+    const pockets=[[-7.8,-8.9],[-8.4,-7.2],[-8.6,-4.3],[8.4,-5.6],[-8.6,.85],[8.55,-.8],[-8.74,4.6],[8.8,4.4],
+      [-9.64,8.4],[10.5,9],[-10.2,12],[10.4,13.1],[-7.5,20.7],[6.3,21.4],[-4.1,-11.7],[4.4,-12.4],
+      [-11.5,-15.7],[12.6,-15.4],[-11.4,21.0],[-3.4,24.5],[3.9,26.4],[11.6,25.9],
+      [-18.0,-13],[-20,6.7],[18,6.1],[17.8,-12.5],[15.3,20.3],[-14,18.6],[-5.1,-20.8],[7.7,-20.9]];
+    pockets.forEach(([x,z],i)=>{
+      const tone=mossTones[i%mossTones.length];
+      litterPatch(x,z,1.10+r()*1.38,s.mobile?20:39,tone);
+      const kind=i%7===1?1:0;
+      for(let j=0;j<(s.mobile?4:7)+(i%3);j++){
+        const a=r()*TAU,d=.65*Math.sqrt(r());
+        const px=x+.55+Math.cos(a)*d,pz=z+.15+Math.sin(a)*d;
+        if(Math.abs(px)<7.75&&pz>-9.7&&pz<19.5)continue;
+        const size=.09+r()*.19;
+        fungusSites[kind].push({p:new THREE.Vector3(px,elevation(px,pz)-.013,pz),n:up,
+          sx:size*(.84+r()*.24),sy:size*(.69+r()*.72),sz:size,tint:pick(capTones[kind],r)});
+      }
+      for(let j=0;j<(s.mobile?5:8);j++){
+        const a=r()*TAU,d=.3+r()*2.0,px=x+Math.cos(a)*d,pz=z+Math.sin(a)*d;
+        if(Math.abs(px)<8.12&&pz>-10.0&&pz<20.0)continue;
+        const size=j===0&&i%2===0?.58+r()*.58:.09+r()*.31;
+        rockSites.push({p:new THREE.Vector3(px,elevation(px,pz)-size*.06,pz),n:up,
+          sx:size*(.81+r()*.70),sy:size*(.29+r()*.39),sz:size*(.6+r()*.65),tint:pick(rockTones,r)});
+      }
+    });
+    for(const [i,{rings,reach,density,log}] of mossyBark.entries()){
+      const count=Math.ceil(density*(s.mobile?18:34)),band=r(),tone=mossTones[i%mossTones.length];
+      for(let j=0;j<count;j++){
+        const t=.018+Math.pow(r(),1.65)*reach*.96,around=(band+(r()-.5)*.51+1)%1;
+        const {p,n}=barkPoint(rings,t,around);
+        if((log&&n.y<.16)||p.y<elevation(p.x,p.z))continue;
+        const size=(log?.105:.062)+r()*(log?.30:.24);
+        mossSites.push({p,n,sx:size*(.88+r()*.4),sy:size*(.17+r()*.19),sz:size*(1.1+r()*.64),
+          tint:j%6===3?pick(mossTones,r):tone});
+      }
+      if(log||i%7===0){
+        const count=log?6+(i%5):5;
+        const face=r(),start=.16+r()*.35;
+        for(let j=0;j<count;j++){
+          const {p,n}=barkPoint(rings,start+j*(log?.029:.009),(face+j*.035)%1);
+          if(n.y<-.20||p.y<elevation(p.x,p.z)+.07)continue;
+          const size=.14+r()*.33;
+          p.addScaledVector(n,size*.22);
+          fungusSites[2].push({p,n:up,sx:size*1.21,sy:size*(.72+r()*.30),sz:size*.83,tint:pick(capTones[2],r)});
+        }
+      }
+    }
+
+    function instances(name,geometry,material,sites){
+      const mesh=new THREE.InstancedMesh(geometry,material,sites.length),dummy=new THREE.Object3D();
+      const twist=new THREE.Quaternion();
+      for(const [i,{p,n,sx,sy,sz,tint}] of sites.entries()){
+        dummy.position.copy(p);
+        dummy.quaternion.setFromUnitVectors(up,n).multiply(twist.setFromAxisAngle(up,r()*TAU));
+        dummy.scale.set(sx,sy,sz);dummy.updateMatrix();
+        mesh.setMatrixAt(i,dummy.matrix);
+        mesh.setColorAt(i,color(tint));
+      }
+      mesh.instanceMatrix.needsUpdate=true;mesh.instanceColor.needsUpdate=true;mesh.receiveShadow=true;
+      mesh.name=name;s.root.add(mesh);
+    }
+    const closeMoss=new THREE.SphereGeometry(1,8,5);
+    const mp=closeMoss.attributes.position;
+    const mossColors=[];
+    for(let i=0;i<mp.count;i++){
+      const x=mp.getX(i),y=mp.getY(i),z=mp.getZ(i),a=Math.atan2(z,x);
+      const flake=.9+.11*Math.sin(a*5+y*4)+.075*Math.cos(a*7-y*8);
+      mp.setXYZ(i,x*flake,y*flake,z*flake);
+      const tint=.70+.19*y+.15*Math.sin(a*6+y*9);
+      mossColors.push(tint,tint,tint*.92);
+    }
+    closeMoss.setAttribute("color",new THREE.Float32BufferAttribute(mossColors,3));
+    closeMoss.computeVertexNormals();
+    const mossMap=texture("assets/rainforest/moss-litter.jpg");
+    const mossMat=new THREE.MeshPhongMaterial({map:mossMap,vertexColors:true,shininess:5,specular:0x182013});
+    surfaceLight(mossMat,uniforms);
+    instances("rainforestMossCushions",closeMoss,mossMat,mossSites);
+
+    const shape=new THREE.IcosahedronGeometry(1,1),rp=shape.attributes.position,ruv=shape.attributes.uv;
+    for(let i=0;i<rp.count;i++){
+      const x=rp.getX(i),y=rp.getY(i),z=rp.getZ(i);
+      const shape=.89+.14*Math.sin(6*x+3*y)+.16*Math.cos(5*z+3*y);
+      rp.setXYZ(i,x*shape+.16*y,Math.min(.73,y*shape),z*shape);
+      ruv.setXY(i,x*.69+z*.45,y*.82+z*.28);
+    }
+    shape.computeVertexNormals();
+    const stoneMat=new THREE.MeshPhongMaterial({map:texture("assets/meadow/alpine-rock.jpg"),shininess:7,specular:0x292a21,flatShading:true});
+    surfaceLight(stoneMat,uniforms,{moss:true});
+    instances("rainforestForestFloorStones",shape,stoneMat,rockSites);
+
+    const fungiMat=new THREE.MeshPhongMaterial({vertexColors:true,shininess:15,specular:0x514538,side:THREE.DoubleSide});
+    surfaceLight(fungiMat,uniforms);
+    const profiles=[
+      [[0,0],[.13,0],[.123,.51],[.075,.78],[.14,.83],[.43,.73],[.83,.69],[.87,.73],[.78,.80],[.53,.92],[.26,1],[0,1.025]],
+      [[0,0],[.19,0],[.16,.31],[.112,.63],[.30,.64],[.58,.56],[.74,.63],[.69,.80],[.55,.96],[.26,1.05],[0,1.06]],
+      [[0,-.035],[.48,-.065],[.89,-.13],[1.0,-.045],[.97,.015],[.82,.075],[.64,.125],[.43,.19],[0,.24]]
+    ];
+    profiles.forEach((profile,kind)=>{
+      const geom=new THREE.LatheGeometry(profile.map(([x,y])=>new THREE.Vector2(x,y)),s.mobile?10:16);
+      const p=geom.attributes.position,colors=[];
+      for(let i=0;i<p.count;i++){
+        const y=p.getY(i),rad=Math.hypot(p.getX(i),p.getZ(i)),angle=Math.atan2(p.getZ(i),p.getX(i));
+        const stripe=.92+.07*Math.cos(angle*7+rad*14),l=s.mobile?10:16;
+        const layer=i%profile.length;
+        const tint=kind===2?(layer<=2?.96:layer===3?1.22:.58+layer%3*.13):
+          layer<=3?1.06:layer<=6?.68+.21*((Math.round(i/profile.length)%2)):(kind===0?.95:1.03);
+        const rim=kind===2?.93+.13*Math.sin(angle*5+.6):1+.06*Math.cos(angle*3+y*6);
+        p.setXYZ(i,p.getX(i)*rim,y+.036*Math.sin(angle*(l===10?3:5))*rad,p.getZ(i)*rim);
+        colors.push(tint*stripe,tint*stripe*(layer<=3?.97:.92),tint*stripe*(layer<=3?.91:.80));
+      }
+      geom.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));geom.computeVertexNormals();
+      instances(["rainforestCreamMushrooms","rainforestOchreMushrooms","rainforestShelfFungi"][kind],
+        geom,fungiMat,fungusSites[kind]);
+    });
   }
 
   function mossTufts(s,material){
@@ -485,7 +841,7 @@
     const closeBeds=[[-9.3,-8.1,3.1],[9.2,-5.5,2.9],[-9.4,.8,3.1],[9.6,3.5,3.5],[-11.4,11,4],
       [11.4,13.8,3.1],[-7.9,-13.3,3.6],[-3.5,-14.2,3.4],[4.8,-14.6,3.4],[9.8,-18.3,4.5],
       [-13.9,-20.0,4.4],[3.4,-21.9,3.6],[-12.2,20.8,3.5],[9.8,22.2,3.2]];
-    const tones=[0x6b8643,0x83974b,0x3e6137,0x577940,0x66843a,0x7d8944,0x68844b].map(color);
+    const tones=[...leaves,...shadedLeaves,0x947e53,0x7d7748,0xa18d5d].map(color);
     let used=0;
     for(let i=0;i<capacity;i++){
       const [cx,cz,reach]=closeBeds[i%closeBeds.length];
@@ -501,13 +857,128 @@
     bed.count=used;bed.instanceMatrix.needsUpdate=true;bed.instanceColor.needsUpdate=true;s.root.add(bed);
   }
 
+  function leafLitter(s,material){
+    const r=s.r,proto=meshBuilder(),dummy=new THREE.Object3D();
+    const white=new THREE.Color(1,1,1);
+    blade(proto,new THREE.Vector3(-.34,0,0),0,.69,.18,-.017,.055,white,0,4,true);
+    const cap=s.mobile?290:570;
+    const bed=new THREE.InstancedMesh(geometryFrom(proto),material,cap);
+    const tones=fadedLeaves.map(color);
+    bed.name="rainforestDryLeafLitter";bed.receiveShadow=true;bed.frustumCulled=false;
+    for(let i=0;i<cap;i++){
+      const bank=i%4!==0,side=i%2?1:-1;
+      const x=bank?side*(6.6+r()*8.0):(r()-.5)*14.0;
+      const z=-15.3+r()*35.5;
+      const f=.22+r()*1.06;
+      dummy.position.set(x,elevation(x,z)+.018,z);
+      dummy.rotation.set((r()-.5)*.33,r()*TAU,(r()-.5)*.40);
+      dummy.scale.set(f,f*.45,f);
+      dummy.updateMatrix();bed.setMatrixAt(i,dummy.matrix);bed.setColorAt(i,pick(tones,r));
+    }
+    bed.instanceMatrix.needsUpdate=true;bed.instanceColor.needsUpdate=true;s.root.add(bed);
+  }
+
+  function makePerches(s,leafMat,barkMat,batch){
+    const r=s.r;
+    const sites=[
+      [-13.5,-12,6.65,.17,5.5],[13.1,-10,6.1,2.79,5.0],
+      [-5.8,-28.1,9.0,.38,4.4],[19.3,-35,8.5,2.99,5.5],
+      [-13.1,10.2,6.4,-.29,4.0]
+    ].slice(0,s.mobile?3:5);
+    return sites.map(([x,z,height,heading,length],index)=>{
+      const root=new THREE.Group(),branch=new THREE.Group(),bird=new THREE.Group();
+      root.name="rainforestPerch";root.position.set(x,elevation(x,z)+height,z);root.rotation.y=-heading;
+      branch.name="rainforestSwayingBranch";
+      root.add(branch);branch.add(bird);s.root.add(root);
+      const curve=new THREE.QuadraticBezierCurve3(
+        new THREE.Vector3(-.32,0,0),new THREE.Vector3(length*.57,.23,-.13),
+        new THREE.Vector3(length,.60+index*.07,.22)
+      );
+      const wood=meshBuilder(),leavesOnBranch=meshBuilder();
+      let from=curve.getPoint(0);
+      const baseTint=color(index%2?0x837468:0x986f51);
+      for(let j=1;j<=6;j++){
+        const u=j/6,to=curve.getPoint(u);
+        limb(wood,from,to,lerp(.30,.035,(j-1)/6),lerp(.30,.035,u),baseTint,.047,false,7);
+        from=to;
+      }
+      for(let j=0;j<8;j++){
+        const u=.36+j*.076,a=curve.getPoint(u);
+        const side=j%2?1:-1,dir=side*(.65+r()*.92),spread=(.89+r()*.66)*(1-u*.26);
+        const tip=a.clone().add(new THREE.Vector3(Math.cos(dir)*spread,.22+r()*.4,Math.sin(dir)*spread));
+        limb(wood,a,tip,.046*(1-u)+.017,.012,baseTint,.050,false,5);
+        for(let k=0;k<6;k++){
+          const p=a.clone().lerp(tip,.42+k*.10),angle=dir+.5*(k%2?-1:1)+r()*.33;
+          const len=.28+r()*.48;
+          blade(leavesOnBranch,p,angle,len,len*.20,-len*.16,len*.12,
+            color(pick(k===4?fadedLeaves:index%2?youngLeaves:shadedLeaves,r)),.041,4);
+        }
+      }
+      finish(branch,wood,barkMat,"rainforestPerchWood");
+      finish(branch,leavesOnBranch,leafMat,"rainforestPerchFoliage");
+      bird.name="rainforestCanopyBird";
+      const shapes=batch(),wings=[];
+      const brown=index%2?0x302b23:0x3d3b2c;
+      shapes.add("blob",brown,-.017,.069,0,.102,.067,.052,0,0,-.15);
+      shapes.add("blob",index%2?0x443832:0x3c4134,.082,.107,0,.044,.043,.038);
+      shapes.add("blob",0x5a4b35,.115,.103,0,.025,.010,.012);
+      shapes.add("blob",0x302d25,-.148,.047,0,.073,.013,.026,0,0,.16);
+      shapes.finish(bird,"rainforestBirdBody");
+      for(const side of [-1,1]){
+        const wingRoot=new THREE.Group(),wing=batch();
+        wingRoot.position.set(-.012,.076,side*.038);
+        wing.add("blob",0x35372c,-.019,0,side*.034,.077,.016,.065,0,.11*side,0);
+        wing.finish(wingRoot,"rainforestBirdWing");
+        bird.add(wingRoot);wings.push(wingRoot);
+      }
+      const duration=.29+r()*.11,period=18.6+r()*12.2;
+      // A few quick hops, a longer pause, and a hop back into the cover.
+      const hops=[
+        {at:1.6+r()*1.4,from:.33,to:.51},
+        {at:4.6+r()*1.6,from:.51,to:.71},
+        {at:8.6+r()*2.3,from:.71,to:.48},
+        {at:13.2+r()*2.0,from:.48,to:.33}
+      ];
+      return {branch,bird,wings,curve,duration,period,hops,phase:r()*period};
+    });
+  }
+
+  function updatePerches(perches,time){
+    for(const perch of perches){
+      const {branch,bird,wings,curve,duration,period,hops,phase}=perch;
+      const t=(time+phase)%period;
+      let u=hops[0].from,lift=0,lean=0,turn=0,flutter=0,shake=0;
+      for(const {at,from,to} of hops){
+        const age=t-at;
+        if(age<0)break;
+        const p=Math.min(1,age/duration);
+        u=lerp(from,to,smoothstep(p,0,1));turn=to>from?0:Math.PI;
+        if(age<duration){
+          lift=.235*Math.sin(Math.PI*p);
+          lean=.14*Math.sin(p*TAU);
+          flutter=Math.sin(Math.PI*p)*(.48+.49*Math.abs(Math.sin(age*39)));
+        }
+        const after=age-duration;
+        if(after>=0&&after<1.5)shake+=.043*Math.exp(-after*4.0)*Math.sin(after*19);
+      }
+      curve.getPoint(u,bird.position);
+      bird.position.y+=lift+.053+.005*Math.sin(time*3.7+phase);
+      bird.rotation.y=turn;
+      bird.rotation.z=lean+.040*Math.sin(time*4.7+phase);
+      for(let i=0;i<2;i++)wings[i].rotation.x=(i===0?-1:1)*(.13+flutter*1.1);
+      branch.rotation.z=.014*Math.sin(time*1.43+phase)+shake;
+      branch.rotation.x=.009*Math.sin(time*.89+phase)+shake*.40;
+    }
+  }
+
   function cliffs(s,uniforms,batch){
     const r=s.r,rock=meshBuilder(),v=new THREE.Vector3();
     const proto=new THREE.IcosahedronGeometry(1,2);
     const p=proto.attributes.position;
-    for(const side of [-1,1])for(let i=0;i<10;i++){
-      const z=23-i*13.4,x=side*(30+i*1.85+r()*7),h=16+r()*20;
-      const shapes=[[x,z,h*.52,11+r()*5,h,12+r()*4],[x+side*4,z-5,h*.79,9,h*.72,9]];
+    for(const side of [-1,1])for(let i=0;i<5;i++){
+      const z=-47-i*14.5,x=side*(44+i*8+r()*6),h=4.5+r()*5.5;
+      const y=elevation(x,z);
+      const shapes=[[x,z,y+h*.21,8+r()*5,h,7+r()*4],[x+side*4,z-4,y+h*.36,6,h*.59,5]];
       for(const [cx,cz,cy,w,ry,rz] of shapes){
         for(let j=0;j<p.count;j+=3){
           const triangle=[];
@@ -622,10 +1093,9 @@
             float valley=exp(-max(.0,p.y+1.2)*.11)*layers;
             float basin=exp(-dot((p-vec3(-12.8,1.5,-54.0))/vec3(9.5,4.5,12.5),
                                  (p-vec3(-12.8,1.5,-54.0))/vec3(9.5,4.5,12.5)));
-            float onCourt=1.0-smoothstep(7.0,18.0,abs(p.x));
             float window=forestClearing(p);
-            float density=(.0042+valley*.014+basin*.017+window*.017)*
-              (1.0-onCourt*.68*(1.0-smoothstep(11.0,28.0,-p.z)));
+            float woodland=smoothstep(14.0,54.0,length((p.xz-vec2(0.0,4.5))*vec2(1.0,.79)));
+            float density=.0041+valley*(.0103+woodland*.0039)+basin*.017+window*.015;
             float transmittance=exp(-accumulated*.73);
             accumulated+=density*stride;
             amber+=window*(.35+.65*valley)*stride*.103*transmittance*(.33+.67*angle);
@@ -636,7 +1106,7 @@
           float mist=(1.0-exp(-accumulated))*(.56+.39*warm);
           float shaft=(1.0-exp(-glow))*.78;
           float alpha=min(.97,mist+shaft*(1.0-mist));
-          vec3 shades=mix(vec3(.41,.46,.35),vec3(1.0,.808,.47),clamp(warm*1.30,0.0,1.0));
+          vec3 shades=mix(vec3(.48,.52,.365),vec3(1.0,.808,.47),clamp(warm*1.30,0.0,1.0));
           vec3 sun=vec3(1.0,.82,.53);
           vec3 rgb=(shades*mist+sun*shaft*(1.0-mist))/max(.001,alpha);
           gl_FragColor=vec4(rgb,alpha);
@@ -759,45 +1229,24 @@
   }
 
   function build(s,batch){
-    const blank=()=>({value:new THREE.Vector4(9,9,0,0)});
-    const uniforms={forestSun:{value:light},forestTime:{value:0},leafViewport:{value:new THREE.Vector2(1,1)},
-      subjectScreen:blank(),hoopScreen:blank(),ballScreen:blank()};
+    const uniforms={forestSun:{value:light},forestTime:{value:0}};
     const state={uniforms,...air(s,uniforms)};
     s.rainforest=state;s.heightAt=elevation;s.menuOrbit=[13.1,17.5,5.6,2.2];
     // The offscreen material has no scene mesh, so the owned sky material disposes it.
     canopySky(s,uniforms);
     s.root.getObjectByName("rainforestCanopySky").material.addEventListener("dispose",()=>state.airMaterial.dispose());
-    ground(s,uniforms);cliffs(s,uniforms,batch);trees(s,uniforms);waterfall(s,uniforms);motes(s,uniforms);
+    ground(s,uniforms);cliffs(s,uniforms,batch);trees(s,uniforms,batch);waterfall(s,uniforms);motes(s,uniforms);
     state.falling=fallingLeaves(s);
     updateFalling(state.falling,s.time);
+    updatePerches(state.perches,s.time);
     return state;
   }
 
   function update(s){
     s.rainforest.uniforms.forestTime.value=s.time;
     updateFalling(s.rainforest.falling,s.time);
+    updatePerches(s.rainforest.perches,s.time);
   }
 
-  const cameraSpace=new THREE.Vector3(),screenPoint=new THREE.Vector3(),ballPoint=new THREE.Vector3(),subjectPoint=new THREE.Vector3();
-  function track(out,point,camera){
-    cameraSpace.copy(point).applyMatrix4(camera.matrixWorldInverse);
-    screenPoint.copy(point).project(camera);
-    out.set(screenPoint.x*camera.aspect,screenPoint.y,-cameraSpace.z,cameraSpace.z<-.18?1:0);
-  }
-  function trackCamera(forest,camera,width,height){
-    const u=forest.uniforms;
-    u.leafViewport.value.set(width,height);
-    track(u.hoopScreen.value,HOOP,camera);
-    if(player?.g?.visible){
-      subjectPoint.copy(player.g.position);subjectPoint.y+=1.12;
-      track(u.subjectScreen.value,subjectPoint,camera);
-    }else u.subjectScreen.value.w=0;
-    const active=balls.length?balls[balls.length-1].mesh:null;
-    const held=camera.userData.firstPerson?handBall:pBall;
-    const ball=(G.canShoot||G.charging)&&held?.visible?held:active;
-    if(ball&&ball.visible){ball.getWorldPosition(ballPoint);track(u.ballScreen.value,ballPoint,camera);}
-    else u.ballScreen.value.w=0;
-  }
-
-  global.AIBARainforest=Object.freeze({build,update,trackCamera,light});
+  global.AIBARainforest=Object.freeze({build,update,light});
 })(window);
