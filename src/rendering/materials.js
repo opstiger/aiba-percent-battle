@@ -209,55 +209,40 @@ function makeLunarBallSurfaceCanvas(w,h){
   return lc;
 }
 
-/* 新疆鲜花球场特调面板：天山艾德莱斯绸 (Atlas Silk Ikat) 扎染菱格 + 伊犁薰衣草/雪山草甸配色 */
-function makeFlowerBallSurfaceCanvas(w,h){
+/* 新疆鲜花球场特调面板：日照金山 × 伊犁薰衣草艾德莱斯绸（按每片球皮自身长轴方向自适应铺纹） */
+function makeFlowerBallSurfaceCanvas(w,h,vertical){
   const fc=document.createElement("canvas");fc.width=w;fc.height=h;
-  const fg=fc.getContext("2d"),r=ballTextureRng(0x521a099);
-  // 1. 深青金石丝绸底色
-  const bg=fg.createLinearGradient(0,0,0,h);
-  bg.addColorStop(0,"#182442");bg.addColorStop(0.5,"#213558");bg.addColorStop(1,"#16213b");
-  fg.fillStyle=bg;fg.fillRect(0,0,w,h);
-
-  // 2. 艾德莱斯绸羽毛状扎染菱格（Ikat Diamond & Flame Wave）
-  const cols=16,colW=w/cols,rowH=h/6;
-  const ikatCols=["#d93848","#f2b84b","#1ea896","#9b72cf","#f5ede0"];
-  for(let c=0;c<cols;c++){
-    const cx=(c+0.5)*colW,tone=ikatCols[c%ikatCols.length];
-    for(let row=-1;row<=7;row++){
-      const cy=row*rowH+(c&1)*rowH*0.5;
-      const rw=colW*0.44,rh=rowH*0.46;
-      // 外层扎染羽化锯齿菱形
-      for(let s=3;s>=1;s--){
-        const k=s/3;
-        fg.fillStyle=s===1?"#f7efe2":(s===2?tone:"rgba(242,184,75,0.42)");
-        fg.globalAlpha=s===3?0.34:(s===2?0.78:0.86);
-        fg.beginPath();
-        const pts=10;
-        for(let p=0;p<pts;p++){
-          const a=(p/pts)*Math.PI*2;
-          const jag=1+(p%2===0?0.14:-0.08);
-          const px=cx+Math.cos(a)*rw*k*jag,py=cy+Math.sin(a)*rh*k*1.15;
-          if(p===0)fg.moveTo(px,py);else fg.lineTo(px,py);
-        }
-        fg.closePath();fg.fill();
-      }
-      // 菱格中心石榴/花蕊点
-      fg.globalAlpha=0.92;
-      fg.fillStyle=c%2===0?"#d93848":"#1ea896";
-      fg.beginPath();fg.arc(cx,cy,Math.max(1.5,colW*0.07),0,Math.PI*2);fg.fill();
+  const fg=fc.getContext("2d"),img=fg.createImageData(w,h),d=img.data;
+  const hexRgb=hx=>{const n=parseInt(hx.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255];};
+  const cols=["#f5efe6","#f2b84b","#9b72cf","#2d9c92"].map(hexRgb);
+  const r=ballTextureRng(vertical?0x521a809:0x521a808);
+  const nCross=vertical?w:h;
+  const warp=new Float32Array(nCross);
+  for(let k=0;k<nCross;k++)warp[k]=(r()-0.5)*0.14+Math.sin(k*0.5)*0.035;
+  const bands=vertical?22:14;
+  for(let y=0;y<h;y++){
+    const v=y/h;
+    for(let x=0;x<w;x++){
+      const u=x/w;
+      const along=vertical?v:u,across=vertical?u:v;
+      const crossIdx=vertical?x:y;
+      const bp=across*bands,bi=Math.floor(bp),dx=Math.abs((bp-bi)-0.5)*2;
+      const weft=0.96+0.04*Math.sin((vertical?y:x)*1.4);
+      const p=along*(vertical?7:12)*Math.PI*2+bi*0.9;
+      const ridge=Math.sin(p)*0.18+Math.sin(p*2.2)*0.08;
+      const bleed=warp[crossIdx]+(r()-0.5)*0.04;
+      const t=Math.max(0,Math.min(1,(dx+ridge+bleed*0.8)*0.9));
+      const ci=Math.min(cols.length-1,Math.floor(t*cols.length));
+      const rgb=dx>0.92?cols[0]:cols[ci];
+      const silk=(0.93+0.07*Math.sin((vertical?x:y)*2.0))*weft;
+      const i=(y*w+x)*4;
+      d[i]=Math.min(255,rgb[0]*silk);
+      d[i+1]=Math.min(255,rgb[1]*silk);
+      d[i+2]=Math.min(255,rgb[2]*silk);
+      d[i+3]=255;
     }
   }
-  // 3. 细密丝绸经纬织纹 + 草甸金/紫碎花光点
-  fg.globalAlpha=0.09;
-  fg.fillStyle="#ffffff";
-  for(let x=0;x<w;x+=3)fg.fillRect(x,0,1,h);
-  for(let i=0;i<160;i++){
-    fg.globalAlpha=0.22+r()*0.35;
-    fg.fillStyle=r()>0.45?"#f6e58d":"#c59bff";
-    const rad=(1.1+r()*1.8)*(h/256);
-    fg.beginPath();fg.arc(r()*w,r()*h,rad,0,Math.PI*2);fg.fill();
-  }
-  fg.globalAlpha=1;
+  fg.putImageData(img,0,0);
   return fc;
 }
 
@@ -283,16 +268,31 @@ function applyHybridPanels(g,w,h,surfaceMode){
     panel++;
   }
   const isCustom=votes.map(v=>v[1]>v[0]);
-  const surfCanvas=surfaceMode==="flower"?makeFlowerBallSurfaceCanvas(w,h):makeLunarBallSurfaceCanvas(w,h);
-  const surfData=surfCanvas.getContext("2d").getImageData(0,0,w,h).data;
+  // 对每一片自定义球皮独立判断方向：触及南北极的纵瓣走纵向平铺，赤道横瓣（含 aiBA 标志）走横向平铺
+  const panelVert=new Uint8Array(panel);
+  if(surfaceMode==="flower"){
+    const minY=new Int32Array(panel).fill(h),maxY=new Int32Array(panel).fill(0);
+    for(let p=0;p<w*h;p++){
+      const lb=labels[p];if(lb<0||!isCustom[lb])continue;
+      const y=(p/w)|0;
+      if(y<minY[lb])minY[lb]=y;if(y>maxY[lb])maxY[lb]=y;
+    }
+    for(let lb=0;lb<panel;lb++){
+      if(!isCustom[lb])continue;
+      if(minY[lb]<h*0.08||maxY[lb]>h*0.92)panelVert[lb]=1;
+    }
+  }
+  const surfH=(surfaceMode==="flower"?makeFlowerBallSurfaceCanvas(w,h,false):makeLunarBallSurfaceCanvas(w,h)).getContext("2d").getImageData(0,0,w,h).data;
+  const surfV=surfaceMode==="flower"?makeFlowerBallSurfaceCanvas(w,h,true).getContext("2d").getImageData(0,0,w,h).data:null;
   const outImg=g.getImageData(0,0,w,h);
   for(let p=0;p<w*h;p++){
     const lb=labels[p];
     if(lb>=0&&isCustom[lb]){
+      const sd=(surfV&&panelVert[lb])?surfV:surfH;
       const i=p*4,grain=0.92+0.12*((outImg.data[i]-160)/80);
-      outImg.data[i]=Math.max(0,Math.min(255,surfData[i]*grain));
-      outImg.data[i+1]=Math.max(0,Math.min(255,surfData[i+1]*grain));
-      outImg.data[i+2]=Math.max(0,Math.min(255,surfData[i+2]*grain));
+      outImg.data[i]=Math.max(0,Math.min(255,sd[i]*grain));
+      outImg.data[i+1]=Math.max(0,Math.min(255,sd[i+1]*grain));
+      outImg.data[i+2]=Math.max(0,Math.min(255,sd[i+2]*grain));
       outImg.data[i+3]=255;
     }
   }
@@ -408,9 +408,13 @@ function syncBallVenue(name){
   const wantLunar=name==="lunarCrater";
   const wantFlower=name==="flowerCourt";
   if(wantLunar&&!texLunarBall)texLunarBall=realBallTex("#c95a2e","#77351c","lunar");
-  if(wantFlower&&!texFlowerBall)texFlowerBall=realBallTex("#c95a2e","#77351c","flower");
+  if(wantFlower&&!texFlowerBall)texFlowerBall=realBallTex("#5b6f7d","#2e3b45","flower");
   const target=wantLunar?texLunarBall:(wantFlower?texFlowerBall:texBall);
-  if(matBall.map!==target){matBall.map=target;matBall.needsUpdate=true;}
+  if(matBall.map!==target){
+    matBall.map=target;
+    matBall.specular.setHex(wantFlower?0x162028:0x191513);
+    matBall.needsUpdate=true;
+  }
 }
 
 /* ---------------- 中场 10 分球配色 ----------------
