@@ -212,17 +212,17 @@ function makeLunarBallSurfaceCanvas(w,h){
 /* 新疆鲜花球场特调面板：日照金山 × 伊犁薰衣草艾德莱斯绸
    直接按 3D 球面每片球皮的切平面主轴坐标 (along, across) 采样，彻底消除极点放射状聚拢与斜切 */
 function sampleFlowerSilkAt(along,across,warp,r,cols){
-  const bands=10.5;
+  const bands=4.8;
   const bp=across*bands+50,bi=Math.floor(bp),dx=Math.abs((bp-bi)-0.5)*2;
-  const crossIdx=((Math.floor((across+2)*140)%256)+256)%256;
-  const p=along*Math.PI*2*3.4+bi*0.9;
+  const crossIdx=((Math.floor((across+2)*64)%256)+256)%256;
+  const p=along*Math.PI*2*2.2+bi*0.9;
   const ridge=Math.sin(p)*0.18+Math.sin(p*2.2)*0.08;
   const bleed=warp[crossIdx]+(r()-0.5)*0.035;
   const t=Math.max(0,Math.min(1,(dx+ridge+bleed*0.8)*0.9));
   const ci=Math.min(cols.length-1,Math.floor(t*cols.length));
   const rgb=dx>0.92?cols[0]:cols[ci];
-  const weft=0.96+0.04*Math.sin(along*220);
-  const silk=(0.93+0.07*Math.sin(across*320))*weft;
+  const weft=0.96+0.04*Math.sin(along*140);
+  const silk=(0.93+0.07*Math.sin(across*200))*weft;
   return [Math.min(255,rgb[0]*silk),Math.min(255,rgb[1]*silk),Math.min(255,rgb[2]*silk)];
 }
 
