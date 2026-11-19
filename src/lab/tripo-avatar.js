@@ -123,24 +123,10 @@
     const FINGERS=["Index","Middle","Ring","Pinky"],FEET=["LeftFoot","RightFoot","LeftToeBase","RightToeBase","LeftToe_End","RightToe_End"];
     const footMin=()=>{let m=Infinity;for(const n of FEET)if(B[n]){wpos(n,_v);if(_v.y<m)m=_v.y;}return m;};
     function resetPose(){for(const n in B){B[n].quaternion.copy(restL[n]);}B.Hips.position.copy(restP.Hips);}
-    const FINGER_CASCADE={Index:0.86,Middle:1.0,Ring:1.14,Pinky:1.28};
-    const JOINT_WEIGHTS=[0.78,1.18,0.85];
     function curlFingers(sideName,L,rad){
-      for(const fn of FINGERS){
-        const fRad=rad*(FINGER_CASCADE[fn]||1);
-        for(let i=1;i<=3;i++){
-          const n=sideName+"Hand"+fn+i,b=B[n];if(!b)continue;
-          _q.setFromAxisAngle(L.curlAxis,fRad*JOINT_WEIGHTS[i-1]);
-          b.quaternion.copy(restL[n]).multiply(restWinv[n]).multiply(_q).multiply(restW[n]);
-        }
-      }
-      // 拇指自然内收微曲，避免像僵直木板
-      const tRad=rad*0.52;
-      _q.setFromAxisAngle(L.curlAxis,tRad);
-      for(let i=2;i<=3;i++){
-        const tb=B[sideName+"HandThumb"+i];if(!tb)continue;
-        tb.quaternion.copy(restL[sideName+"HandThumb"+i]).multiply(restWinv[sideName+"HandThumb"+i]).multiply(_q).multiply(restW[sideName+"HandThumb"+i]);
-      }
+      _q.setFromAxisAngle(L.curlAxis,rad);
+      for(const fn of FINGERS)for(let i=1;i<=3;i++){const n=sideName+"Hand"+fn+i,b=B[n];if(!b)continue;
+        b.quaternion.copy(restL[n]).multiply(restWinv[n]).multiply(_q).multiply(restW[n]);}
       const hb=B[sideName+"Hand"];
       if(hb)hb.updateMatrixWorld(true);
     }
@@ -410,25 +396,7 @@
         const ct=Math.max(0,tilt-.04)*loadK,ax=k=>TQ().setFromAxisAngle(Xax,-ct*k);
         qPel.multiply(ax(.4));qSp.multiply(ax(.45));qCh.multiply(ax(.15));
       }
-      const shotTurnY=(!moving&&Number(ud.shotTurnY))||0;
-      const airSway=!moving?Math.max(Number(ud.shotAirSway)||0,clamp((air-.03)/.18,0,1)):0;
-      if(airSway>1e-3){
-        // 空中 Sweep & Sway：骨盆微前送，腰胸略后仰舒展打开投篮视野，摆脱空中僵直
-        qPel.premultiply(TQ().setFromAxisAngle(Xax,0.06*airSway));
-        qSp.premultiply(TQ().setFromAxisAngle(Xax,-0.075*airSway));
-        qCh.premultiply(TQ().setFromAxisAngle(Xax,-0.095*airSway));
-      }
-      if(Math.abs(shotTurnY)>1e-4){
-        qPel.premultiply(TQ().setFromAxisAngle(Yax,shotTurnY*0.65));
-        qSp.premultiply(TQ().setFromAxisAngle(Yax,shotTurnY*0.85));
-        qCh.premultiply(TQ().setFromAxisAngle(Yax,shotTurnY));
-      }
       const qH=guy.headRoot?rot(guy.headRoot):TQ().copy(qCh);
-      const aimLook=clamp(Math.abs(shotTurnY)/0.34,0,1);
-      if(aimLook>1e-3||airSway>1e-3){
-        qH.premultiply(TQ().setFromAxisAngle(Yax,-shotTurnY*0.72));
-        qH.premultiply(TQ().setFromAxisAngle(Xax,-0.10*Math.max(aimLook*0.75,airSway)));
-      }
       const put=(n,q)=>{if(B[n])setW(B[n],TQ().copy(q).multiply(restW[n]));};
       const putShallow=(n,q)=>{
         const bone=B[n];if(!bone)return;
@@ -446,7 +414,6 @@
         const l=state.legIdx[sd],L=LIMB["leg"+sd];
         const hipA=loc(guy.legs[l]),kneeA=loc(guy.knees[l]),ankA=loc(guy.ankles[l]),rf=restPos[side+"Foot"];
         const tg=TV().copy(ankA);tg.x+=rf.x-s*.125;tg.y+=rf.y-.12*Sc.y;tg.y+=squat;
-        if(airSway>1e-3){tg.z+=airSway*(sd==="R"?0.085:0.055);tg.y+=airSway*0.025;}
         const fwT=TV().copy(Zax).applyQuaternion(rot(guy.legs[l]));
         const pole=TV().copy(kneeA).sub(TV().copy(hipA).add(ankA).multiplyScalar(.5)).addScaledVector(fwT,.03);
         solveLimb(L,tg,pole);
@@ -481,16 +448,7 @@
         slot.a=a;slot.L=L;slot.side=side;slot.S0=S0;slot.Sa=Sa;slot.Ea=Ea;slot.Wa=Wa;slot.qA=qA;slot.free=free;slot.pole=pole;
         slot.N=TV(0,0,-1).applyQuaternion(qA);slot.F=TV(0,-1,0).applyQuaternion(qA);
       }
-      const MAX_WRIST_BEND=0.82; // ~47°，避免持球/举球或出手压腕折成不自然的 90°
-      const setHand=A=>{
-        const qTgt=basisQ(A.F,A.N).multiply(A.L.restBasisInv).multiply(restW[A.L.hand]);
-        const qLo=wquat(B[A.L.lo]);
-        const qNeutral=TQ().copy(qLo).multiply(restWinv[A.L.lo]).multiply(restW[A.L.hand]);
-        const bend=qNeutral.angleTo(qTgt);
-        if(bend>MAX_WRIST_BEND)qNeutral.slerp(qTgt,MAX_WRIST_BEND/bend);
-        else qNeutral.copy(qTgt);
-        setW(B[A.L.hand],qNeutral);
-      };
+      const setHand=A=>setW(B[A.L.hand],basisQ(A.F,A.N).multiply(A.L.restBasisInv).multiply(restW[A.L.hand]));
       curlFingers("Right",LIMB.armR,.2+.3*rw*(1-state.armHold)+state.holdCurl*hw);curlFingers("Left",LIMB.armL,.2+.3*rw*(1-state.armHold)+state.holdCurl*hw);
       const R=_armSlots.R,Lf=_armSlots.L;
       solveLimb(R.L,R.free,R.pole);setHand(R);
