@@ -209,41 +209,21 @@ function makeLunarBallSurfaceCanvas(w,h){
   return lc;
 }
 
-/* 新疆鲜花球场特调面板：日照金山 × 伊犁薰衣草艾德莱斯绸（按每片球皮自身长轴方向自适应铺纹） */
-function makeFlowerBallSurfaceCanvas(w,h,vertical){
-  const fc=document.createElement("canvas");fc.width=w;fc.height=h;
-  const fg=fc.getContext("2d"),img=fg.createImageData(w,h),d=img.data;
-  const hexRgb=hx=>{const n=parseInt(hx.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255];};
-  const cols=["#f5efe6","#f2b84b","#9b72cf","#2d9c92"].map(hexRgb);
-  const r=ballTextureRng(vertical?0x521a809:0x521a808);
-  const nCross=vertical?w:h;
-  const warp=new Float32Array(nCross);
-  for(let k=0;k<nCross;k++)warp[k]=(r()-0.5)*0.14+Math.sin(k*0.5)*0.035;
-  const bands=vertical?22:14;
-  for(let y=0;y<h;y++){
-    const v=y/h;
-    for(let x=0;x<w;x++){
-      const u=x/w;
-      const along=vertical?v:u,across=vertical?u:v;
-      const crossIdx=vertical?x:y;
-      const bp=across*bands,bi=Math.floor(bp),dx=Math.abs((bp-bi)-0.5)*2;
-      const weft=0.96+0.04*Math.sin((vertical?y:x)*1.4);
-      const p=along*(vertical?7:12)*Math.PI*2+bi*0.9;
-      const ridge=Math.sin(p)*0.18+Math.sin(p*2.2)*0.08;
-      const bleed=warp[crossIdx]+(r()-0.5)*0.04;
-      const t=Math.max(0,Math.min(1,(dx+ridge+bleed*0.8)*0.9));
-      const ci=Math.min(cols.length-1,Math.floor(t*cols.length));
-      const rgb=dx>0.92?cols[0]:cols[ci];
-      const silk=(0.93+0.07*Math.sin((vertical?x:y)*2.0))*weft;
-      const i=(y*w+x)*4;
-      d[i]=Math.min(255,rgb[0]*silk);
-      d[i+1]=Math.min(255,rgb[1]*silk);
-      d[i+2]=Math.min(255,rgb[2]*silk);
-      d[i+3]=255;
-    }
-  }
-  fg.putImageData(img,0,0);
-  return fc;
+/* 新疆鲜花球场特调面板：日照金山 × 伊犁薰衣草艾德莱斯绸
+   直接按 3D 球面每片球皮的切平面主轴坐标 (along, across) 采样，彻底消除极点放射状聚拢与斜切 */
+function sampleFlowerSilkAt(along,across,warp,r,cols){
+  const bands=10.5;
+  const bp=across*bands+50,bi=Math.floor(bp),dx=Math.abs((bp-bi)-0.5)*2;
+  const crossIdx=((Math.floor((across+2)*140)%256)+256)%256;
+  const p=along*Math.PI*2*3.4+bi*0.9;
+  const ridge=Math.sin(p)*0.18+Math.sin(p*2.2)*0.08;
+  const bleed=warp[crossIdx]+(r()-0.5)*0.035;
+  const t=Math.max(0,Math.min(1,(dx+ridge+bleed*0.8)*0.9));
+  const ci=Math.min(cols.length-1,Math.floor(t*cols.length));
+  const rgb=dx>0.92?cols[0]:cols[ci];
+  const weft=0.96+0.04*Math.sin(along*220);
+  const silk=(0.93+0.07*Math.sin(across*320))*weft;
+  return [Math.min(255,rgb[0]*silk),Math.min(255,rgb[1]*silk),Math.min(255,rgb[2]*silk)];
 }
 
 function applyHybridPanels(g,w,h,surfaceMode){
@@ -268,31 +248,71 @@ function applyHybridPanels(g,w,h,surfaceMode){
     panel++;
   }
   const isCustom=votes.map(v=>v[1]>v[0]);
-  // 对每一片自定义球皮独立判断方向：触及南北极的纵瓣走纵向平铺，赤道横瓣（含 aiBA 标志）走横向平铺
-  const panelVert=new Uint8Array(panel);
+  const outImg=g.getImageData(0,0,w,h);
+
   if(surfaceMode==="flower"){
-    const minY=new Int32Array(panel).fill(h),maxY=new Int32Array(panel).fill(0);
+    // 对每一片自定义球皮独立做 3D 切平面 PCA，算出它自己的长轴 E_long 和短轴 E_short
+    const sx=new Float64Array(panel),sy=new Float64Array(panel),sz=new Float64Array(panel),cnt=new Int32Array(panel);
+    const pxArr=new Float32Array(w*h),pyArr=new Float32Array(w*h),pzArr=new Float32Array(w*h);
     for(let p=0;p<w*h;p++){
-      const lb=labels[p];if(lb<0||!isCustom[lb])continue;
-      const y=(p/w)|0;
-      if(y<minY[lb])minY[lb]=y;if(y>maxY[lb])maxY[lb]=y;
+      const x=p%w,y=(p/w)|0,phi=((x+.5)/w)*Math.PI*2,th=((y+.5)/h)*Math.PI,sinT=Math.sin(th);
+      const nx=-Math.cos(phi)*sinT,ny=Math.cos(th),nz=Math.sin(phi)*sinT;
+      pxArr[p]=nx;pyArr[p]=ny;pzArr[p]=nz;
+      const lb=labels[p];
+      if(lb>=0&&isCustom[lb]){sx[lb]+=nx;sy[lb]+=ny;sz[lb]+=nz;cnt[lb]++;}
+    }
+    const basis=new Array(panel);
+    for(let lb=0;lb<panel;lb++){
+      if(!isCustom[lb]||!cnt[lb])continue;
+      const nl=Math.hypot(sx[lb],sy[lb],sz[lb])||1;
+      const Nx=sx[lb]/nl,Ny=sy[lb]/nl,Nz=sz[lb]/nl;
+      // 构造切平面正交基 (T1, T2)
+      const upX=Math.abs(Ny)<0.9?0:1,upY=Math.abs(Ny)<0.9?1:0,upZ=0;
+      let t1x=upY*Nz-upZ*Ny,t1y=upZ*Nx-upX*Nz,t1z=upX*Ny-upY*Nx;
+      const t1l=Math.hypot(t1x,t1y,t1z)||1;t1x/=t1l;t1y/=t1l;t1z/=t1l;
+      const t2x=Ny*t1z-Nz*t1y,t2y=Nz*t1x-Nx*t1z,t2z=Nx*t1y-Ny*t1x;
+      basis[lb]={t1x,t1y,t1z,t2x,t2y,t2z,cxx:0,cxy:0,cyy:0};
+    }
+    for(let p=0;p<w*h;p++){
+      const lb=labels[p];if(lb<0||!basis[lb])continue;
+      const B=basis[lb],nx=pxArr[p],ny=pyArr[p],nz=pzArr[p];
+      const u1=nx*B.t1x+ny*B.t1y+nz*B.t1z,u2=nx*B.t2x+ny*B.t2y+nz*B.t2z;
+      B.cxx+=u1*u1;B.cxy+=u1*u2;B.cyy+=u2*u2;
     }
     for(let lb=0;lb<panel;lb++){
-      if(!isCustom[lb])continue;
-      if(minY[lb]<h*0.08||maxY[lb]>h*0.92)panelVert[lb]=1;
+      const B=basis[lb];if(!B)continue;
+      const ang=0.5*Math.atan2(2*B.cxy,B.cxx-B.cyy),ca=Math.cos(ang),sa=Math.sin(ang);
+      B.lx=ca*B.t1x+sa*B.t2x;B.ly=ca*B.t1y+sa*B.t2y;B.lz=ca*B.t1z+sa*B.t2z;
+      B.sx=-sa*B.t1x+ca*B.t2x;B.sy=-sa*B.t1y+ca*B.t2y;B.sz=-sa*B.t1z+ca*B.t2z;
     }
+    const hexRgb=hx=>{const n=parseInt(hx.slice(1),16);return[(n>>16)&255,(n>>8)&255,n&255];};
+    const cols=["#f5efe6","#f2b84b","#9b72cf","#2d9c92"].map(hexRgb);
+    const r=ballTextureRng(0x521a808),warp=new Float32Array(256);
+    for(let k=0;k<256;k++)warp[k]=(r()-0.5)*0.14+Math.sin(k*0.5)*0.035;
+    for(let p=0;p<w*h;p++){
+      const lb=labels[p];if(lb<0||!basis[lb])continue;
+      const B=basis[lb],nx=pxArr[p],ny=pyArr[p],nz=pzArr[p];
+      const along=nx*B.lx+ny*B.ly+nz*B.lz;
+      const across=nx*B.sx+ny*B.sy+nz*B.sz;
+      const rgb=sampleFlowerSilkAt(along,across,warp,r,cols);
+      const i=p*4,grain=0.92+0.12*((outImg.data[i]-160)/80);
+      outImg.data[i]=Math.max(0,Math.min(255,rgb[0]*grain));
+      outImg.data[i+1]=Math.max(0,Math.min(255,rgb[1]*grain));
+      outImg.data[i+2]=Math.max(0,Math.min(255,rgb[2]*grain));
+      outImg.data[i+3]=255;
+    }
+    g.putImageData(outImg,0,0);
+    return;
   }
-  const surfH=(surfaceMode==="flower"?makeFlowerBallSurfaceCanvas(w,h,false):makeLunarBallSurfaceCanvas(w,h)).getContext("2d").getImageData(0,0,w,h).data;
-  const surfV=surfaceMode==="flower"?makeFlowerBallSurfaceCanvas(w,h,true).getContext("2d").getImageData(0,0,w,h).data:null;
-  const outImg=g.getImageData(0,0,w,h);
+
+  const surfH=makeLunarBallSurfaceCanvas(w,h).getContext("2d").getImageData(0,0,w,h).data;
   for(let p=0;p<w*h;p++){
     const lb=labels[p];
     if(lb>=0&&isCustom[lb]){
-      const sd=(surfV&&panelVert[lb])?surfV:surfH;
       const i=p*4,grain=0.92+0.12*((outImg.data[i]-160)/80);
-      outImg.data[i]=Math.max(0,Math.min(255,sd[i]*grain));
-      outImg.data[i+1]=Math.max(0,Math.min(255,sd[i+1]*grain));
-      outImg.data[i+2]=Math.max(0,Math.min(255,sd[i+2]*grain));
+      outImg.data[i]=Math.max(0,Math.min(255,surfH[i]*grain));
+      outImg.data[i+1]=Math.max(0,Math.min(255,surfH[i+1]*grain));
+      outImg.data[i+2]=Math.max(0,Math.min(255,surfH[i+2]*grain));
       outImg.data[i+3]=255;
     }
   }
