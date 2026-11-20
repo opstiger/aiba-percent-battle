@@ -19,31 +19,77 @@
   let enabled=true;
   try{enabled=new URLSearchParams(location.search).get("shade")!=="classic";}catch(e){}
   const uniforms={
-    aibaRimColor:{value:new THREE.Color(0xc4dcff)},
-    aibaRimStrength:{value:.42},
-    aibaSky:{value:.2},
-    aibaContact:{value:.26}
+    aibaRimColor:{value:new THREE.Color(0xffe6bf)},
+    aibaRimStrength:{value:.38},
+    aibaSunDir:{value:new THREE.Vector3(-.45,.72,.52)},
+    aibaGroundColor:{value:new THREE.Color(0x4a5234)},
+    aibaAirColor:{value:new THREE.Color(0x96885e)},
+    aibaSceneMode:{value:0}, // 0=default/indoor, 1=rainforest, 2=flowerCourt, 3=other outdoor
+    aibaWetness:{value:0},
+    aibaSky:{value:.20},
+    aibaContact:{value:.28}
   };
-  const VERT_DECL="\nvarying vec3 aibaN;\nvarying vec3 aibaV;\nvarying vec3 aibaWN;\nvarying float aibaY;\n";
+  const VERT_DECL="\nvarying vec3 aibaN;\nvarying vec3 aibaV;\nvarying vec3 aibaWN;\nvarying vec3 aibaWPos;\nvarying float aibaY;\n";
   const VERT_BODY=[
     "aibaN=normalize(normalMatrix*objectNormal);",
     "aibaV=-mvPosition.xyz;",
     "aibaWN=normalize(mat3(modelMatrix)*objectNormal);",
-    "aibaY=(modelMatrix*vec4(transformed,1.0)).y;"
+    "vec4 aibaWP=modelMatrix*vec4(transformed,1.0);",
+    "aibaWPos=aibaWP.xyz;",
+    "aibaY=aibaWP.y;"
   ].join("\n");
-  const FRAG_DECL="\nuniform vec3 aibaRimColor;\nuniform float aibaRimStrength;\nuniform float aibaSky;\nuniform float aibaContact;\n"+VERT_DECL;
+  const FRAG_DECL=[
+    "",
+    "uniform vec3 aibaRimColor;",
+    "uniform float aibaRimStrength;",
+    "uniform vec3 aibaSunDir;",
+    "uniform vec3 aibaGroundColor;",
+    "uniform vec3 aibaAirColor;",
+    "uniform float aibaSceneMode;",
+    "uniform float aibaWetness;",
+    "uniform float aibaSky;",
+    "uniform float aibaContact;",
+    VERT_DECL
+  ].join("\n");
   const FRAG_BODY=[
     "{",
-    "  vec3 an=normalize(aibaN);vec3 av=normalize(aibaV);",
-    "  float up=clamp(aibaWN.y,-1.0,1.0);",
-    // 天光遮蔽：顶面 +sky，底面 −sky
+    "  vec3 an=normalize(aibaN);vec3 av=normalize(aibaV);vec3 wn=normalize(aibaWN);",
+    "  float up=clamp(wn.y,-1.0,1.0);",
+    "  float sunDot=dot(wn,aibaSunDir);",
+    // 1. 天光遮蔽 + 地面反弹环境光 (Ground Bounce GI)：朝下的面吸收场地草地/雨林泥土漫反射色
     "  float sky=1.0+aibaSky*up;",
-    // 接地压暗：0m 处压 contact，.55m 以上不压
-    "  float contact=mix(1.0-aibaContact,1.0,smoothstep(0.02,0.55,aibaY));",
+    "  float contact=mix(1.0-aibaContact,1.0,smoothstep(0.02,0.58,aibaY));",
     "  gl_FragColor.rgb*=sky*contact;",
-    // 轮廓光：菲涅尔，朝下的面减弱（不要在鞋底和下巴下面亮一圈）
-    "  float fres=pow(1.0-clamp(dot(an,av),0.0,1.0),2.6);",
-    "  gl_FragColor.rgb+=aibaRimColor*fres*aibaRimStrength*(0.55+0.45*max(up,0.0));",
+    "  float bounceMask=clamp(-up,0.0,1.0)*(0.35+0.65*(1.0-smoothstep(0.0,1.6,aibaY)));",
+    "  gl_FragColor.rgb=mix(gl_FragColor.rgb,gl_FragColor.rgb*(0.65+0.85*aibaGroundColor),bounceMask*0.42);",
+    // 2. 次表面散射暖血色 (Subsurface Terminator Warmth)：明暗交界线泛柔和暖红琥珀色，告别死灰塑料感
+    "  float terminator=exp(-sunDot*sunDot*7.5)*max(0.0,1.0-abs(up)*0.5);",
+    "  gl_FragColor.rgb+=gl_FragColor.rgb*vec3(0.22,0.075,0.025)*terminator;",
+    // 3. 森林球场树冠斑驳遮阴与场内浓密丁达尔空气融合 (抵消森林 2.76x 强光过曝，彻底消除人物/篮球真空割裂感)
+    "  if(aibaSceneMode>0.5&&aibaSceneMode<1.5){",
+    "    vec2 q=aibaWPos.xz-aibaWPos.y*vec2(-0.55,0.42);",
+    "    float dapple=0.5+0.5*(sin(q.x*1.45+q.y*1.05)*cos(q.y*1.65-q.x*0.92));",
+    "    float canopy=mix(0.48,0.86,smoothstep(0.15,0.85,dapple));",
+    "    vec3 forestTint=mix(vec3(0.76,0.82,0.62),vec3(1.04,0.94,0.74),smoothstep(0.25,0.82,dapple));",
+    "    gl_FragColor.rgb*=forestTint*canopy;",
+    "    float camDist=length(aibaV);",
+    "    float airVeil=clamp(0.14+smoothstep(0.8,14.0,camDist)*0.22,0.14,0.34);",
+    "    gl_FragColor.rgb=mix(gl_FragColor.rgb,aibaAirColor*(0.85+0.25*dapple),airVeil);",
+    "  }else if(aibaSceneMode>1.5&&aibaSceneMode<2.5){",
+    // 4. 鲜花草甸高原云影/空气包裹 + 雨天皮肤/球衣湿润高光 (Wet Specular Sheen)
+    "    float camDist=length(aibaV);",
+    "    float airVeil=clamp(0.08+smoothstep(1.0,16.0,camDist)*0.16,0.08,0.24);",
+    "    gl_FragColor.rgb=mix(gl_FragColor.rgb,aibaAirColor,airVeil);",
+    "    if(aibaWetness>0.03){",
+    "      vec3 halfV=normalize(av+normalize((viewMatrix*vec4(aibaSunDir,0.0)).xyz));",
+    "      float wetSpec=pow(max(0.0,dot(an,halfV)),24.0)*(0.35+0.65*max(0.0,up));",
+    "      gl_FragColor.rgb=gl_FragColor.rgb*(1.0-aibaWetness*0.14)+aibaRimColor*wetSpec*aibaWetness*0.42;",
+    "    }",
+    "  }",
+    // 5. 方向性太阳逆光轮廓金边 (Directional Sun Rim)：只照亮迎向太阳的一侧边缘，彻底去掉全向假蓝边
+    "  float fres=pow(1.0-clamp(dot(an,av),0.0,1.0),2.7);",
+    "  float sunSide=smoothstep(-0.25,0.65,sunDot)*(0.45+0.55*max(up,0.0));",
+    "  gl_FragColor.rgb+=aibaRimColor*fres*aibaRimStrength*sunSide;",
     "}"
   ].join("\n");
 
@@ -92,14 +138,75 @@
       if(!g||(!canWeak&&!g.parent))refs.splice(i,1);
     }
   }
-  /* 换鞋、戴装备会给角色挂上新材质：定时补一遍。每个角色一两百个网格，半秒一次很便宜。 */
-  function sweep(){
-    for(const r of refs){const g=canWeak?r.deref():r;if(g&&g.parent)shadeTree(g);}
+  function syncSceneLight(){
+    try{
+      const preset=(typeof currentScenePreset==="string"&&currentScenePreset)||document.documentElement.dataset.scenePreset||"indoor";
+      if(preset==="rainforest"){
+        uniforms.aibaSceneMode.value=1;
+        uniforms.aibaRimColor.value.setHex(0xffd488);
+        uniforms.aibaRimStrength.value=.44;
+        uniforms.aibaGroundColor.value.setHex(0x525832);
+        uniforms.aibaAirColor.value.setHex(0x9a895a);
+        uniforms.aibaWetness.value=.15;
+      }else if(preset==="flowerCourt"){
+        uniforms.aibaSceneMode.value=2;
+        const m=global.environmentRoot?.userData?.placeState?.meadow;
+        const gold=m?m.uniforms.meadowSky.value.y:0;
+        const clear=m?m.uniforms.meadowSky.value.x:.5;
+        uniforms.aibaWetness.value=m?m.wetness:0;
+        uniforms.aibaRimColor.value.setHex(0xdce8f2).lerp(new THREE.Color(0xffe6ba),clear).lerp(new THREE.Color(0xffb468),gold);
+        uniforms.aibaRimStrength.value=.32+.18*clear+.12*gold;
+        uniforms.aibaGroundColor.value.setHex(0x5f743e).lerp(new THREE.Color(0x7c743e),gold*.6);
+        uniforms.aibaAirColor.value.setHex(0x889ca8).lerp(new THREE.Color(0xd8b888),gold*.75+.2*clear);
+      }else if(preset!=="indoor"){
+        uniforms.aibaSceneMode.value=3;
+        if(typeof sun!=="undefined"&&sun)uniforms.aibaRimColor.value.copy(sun.color);
+        uniforms.aibaRimStrength.value=.36;
+        if(typeof hemi!=="undefined"&&hemi)uniforms.aibaGroundColor.value.copy(hemi.groundColor);
+        if(typeof scene!=="undefined"&&scene?.fog)uniforms.aibaAirColor.value.copy(scene.fog.color);
+        uniforms.aibaWetness.value=preset==="rainyCourt"?.65:0;
+      }else{
+        uniforms.aibaSceneMode.value=0;
+        uniforms.aibaRimColor.value.setHex(0xffe8c8);
+        uniforms.aibaRimStrength.value=.32;
+        uniforms.aibaGroundColor.value.setHex(0x6e5338);
+        uniforms.aibaAirColor.value.setHex(0x282422);
+        uniforms.aibaWetness.value=0;
+      }
+      if(typeof sun!=="undefined"&&sun&&sun.position.lengthSq()>0.01){
+        uniforms.aibaSunDir.value.copy(sun.position).normalize();
+      }
+    }catch(e){}
   }
-  if(enabled)setInterval(sweep,500);
+  let _sweepTick=0;
+  function sweep(){
+    syncSceneLight();
+    for(const r of refs){const g=canWeak?r.deref():r;if(g&&g.parent)shadeTree(g);}
+    // 写实蒙皮皮套 (tripoAvatar / fpSharedPoseRig) 直接挂在 scene 下，必须一并扫描注入场景大气与树冠光影！
+    if(typeof scene!=="undefined"&&scene&&scene.children){
+      for(const c of scene.children){
+        if(c&&(c.name==="tripoAvatar"||c.name==="fpSharedPoseRig"||c.userData?.tripo))shadeTree(c);
+      }
+    }
+    if(typeof matBall!=="undefined"){
+      for(const bm of [matBall,typeof matGold!=="undefined"?matGold:null,typeof matDeep!=="undefined"?matDeep:null]){
+        if(bm)patchMaterial(bm);
+      }
+    }
+    if(typeof balls!=="undefined"&&Array.isArray(balls)){
+      for(const b of balls)if(b&&b.mesh&&b.mesh.material)patchMaterial(b.mesh.material);
+    }
+    if(typeof pBall!=="undefined"&&pBall?.material)patchMaterial(pBall.material);
+    if(typeof handBall!=="undefined"&&handBall?.material)patchMaterial(handBall.material);
+  }
+  function onBeforeRender(){
+    syncSceneLight();
+    if((_sweepTick++%10)===0)sweep();
+  }
+  if(enabled)setInterval(sweep,400);
 
   global.AIBACharacterShading=Object.freeze({
-    enabled,register,shadeTree,uniforms,
+    enabled,register,shadeTree,patchMaterial,syncSceneLight:onBeforeRender,uniforms,
     get patched(){return patched;}
   });
 })(window);

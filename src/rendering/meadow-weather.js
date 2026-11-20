@@ -225,7 +225,9 @@
           vec3 view=normalize((invProjection*vec4(vUv*2.0-1.0,1.0,1.0)).xyz);
           vec3 ray=(cameraWorld*vec4(view,0.0)).xyz;
           vec3 eye=cameraWorld[3].xyz;
-          float end=min(176.0,viewDepth/max(.13,-view.z));
+          float rawEnd=min(176.0,viewDepth/max(.13,-view.z));
+          // Maintain a continuous foreground alpine air & sunbeam floor so close players & basketballs never sit in a vacuum cutout.
+          float end=max(rawEnd,mix(24.0,rawEnd,smoothstep(1.2,18.0,rawEnd)));
           float startD=0.8;
           float stepSize=max(0.0,end-startD)/8.0;
           float mist=0.0,beam=0.0;
@@ -377,6 +379,7 @@
   function build(s){
     const uniforms={meadowClouds:{value:cloudMap()},meadowSky:{value:new THREE.Vector4()},
       meadowAir:{value:new THREE.Vector4()},meadowStorm:{value:new THREE.Vector2()},meadowSun:{value:new THREE.Vector3()},meadowOpening:{value:new THREE.Vector2()},
+      meadowActors:{value:new THREE.Vector4(999,999,999,999)},meadowBall:{value:new THREE.Vector4(999,999,999,999)},
       meadowClock:{value:0},meadowWind:{value:0}};
     const w={uniforms,progress:0,progressVel:0,sunProgress:0,sunProgressVel:0,flowerProgress:0,score:0,stage:"cloudy",wind:uniforms.meadowWind,
       wetness:0,ballWetness:0,previousRain:0,

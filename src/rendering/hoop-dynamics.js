@@ -354,9 +354,35 @@
     mesh.userData.keepOutdoor=true;
     const net=buildNet(mesh);mesh.geometry.dispose();mesh.geometry=net.geo;
     grp.add(mesh);
+    // 微观物理惊扰粒子池（打铁/砸板震落的木屑浮尘/水珠 + 球员起跳/落地惊起的草屑花粉）
+    const foleyMat=new THREE.MeshBasicMaterial({color:0xf8ebd0,transparent:true,opacity:.68,depthWrite:false});
+    const foleyMesh=new THREE.InstancedMesh(new THREE.SphereGeometry(1,5,4),foleyMat,56);
+    foleyMesh.name="actionMicroFoleyParticles";foleyMesh.count=0;foleyMesh.frustumCulled=false;
+    foleyMesh.userData.keepOutdoor=true;
+    foleyMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    grp.add(foleyMesh);
+    state.foley={mesh:foleyMesh,items:[],dummy:new THREE.Object3D(),seed:20261120,wasAir:false};
     state.net=net;state.built=true;
     grp.updateMatrixWorld(true);resetNet(net);writeNetGeometry(net);
     return {mesh,rimPivot,boardPivot};
+  }
+
+  function foleyRand(){
+    const f=state.foley;
+    f.seed=(Math.imul(f.seed,1664525)+1013904223)>>>0;
+    return f.seed/4294967296;
+  }
+  function spawnFoleyBurst(x,y,z,count,speed,sizeBase,upBias,gravity){
+    const f=state.foley;if(!f)return;
+    for(let i=0;i<count;i++){
+      if(f.items.length>=56)f.items.shift();
+      const a=foleyRand()*Math.PI*2,sp=(.35+foleyRand()*.95)*speed;
+      f.items.push({
+        x:x+(foleyRand()-.5)*.14,y:y+(foleyRand()-.5)*.08,z:z+(foleyRand()-.5)*.14,
+        vx:Math.cos(a)*sp,vy:upBias+foleyRand()*speed*.65,vz:Math.sin(a)*sp,
+        g:gravity,age:0,life:.38+foleyRand()*.42,size:sizeBase*(.65+foleyRand()*.75)
+      });
+    }
   }
 
   /* ---------- 冲击 ---------- */
@@ -370,10 +396,12 @@
       state.rimPitch.v+=J*.4*(.25+.75*lever);
       state.rimRoll.v+=J*.28*side;
       if(state.net)nudgeNet(J*.004);
+      if(J>1.4)spawnFoleyBurst(Number.isFinite(e.x)?e.x:h.x,h.y,Number.isFinite(e.z)?e.z:h.z,Math.min(16,4+Math.floor(J*1.3)),.45+J*.12,.011,.25,4.2);
     }else if(type==="board"||type==="connector"){
       // 球打在支点（支撑臂）下方的板面上，板的下半部往后倒 = 绕 x 轴正转
       state.boardPitch.v+=J*.05;
       state.rimPitch.v+=J*.12;
+      if(J>1.2)spawnFoleyBurst(Number.isFinite(e.x)?e.x:h.x,Number.isFinite(e.y)?e.y:h.y+.35,BOARD_FACE_Z+.05,Math.min(18,5+Math.floor(J*1.4)),.55+J*.14,.013,.18,3.6);
     }
   }
   /* 篮筐一颤，网也跟着抖一下（顶排已经跟着动，这里给下面几排一点随动速度） */
@@ -424,6 +452,32 @@
     state.boardPivot.rotation.x=bp;
     state.boardPivot.updateMatrixWorld(true);
     if(state.net&&state.net.mesh.visible!==false&&safe>0)simulateNet(state.net,safe);
+    if(state.foley&&safe>0){
+      const f=state.foley;
+      try{
+        const preset=document.documentElement.dataset.scenePreset||"indoor";
+        if(preset==="flowerCourt"||preset==="rainforest"){
+          const jump=(typeof P!=="undefined"&&P&&Number(P.jump))||(typeof player!=="undefined"&&player?.g?Math.max(0,player.g.position.y):0);
+          const inAir=jump>.035;
+          if(inAir!==f.wasAir&&typeof player!=="undefined"&&player?.g?.visible){
+            f.wasAir=inAir;
+            spawnFoleyBurst(player.g.position.x,.06,player.g.position.z,inAir?8:11,inAir?.85:1.15,.014,inAir?.65:.85,3.2);
+          }
+        }
+      }catch(e){}
+      let count=0;
+      const d=f.dummy;
+      for(let i=f.items.length-1;i>=0;i--){
+        const p=f.items[i];p.age+=safe;
+        if(p.age>=p.life){f.items.splice(i,1);continue;}
+        p.vy-=p.g*safe;p.x+=p.vx*safe;p.y+=p.vy*safe;p.z+=p.vz*safe;
+        const sc=p.size*(1-p.age/p.life*.75);
+        d.position.set(p.x,p.y,p.z);d.scale.setScalar(sc);d.updateMatrix();
+        f.mesh.setMatrixAt(count++,d.matrix);
+      }
+      f.mesh.count=count;
+      if(count)f.mesh.instanceMatrix.needsUpdate=true;
+    }
   }
 
   /* 远端装饰篮筐：同一套圆环篮筐外观，静态（不接冲击、不跑绳网）。 */

@@ -1439,7 +1439,7 @@
         Object.assign(shader.uniforms,s.meadow.uniforms);
         shader.uniforms.meadowTime=time;
         shader.uniforms.meadowWind=s.meadow.wind;
-        shader.vertexShader="attribute float bladeH;\nuniform float meadowTime,meadowWind;\nuniform sampler2D meadowClouds;\nvarying float vBladeH;\nvarying vec3 vGrassWorld;\n"+
+        shader.vertexShader="attribute float bladeH;\nuniform float meadowTime,meadowWind;\nuniform sampler2D meadowClouds;\nuniform vec4 meadowActors,meadowBall;\nvarying float vBladeH;\nvarying vec3 vGrassWorld;\n"+
           shader.vertexShader.replace("#include <begin_vertex>",`
             #include <begin_vertex>
             vBladeH=bladeH;
@@ -1453,6 +1453,17 @@
             transformed.x+=bend*flex;
             transformed.z+=bend*.52*flex;
             transformed.y-=abs(bend)*.12*flex;
+            // Interactive foliage bending: grass blades part radially around player/opponent feet and rolling basketballs.
+            vec2 pushVec=vec2(0.0);
+            float pushDown=0.0;
+            vec2 dA=root-meadowActors.xy;float lA=length(dA);
+            if(lA<.88){float wA=pow(1.0-lA/.88,1.6);pushVec+=dA/max(.04,lA)*wA*.46;pushDown=max(pushDown,wA*.48);}
+            vec2 dB=root-meadowActors.zw;float lB=length(dB);
+            if(lB<.88){float wB=pow(1.0-lB/.88,1.6);pushVec+=dB/max(.04,lB)*wB*.46;pushDown=max(pushDown,wB*.48);}
+            vec2 dC=root-meadowBall.xy;float lC=length(dC);
+            if(lC<.58){float wC=pow(1.0-lC/.58,1.6);pushVec+=dC/max(.04,lC)*wC*.38;pushDown=max(pushDown,wC*.42);}
+            transformed.xz+=pushVec*bladeH;
+            transformed.y*=1.0-pushDown*.55*bladeH;
             vGrassWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
           `);
         shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+"varying float vBladeH;\nvarying vec3 vGrassWorld;\n"+
@@ -1775,7 +1786,7 @@
       mat.onBeforeCompile=shader=>{
         Object.assign(shader.uniforms,weather.uniforms);
         shader.uniforms.meadowTime=weather.time;shader.uniforms.meadowBloom=bloom;shader.uniforms.meadowWind=weather.wind;
-        shader.vertexShader="uniform float meadowTime,meadowBloom,meadowWind;\nattribute float bloomStart;\nvarying float vPetalH;\nvarying vec3 vPetalWorld;\n"+
+        shader.vertexShader="uniform float meadowTime,meadowBloom,meadowWind;\nuniform vec4 meadowActors,meadowBall;\nattribute float bloomStart;\nvarying float vPetalH;\nvarying vec3 vPetalWorld;\n"+
           shader.vertexShader.replace("#include <begin_vertex>",`
             #include <begin_vertex>
             vPetalH=clamp(position.y*1.8,0.0,1.0);
@@ -1783,6 +1794,12 @@
             float wind=sin(meadowTime*1.55-root.x*.23-root.y*.125)*(.15+meadowWind*.15)+meadowWind*.15;
             transformed.x+=wind*position.y*position.y;
             transformed.z+=wind*.53*position.y*position.y;
+            vec2 dA=root-meadowActors.xy;float lA=length(dA);
+            if(lA<.85){float wA=pow(1.0-lA/.85,1.5);transformed.xz+=dA/max(.04,lA)*wA*.38*vPetalH;transformed.y*=1.0-wA*.40*vPetalH;}
+            vec2 dB=root-meadowActors.zw;float lB=length(dB);
+            if(lB<.85){float wB=pow(1.0-lB/.85,1.5);transformed.xz+=dB/max(.04,lB)*wB*.38*vPetalH;transformed.y*=1.0-wB*.40*vPetalH;}
+            vec2 dC=root-meadowBall.xy;float lC=length(dC);
+            if(lC<.55){float wC=pow(1.0-lC/.55,1.5);transformed.xz+=dC/max(.04,lC)*wC*.32*vPetalH;transformed.y*=1.0-wC*.35*vPetalH;}
             transformed*=max(.001,smoothstep(bloomStart,bloomStart+.145,meadowBloom));
             vPetalWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
           `);
@@ -1834,6 +1851,22 @@
 
     function updateMeadow(s,dt){
       const weather=s.meadow,p=weather.flowerProgress;
+      try{
+        let px=999,pz=999,ox=999,oz=999,b1x=999,b1z=999,b2x=999,b2z=999;
+        if(typeof player!=="undefined"&&player?.g?.visible){px=player.g.position.x;pz=player.g.position.z;}
+        if(typeof OPP!=="undefined"&&OPP?.guy?.g?.visible){ox=OPP.guy.g.position.x;oz=OPP.guy.g.position.z;}
+        else if(typeof passer!=="undefined"&&passer?.g?.visible){ox=passer.g.position.x;oz=passer.g.position.z;}
+        if(typeof balls!=="undefined"&&Array.isArray(balls)){
+          for(const b of balls){
+            if(b?.mesh?.visible&&b.mesh.position.y<.85){
+              if(b1x===999){b1x=b.mesh.position.x;b1z=b.mesh.position.z;}
+              else if(b2x===999){b2x=b.mesh.position.x;b2z=b.mesh.position.z;break;}
+            }
+          }
+        }
+        weather.uniforms.meadowActors.value.set(px,pz,ox,oz);
+        weather.uniforms.meadowBall.value.set(b1x,b1z,b2x,b2z);
+      }catch(e){}
       const {rain,clear,gold,flash,blackout}=AIBAMeadowWeather.update(weather,s.time,dt);
       if(weather.court)AIBAMeadowCourt.update(weather.court,s.time,dt,rain,weather.wetness,clear);
       const drifts=weather.drifts;

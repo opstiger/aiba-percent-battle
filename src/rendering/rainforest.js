@@ -1493,7 +1493,9 @@
           vec4 a=invProjection*vec4(tex*2.0-1.0,z*2.0-1.0,1.0);
           vec3 direction=(cameraWorld*vec4(normalize(a.xyz/a.w),0.0)).xyz;
           vec3 origin=cameraWorld[3].xyz;
-          float depth=min(137.0,length(a.xyz/a.w));
+          float rawDepth=min(137.0,length(a.xyz/a.w));
+          // Maintain a continuous foreground Tyndall & dusty-air floor (14m equivalent) so 2m-close players & basketballs sit inside the misty beams, never in a vacuum cutout.
+          float depth=max(rawDepth,mix(14.5,rawDepth,smoothstep(1.2,15.5,rawDepth)));
           float jitter=.27+.48*fract(dot(gl_FragCoord.xy,vec2(.75487766,.56984029)));
           float accumulated=0.0,glow=0.0,amber=0.0;
           float toward=max(.0,dot(direction,forestSun));

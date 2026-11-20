@@ -229,6 +229,7 @@
       tScene:{value:null},tBlur:{value:null},tDepth:{value:null},tFocus:{value:null},
       tVenueAir:{value:null},useVenueAir:{value:0},airStart:{value:15},airEnd:{value:30},
       tFoliage:{value:null},forestGrade:{value:0},meadowGrade:{value:0},meadowGold:{value:0},gradeTime:{value:0},
+      texelSize:{value:new THREE.Vector2(1/1280,1/720)},sunScreen:{value:new THREE.Vector3(.5,.2,0)},
       useDepth:{value:0},camNear:{value:0.1},camFar:{value:120},
       exposure:{value:1},contrast:{value:1},saturation:{value:1},lift:{value:0},
       warm:{value:new THREE.Vector3(1,1,1)},
@@ -241,6 +242,8 @@
     fragmentShader:`
       uniform sampler2D tScene,tBlur,tDepth,tFocus,tVenueAir,tFoliage;
       uniform float forestGrade,meadowGrade,meadowGold,gradeTime;
+      uniform vec2 texelSize;
+      uniform vec3 sunScreen;
       uniform float useDepth,useVenueAir,airStart,airEnd,camNear,camFar;
       uniform float exposure,contrast,saturation,lift;
       uniform vec3 warm;
@@ -250,16 +253,27 @@
       uniform float dofStrength,dofNear,dofFar,dofForeground,dofNearCoverage;
       varying vec2 vUv;
       float luma(vec3 c){return dot(c,vec3(0.2126,0.7152,0.0722));}
+      float linearDepthAt(vec2 uv){
+        float z=texture2D(tDepth,uv).x*2.0-1.0;
+        return 2.0*camNear*camFar/(camFar+camNear-z*(camFar-camNear));
+      }
       void main(){
-        vec3 base=texture2D(tScene,vUv).rgb;
+        // Subtle 35mm cinema lens radial chromatic aberration at outer frame edges.
+        vec2 fromCenter=vUv-0.5;
+        float edgeDist=length(fromCenter);
+        vec2 caOffset=fromCenter*smoothstep(.32,.72,edgeDist)*texelSize*1.35*(forestGrade>.5||meadowGrade>.5?1.0:.35);
+        vec3 base=vec3(
+          texture2D(tScene,vUv+caOffset).r,
+          texture2D(tScene,vUv).g,
+          texture2D(tScene,vUv-caOffset).b
+        );
         vec3 blur=texture2D(tBlur,vUv).rgb;
 
         /* 背景柔化:按真实深度,不是按半径 —— 按半径糊会把边角的主角也糊掉 */
         float coc=0.0;
         float lin=0.0;
         if(useDepth>0.5||useVenueAir>0.5){
-          float z=texture2D(tDepth,vUv).x*2.0-1.0;
-          lin=2.0*camNear*camFar/(camFar+camNear-z*(camFar-camNear));
+          lin=linearDepthAt(vUv);
           float blurAmount=smoothstep(dofNear,dofFar,lin);
           coc=mix(blurAmount,1.0-blurAmount,dofForeground)*dofStrength*useDepth;
         }
@@ -278,10 +292,31 @@
           col=mix(base,lens.rgb/max(.001,lens.a),lens.a*amount);
         }
 
+        // Screen-Space Micro-SSAO (Depth Cavity & Contact Shadow): grounds shoes on turf, balls on rack, boulders & planks.
+        if((useDepth>0.5||useVenueAir>0.5)&&lin>0.3&&lin<32.0){
+          vec2 step1=texelSize*2.4,step2=texelSize*5.8;
+          float dL=linearDepthAt(vUv-vec2(step1.x,0.0)),dR=linearDepthAt(vUv+vec2(step1.x,0.0));
+          float dU=linearDepthAt(vUv-vec2(0.0,step1.y)),dD=linearDepthAt(vUv+vec2(0.0,step1.y));
+          float dU2=linearDepthAt(vUv-vec2(0.0,step2.y)),dD2=linearDepthAt(vUv+vec2(0.0,step2.y));
+          float occ=0.0;
+          float tol=.008+lin*.012,cap=.32+lin*.04;
+          occ+=smoothstep(tol,tol+.08,lin-dL)*(1.0-smoothstep(cap,cap*1.8,lin-dL));
+          occ+=smoothstep(tol,tol+.08,lin-dR)*(1.0-smoothstep(cap,cap*1.8,lin-dR));
+          occ+=smoothstep(tol,tol+.08,lin-dU)*(1.0-smoothstep(cap,cap*1.8,lin-dU));
+          occ+=smoothstep(tol,tol+.08,lin-dD)*(1.0-smoothstep(cap,cap*1.8,lin-dD));
+          occ+=.65*smoothstep(tol*1.4,tol+.14,lin-dD2)*(1.0-smoothstep(cap*1.2,cap*2.2,lin-dD2));
+          occ+=.45*smoothstep(tol*1.4,tol+.14,lin-dU2)*(1.0-smoothstep(cap*1.2,cap*2.2,lin-dU2));
+          float aoFade=1.0-smoothstep(18.0,32.0,lin);
+          float ao=clamp(occ*.095*aoFade,0.0,.32);
+          col*=1.0-ao;
+        }
+
         col+=max(blur-bloomThreshold,0.0)*bloomStrength;
         if(useVenueAir>0.5){
           vec4 air=texture2D(tVenueAir,vUv);
-          col=mix(col,air.rgb,air.a*smoothstep(airStart,airEnd,lin));
+          // Foreground players & basketballs (1.5..5m) keep 38..100% of the volumetric Tyndall & mist veil — zero vacuum cutout!
+          float airWeight=mix(.40,1.0,smoothstep(airStart,airEnd,lin));
+          col=mix(col,air.rgb,air.a*airWeight);
         }
 
         col*=exposure;
@@ -332,6 +367,14 @@
             // Soft filmic highlight roll-off + warm optical halation glow.
             col=mix(toned,toned/(.92+.15*max(0.0,lum)),sun*.38);
             col+=max(blur-.56,0.0)*mix(vec3(.11,.10,.08),vec3(.18,.12,.06),meadowGold);
+          }
+          // Warm Anamorphic Sun Lens Glare when camera looks toward the sun or sunlit canopy.
+          if(sunScreen.z>0.01){
+            vec2 sunDelta=(vUv-sunScreen.xy)*vec2(aspect,1.0);
+            float radialGlow=exp(-dot(sunDelta,sunDelta)*2.2);
+            float anamorphicStreak=exp(-abs(sunDelta.y)*14.0)*exp(-abs(sunDelta.x)*1.6);
+            vec3 glareCol=forestGrade>.5?vec3(1.0,.82,.46):mix(vec3(.95,.92,.82),vec3(1.0,.74,.38),meadowGold);
+            col+=glareCol*(radialGlow*.095+anamorphicStreak*.065)*sunScreen.z;
           }
           // Subtle 35mm monochrome micro-grain removes sterile digital CG cleanliness.
           float gHash=fract(sin(dot(gl_FragCoord.xy+vec2(gradeTime*43.1,gradeTime*19.7),vec2(12.9898,78.233)))*43758.5453);
@@ -491,8 +534,16 @@
     u.meadowGold.value=weather?weather.uniforms.meadowSky.value.y:0;
     u.gradeTime.value=(performance.now()%100000)*.001;
     u.tFoliage.value=foliage;
+    u.texelSize.value.set(1/Math.max(2,rtW),1/Math.max(2,rtH));
+    if(typeof sun!=="undefined"&&sun){
+      focusOffset.copy(sun.position).normalize();
+      camera.getWorldDirection(focusDirection);
+      const facing=THREE.MathUtils.clamp((focusDirection.dot(focusOffset)+.15)/.85,0,1);
+      focusOffset.multiplyScalar(120).add(camera.position).project(camera);
+      u.sunScreen.value.set(focusOffset.x*.5+.5,focusOffset.y*.5+.5,facing);
+    }else u.sunScreen.value.set(.5,.2,0);
     // Allow volumetric air & Tyndall shafts to fill the active basketball court (starting right in front of the player).
-    u.airStart.value=forest?0:0.6;u.airEnd.value=forest?1.8:7.2;
+    u.airStart.value=forest?0:0.4;u.airEnd.value=forest?1.4:5.5;
     u.tScene.value=rtScene.texture;u.tBlur.value=(rtB||rtScene).texture;
     u.tDepth.value=rtScene.depthTexture||null;
     u.tFocus.value=lens;u.useDepth.value=lens?1:0;
@@ -531,6 +582,7 @@
       const useAir=!!(atmosphere&&rtScene.depthTexture&&(forest||(!COARSE&&!WEAK)));
       if(atmosphere)atmosphere.fallback.visible=!useAir;
       if(!useAir&&rtAir){disposeRT(rtAir);rtAir=null;}
+      if(window.AIBACharacterShading?.syncSceneLight)window.AIBACharacterShading.syncSceneLight();
       renderer.setRenderTarget(rtScene);
       baseRender(sc,cam);
 

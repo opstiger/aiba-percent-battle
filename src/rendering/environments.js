@@ -161,12 +161,27 @@ function makeFlowerLayer(state,data,name){
 
 function writeFlowerInstance(state,layer,i,grow){
   const d=layer.data[i],o=state.dummy,form=d.form;
-  const scale=Math.max(.001,Math.pow(grow,.76)),height=d.h*scale;
+  let scale=Math.max(.001,Math.pow(grow,.76));
   const phase=state.time*1.3-d.x*.23-d.z*.125;
   const wind=state.wind||0;
   const gust=(Math.sin(phase)*.105+Math.sin(phase*.62+d.phase)*.053)*(1+wind*1.25);
   const flick=Math.sin(state.time*2.37+d.phase*1.7)*.033;
-  const arcX=(gust+flick+.037+.16*wind)*height,arcZ=(gust*.54-flick*.50+.075*wind)*height;
+  // Interactive bending: close-up court wildflowers bend away from player/opponent feet and low rolling balls.
+  let pushX=0,pushZ=0,press=0;
+  if(layer.name!=="structure"){
+    const actors=state.actors;
+    if(actors){
+      for(let a=0;a<actors.length;a+=3){
+        const dx=d.x-actors[a],dz=d.z-actors[a+1],rad=actors[a+2],dist=Math.hypot(dx,dz);
+        if(dist<rad){
+          const w=Math.pow(1-dist/rad,1.55),inv=1/Math.max(.04,dist);
+          pushX+=dx*inv*w*.36;pushZ+=dz*inv*w*.36;press=Math.max(press,w*.48);
+        }
+      }
+    }
+  }
+  const height=d.h*scale*(1-press*.45);
+  const arcX=(gust+flick+.037+.16*wind)*height+pushX,arcZ=(gust*.54-flick*.50+.075*wind)*height+pushZ;
   const at=(p,t)=>p.set(d.x+d.axis.x*height*t+arcX*t*t,d.y+d.axis.y*height*t,d.z+d.axis.z*height*t+arcZ*t*t);
   at(state.root,0);at(state.mid,.5);at(state.tip,1);
   const radius=d.stem*scale;
@@ -513,6 +528,15 @@ function updateFlowerCourt(progress,dt){
   setFlowerLayerTarget(state,state.structure,Math.floor(structureT*state.structure.total));
   state.time+=dt;state.elapsed+=dt;
   if(state.elapsed>=state.step){
+    const act=state.actors||(state.actors=[]);act.length=0;
+    try{
+      if(typeof player!=="undefined"&&player?.g?.visible)act.push(player.g.position.x,player.g.position.z,.86);
+      if(typeof OPP!=="undefined"&&OPP?.guy?.g?.visible)act.push(OPP.guy.g.position.x,OPP.guy.g.position.z,.86);
+      if(typeof passer!=="undefined"&&passer?.g?.visible)act.push(passer.g.position.x,passer.g.position.z,.78);
+      if(typeof balls!=="undefined"&&Array.isArray(balls)){
+        for(const b of balls)if(b?.mesh?.visible&&b.mesh.position.y<.75)act.push(b.mesh.position.x,b.mesh.position.z,.52);
+      }
+    }catch(e){}
     for(const layer of [state.ambient,state.ground,state.structure])updateFlowerLayer(state,layer,state.elapsed);
     state.elapsed=0;
   }
