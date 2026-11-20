@@ -66,7 +66,19 @@
     "  float terminator=exp(-sunDot*sunDot*7.5)*max(0.0,1.0-abs(up)*0.5);",
     "  gl_FragColor.rgb+=gl_FragColor.rgb*vec3(0.22,0.075,0.025)*terminator;",
     // 3. 森林球场树冠斑驳遮阴 (保留人物清晰度与立体对比，仅做自然林间斑驳光影，不重复叠加浑浊雾色)
-    "  if(aibaSceneMode>0.5&&aibaSceneMode<1.5){",
+    "  float fres=pow(1.0-clamp(dot(an,av),0.0,1.0),2.7);",
+    "  float sunSide=smoothstep(-0.25,0.65,sunDot)*(0.45+0.55*max(up,0.0));",
+    "  if(aibaSceneMode<0.5){",
+    // 3a. NBA 球馆 (indoor)：次世代 2K 顶棚马道聚光灯微高光 + 枫木金地板反弹 + 剧场紫金氛围背光融合
+    "    vec3 arenaKey=normalize((viewMatrix*vec4(0.18,0.92,0.34,0.0)).xyz);",
+    "    vec3 halfA=normalize(av+arenaKey);",
+    "    float athleticSheen=pow(max(0.0,dot(an,halfA)),22.0)*(0.30+0.70*max(0.0,up));",
+    "    gl_FragColor.rgb+=vec3(1.0,0.93,0.80)*athleticSheen*0.16;",
+    "    float camDist=length(aibaV);",
+    "    float airVeil=clamp(smoothstep(2.2,18.0,camDist)*0.055,0.01,0.065);",
+    "    gl_FragColor.rgb=mix(gl_FragColor.rgb,aibaAirColor,airVeil);",
+    "    gl_FragColor.rgb+=vec3(0.30,0.22,0.48)*fres*(1.0-sunSide)*0.22;",
+    "  }else if(aibaSceneMode>0.5&&aibaSceneMode<1.5){",
     "    vec2 q=aibaWPos.xz-aibaWPos.y*vec2(-0.55,0.42);",
     "    float dapple=0.5+0.5*(sin(q.x*1.45+q.y*1.05)*cos(q.y*1.65-q.x*0.92));",
     "    float canopy=mix(0.76,1.04,smoothstep(0.18,0.85,dapple));",
@@ -85,10 +97,20 @@
     "      float wetSpec=pow(max(0.0,dot(an,halfV)),24.0)*(0.35+0.65*max(0.0,up));",
     "      gl_FragColor.rgb=gl_FragColor.rgb*(1.0-aibaWetness*0.14)+aibaRimColor*wetSpec*aibaWetness*0.42;",
     "    }",
+    "  }else if(aibaSceneMode>3.5){",
+    // 4b. 月球陨石坑 (lunarCrater)：阿波罗高反差真空日照 + 蓝色地球暗部天光补光 (Earthshine) + 腿部月尘包裹
+    "    float shadowSide=clamp(-sunDot,0.0,1.0)*(0.42+0.58*max(0.0,up));",
+    "    gl_FragColor.rgb+=gl_FragColor.rgb*vec3(0.14,0.28,0.52)*shadowSide+vec3(0.018,0.038,0.075)*shadowSide;",
+    "    vec3 halfL=normalize(av+normalize((viewMatrix*vec4(aibaSunDir,0.0)).xyz));",
+    "    float solarSpec=pow(max(0.0,dot(an,halfL)),26.0)*max(0.0,sunDot);",
+    "    gl_FragColor.rgb+=vec3(0.95,0.97,1.0)*solarSpec*0.18;",
+    "    float bootDust=(1.0-smoothstep(0.02,0.68,aibaY))*0.15;",
+    "    float camDist=length(aibaV);",
+    "    float dustVeil=clamp(bootDust+smoothstep(2.5,18.0,camDist)*0.055,0.0,0.18);",
+    "    gl_FragColor.rgb=mix(gl_FragColor.rgb,aibaAirColor,dustVeil);",
+    "    gl_FragColor.rgb+=vec3(0.32,0.62,1.0)*fres*(1.0-sunSide)*0.26;",
     "  }",
     // 5. 方向性太阳逆光轮廓金边 (Directional Sun Rim)：只照亮迎向太阳的一侧边缘，彻底去掉全向假蓝边
-    "  float fres=pow(1.0-clamp(dot(an,av),0.0,1.0),2.7);",
-    "  float sunSide=smoothstep(-0.25,0.65,sunDot)*(0.45+0.55*max(up,0.0));",
     "  gl_FragColor.rgb+=aibaRimColor*fres*aibaRimStrength*sunSide;",
     "}"
   ].join("\n");
@@ -158,6 +180,13 @@
         uniforms.aibaRimStrength.value=.32+.18*clear+.12*gold;
         uniforms.aibaGroundColor.value.setHex(0x5f743e).lerp(new THREE.Color(0x7c743e),gold*.6);
         uniforms.aibaAirColor.value.setHex(0x889ca8).lerp(new THREE.Color(0xd8b888),gold*.75+.2*clear);
+      }else if(preset==="lunarCrater"){
+        uniforms.aibaSceneMode.value=4;
+        uniforms.aibaRimColor.value.setHex(0xf4f8ff);
+        uniforms.aibaRimStrength.value=.50;
+        uniforms.aibaGroundColor.value.setHex(0x6e737c);
+        uniforms.aibaAirColor.value.setHex(0x828a96);
+        uniforms.aibaWetness.value=0;
       }else if(preset!=="indoor"){
         uniforms.aibaSceneMode.value=3;
         if(typeof sun!=="undefined"&&sun)uniforms.aibaRimColor.value.copy(sun.color);
@@ -167,10 +196,10 @@
         uniforms.aibaWetness.value=preset==="rainyCourt"?.65:0;
       }else{
         uniforms.aibaSceneMode.value=0;
-        uniforms.aibaRimColor.value.setHex(0xffe8c8);
-        uniforms.aibaRimStrength.value=.32;
-        uniforms.aibaGroundColor.value.setHex(0x6e5338);
-        uniforms.aibaAirColor.value.setHex(0x282422);
+        uniforms.aibaRimColor.value.setHex(0xffe6bd);
+        uniforms.aibaRimStrength.value=.36;
+        uniforms.aibaGroundColor.value.setHex(0x9a7542);
+        uniforms.aibaAirColor.value.setHex(0x362a48);
         uniforms.aibaWetness.value=0;
       }
       if(typeof sun!=="undefined"&&sun&&sun.position.lengthSq()>0.01){

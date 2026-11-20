@@ -688,9 +688,357 @@
     });
     earthMat.map=earthTex;
     const earth=new THREE.Mesh(new THREE.PlaneGeometry(16.5,16.5),earthMat);
-    earth.position.set(23,22,-78);earth.name="lunarEarth";earth.frustumCulled=false;
+    earth.position.set(16.5,18.5,-76);earth.name="lunarEarth";earth.frustumCulled=false;
     s.root.add(earth);
-    s.wonder={kind:"lunar",earth,suit1,suit2};
+
+    // 5. 阿波罗低角度太阳日冕星芒 + 环形山静电尘埃光束与地平线微光带 (Apollo Solar Corona, Vacuum Dust Shafts & Horizon Glow)
+    const coronaMat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,fog:false,blending:THREE.AdditiveBlending,
+      uniforms:{uTime:{value:0}},
+      vertexShader:`varying vec2 vUv;
+        void main(){
+          vUv=uv;
+          vec4 mvPos=viewMatrix*modelMatrix*vec4(0.0,0.0,0.0,1.0);
+          mvPos.xy+=position.xy;
+          gl_Position=projectionMatrix*mvPos;
+        }`,
+      fragmentShader:`uniform float uTime;varying vec2 vUv;
+        void main(){
+          vec2 p=vUv*2.0-1.0;
+          float r=length(p);
+          if(r>1.0)discard;
+          float core=exp(-r*r*46.0);
+          float innerHalo=exp(-r*5.4)*0.52;
+          float outerCorona=exp(-r*2.4)*smoothstep(1.0,0.14,r)*0.24;
+          // 哈苏 6 叶片光圈星芒 + 宽银幕水平变形拉丝亮线
+          float ang=atan(p.y,p.x);
+          float rays=pow(max(0.0,cos(ang*3.0)),18.0)*exp(-r*3.6)*(0.32+0.05*sin(uTime*1.7));
+          float anamorphic=exp(-abs(p.y)*24.0)*exp(-abs(p.x)*2.0)*0.38;
+          vec3 col=vec3(1.0,0.99,0.95)*core+vec3(0.96,0.93,0.86)*(innerHalo+rays)+vec3(0.80,0.88,0.98)*(outerCorona+anamorphic);
+          float alpha=clamp(core+innerHalo+outerCorona+rays*0.72+anamorphic*0.82,0.0,1.0);
+          gl_FragColor=vec4(col,alpha);
+        }`
+    });
+    const solarCorona=new THREE.Mesh(new THREE.PlaneGeometry(28,28),coronaMat);
+    solarCorona.position.set(-34,15.8,-82);solarCorona.name="lunarSolarCorona";solarCorona.frustumCulled=false;
+    s.root.add(solarCorona);
+
+    // 环形山脊静电尘埃斜射光带 (Apollo Horizon Glow Dust Light-Shafts)
+    const shaftMat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,fog:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,
+      uniforms:{uTime:{value:0}},
+      vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+      fragmentShader:`uniform float uTime;varying vec2 vUv;
+        void main(){
+          float rays=0.55+0.45*sin(vUv.x*18.0+vUv.y*6.0+uTime*0.18)*cos(vUv.x*9.0-vUv.y*4.0);
+          float edgeX=smoothstep(0.0,0.22,vUv.x)*(1.0-smoothstep(0.76,1.0,vUv.x));
+          float edgeY=smoothstep(0.0,0.25,vUv.y)*(1.0-smoothstep(0.68,1.0,vUv.y));
+          float a=edgeX*edgeY*rays*0.095;
+          vec3 col=mix(vec3(0.82,0.86,0.92),vec3(0.98,0.94,0.86),vUv.y);
+          gl_FragColor=vec4(col,a);
+        }`
+    });
+    const lunarShafts=new THREE.Group();lunarShafts.name="lunarSolarShafts";
+    for(const [sx,sy,sz,sw,sh,rz] of [[-12,7.5,-34,26,15,-0.52],[-2,6.8,-44,32,16,-0.48],[9,6.2,-52,28,14,-0.44]]){
+      const sm=new THREE.Mesh(new THREE.PlaneGeometry(sw,sh),shaftMat);
+      sm.position.set(sx,sy,sz);sm.rotation.z=rz;lunarShafts.add(sm);
+    }
+    s.root.add(lunarShafts);
+
+    // 环形山脊上方的静电悬浮尘埃地平线辉光 (Apollo Electrostatic Horizon Glow & Earthshine Rim)
+    const hGlowGeo=new THREE.CylinderGeometry(96,96,24,48,1,true);
+    const hGlowMat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,fog:false,side:THREE.BackSide,blending:THREE.AdditiveBlending,
+      uniforms:{uTime:{value:0}},
+      vertexShader:`varying vec3 vWPos;varying vec2 vUv;
+        void main(){
+          vUv=uv;
+          vec4 wp=modelMatrix*vec4(position,1.0);
+          vWPos=wp.xyz;
+          gl_Position=projectionMatrix*viewMatrix*wp;
+        }`,
+      fragmentShader:`uniform float uTime;varying vec3 vWPos;varying vec2 vUv;
+        void main(){
+          vec3 dir=normalize(vWPos-vec3(0.0,0.0,4.0));
+          float sunSide=smoothstep(-0.35,0.95,dot(dir,normalize(vec3(-0.38,0.18,-0.90))));
+          float earthSide=smoothstep(-0.25,0.92,dot(dir,normalize(vec3(0.22,0.20,-0.95))));
+          float vProfile=smoothstep(0.0,0.26,vUv.y)*exp(-max(0.0,vUv.y-0.22)*3.8);
+          float wave=0.82+0.18*sin(dir.x*9.0+dir.z*7.0+uTime*0.22);
+          vec3 col=vec3(0.92,0.90,0.84)*sunSide*0.18+vec3(0.36,0.64,1.0)*earthSide*0.12+vec3(0.48,0.52,0.60)*0.04;
+          float a=vProfile*wave*(0.04+0.13*sunSide+0.09*earthSide);
+          gl_FragColor=vec4(col,a);
+        }`
+    });
+    const horizonGlow=new THREE.Mesh(hGlowGeo,hGlowMat);
+    horizonGlow.position.set(0,8.5,4);horizonGlow.name="lunarHorizonGlow";horizonGlow.frustumCulled=false;
+    s.root.add(horizonGlow);
+
+    // 6. 1/6G 月表静电悬浮晶尘微粒 (Electrostatic Levitated Lunar Regolith Dust)
+    const dustCount=s.mobile?110:220;
+    const dPos=new Float32Array(dustCount*3),dSeed=new Float32Array(dustCount*3);
+    for(let i=0;i<dustCount;i++){
+      const inCourt=i<dustCount*0.55;
+      dPos[i*3]=(s.r()-0.5)*(inCourt?18.5:42.0);
+      dPos[i*3+1]=0.14+Math.pow(s.r(),1.35)*(inCourt?3.8:5.4);
+      dPos[i*3+2]=(inCourt?-11.5:minZ-6)+s.r()*(inCourt?31.0:48.0);
+      dSeed[i*3]=s.r();
+      dSeed[i*3+1]=0.55+s.r()*0.95;
+      dSeed[i*3+2]=s.r()*6.283185;
+    }
+    const dustGeo=new THREE.BufferGeometry();
+    dustGeo.setAttribute("position",new THREE.BufferAttribute(dPos,3));
+    dustGeo.setAttribute("aSeed",new THREE.BufferAttribute(dSeed,3));
+    const dustMat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,fog:false,
+      uniforms:{
+        uTime:{value:0},
+        uSunDir:{value:new THREE.Vector3(-22,10,-4).normalize()}
+      },
+      vertexShader:`attribute vec3 aSeed;
+        uniform float uTime;uniform vec3 uSunDir;
+        varying float vAlpha;varying float vSparkle;
+        void main(){
+          // 1/6G 低重力 360° 独立三维静电微幅游弋（绝不同步左右摆动）
+          float t=uTime*(0.11+0.07*aSeed.y)+aSeed.x*62.8318;
+          float az=aSeed.z;
+          vec2 dir=vec2(cos(az),sin(az));
+          vec2 perp=vec2(-dir.y,dir.x);
+          vec2 drift=dir*(sin(t)*0.48+cos(t*0.61)*0.24)+perp*(cos(t*0.83)*0.36);
+          float lift=sin(t*1.15+aSeed.z)*0.22+cos(t*0.52)*0.11;
+          vec3 wp=position+vec3(drift.x,lift,drift.y);
+          vec4 mv=modelViewMatrix*vec4(wp,1.0);
+          float dist=max(1.2,-mv.z);
+          gl_PointSize=clamp((32.0+22.0*aSeed.y)/dist,1.5,5.2);
+          gl_Position=projectionMatrix*mv;
+          vec3 viewDir=normalize(wp-cameraPosition);
+          float scatter=pow(clamp(dot(viewDir,-uSunDir)*0.5+0.5,0.0,1.0),2.0);
+          float twinkle=0.55+0.45*sin(uTime*(1.6+aSeed.y*1.4)+aSeed.x*47.0);
+          vSparkle=scatter*twinkle;
+          float distFade=smoothstep(1.0,2.6,dist)*(1.0-smoothstep(22.0,42.0,dist));
+          vAlpha=(0.30+0.54*vSparkle)*distFade;
+        }`,
+      fragmentShader:`varying float vAlpha;varying float vSparkle;
+        void main(){
+          vec2 d=gl_PointCoord-0.5;
+          float r=length(d);
+          if(r>0.5)discard;
+          float soft=smoothstep(0.5,0.06,r);
+          vec3 col=mix(vec3(0.78,0.82,0.88),vec3(1.0,0.98,0.93),vSparkle);
+          gl_FragColor=vec4(col,soft*vAlpha);
+        }`
+    });
+    const lunarDust=new THREE.Points(dustGeo,dustMat);
+    lunarDust.name="lunarElectrostaticDust";lunarDust.frustumCulled=false;
+    s.root.add(lunarDust);
+
+    // 7. 右后方月球科考通信基站 + 太阳能追踪阵列 + 球场四角激光边界定位桩 (Artemis Telemetry Outpost)
+    const lEnv=window.AIBALunarMetal?window.AIBALunarMetal.makeEnvPMREM():null;
+    const outTi=new THREE.MeshStandardMaterial({color:0x92969e,roughness:0.27,metalness:0.84,envMap:lEnv,envMapIntensity:1.05});
+    const outSil=new THREE.MeshStandardMaterial({color:0xd0d4dc,roughness:0.21,metalness:0.90,envMap:lEnv,envMapIntensity:1.20});
+    const outGun=new THREE.MeshStandardMaterial({color:0x343840,roughness:0.36,metalness:0.76,envMap:lEnv,envMapIntensity:0.88});
+    const outSolar=new THREE.MeshStandardMaterial({color:0x162b4c,roughness:0.20,metalness:0.65,emissive:0x0b1c36,emissiveIntensity:0.35,envMap:lEnv,envMapIntensity:1.1});
+    const outGold=new THREE.MeshStandardMaterial({color:0xcf9b3a,roughness:0.34,metalness:0.78,envMap:lEnv,envMapIntensity:0.95});
+    const beaconCyan=new THREE.MeshBasicMaterial({color:0x6ce2ff});
+    const beaconAmber=new THREE.MeshBasicMaterial({color:0xffad3b});
+
+    const outpost=new THREE.Group();outpost.name="lunarTelemetryOutpost";
+    const ox=13.8,oz=-19.8,oy=terrainY(ox,oz);
+    outpost.position.set(ox,oy,oz);outpost.rotation.y=0.38;
+    const addPart=(geo,mat,x,y,z,rx=0,ry=0,rz=0,parent=outpost)=>{
+      const m=new THREE.Mesh(geo,mat);
+      m.position.set(x,y,z);if(rx||ry||rz)m.rotation.set(rx,ry,rz);
+      m.castShadow=true;m.receiveShadow=true;parent.add(m);return m;
+    };
+    // 基站重型四角登月底盘与隔热设备舱
+    addPart(new THREE.BoxGeometry(1.45,0.48,1.25),outGun,0,0.36,0);
+    addPart(new THREE.BoxGeometry(1.52,0.08,1.32),outTi,0,0.62,0);
+    addPart(new THREE.BoxGeometry(0.95,0.36,0.88),outGold,0,0.82,0);
+    for(const sx of [-1,1])for(const sz of [-1,1]){
+      addPart(new THREE.CylinderGeometry(0.16,0.20,0.05,12),outGun,sx*0.86,0.025,sz*0.76);
+      addPart(new THREE.CylinderGeometry(0.04,0.04,0.38,8),outSil,sx*0.76,0.21,sz*0.66,sz*0.22,0,-sx*0.22);
+    }
+    // 双翼可倾转深蓝光伏太阳能电池阵列 (Solar Array Wings)
+    const solarPivot=new THREE.Group();solarPivot.position.set(0,1.15,0);outpost.add(solarPivot);
+    addPart(new THREE.CylinderGeometry(0.07,0.09,0.58,10),outTi,0,-0.1,0,0,0,0,solarPivot);
+    for(const sx of [-1,1]){
+      addPart(new THREE.BoxGeometry(1.85,0.045,1.08),outTi,sx*1.18,0.12,0,0.38,0,0,solarPivot);
+      addPart(new THREE.BoxGeometry(1.76,0.052,0.98),outSolar,sx*1.18,0.13,0,0.38,0,0,solarPivot);
+      addPart(new THREE.BoxGeometry(0.04,0.06,1.04),outSil,sx*0.62,0.13,0,0.38,0,0,solarPivot);
+      addPart(new THREE.BoxGeometry(0.04,0.06,1.04),outSil,sx*1.18,0.13,0,0.38,0,0,solarPivot);
+      addPart(new THREE.BoxGeometry(0.04,0.06,1.04),outSil,sx*1.74,0.13,0,0.38,0,0,solarPivot);
+    }
+    // 顶部缓慢旋转的 S 波段深空抛物面通信雷达天线
+    const dishPivot=new THREE.Group();dishPivot.position.set(0,1.45,0);outpost.add(dishPivot);
+    addPart(new THREE.CylinderGeometry(0.055,0.07,0.65,10),outSil,0,0.22,0,0,0,0,dishPivot);
+    const dishGeo=new THREE.LatheGeometry([[0,0],[0.22,0.03],[0.52,0.16],[0.78,0.38]].map(p=>new THREE.Vector2(...p)),16);
+    addPart(dishGeo,outSil,0,0.62,0.08,0.72,0,0,dishPivot);
+    addPart(new THREE.CylinderGeometry(0.025,0.025,0.42,8),outGun,0,0.74,0.24,0.72,0,0,dishPivot);
+    addPart(new THREE.SphereGeometry(0.055,8,6),beaconCyan,0,0.88,0.38,0,0,0,dishPivot);
+    s.root.add(outpost);
+
+    // 球场外围四角低矮航空激光边界定位信标桩（高仅 0.25m，绝不阻挡跑动与镜头）
+    const cornerBeacons=[];
+    for(const [cx,cz] of [[-9.25,-10.2],[9.25,-10.2],[-9.25,19.2],[9.25,19.2]]){
+      const cy=terrainY(cx,cz);
+      const pyl=new THREE.Group();pyl.position.set(cx,cy,cz);
+      addPart(new THREE.CylinderGeometry(0.11,0.14,0.04,10),outGun,0,0.02,0,0,0,0,pyl);
+      addPart(new THREE.CylinderGeometry(0.045,0.065,0.16,10),outTi,0,0.12,0,0,0,0,pyl);
+      const lensMat=beaconCyan.clone();
+      addPart(new THREE.SphereGeometry(0.038,8,6),lensMat,0,0.22,0,0,0,0,pyl);
+      s.root.add(pyl);
+      cornerBeacons.push(lensMat);
+    }
+
+    // 8. 自主巡视六轮阿耳忒弥斯月球车 (Autonomous 6-Wheel Artemis Lunar Rover)
+    const rover=new THREE.Group();rover.name="lunarAutonomousRover";
+    // 车体底盘（拉丝钛灰骨架 + 金色隔热电池舱 + 太阳能后甲板）
+    addPart(new THREE.BoxGeometry(1.18,0.22,1.88),outTi,0,0.42,0,0,0,0,rover);
+    addPart(new THREE.BoxGeometry(0.92,0.26,0.96),outGold,0,0.58,-0.12,0,0,0,rover);
+    addPart(new THREE.BoxGeometry(1.06,0.04,0.78),outSolar,0,0.56,-0.52,-0.12,0,0,rover);
+    // 前部立体导航相机桅杆 + 呼吸遥测灯 + 旋转高增益天线
+    addPart(new THREE.CylinderGeometry(0.038,0.048,0.68,8),outSil,-0.22,0.86,0.64,0,0,0,rover);
+    addPart(new THREE.BoxGeometry(0.28,0.12,0.16),outGun,-0.22,1.22,0.66,0,0,0,rover);
+    const roverBeaconMat=beaconAmber.clone();
+    addPart(new THREE.SphereGeometry(0.042,8,6),roverBeaconMat,-0.22,1.32,0.68,0,0,0,rover);
+    const roverDish=new THREE.Group();roverDish.position.set(0.28,0.72,0.48);rover.add(roverDish);
+    addPart(new THREE.CylinderGeometry(0.028,0.035,0.38,8),outSil,0,0.16,0,0,0,0,roverDish);
+    addPart(new THREE.LatheGeometry([[0,0],[0.14,0.02],[0.34,0.11],[0.46,0.22]].map(p=>new THREE.Vector2(...p)),12),outSil,0,0.38,0.04,0.65,0,0,roverDish);
+    // 6 个钛金属网轮与悬架摇臂
+    const roverWheels=[];
+    const wheelGeo=new THREE.CylinderGeometry(0.26,0.26,0.17,14);wheelGeo.rotateZ(Math.PI/2);
+    const hubGeo=new THREE.CylinderGeometry(0.12,0.12,0.19,10);hubGeo.rotateZ(Math.PI/2);
+    for(const sx of [-1,1])for(const wz of [-0.68,0,0.68]){
+      addPart(new THREE.BoxGeometry(0.26,0.06,0.08),outGun,sx*0.62,0.34,wz,0,0,-sx*0.25,rover);
+      addPart(new THREE.BoxGeometry(0.24,0.04,0.42),outTi,sx*0.74,0.54,wz,0,0,0,rover); // 挡泥板
+      const wg=new THREE.Group();wg.position.set(sx*0.76,0.26,wz);rover.add(wg);
+      addPart(wheelGeo,outGun,0,0,0,0,0,0,wg);
+      addPart(hubGeo,outGold,0,0,0,0,0,0,wg);
+      roverWheels.push(wg);
+    }
+    rover.position.set(6,terrainY(6,-28.5),-28.5);
+    s.root.add(rover);
+
+    // 9. 硬核工业轨道空间站 + 悬吊巨型实时比分大屏 + 偶发微流星 (Orbital Industrial Station & Hanging Live Scoreboard)
+    const gateway=new THREE.Group();gateway.name="lunarOrbitalStation";
+    // 主工业桁架脊梁 (18m 跨度)
+    addPart(new THREE.BoxGeometry(18.5,0.42,0.52),outGun,0,2.55,0,0,0,0,gateway);
+    addPart(new THREE.BoxGeometry(18.8,0.16,0.68),outTi,0,2.82,0,0,0,0,gateway);
+    for(let k=-8;k<=8;k+=2){
+      addPart(new THREE.BoxGeometry(0.18,1.1,0.58),outGun,k,2.55,0,0,0,0.45,gateway);
+      addPart(new THREE.BoxGeometry(0.18,1.1,0.58),outGun,k,2.55,0,0,0,-0.45,gateway);
+    }
+    // 核心加压工业舱段（多节圆柱舱 + 钛银对接环 + 隔热金箔舱）
+    addPart(new THREE.CylinderGeometry(1.15,1.15,5.8,14),outTi,-0.4,2.55,0,0,0,Math.PI/2,gateway);
+    addPart(new THREE.CylinderGeometry(1.38,1.38,2.4,14),outGun,-1.4,2.55,0,0,0,Math.PI/2,gateway);
+    addPart(new THREE.CylinderGeometry(0.88,1.08,3.0,12),outSil,3.8,2.55,0,0,0,Math.PI/2,gateway);
+    addPart(new THREE.CylinderGeometry(0.95,0.95,2.2,12),outGold,-4.6,2.55,0,0,0,Math.PI/2,gateway);
+    for(const rx of [-5.8,-3.1,-0.2,2.4,5.4]){
+      addPart(new THREE.CylinderGeometry(1.28,1.28,0.28,14),outSil,rx,2.55,0,0,0,Math.PI/2,gateway);
+    }
+    // 顶部深空通信雷达与对接节点塔
+    addPart(new THREE.CylinderGeometry(0.52,0.62,2.1,12),outTi,1.4,4.0,0,0,0,0,gateway);
+    addPart(new THREE.CylinderGeometry(0.75,0.75,0.24,12),outGun,1.4,5.1,0,0,0,0,gateway);
+    addPart(new THREE.CylinderGeometry(0.08,0.12,2.8,8),outSil,-2.4,4.8,0,0,0,0.12,gateway);
+    // 左右双层巨型工业太阳能帆板翼
+    for(const sx of [-1,1]){
+      for(const wx of [6.4,8.6]){
+        addPart(new THREE.BoxGeometry(1.75,5.6,0.12),outSolar,sx*wx,2.55,-0.55,0.24,0,0,gateway);
+        addPart(new THREE.BoxGeometry(1.85,0.16,0.22),outSil,sx*wx,2.55,-0.55,0.24,0,0,gateway);
+      }
+      addPart(new THREE.BoxGeometry(0.18,6.2,0.24),outTi,sx*7.5,2.55,-0.55,0.24,0,0,gateway);
+    }
+    // 悬吊巨型工业实时比分大屏 (14.4m × 4.6m)
+    const sbW=14.4,sbH=4.6;
+    // 4 根工业钢索/液压吊杆把大屏挂在空间站主桁架下方
+    for(const cx of [-5.8,-2.2,2.2,5.8]){
+      addPart(new THREE.CylinderGeometry(0.10,0.10,2.3,8),outSil,cx,1.35,0.35,0,0,0,gateway);
+    }
+    // 重工业金属大屏背箱与防撞边框
+    addPart(new THREE.BoxGeometry(sbW+0.8,sbH+0.7,0.72),outGun,0,-1.85,0.05,0,0,0,gateway);
+    addPart(new THREE.BoxGeometry(sbW+1.0,0.34,0.88),outTi,0,-1.85+sbH*0.5+0.25,0.10,0,0,0,gateway);
+    addPart(new THREE.BoxGeometry(sbW+1.0,0.34,0.88),outTi,0,-1.85-sbH*0.5-0.25,0.10,0,0,0,gateway);
+    for(const sx of [-1,1]){
+      addPart(new THREE.BoxGeometry(0.36,sbH+0.9,0.88),outTi,sx*(sbW*0.5+0.36),-1.85,0.10,0,0,0,gateway);
+    }
+    // 实时比分 CanvasTexture（仅分数/倒计时变化时重绘）
+    const sbCv=document.createElement("canvas");sbCv.width=768;sbCv.height=256;
+    const sbCtx=sbCv.getContext("2d");
+    const sbTex=new THREE.CanvasTexture(sbCv);
+    sbTex.encoding=THREE.sRGBEncoding;
+    const sbMat=new THREE.MeshBasicMaterial({map:sbTex,fog:false});
+    const sbMesh=new THREE.Mesh(new THREE.PlaneGeometry(sbW,sbH),sbMat);
+    sbMesh.position.set(0,-1.85,0.44);sbMesh.name="lunarOrbitalScoreboard";
+    gateway.add(sbMesh);
+    const drawOrbitalBoard=(title,leftLbl,leftVal,rightLbl,rightVal,clockStr,accent)=>{
+      const w=sbCv.width,h=sbCv.height,g=sbCtx;
+      g.fillStyle="#090c11";g.fillRect(0,0,w,h);
+      // 工业深空扫描线网格
+      g.fillStyle="rgba(120,195,255,0.045)";
+      for(let y=0;y<h;y+=6)g.fillRect(0,y,w,2);
+      // 顶部工业状态栏与黄黑警示角标
+      g.fillStyle="#161c24";g.fillRect(0,0,w,48);
+      g.fillStyle="#d89b28";
+      for(let i=0;i<5;i++){
+        g.beginPath();g.moveTo(14+i*18,48);g.lineTo(24+i*18,48);g.lineTo(36+i*18,0);g.lineTo(26+i*18,0);g.closePath();g.fill();
+        g.beginPath();g.moveTo(w-14-i*18,48);g.lineTo(w-24-i*18,48);g.lineTo(w-36-i*18,0);g.lineTo(w-26-i*18,0);g.closePath();g.fill();
+      }
+      g.fillStyle="#d8e2ee";g.font="bold 22px Orbitron, monospace";g.textAlign="center";g.textBaseline="middle";
+      g.fillText(title,w/2,25);
+      // 外框发光边线
+      g.strokeStyle=accent||"#5ec8ff";g.lineWidth=4;g.strokeRect(4,4,w-8,h-8);
+      // 左/右比分与中央时钟槽
+      g.fillStyle="#11161f";
+      g.fillRect(28,68,236,162);g.fillRect(w-264,68,236,162);
+      g.fillRect(284,68,200,162);
+      g.strokeStyle="rgba(216,155,40,0.65)";g.lineWidth=2.5;
+      g.strokeRect(28,68,236,162);g.strokeRect(w-264,68,236,162);
+      g.strokeStyle="rgba(110,210,255,0.55)";g.strokeRect(284,68,200,162);
+      // 左栏
+      g.fillStyle="#9cb0c6";g.font="bold 22px Orbitron, monospace";g.fillText(leftLbl,146,98);
+      g.fillStyle="#ffbd44";g.font="bold 84px Orbitron, monospace";g.fillText(leftVal,146,174);
+      // 中栏时钟
+      g.fillStyle="#89b8d8";g.font="bold 20px Orbitron, monospace";g.fillText("ORBIT CLOCK",384,98);
+      g.fillStyle="#eaf6ff";g.font="bold 54px Orbitron, monospace";g.fillText(clockStr,384,166);
+      g.fillStyle="#66d9ff";g.font="bold 16px Orbitron, monospace";g.fillText("SEC-07 LIVE LINK",384,212);
+      // 右栏
+      g.fillStyle="#9cb0c6";g.font="bold 22px Orbitron, monospace";g.fillText(rightLbl,w-146,98);
+      g.fillStyle="#66d9ff";g.font="bold 84px Orbitron, monospace";g.fillText(rightVal,w-146,174);
+      sbTex.needsUpdate=true;
+    };
+    drawOrbitalBoard("ORBITAL STATION // SEC-07 LIVE","PLAYER","00","TARGET","100","60.0","#5ec8ff");
+    // 两侧航空航行频闪信标灯
+    const gwBeaconMat=beaconCyan.clone();
+    const gwAmberMat=beaconAmber.clone();
+    addPart(new THREE.SphereGeometry(0.28,8,6),gwBeaconMat,9.2,2.55,0.2,0,0,0,gateway);
+    addPart(new THREE.SphereGeometry(0.28,8,6),gwAmberMat,-9.2,2.55,0.2,0,0,0,gateway);
+    gateway.position.set(-10,18.2,-64);
+    s.root.add(gateway);
+
+    // 深空微流星光迹
+    const meteorGeo=new THREE.PlaneGeometry(5.5,0.12);
+    const meteorMat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,fog:false,blending:THREE.AdditiveBlending,
+      uniforms:{uOpacity:{value:0}},
+      vertexShader:`varying vec2 vUv;void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+      fragmentShader:`uniform float uOpacity;varying vec2 vUv;
+        void main(){
+          float head=smoothstep(0.0,0.92,vUv.x)*(1.0-smoothstep(0.92,1.0,vUv.x));
+          float core=1.0-smoothstep(0.0,0.5,abs(vUv.y-0.5));
+          gl_FragColor=vec4(0.82,0.92,1.0,head*core*uOpacity);
+        }`
+    });
+    const meteor=new THREE.Mesh(meteorGeo,meteorMat);
+    meteor.position.set(-18,46,-98);meteor.rotation.z=-0.38;meteor.visible=false;
+    s.root.add(meteor);
+
+    s.wonder={
+      kind:"lunar",earth,suit1,suit2,
+      solarCorona,shaftMat,horizonGlow,lunarDust,
+      dishPivot,solarPivot,cornerBeacons,
+      rover,roverWheels,roverDish,roverBeaconMat,terrainY,
+      gateway,gwBeaconMat,gwAmberMat,drawOrbitalBoard,orbitalBoardKey:"",
+      meteor,meteorMat
+    };
   }
   function tokyo(s,b,{batch}){
     // 1. 摩天大楼主体结构（从天台下方延伸至 -68m 深渊）
@@ -1777,11 +2125,20 @@
 
     function dandelionSeeds(s,weather,dandelions,bloom){
       const p=[],phase=[],starts=[],close=dandelions.filter(d=>d.near);
-      for(let i=0;i<(s.mobile?64:166);i++){
-        const local=i%4===0&&close.length;
-        const d=local?close[(i*23)%close.length]:dandelions[(i*97)%dandelions.length];
-        p.push(d.x,elevation(d.x,d.z)+d.size*.37,d.z);
-        phase.push(s.r(),.75+1.1*s.r());starts.push(d.when);
+      const total=s.mobile?210:520;
+      for(let i=0;i<total;i++){
+        // 48% concentrated right around the active court & near pasture so dandelion fluff is clearly visible in flight.
+        const inNear=i%2===0&&close.length;
+        if(inNear&&i%4===0){
+          // Direct court & sideline buoyant seeds
+          const sx=(s.r()-.5)*19,sz=COURT.midZ+(s.r()-.5)*24;
+          p.push(sx,elevation(sx,sz)+.22+s.r()*.65,sz);
+          phase.push(s.r(),.85+1.15*s.r());starts.push(s.r()*.18);
+        }else{
+          const d=inNear?close[(i*23)%close.length]:dandelions[(i*97)%dandelions.length];
+          p.push(d.x,elevation(d.x,d.z)+d.size*.37,d.z);
+          phase.push(s.r(),.80+1.15*s.r());starts.push(d.when*.45);
+        }
       }
       const geo=new THREE.BufferGeometry();
       geo.setAttribute("position",new THREE.Float32BufferAttribute(p,3));
@@ -1795,28 +2152,31 @@
           uniform float clock,wind,bloom;
           void main(){
             // Independent 360-degree 3D thermal float per seed (never multiplying by oscillating wind uniform).
-            float life=fract(travel.x+clock*(.024+.011*travel.y));
+            float life=fract(travel.x+clock*(.020+.010*travel.y));
             float az=travel.x*62.8318+travel.y*19.0;
             vec2 dir=vec2(cos(az),sin(az));
             vec2 perp=vec2(-dir.y,dir.x);
-            float driftDist=life*(2.2+1.4*travel.y);
-            float swirl=sin(life*6.283+travel.x*41.0)*(.28+.18*travel.y);
+            float driftDist=life*(2.6+1.6*travel.y);
+            float swirl=sin(life*6.283+travel.x*41.0)*(.34+.22*travel.y);
             vec2 horiz=dir*driftDist+perp*swirl;
-            vec3 p=position+vec3(horiz.x,.12+life*travel.y*2.4+.18*sin(life*9.4+travel.x*27.0),horiz.y);
+            vec3 p=position+vec3(horiz.x,.16+life*travel.y*2.8+.22*sin(life*9.4+travel.x*27.0),horiz.y);
             vec4 mv=modelViewMatrix*vec4(p,1.0);
             gl_Position=projectionMatrix*mv;
-            gl_PointSize=clamp(102.0*travel.y/max(9.0,-mv.z),1.3,7.2);
-            alpha=smoothstep(.0,.18,life)*(1.0-smoothstep(.68,1.0,life))*smoothstep(emerges+.05,emerges+.24,bloom);
+            gl_PointSize=clamp(128.0*travel.y/max(7.2,-mv.z),1.8,9.4);
+            float emergeFade=.34+.66*smoothstep(emerges,emerges+.22,bloom);
+            alpha=smoothstep(.0,.16,life)*(1.0-smoothstep(.70,1.0,life))*emergeFade;
           }
         `,
         fragmentShader:`
           varying float alpha;
           void main(){
             vec2 p=gl_PointCoord*2.0-1.0;
-            float edge=1.0-smoothstep(.18,.91,length(p));
-            float stem=1.0-smoothstep(.055,.21,abs(p.x+.17*p.y));
-            float plume=(.67*edge+.25*stem*smoothstep(-.65,.36,p.y)*(1.0-smoothstep(.74,1.0,p.y)));
-            gl_FragColor=vec4(.98,.965,.87,plume*alpha*.81);
+            float r=length(p);
+            float puff=1.0-smoothstep(.12,.88,r);
+            float crown=exp(-pow(length(p-vec2(0.0,.24))*2.3,2.0));
+            float stem=1.0-smoothstep(.04,.17,abs(p.x+.12*p.y));
+            float plume=clamp(.48*puff+.42*crown+.26*stem*smoothstep(-.78,.28,p.y)*(1.0-smoothstep(.68,1.0,p.y)),0.0,1.0);
+            gl_FragColor=vec4(.99,.975,.90,plume*alpha*.88);
           }
         `});
       const seeds=new THREE.Points(geo,mat);
@@ -1956,7 +2316,7 @@
         }
         mesh.count=low;drifts.count+=low*3;
       }
-      drifts.seeds.visible=p>.40;
+      drifts.seeds.visible=rain<.42;
       ambient.color.copy(weather.skyColor);
       // Strong directional cloud-break contrast even at opening overcast phase (clear == 0) so terrain, trees & boulders have 3D depth.
       ambient.intensity=(.28-.08*clear-.04*gold)*(1-.82*blackout)+.21*flash;
@@ -2092,8 +2452,91 @@
       return;
     }
     if(w.kind==="lunar"){
-      w.earth.material.uniforms.uTime.value=s.time;
+      const t=s.time;
+      w.earth.material.uniforms.uTime.value=t;
+      if(w.solarCorona)w.solarCorona.material.uniforms.uTime.value=t;
+      if(w.shaftMat)w.shaftMat.uniforms.uTime.value=t;
+      if(w.horizonGlow)w.horizonGlow.material.uniforms.uTime.value=t;
+      if(w.lunarDust)w.lunarDust.material.uniforms.uTime.value=t;
       if(w.suit2)w.suit2.visible=(typeof G!=="undefined"&&!!G&&G.mode==="battle");
+      // 科考站深空雷达与太阳翼微幅追踪摆动
+      if(w.dishPivot)w.dishPivot.rotation.y=Math.sin(t*0.24)*0.65;
+      if(w.solarPivot)w.solarPivot.rotation.y=Math.sin(t*0.09)*0.18;
+      if(w.cornerBeacons){
+        w.cornerBeacons.forEach((m,idx)=>{
+          const p=0.45+0.55*(0.5+0.5*Math.sin(t*2.4+idx*1.57));
+          m.color.setRGB(0.32*p,0.82*p,1.0*p);
+        });
+      }
+      // 自主巡视六轮月球车沿外围环形山坡道巡航
+      if(w.rover&&w.terrainY){
+        const u=t*0.055;
+        const rx=1.5+Math.sin(u)*11.5;
+        const rz=-23.5+Math.cos(u*2.0)*1.8;
+        const dx=Math.cos(u)*11.5*0.055;
+        const dz=-Math.sin(u*2.0)*3.6*0.055;
+        const ry=w.terrainY(rx,rz);
+        const ryAhead=w.terrainY(rx+dx*3,rz+dz*3);
+        w.rover.position.set(rx,ry,rz);
+        w.rover.rotation.y=Math.atan2(dx,dz);
+        w.rover.rotation.x=THREE.MathUtils.clamp((ry-ryAhead)*0.45,-0.22,0.22);
+        const wheelSpin=t*1.45*(dx>=0?1:-1);
+        w.roverWheels.forEach(wg=>{wg.rotation.x=wheelSpin;});
+        if(w.roverDish)w.roverDish.rotation.y=Math.sin(t*0.9)*0.75;
+        if(w.roverBeaconMat){
+          const bp=0.25+0.75*Math.pow(0.5+0.5*Math.sin(t*4.2),2);
+          w.roverBeaconMat.color.setRGB(1.0*bp,0.65*bp,0.18*bp);
+        }
+      }
+      // 硬核工业轨道空间站沿弧形近月轨道缓慢横越星海 + 实时比分大屏同步 + 偶发流星
+      if(w.gateway){
+        const gt=((t*0.36+82)%135)/135;
+        const orbAng=-0.52+gt*1.48;
+        const orbR=66;
+        const gx=Math.sin(orbAng)*orbR;
+        const gz=-6-Math.cos(orbAng)*orbR;
+        w.gateway.position.set(gx,16.2+Math.sin(gt*Math.PI)*2.4,gz);
+        // 悬吊巨型比分大屏始终微调朝向球场中心，第三人称/第一人称/各底角均清晰可见
+        w.gateway.rotation.y=Math.atan2(-gx,-gz+2)*0.82;
+        w.gateway.rotation.z=Math.cos(gt*Math.PI)*0.025;
+        w.gateway.rotation.x=0.09+Math.sin(t*0.24)*0.015;
+        if(w.gwBeaconMat){
+          const gp=0.22+0.78*Math.pow(0.5+0.5*Math.sin(t*4.8),3);
+          w.gwBeaconMat.color.setRGB(0.45*gp,0.92*gp,1.0*gp);
+        }
+        if(w.gwAmberMat){
+          const ap=0.22+0.78*Math.pow(0.5+0.5*Math.sin(t*4.8+Math.PI),3);
+          w.gwAmberMat.color.setRGB(1.0*ap,0.68*ap,0.18*ap);
+        }
+        if(w.drawOrbitalBoard&&typeof G!=="undefined"&&G){
+          const isBattle=G.mode==="battle";
+          const modeTitle=isBattle?"ORBITAL STATION // 100PT BATTLE":G.mode==="contest"?"ORBITAL STATION // 3PT CONTEST":G.mode==="rush"?"ORBITAL STATION // RACK RUSH":"ORBITAL STATION // SEC-07 LIVE";
+          const leftLbl="YOU";
+          const leftVal=String(Math.max(0,G.score|0)).padStart(2,"0");
+          const rightLbl=isBattle?"RIVAL":"STREAK";
+          const rightVal=String(Math.max(0,(isBattle?(G.battleOppScore|0):(G.streak|0)))).padStart(2,"0");
+          const clk=typeof G.timer==="number"&&isFinite(G.timer)?Math.max(0,G.timer).toFixed(1):"LIVE";
+          const key=modeTitle+"|"+leftVal+"|"+rightVal+"|"+clk;
+          if(key!==w.orbitalBoardKey){
+            w.orbitalBoardKey=key;
+            w.drawOrbitalBoard(modeTitle,leftLbl,leftVal,rightLbl,rightVal,clk,isBattle?"#ffbd44":"#5ec8ff");
+          }
+        }
+      }
+      if(w.meteor){
+        const cycle=t%13.5;
+        if(cycle<0.68){
+          const mt=cycle/0.68;
+          const idx=Math.floor(t/13.5)%3;
+          const sx=idx===0?-28:idx===1?14:-8;
+          const sy=idx===0?46:idx===1?52:41;
+          w.meteor.visible=true;
+          w.meteor.position.set(sx+mt*26,sy-mt*11,-96);
+          w.meteorMat.uniforms.uOpacity.value=Math.sin(mt*Math.PI)*0.85;
+        }else{
+          w.meteor.visible=false;
+        }
+      }
       return;
     }
     if(w.kind!=="arctic")return;

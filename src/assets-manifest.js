@@ -25,6 +25,8 @@
     meadowCrickets:"assets/meadow/crickets-loop.mp3",
     meadowWind:"assets/meadow/wind-loop.mp3",
     meadowThunder:"assets/meadow/thunder-clap.mp3",
+    meadowCow:"assets/meadow/cow-distant.mp3",
+    meadowSheep:"assets/meadow/sheep-distant.mp3",
     gull:"assets/aiba-audio/gull-call.mp3",
     voiceBase:"assets/aiba-audio/voices/",
     applause:"assets/aiba-audio/sfx/crowd-cheer-indoor-01.mp3",

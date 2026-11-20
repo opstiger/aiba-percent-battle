@@ -271,6 +271,296 @@
     scene.traverse(o=>{if(o.userData.placeHidden!==undefined){o.visible=o.userData.placeHidden;delete o.userData.placeHidden;}});
     setPlaceHoops(false);
   }
+  function buildLunarAerospaceHoops(s,root){
+    const lEnv=window.AIBALunarMetal?window.AIBALunarMetal.makeEnvPMREM():null;
+    const rr=rng(88412);
+    // 1. 拉丝工业钛钢贴图
+    const bCv=document.createElement("canvas");bCv.width=512;bCv.height=256;
+    const bg=bCv.getContext("2d");
+    const bGr=bg.createLinearGradient(0,0,512,256);
+    bGr.addColorStop(0,"#c6c9cf");bGr.addColorStop(0.5,"#b2b6bd");bGr.addColorStop(1,"#cfd3da");
+    bg.fillStyle=bGr;bg.fillRect(0,0,512,256);
+    for(let i=0;i<680;i++){
+      const x=rr()*512,y=rr()*256,len=30+rr()*210;
+      bg.strokeStyle=rr()>0.44?`rgba(248,250,255,${(0.06+rr()*0.11).toFixed(3)})`:`rgba(36,38,44,${(0.06+rr()*0.11).toFixed(3)})`;
+      bg.lineWidth=0.6+rr()*1.3;
+      bg.beginPath();bg.moveTo(x,y);bg.lineTo(Math.min(512,x+len),y);bg.stroke();
+    }
+    const brushedTex=new THREE.CanvasTexture(bCv);
+    brushedTex.wrapS=brushedTex.wrapT=THREE.RepeatWrapping;
+    if(THREE.sRGBEncoding)brushedTex.encoding=THREE.sRGBEncoding;
+
+    // 2. 硬核工业黄黑斜纹警示涂装贴图 (Industrial Hazard Stripes)
+    const hCv=document.createElement("canvas");hCv.width=256;hCv.height=128;
+    const hg=hCv.getContext("2d");
+    hg.fillStyle="#d29628";hg.fillRect(0,0,256,128);
+    hg.fillStyle="#181a1e";
+    for(let i=-128;i<384;i+=44){
+      hg.beginPath();hg.moveTo(i,128);hg.lineTo(i+22,128);hg.lineTo(i+74,0);hg.lineTo(i+52,0);hg.closePath();hg.fill();
+    }
+    // 磨损划痕
+    for(let i=0;i<160;i++){
+      hg.fillStyle=rr()>0.5?"rgba(220,224,230,0.16)":"rgba(15,16,19,0.22)";
+      hg.fillRect(rr()*256,rr()*128,4+rr()*18,1.5+rr()*2.5);
+    }
+    const hazardTex=new THREE.CanvasTexture(hCv);
+    hazardTex.wrapS=hazardTex.wrapT=THREE.RepeatWrapping;
+    if(THREE.sRGBEncoding)hazardTex.encoding=THREE.sRGBEncoding;
+
+    // 3. 月球就地取材粗糙圆形玄武岩石板贴图 (1024×1024：月岩坑洼、裂纹、粗糙碎边 + 工业喷漆残缺靶框)
+    const sCv=document.createElement("canvas");sCv.width=1024;sCv.height=1024;
+    const sg=sCv.getContext("2d"),SW=1024,SH=1024;
+    const sGr=sg.createRadialGradient(SW*.46,SH*.42,SW*.05,SW*.5,SH*.5,SW*.56);
+    sGr.addColorStop(0,"#84878d");sGr.addColorStop(0.55,"#6b6e74");sGr.addColorStop(0.88,"#52555b");sGr.addColorStop(1,"#3e4046");
+    sg.fillStyle=sGr;sg.fillRect(0,0,SW,SH);
+    // 粗糙火山玄武岩风化颗粒与斑块
+    for(let i=0;i<5500;i++){
+      const x=rr()*SW,y=rr()*SH,sz=1.5+rr()*7.5,bright=rr()>0.52;
+      sg.fillStyle=bright?`rgba(205,208,214,${(0.05+rr()*0.11).toFixed(3)})`:`rgba(24,26,30,${(0.06+rr()*0.14).toFixed(3)})`;
+      sg.fillRect(x,y,sz,sz*(0.6+rr()*0.8));
+    }
+    // 月表微陨石坑洼与石板敲凿凹痕
+    for(let i=0;i<68;i++){
+      const cx=rr()*SW,cy=rr()*SH,cr=6+Math.pow(rr(),1.8)*34;
+      const cg=sg.createRadialGradient(cx-cr*.22,cy-cr*.22,cr*.08,cx,cy,cr);
+      cg.addColorStop(0,"rgba(28,30,34,0.44)");
+      cg.addColorStop(0.68,"rgba(46,48,54,0.20)");
+      cg.addColorStop(0.88,"rgba(195,198,205,0.22)");
+      cg.addColorStop(1,"rgba(0,0,0,0)");
+      sg.fillStyle=cg;sg.beginPath();sg.arc(cx,cy,cr,0,Math.PI*2);sg.fill();
+    }
+    // 自然岩石裂隙纹路
+    for(let i=0;i<18;i++){
+      let fx=rr()*SW,fy=rr()*SH,ang=rr()*Math.PI*2;
+      sg.strokeStyle="rgba(22,24,28,0.42)";sg.lineWidth=1.4+rr()*2.4;
+      sg.beginPath();sg.moveTo(fx,fy);
+      for(let k=0;k<7;k++){ang+=(rr()-.5)*.7;fx+=Math.cos(ang)*(18+rr()*32);fy+=Math.sin(ang)*(18+rr()*32);sg.lineTo(fx,fy);}
+      sg.stroke();
+    }
+    // 就地手工工业喷漆靶框（略带斑驳、风化、不规整的硬核喷涂质感）
+    const paintWeatheredRect=(x,y,w,h,lw,col)=>{
+      sg.save();sg.strokeStyle=col;sg.lineWidth=lw;
+      sg.setLineDash([42,5,28,4,54,6]);
+      sg.strokeRect(x,y,w,h);
+      sg.restore();
+      // 喷漆剥落点
+      for(let i=0;i<110;i++){
+        const side=i%4;
+        const px=side<2?(x+rr()*w):(side===2?x:x+w)+(rr()-.5)*lw;
+        const py=side>=2?(y+rr()*h):(side===0?y:y+h)+(rr()-.5)*lw;
+        sg.fillStyle="rgba(104,107,112,0.58)";
+        sg.beginPath();sg.arc(px,py,2+rr()*5.5,0,Math.PI*2);sg.fill();
+      }
+    };
+    // 圆形石板上的投篮靶框 (UV 映射到 x∈[-1.02,1.02], y∈[-0.72,0.72])
+    paintWeatheredRect(SW*.355,SH*.47,SW*.29,SH*.31,15,"rgba(238,240,244,0.88)");
+    paintWeatheredRect(SW*.342,SH*.454,SW*.316,SH*.342,4,"rgba(224,132,38,0.68)");
+    // 硬核工业喷涂编号与十字准星
+    sg.fillStyle="rgba(232,235,240,0.72)";sg.font="bold 28px Orbitron, monospace";sg.textAlign="center";
+    sg.fillText("SEC-07 // BASALT",SW*.5,SH*.26);
+    sg.fillStyle="rgba(226,142,44,0.78)";sg.font="bold 20px Orbitron, monospace";
+    sg.fillText("LOCAL REGOLITH SLAB · 0.166G",SW*.5,SH*.31);
+    const stoneFaceTex=new THREE.CanvasTexture(sCv);
+    if(THREE.sRGBEncoding)stoneFaceTex.encoding=THREE.sRGBEncoding;
+
+    // 4. 材质定义：硬核工业拉丝钛灰、磨砂重装枪钢、警示斜纹钢板、粗糙月球玄武岩石板
+    const tiMain=new THREE.MeshPhysicalMaterial({
+      color:0x7e838b,map:brushedTex,bumpMap:brushedTex,bumpScale:0.008,
+      roughness:0.30,metalness:0.84,clearcoat:0.18,clearcoatRoughness:0.36,
+      envMap:lEnv,envMapIntensity:1.05
+    });
+    const tiSilver=new THREE.MeshPhysicalMaterial({
+      color:0xc4c9d2,map:brushedTex,bumpMap:brushedTex,bumpScale:0.005,
+      roughness:0.22,metalness:0.90,clearcoat:0.25,clearcoatRoughness:0.26,
+      envMap:lEnv,envMapIntensity:1.22
+    });
+    const gunmetal=new THREE.MeshStandardMaterial({
+      color:0x2b2e34,bumpMap:brushedTex,bumpScale:0.006,
+      roughness:0.38,metalness:0.78,envMap:lEnv,envMapIntensity:0.92
+    });
+    const hazardMat=new THREE.MeshStandardMaterial({
+      map:hazardTex,roughness:0.44,metalness:0.35,envMap:lEnv,envMapIntensity:0.55
+    });
+    const copperPipe=new THREE.MeshStandardMaterial({
+      color:0xb57c46,roughness:0.30,metalness:0.84,envMap:lEnv,envMapIntensity:0.95
+    });
+    const stoneMat=new THREE.MeshStandardMaterial({
+      color:0xd8dce2,map:stoneFaceTex,bumpMap:stoneFaceTex,bumpScale:0.042,
+      emissiveMap:stoneFaceTex,emissive:0x8e939c,emissiveIntensity:0.46,
+      roughness:0.90,metalness:0.04
+    });
+    const boulderMat=new THREE.MeshStandardMaterial({
+      color:0x666970,roughness:0.94,metalness:0.02,flatShading:true
+    });
+    const amberLamp=new THREE.MeshBasicMaterial({color:0xff9c2a});
+    const cyanLamp=new THREE.MeshBasicMaterial({color:0x6ee4ff});
+
+    // 构建粗糙不规则圆形月球玄武岩石板几何体 (Extruded organic fractured circular stone slab)
+    const makeStoneSlabGeo=()=>{
+      const segs=40,rx=1.04,ry=0.72,depth=0.115;
+      const shape=new THREE.Shape();
+      for(let i=0;i<=segs;i++){
+        const a=(i/segs)*Math.PI*2;
+        // 确定性粗糙凿岩碎边轮廓
+        const chip=1.0+0.068*Math.sin(a*5+0.4)+0.044*Math.cos(a*9-0.9)+0.026*Math.sin(a*13+1.7)+0.015*Math.cos(a*19);
+        const px=Math.cos(a)*rx*chip,py=Math.sin(a)*ry*chip;
+        if(i===0)shape.moveTo(px,py);else shape.lineTo(px,py);
+      }
+      const geo=new THREE.ExtrudeGeometry(shape,{
+        depth,bevelEnabled:true,bevelThickness:0.028,bevelSize:0.032,bevelSegments:2,curveSegments:1
+      });
+      geo.translate(0,0,-depth*0.5);
+      // 重新计算平面 UV 到 [0,1] 并给表面增加细微粗糙凿岩凹凸
+      const pos=geo.attributes.position,uv=geo.attributes.uv;
+      for(let i=0;i<pos.count;i++){
+        const x=pos.getX(i),y=pos.getY(i),z=pos.getZ(i);
+        const roughZ=(Math.sin(x*14.0+y*11.0)*0.008+Math.cos(x*23.0-y*19.0)*0.005);
+        pos.setZ(i,z+roughZ);
+        if(uv)uv.setXY(i,(x/(rx*2.18))+0.5,(y/(ry*2.18))+0.5);
+      }
+      geo.computeVertexNormals();
+      return geo;
+    };
+    const stoneSlabGeo=makeStoneSlabGeo();
+
+    const rigGrp=new THREE.Group();rigGrp.name="placeHoop:lunarCrater";
+    const up=new THREE.Vector3(0,1,0);
+    const addBox=(w,h,d,x,y,z,mat=tiMain,rx=0,ry=0,rz=0)=>{
+      const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+      m.position.set(x,y,z);if(rx||ry||rz)m.rotation.set(rx,ry,rz);
+      m.castShadow=true;m.receiveShadow=true;rigGrp.add(m);return m;
+    };
+    const addCyl=(rt,rb,h,seg,x,y,z,mat=tiSilver,rx=0,ry=0,rz=0)=>{
+      const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg),mat);
+      m.position.set(x,y,z);if(rx||ry||rz)m.rotation.set(rx,ry,rz);
+      m.castShadow=true;m.receiveShadow=true;rigGrp.add(m);return m;
+    };
+    const addBeam=(ax,ay,az,bx,by,bz,w,d,mat=tiMain)=>{
+      const a=new THREE.Vector3(ax,ay,az),b=new THREE.Vector3(bx,by,bz);
+      const delta=b.clone().sub(a),len=delta.length();
+      const m=new THREE.Mesh(new THREE.BoxGeometry(w,len,d),mat);
+      m.position.copy(a).add(b).multiplyScalar(0.5);
+      m.quaternion.setFromUnitVectors(up,delta.normalize());
+      m.castShadow=true;m.receiveShadow=true;rigGrp.add(m);return m;
+    };
+    const addRodBeam=(ax,ay,az,bx,by,bz,rad,mat=tiSilver)=>{
+      const a=new THREE.Vector3(ax,ay,az),b=new THREE.Vector3(bx,by,bz);
+      const delta=b.clone().sub(a),len=delta.length();
+      const m=new THREE.Mesh(new THREE.CylinderGeometry(rad,rad,len,10),mat);
+      m.position.copy(a).add(b).multiplyScalar(0.5);
+      m.quaternion.setFromUnitVectors(up,delta.normalize());
+      m.castShadow=true;m.receiveShadow=true;rigGrp.add(m);return m;
+    };
+
+    hoopSupports().forEach(([z,dir])=>{
+      const base=z-dir*1.55;
+      // 1. 硬核工业月岩压舱笼底座 + 重型液压千斤顶驻地支腿 (Industrial Rock-Ballast Cage Base)
+      addBox(.96,.12,1.08,0,.06,base,gunmetal);               // 重型钢底盘
+      addBox(.98,.11,1.10,0,.58,base,hazardMat);              // 顶部黄黑工业警示压顶框
+      // 四角粗犷焊接工字钢角柱构成压舱石笼
+      for(const sx of [-1,1])for(const sz of [-1,1]){
+        addBox(.11,.56,.11,sx*.44,.32,base+sz*.48,tiMain);
+        // 向外伸出的重型工业液压千斤顶支脚
+        const px=sx*.64,pz=base+sz*.60;
+        addCyl(.14,.18,.055,10,px,.028,pz,gunmetal);
+        addCyl(.062,.062,.34,10,px,.20,pz,tiSilver);
+        addCyl(.09,.09,.16,10,px,.32,pz,hazardMat);
+        addBeam(sx*.36,.44,base+sz*.38,px,.28,pz,.09,.09,gunmetal);
+      }
+      // 压舱笼横挡护栏 + 内部就地取材堆叠的月球玄武岩配重石块
+      for(const sy of [.24,.42]){
+        addBox(.92,.045,.045,0,sy,base+dir*.49,tiSilver);
+        addBox(.92,.045,.045,0,sy,base-dir*.49,tiSilver);
+        addBox(.045,.045,.98,-.45,sy,base,tiSilver);
+        addBox(.045,.045,.98,.45,sy,base,tiSilver);
+      }
+      for(const [rx,ry,rz,sc] of [[-.20,.26,-.16,.24],[.18,.28,.12,.27],[-.06,.32,.22,.22],[.22,.25,-.20,.20],[0,.36,-.02,.25]]){
+        const rk=new THREE.Mesh(new THREE.DodecahedronGeometry(sc,0),boulderMat);
+        rk.position.set(rx,ry,base+rz);rk.rotation.set(rx*5,rz*4,ry*3);
+        rk.castShadow=true;rk.receiveShadow=true;rigGrp.add(rk);
+      }
+
+      // 2. 硬核工业不对称重型工字钢桁架立柱 + 外露液压管路 + 侧挂配电箱
+      for(const sx of [-1,1]){
+        const mx=sx*.22;
+        addBox(.11,3.02,.18,mx,2.02,base,gunmetal);           // 主承重枪钢工字腹板
+        addBox(.14,2.98,.036,mx,2.02,base+dir*.085,tiMain);   // 前翼缘
+        addBox(.14,2.98,.036,mx,2.02,base-dir*.085,tiMain);   // 后翼缘
+        // 后方粗犷液压俯仰主缸与外露铜色液压油管
+        addBeam(mx,.52,base-dir*.48,mx,1.72,base-dir*.20,.092,.092,gunmetal);
+        addRodBeam(mx,1.58,base-dir*.23,mx,2.62,base-dir*.05,.034,tiSilver);
+        addRodBeam(mx+sx*.09,.55,base-dir*.12,mx+sx*.09,2.85,base-dir*.12,.018,copperPipe);
+      }
+      // 交叉重型工业 X 桁架与铆接连接板
+      const trussYs=[.72,1.24,1.76,2.28,2.80,3.34];
+      for(let i=0;i<trussYs.length;i++){
+        const ty=trussYs[i];
+        addBox(.46,.065,.15,0,ty,base,i===0||i===4?hazardMat:tiMain);
+        if(i<trussYs.length-1){
+          const ny=trussYs[i+1];
+          addBeam(-.19,ty,base,.19,ny,base,.044,.048,tiSilver);
+          addBeam(.19,ty,base,-.19,ny,base,.044,.048,gunmetal);
+        }
+      }
+      // 右侧外挂工业高压配电箱 + 顶部琥珀色旋转警示灯 (Asymmetrical Hardcore Industrial Detail)
+      addBox(.26,.46,.28,.38,1.38,base-dir*.04,gunmetal);
+      addBox(.28,.07,.30,.38,1.62,base-dir*.04,hazardMat);
+      addCyl(.045,.055,.11,10,.38,1.71,base-dir*.04,amberLamp);
+      // 左侧外挂液压储能罐
+      addCyl(.095,.095,.68,12,-.36,1.28,base-dir*.06,tiMain);
+      addCyl(.102,.102,.08,12,-.36,1.48,base-dir*.06,hazardMat);
+      addCyl(.102,.102,.08,12,-.36,1.08,base-dir*.06,hazardMat);
+
+      // 3. 重型斜伸工业悬臂大梁 + 双筒液压斜撑
+      for(const sx of [-1,1]){
+        const mx=sx*.22;
+        addBeam(mx,3.44,base,mx,3.52,z-dir*.12,.11,.14,tiMain);
+        addBeam(mx,3.46,base,mx,3.54,z-dir*.12,.048,.16,tiSilver);
+        addBeam(mx,2.42,base+dir*.05,mx,2.98,base+dir*.66,.088,.088,gunmetal);
+        addRodBeam(mx,2.92,base+dir*.58,mx,3.38,z-dir*.20,.034,tiSilver);
+        addCyl(.052,.052,.06,10,mx,2.98,base+dir*.66,copperPipe,Math.PI/2,0,0);
+      }
+      addBox(.60,.18,.26,0,3.46,base,gunmetal);
+      addBox(.62,.07,.28,0,3.58,base,hazardMat);
+
+      // 4. 月球就地取材粗糙圆形玄武岩石板篮板 (Rough Circular Lunar Basalt Stone Slab Backboard)
+      const slab=new THREE.Mesh(stoneSlabGeo,stoneMat);
+      slab.name="lunarBasaltBackboard";
+      slab.position.set(0,3.50,z);
+      if(dir===-1)slab.rotation.y=Math.PI;
+      slab.castShadow=true;slab.receiveShadow=true;rigGrp.add(slab);
+
+      // 5. 4 组重型工业钢爪卡具 (Heavy Bolted Industrial Steel C-Clamps) 死死咬住粗糙圆形石板边缘！
+      const backZ=z-dir*.095;
+      addBox(.52,.36,.11,0,3.48,backZ-dir*.02,gunmetal);       // 中央承重法兰箱
+      addBox(.38,.20,.09,0,3.05,backZ,gunmetal);               // 篮筐后方穿透螺栓底板
+      const clampAngles=[0.62,2.52,3.72,5.68];                 // 4 个不完全对称的工业抓爪角度
+      for(const a of clampAngles){
+        const chip=1.0+0.068*Math.sin(a*5+0.4)+0.044*Math.cos(a*9-0.9)+0.026*Math.sin(a*13+1.7);
+        const cx=Math.cos(a)*1.04*chip,cy=3.50+Math.sin(a)*0.72*chip;
+        // 背后辐射状重型钢臂
+        addBeam(0,3.48,backZ,cx,cy,backZ,.072,.052,tiMain);
+        // 咬合在石板前后两面的工业重型 C 型钢铁抓爪
+        const claw=new THREE.Group();
+        claw.position.set(cx,cy,z);
+        claw.rotation.z=a;
+        const cBack=new THREE.Mesh(new THREE.BoxGeometry(.22,.16,.05),gunmetal);cBack.position.set(-.06,0,-dir*.082);claw.add(cBack);
+        const cLip=new THREE.Mesh(new THREE.BoxGeometry(.07,.16,.21),tiSilver);cLip.position.set(.03,0,0);claw.add(cLip);
+        const cFront=new THREE.Mesh(new THREE.BoxGeometry(.20,.14,.045),tiMain);cFront.position.set(-.05,0,dir*.082);claw.add(cFront);
+        const cBolt=new THREE.Mesh(new THREE.CylinderGeometry(.022,.022,.23,8),copperPipe);
+        cBolt.rotation.x=Math.PI/2;cBolt.position.set(-.09,0,0);claw.add(cBolt);
+        rigGrp.add(claw);
+      }
+      // 石板顶部工业激光测距仪 + 双信标灯
+      addBox(.38,.08,.12,0,4.28,z-dir*.02,gunmetal);
+      addBox(.40,.025,.13,0,4.33,z-dir*.02,hazardMat);
+      addCyl(.020,.020,.035,8,-.11,4.28,z+dir*.045,cyanLamp,Math.PI/2,0,0);
+      addCyl(.020,.020,.035,8,.11,4.28,z+dir*.045,amberLamp,Math.PI/2,0,0);
+    });
+    root.add(rigGrp);
+    if(typeof setHoopRimTheme==="function")setHoopRimTheme("lunarCrater");
+    setPlaceHoops(true,true);
+  }
   function themeHoops(s,b,faceMarks=b){
     const beach=s.name==="beachSunset",lunar=s.name==="lunarCrater",tokyo=s.name==="tokyoRooftop",rain=s.name==="rainyCourt",color=beach?0x8e969e:lunar?0xeef1f5:tokyo?0x1f2530:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
     hoopSupports().forEach(([z,dir])=>{
@@ -1221,18 +1511,7 @@
       s.meadow.court=AIBAMeadowCourt.build(s,hoopSupports(),batch);
       setPlaceHoops(true,true);
     }else if(name==="lunarCrater"){
-      const hb=batch(),marks=batch();themeHoops(s,hb,marks);
-      const hm=hb.finish(root,`placeHoop:${name}`);
-      if(hm){
-        if(hm.material&&hm.material.dispose)hm.material.dispose();
-        hm.material=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.32,metalness:.45});
-        hm.castShadow=true;hm.receiveShadow=true;
-      }
-      const face=marks.finish(root,"lunarBackboardMarkings");
-      face.material.dispose();
-      face.material=new THREE.MeshStandardMaterial({
-        vertexColors:true,roughness:.7,emissive:0xe6b77f,emissiveIntensity:.15
-      });
+      buildLunarAerospaceHoops(s,root);
     }else if(name==="rainforest"){
       setPlaceHoops(true,true);
     }else{

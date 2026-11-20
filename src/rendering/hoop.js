@@ -1,7 +1,31 @@
 /* hoop & net */
-let netMesh,farNet,netPulse=0,netPulseAge=99,netPulseDir=0,lastNetPulse=0;
+let netMesh,farNet,hoopRimMat=null,netPulse=0,netPulseAge=99,netPulseDir=0,lastNetPulse=0;
 const courtHoopRigs=[];
+function setHoopRimTheme(venue){
+  if(!hoopRimMat)return;
+  if(venue==="lunarCrater"){
+    hoopRimMat.color.setHex(0xc8ccd4);
+    if(hoopRimMat.isMeshStandardMaterial){
+      const lEnv=window.AIBALunarMetal?window.AIBALunarMetal.makeEnvPMREM():null;
+      hoopRimMat.roughness=0.22;hoopRimMat.metalness=0.88;
+      if(lEnv){hoopRimMat.envMap=lEnv;hoopRimMat.envMapIntensity=1.18;}
+    }
+    if(netMesh?.material?.color)netMesh.material.color.setHex(0xd8dce4);
+    if(farNet?.material?.color)farNet.material.color.setHex(0xd8dce4);
+  }else{
+    hoopRimMat.color.setHex(0xe04819);
+    if(hoopRimMat.isMeshStandardMaterial){
+      const env=typeof makeArenaEnvPMREM==="function"?makeArenaEnvPMREM():null;
+      hoopRimMat.roughness=0.30;hoopRimMat.metalness=0.26;
+      hoopRimMat.envMap=env;hoopRimMat.envMapIntensity=env?0.55:0;
+    }
+    if(netMesh?.material?.color)netMesh.material.color.setHex(0xecece6);
+    if(farNet?.material?.color)farNet.material.color.setHex(0xecece6);
+  }
+  hoopRimMat.needsUpdate=true;
+}
 function setPlaceHoops(active,replaceBoard=false){
+  if(!active)setHoopRimTheme("indoor");
   const setVisible=child=>{
     if(child.userData.keepOutdoor)return;
     if(active){if(child.userData.indoorVisibility===undefined)child.userData.indoorVisibility=child.visible;child.visible=false;}
@@ -215,6 +239,7 @@ function buildHoop(){
   const rimM=hoopDynamicsOn()
     ?new THREE.MeshStandardMaterial({color:0xe04819,roughness:.30,metalness:.26,envMap:env,envMapIntensity:env?.55:0})
     :new THREE.MeshLambertMaterial({color:0xe04819});
+  hoopRimMat=rimM;
   if(window.AIBAModelDetail?.enabled)AIBAModelDetail.hoopHardware(grp,BOARD_Z,BASE_Z,1,rimM,boardParts);
   if(hoopDynamicsOn()){
     netMesh=AIBAHoopDynamics.buildNear(grp,{hoop:HOOP,rimMat:rimM,boardParts}).mesh;

@@ -66,6 +66,12 @@
       bloomThreshold:.79,bloomStrength:.25,
       vignette:.13,dof:.42,dofNear:15,dofFar:49
     },
+    lunarCrater:{
+      contrast:1.10,saturation:1.02,lift:-0.002,
+      warmR:1.004,warmG:1.002,warmB:1.006,
+      bloomThreshold:0.86,bloomStrength:0.20,
+      vignette:0.20,dof:0.42,dofNear:16,dofFar:52
+    },
     /* 真实球馆/转播观感。和 indoor 是**相反**的两个方向,不是强弱之分:
          indoor —— 舞台聚光:压暗角、拉对比,把主体从暗背景里抠出来。
                    v2.20 实主角/观众亮度比 2.5,那是舞台灯的比例。
@@ -229,7 +235,8 @@
     uniforms:{
       tScene:{value:null},tBlur:{value:null},tDepth:{value:null},tFocus:{value:null},
       tVenueAir:{value:null},useVenueAir:{value:0},airStart:{value:15},airEnd:{value:30},
-      tFoliage:{value:null},forestGrade:{value:0},meadowGrade:{value:0},meadowGold:{value:0},gradeTime:{value:0},
+      tFoliage:{value:null},forestGrade:{value:0},meadowGrade:{value:0},meadowGold:{value:0},
+      lunarGrade:{value:0},arenaGrade:{value:0},hasSceneDepth:{value:0},gradeTime:{value:0},
       texelSize:{value:new THREE.Vector2(1/1280,1/720)},sunScreen:{value:new THREE.Vector3(.5,.2,0)},
       useDepth:{value:0},camNear:{value:0.1},camFar:{value:120},
       exposure:{value:1},contrast:{value:1},saturation:{value:1},lift:{value:0},
@@ -242,7 +249,7 @@
     vertexShader:VERT,
     fragmentShader:`
       uniform sampler2D tScene,tBlur,tDepth,tFocus,tVenueAir,tFoliage;
-      uniform float forestGrade,meadowGrade,meadowGold,gradeTime;
+      uniform float forestGrade,meadowGrade,meadowGold,lunarGrade,arenaGrade,hasSceneDepth,gradeTime;
       uniform vec2 texelSize;
       uniform vec3 sunScreen;
       uniform float useDepth,useVenueAir,airStart,airEnd,camNear,camFar;
@@ -262,7 +269,8 @@
         // Subtle 35mm cinema lens radial chromatic aberration at outer frame edges.
         vec2 fromCenter=vUv-0.5;
         float edgeDist=length(fromCenter);
-        vec2 caOffset=fromCenter*smoothstep(.32,.72,edgeDist)*texelSize*1.35*(forestGrade>.5||meadowGrade>.5?1.0:.35);
+        float caMult=(forestGrade>.5||meadowGrade>.5||lunarGrade>.5)?1.0:(arenaGrade>.5?.55:.35);
+        vec2 caOffset=fromCenter*smoothstep(.32,.72,edgeDist)*texelSize*1.35*caMult;
         vec3 base=vec3(
           texture2D(tScene,vUv+caOffset).r,
           texture2D(tScene,vUv).g,
@@ -273,8 +281,10 @@
         /* 背景柔化:按真实深度,不是按半径 —— 按半径糊会把边角的主角也糊掉 */
         float coc=0.0;
         float lin=0.0;
-        if(useDepth>0.5||useVenueAir>0.5){
+        if(hasSceneDepth>0.5||useDepth>0.5||useVenueAir>0.5){
           lin=linearDepthAt(vUv);
+        }
+        if(useDepth>0.5||useVenueAir>0.5){
           float blurAmount=smoothstep(dofNear,dofFar,lin);
           coc=mix(blurAmount,1.0-blurAmount,clamp(dofForeground,0.0,1.0))*dofStrength*useDepth;
         }
@@ -293,8 +303,8 @@
           col=mix(base,lens.rgb/max(.001,lens.a),lens.a*amount);
         }
 
-        // Screen-Space Micro-SSAO (Depth Cavity & Contact Shadow): grounds shoes on turf, balls on rack, boulders & planks.
-        if((useDepth>0.5||useVenueAir>0.5)&&lin>0.3&&lin<32.0){
+        // Screen-Space Micro-SSAO (Depth Cavity & Contact Shadow): grounds shoes on turf/hardwood/regolith, balls on rack & metal struts.
+        if((hasSceneDepth>0.5||useDepth>0.5||useVenueAir>0.5)&&lin>0.3&&lin<32.0){
           vec2 step1=texelSize*2.4,step2=texelSize*5.8;
           float dL=linearDepthAt(vUv-vec2(step1.x,0.0)),dR=linearDepthAt(vUv+vec2(step1.x,0.0));
           float dU=linearDepthAt(vUv-vec2(0.0,step1.y)),dD=linearDepthAt(vUv+vec2(0.0,step1.y));
@@ -337,13 +347,14 @@
         col=mix(vec3(luma(col)),col,saturation);
         col*=warm;
         // Unified Filmic LUT + Gamut Harmony + Micro-Grain so characters, balls, hoops & landscape share ONE camera lens.
-        if(forestGrade>.5||meadowGrade>.5){
+        if(forestGrade>.5||meadowGrade>.5||lunarGrade>.5||arenaGrade>.5){
           float lum=luma(col);
           float cMax=max(col.r,max(col.g,col.b)),cMin=min(col.r,min(col.g,col.b));
           float sat=(cMax-cMin)/max(.001,cMax);
           // Soft gamut compression tames overly-vivid digital primaries (bright jerseys/hats/balls) into filmic harmony.
           float overSat=smoothstep(.42,.92,sat);
-          col=mix(col,mix(vec3(lum),col,.80),overSat*(forestGrade>.5?.52:.38));
+          float gamutWeight=forestGrade>.5?.52:(meadowGrade>.5?.38:(lunarGrade>.5?.35:.25));
+          col=mix(col,mix(vec3(lum),col,.80),overSat*gamutWeight);
           float shade=1.0-smoothstep(.04,.44,lum);
           float mid=smoothstep(.10,.45,lum)*(1.0-smoothstep(.55,.92,lum));
           float sun=smoothstep(.30,.88,lum);
@@ -358,7 +369,7 @@
             vec3 midTint=cooled*mix(vec3(1.0),vec3(1.018,1.006,.932),mid*.64);
             vec3 warmed=midTint*mix(vec3(1.0),vec3(1.058,1.012,.912),sun);
             col=mix(warmed,warmed/(.90+.18*max(0.0,lum)),sun*.44);
-          }else{
+          }else if(meadowGrade>.5){
             // Tian Shan Alpine Meadow Kodak-Natural LUT + in-court atmospheric light-wrap & aerial veiling glare.
             float alpineHaze=smoothstep(1.4,32.0,lin)*.095;
             vec3 hazeTone=mix(vec3(.58,.65,.70),vec3(.84,.72,.56),meadowGold);
@@ -375,18 +386,46 @@
             // Soft filmic highlight roll-off + warm optical halation glow.
             col=mix(toned,toned/(.92+.15*max(0.0,lum)),sun*.38);
             col+=max(blur-.56,0.0)*mix(vec3(.11,.10,.08),vec3(.18,.12,.06),meadowGold);
+          }else if(lunarGrade>.5){
+            // Apollo 70mm Hasselblad Ektachrome Neutral-Titanium & Earthshine LUT + Electrostatic Regolith Horizon Veil.
+            float onSurface=1.0-step(camFar*.94,lin);
+            float lunarHaze=smoothstep(14.0,96.0,lin)*onSurface*.105;
+            col=mix(col,vec3(.52,.56,.63),lunarHaze);
+            // Optical vacuum solar light-wrap: bright sunlit regolith & brushed titanium bleeds softly onto dark silhouettes.
+            float wrapMask=clamp(luma(blur)-lum,0.0,1.0)*smoothstep(1.0,20.0,lin);
+            col+=blur*vec3(.22,.23,.26)*wrapMask;
+            // Subtle Earthshine shadow depth + neutral aerospace titanium midtones + smooth Apollo solar highlight shoulder (protects FP hands).
+            vec3 earthShadow=col*(1.0-.04*shade)+vec3(.002,.006,.014)*shade;
+            vec3 tiMid=earthShadow*mix(vec3(1.0),vec3(.998,1.000,1.006),mid*.55);
+            vec3 solarHi=tiMid*mix(vec3(1.0),vec3(1.022,1.012,.992),sun*.68);
+            col=mix(solarHi,solarHi/(.88+.24*max(0.0,lum)),sun*.52);
+            col+=max(blur-.64,0.0)*vec3(.07,.08,.10);
+          }else{
+            // NBA 2K Next-Gen Showtime Arena Broadcast LUT + Upper-Bowl Spotlight Haze & Hardwood Light-Wrap.
+            float arenaHaze=smoothstep(17.5,56.0,lin)*.072;
+            col=mix(col,vec3(.19,.15,.27),arenaHaze);
+            // Optical arena spotlight wrap around foreground player shoulders, ball & stanchion (never washing out court floor).
+            float wrapMask=clamp(luma(blur)-lum,0.0,1.0)*smoothstep(1.2,16.5,lin)*(1.0-smoothstep(.42,.68,lum));
+            col+=blur*vec3(.21,.17,.11)*wrapMask;
+            // Royal-purple theatrical shadow depth + warm blonde-maple & broadcast skin midtones + anti-glare highlight roll-off.
+            vec3 bowlShadow=col+vec3(.004,-.001,.012)*shade;
+            vec3 showMid=bowlShadow*mix(vec3(1.0),vec3(1.016,1.002,.982),mid*.54);
+            vec3 goldHi=showMid*mix(vec3(1.0),vec3(1.020,1.005,.972),sun*.58);
+            col=mix(goldHi,goldHi/(.93+.13*max(0.0,lum)),sun*.32);
           }
-          // Warm Anamorphic Sun Lens Glare when camera looks toward the sun or sunlit canopy.
-          if(sunScreen.z>0.01){
+          // Warm / Apollo Anamorphic Sun Lens Glare when camera looks toward the sun.
+          if(sunScreen.z>0.01&&arenaGrade<.5){
             vec2 sunDelta=(vUv-sunScreen.xy)*vec2(aspect,1.0);
             float radialGlow=exp(-dot(sunDelta,sunDelta)*2.2);
             float anamorphicStreak=exp(-abs(sunDelta.y)*14.0)*exp(-abs(sunDelta.x)*1.6);
-            vec3 glareCol=forestGrade>.5?vec3(1.0,.82,.46):mix(vec3(.95,.92,.82),vec3(1.0,.74,.38),meadowGold);
-            col+=glareCol*(radialGlow*.095+anamorphicStreak*.065)*sunScreen.z;
+            vec3 glareCol=forestGrade>.5?vec3(1.0,.82,.46):
+              (lunarGrade>.5?vec3(.78,.89,1.0):mix(vec3(.95,.92,.82),vec3(1.0,.74,.38),meadowGold));
+            col+=glareCol*(radialGlow*.095+anamorphicStreak*(lunarGrade>.5?.085:.065))*sunScreen.z;
           }
           // Subtle 35mm monochrome micro-grain removes sterile digital CG cleanliness.
           float gHash=fract(sin(dot(gl_FragCoord.xy+vec2(gradeTime*43.1,gradeTime*19.7),vec2(12.9898,78.233)))*43758.5453);
-          col+=(gHash-.5)*.020*(.45+.55*mid);
+          float grainAmp=arenaGrade>.5?.013:.020;
+          col+=(gHash-.5)*grainAmp*(.45+.55*mid);
         }
 
         vec2 d=(vUv-0.5)*vec2(aspect,1.0);
@@ -511,6 +550,8 @@
       rtFocus.texture.encoding=THREE.LinearEncoding;
     }
     const meadow=weather&&!lookLocked;
+    const preset=(typeof currentScenePreset==="string"&&currentScenePreset)||document.documentElement.dataset.scenePreset||"indoor";
+    const lunar=preset==="lunarCrater"&&!lookLocked;
     const isFP=camera.userData.firstPerson===true;
     focus.foreground=!isFP&&foreground>.001;
     if(focus.foreground){
@@ -520,12 +561,13 @@
     }else{
       camera.getWorldDirection(focusDirection);
       const rimDepth=focusOffset.copy(HOOP).sub(camera.position).dot(focusDirection);
+      const rimDist=camera.position.distanceTo(HOOP);
       if(isFP){
         // In First-Person, keep the entire court, hoop, backboard & courtside spectators (< rimDepth+5.2m) tack-sharp,
         // then smoothly defocus the distant hills, forest belts & mountain backdrop behind them.
-        focus.near=Math.max(13.5,Math.max(0,rimDepth)+5.2);
-        focus.far=focus.near+(meadow?24:18);
-        focus.strength=(COARSE?.72:.84);
+        focus.near=Math.max(13.5,rimDist+4.5,Math.max(0,rimDepth)+5.2);
+        focus.far=focus.near+(meadow?24:lunar?28:18);
+        focus.strength=(meadow?.86:lunar?.58:.76)*(COARSE?.85:1);
       }else{
         focus.near=Math.max(P.dofNear,Math.max(0,rimDepth)+11,meadow?22:16);
         focus.far=Math.max(P.dofFar,focus.near+(meadow?48:38));
@@ -546,9 +588,13 @@
 
   function composite(air,lens,forest,foliage,weather){
     const u=compMat.uniforms;
+    const preset=(typeof currentScenePreset==="string"&&currentScenePreset)||document.documentElement.dataset.scenePreset||"indoor";
     u.tVenueAir.value=air;u.useVenueAir.value=air?1:0;
     u.forestGrade.value=forest&&!lookLocked?1:0;
     u.meadowGrade.value=weather&&!lookLocked?1:0;
+    u.lunarGrade.value=preset==="lunarCrater"&&!lookLocked?1:0;
+    u.arenaGrade.value=preset==="indoor"&&!lookLocked?1:0;
+    u.hasSceneDepth.value=rtScene&&rtScene.depthTexture?1:0;
     u.meadowGold.value=weather?weather.uniforms.meadowSky.value.y:0;
     u.gradeTime.value=(performance.now()%100000)*.001;
     u.tFoliage.value=foliage;
@@ -587,8 +633,7 @@
     const place=RT_SVC.environmentRoot.userData.placeState;
     const weather=place?.meadow,forest=place?.rainforest,atmosphere=forest||weather;
     const foreground=hasDepth&&P.dof>.001?(forest?.94:lowMeadowFocus(weather)):0;
-    // The lunar landscape and Earth share the horizon focus of the shooting camera.
-    const farLens=camera.userData.firstPerson===true&&currentScenePreset!=="lunarCrater";
+    const farLens=camera.userData.firstPerson===true;
     const wantsFocus=hasDepth&&P.dof>.001&&(farLens||foreground>.001);
     focusActive=false;
     if(failed||!P.enabled||(!FULL&&!wantsFocus&&!(forest&&hasDepth))){

@@ -456,12 +456,21 @@
       const f=state.foley;
       try{
         const preset=document.documentElement.dataset.scenePreset||"indoor";
-        if(preset==="flowerCourt"||preset==="rainforest"){
+        const isLunar=preset==="lunarCrater";
+        if(f.mesh.material?.color)f.mesh.material.color.setHex(isLunar?0xc2cad6:0xf8ebd0);
+        if(preset==="flowerCourt"||preset==="rainforest"||isLunar){
           const jump=(typeof P!=="undefined"&&P&&Number(P.jump))||(typeof player!=="undefined"&&player?.g?Math.max(0,player.g.position.y):0);
           const inAir=jump>.035;
           if(inAir!==f.wasAir&&typeof player!=="undefined"&&player?.g?.visible){
             f.wasAir=inAir;
-            spawnFoleyBurst(player.g.position.x,.06,player.g.position.z,inAir?8:11,inAir?.85:1.15,.014,inAir?.65:.85,3.2);
+            spawnFoleyBurst(
+              player.g.position.x,.06,player.g.position.z,
+              isLunar?(inAir?11:15):(inAir?8:11),
+              isLunar?(inAir?.68:.92):(inAir?.85:1.15),
+              isLunar?.017:.014,
+              isLunar?(inAir?.48:.62):(inAir?.65:.85),
+              isLunar?.62:3.2
+            );
           }
         }
       }catch(e){}

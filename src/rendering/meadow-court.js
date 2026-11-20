@@ -262,8 +262,17 @@
           [side*.24,2.60,foot+dir*.03],
           [side*.10,3.52,foot+dir*.08]
         ],.092,14,logMat,"meadowAFrameSpruceLog");
-        // Iron diagonal tension rods bracing the A-frame to the timber backboard.
-        rod(.026,.024,[side*.30,2.38,foot+dir*.02],[side*.48,3.26,z-dir*.12],ironMat);
+        // Rear legs spread the support in depth and meet the same upper joint.
+        const rearZ=foot-dir*1.30;
+        curvedLog([
+          [side*.70,s.heightAt(side*.70,rearZ)-.06,rearZ],
+          [side*.48,1.32,foot-dir*.83],
+          [side*.26,2.60,foot-dir*.32],
+          [side*.10,3.52,foot+dir*.08]
+        ],.085,14,logMat,"meadowRearSpruceLeg");
+        // Side braces connect each leg to the board's rear battens.
+        rod(.038,.035,[side*.38,1.90,foot-dir*.08],[side*.64,3.26,z-dir*.12],logMat);
+        rod(.035,.033,[side*.58,.75,rearZ+dir*.25],[side*.40,2.18,foot-dir*.18],logMat);
       }
       // Horizontal spruce cross-ties locking the A-frame legs together.
       rod(.058,.054,[-.52,.98,foot],[.52,1.02,foot],logMat);
@@ -308,9 +317,11 @@
   }
 
   function buildInsects(s){
+    // Keep dragonflies sparse (4 desktop / 2 mobile) so they feel like real wild meadow insects, not a scripted swarm.
+    const maxCount=s.mobile?2:4;
     const bodies=new THREE.InstancedMesh(new THREE.SphereGeometry(1,6,4),new THREE.MeshStandardMaterial({
       color:0x315548,metalness:.24,roughness:.50
-    }),s.mobile?4:8);
+    }),maxCount);
     const shape=new THREE.Shape();
     shape.moveTo(0,0);shape.quadraticCurveTo(.38,-.25,1,-.08);
     shape.quadraticCurveTo(.96,.30,.47,.26);shape.lineTo(0,0);
@@ -321,8 +332,8 @@
     for(const mesh of [bodies,wings]){
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.count=0;mesh.frustumCulled=false;s.root.add(mesh);
     }
-    const centers=[[-1.9,1.0],[2.1,-.8],[-3.3,-4.5],[3.5,-5.7],[-2.8,-11.4],[3.2,-12.8],[-6.4,2.8],[6.6,4.4]];
-    return {bodies,wings,centers:centers.slice(0,s.mobile?4:8)};
+    const centers=[[-2.8,1.4],[3.6,-4.2],[-4.9,-8.6],[5.2,3.4]];
+    return {bodies,wings,centers:centers.slice(0,maxCount)};
   }
 
   function buildPastureProps(s,batch){
@@ -442,11 +453,12 @@
     const count=s.mobile?280:720,pos=[],seed=[];
     for(let i=0;i<count;i++){
       // Concentrate 65% of dust/pollen motes right inside the active court & camera volume.
-      const isFly=i%9===1;
+      // Keep blurred flying midges sparse (~12 on desktop, ~4 on mobile) so they feel occasional & organic.
+      const isFly=i%60===7;
       const inCourt=isFly||i%3!==0;
-      const spanX=isFly?11:(inCourt?15:28),spanZ=isFly?16:(inCourt?20:36),maxH=isFly?3.2:(inCourt?3.6:5.2);
+      const spanX=isFly?13:(inCourt?15:28),spanZ=isFly?18:(inCourt?20:36),maxH=isFly?3.1:(inCourt?3.6:5.2);
       pos.push((s.r()-.5)*spanX,(isFly?.75:.18)+s.r()*maxH,COURT.midZ+(s.r()-.5)*spanZ);
-      // mote.x = phase seed, mote.y = size/speed, mote.z = 0 (fine dust), 1 (soft foreground bokeh dust), 2 (fast hover-and-dart blurred insect)
+      // mote.x = phase seed, mote.y = size/speed, mote.z = 0 (fine dust), 1 (soft foreground bokeh dust), 2 (occasional hover-and-dart blurred insect)
       seed.push(s.r(),.60+s.r()*1.25,isFly?2:(i%5===0?1:0));
     }
     const geo=new THREE.BufferGeometry();
@@ -475,15 +487,18 @@
             sin(t*.84+mote.x*19.0)*.22+cos(t*.51+mote.y*13.0)*.09,
             eddy.y
           );
-          // Fast hover-and-dart blurred insects (hover 78% of cycle, zip rapidly in 22%).
-          float rate=.62+mote.y*.26;
-          float cyc=clock*rate+mote.x*31.4;
-          float slot=floor(cyc);
-          float dart=smoothstep(0.0,.20,fract(cyc));
-          vec3 h0=vec3(sin(slot*4.1+mote.x*17.0),cos(slot*2.7+mote.x*11.0)*.38,cos(slot*3.3-mote.x*13.0));
-          vec3 h1=vec3(sin((slot+1.0)*4.1+mote.x*17.0),cos((slot+1.0)*2.7+mote.x*11.0)*.38,cos((slot+1.0)*3.3-mote.x*13.0));
-          vec3 jitter=vec3(sin(clock*29.0+mote.x*40.0),cos(clock*35.0+mote.x*25.0),sin(clock*24.0))*.032;
-          vec3 flyPos=p+mix(h0,h1,dart)*vec3(2.2,.85,2.0)+jitter;
+          // Aperiodic independent hover-and-dart blurred insects: each insect has a unique irrational speed & warped pause/dart cadence.
+          float seedA=fract(mote.x*19.37+mote.y*7.13);
+          float seedB=fract(mote.x*37.91-mote.y*11.47);
+          float rate=.21+seedA*.49;
+          float warped=clock*rate+sin(clock*(.13+seedB*.23)+mote.x*43.0)*.62+cos(clock*(.09+seedA*.17)-mote.y*29.0)*.34+mote.x*53.7;
+          float slot=floor(warped);
+          float dartWindow=.14+fract(sin(slot*12.9898+mote.x*78.233)*43758.5453)*.18;
+          float dart=smoothstep(0.0,dartWindow,fract(warped));
+          vec3 h0=vec3(sin(slot*4.13+mote.x*17.3)+cos(slot*1.71+seedB*9.0)*.45,cos(slot*2.73+mote.x*11.9)*.42,cos(slot*3.37-mote.x*13.1)+sin(slot*2.11+seedA*7.0)*.45);
+          vec3 h1=vec3(sin((slot+1.0)*4.13+mote.x*17.3)+cos((slot+1.0)*1.71+seedB*9.0)*.45,cos((slot+1.0)*2.73+mote.x*11.9)*.42,cos((slot+1.0)*3.37-mote.x*13.1)+sin((slot+1.0)*2.11+seedA*7.0)*.45);
+          vec3 jitter=vec3(sin(clock*(21.0+seedA*14.0)+mote.x*40.0),cos(clock*(25.0+seedB*13.0)+mote.x*25.0),sin(clock*(19.0+seedA*11.0)+seedB*19.0))*.026;
+          vec3 flyPos=p+mix(h0,h1,dart)*vec3(1.85,.72,1.75)+jitter;
           p=mix(dustPos,flyPos,vFly);
           vec4 mv=modelViewMatrix*vec4(p,1.0);
           gl_Position=projectionMatrix*mv;
@@ -610,27 +625,35 @@
     const {bodies,wings,centers}=c.insects,m=c.transform;
     const count=Math.round(centers.length*visibility);
     bodies.count=count;wings.count=count*4;
+    const rates=[.23,.37,.53,.71];
+    const offsets=[1.37,7.91,15.43,24.67];
     for(let i=0;i<count;i++){
       const [x,z]=centers[i];
-      // Dragonfly hover-and-dart kinematics: hover stationary 78% of cycle, zip rapidly to new 3D point in 22%.
-      const rate=.52+(i%3)*.13;
-      const cyc=time*rate+i*2.17;
+      // Fully desynchronized dragonfly hover-and-dart kinematics: unique irrational rate + aperiodic time warp per insect.
+      const rate=rates[i%rates.length];
+      const cyc=time*rate+Math.sin(time*(.17+i*.11)+offsets[i%offsets.length])*.68+Math.cos(time*(.11+i*.07)-i*2.3)*.34+offsets[i%offsets.length];
       const slot=Math.floor(cyc),frac=cyc-slot;
-      const dart=smoothstep(frac,0,.22);
-      const h0x=Math.sin(slot*3.7+i*1.9)*1.65,h0z=Math.cos(slot*2.9+i*2.3)*1.85,h0y=Math.sin(slot*2.3+i)*.42;
-      const h1x=Math.sin((slot+1)*3.7+i*1.9)*1.65,h1z=Math.cos((slot+1)*2.9+i*2.3)*1.85,h1y=Math.sin((slot+1)*2.3+i)*.42;
-      const bx=x+h0x+(h1x-h0x)*dart+.028*Math.sin(time*24+i*3);
-      const bz=z+h0z+(h1z-h0z)*dart+.028*Math.cos(time*27+i*2);
-      const by=(i<2?1.25:.85)+h0y+(h1y-h0y)*dart+.022*Math.sin(time*19+i);
+      const hash=Math.abs(Math.sin(slot*12.9898+i*78.233)*43758.5453)%1;
+      const dartDur=.14+hash*.20;
+      const dart=smoothstep(frac,0,dartDur);
+      const h0x=Math.sin(slot*3.71+i*2.19)*1.55+Math.cos(slot*1.93-i*1.3)*.45;
+      const h0z=Math.cos(slot*2.93+i*2.71)*1.75+Math.sin(slot*1.61+i*2.1)*.45;
+      const h0y=Math.sin(slot*2.37+i*1.7)*.44;
+      const h1x=Math.sin((slot+1)*3.71+i*2.19)*1.55+Math.cos((slot+1)*1.93-i*1.3)*.45;
+      const h1z=Math.cos((slot+1)*2.93+i*2.71)*1.75+Math.sin((slot+1)*1.61+i*2.1)*.45;
+      const h1y=Math.sin((slot+1)*2.37+i*1.7)*.44;
+      const bx=x+h0x+(h1x-h0x)*dart+.024*Math.sin(time*(21+i*4.3)+i*3.1);
+      const bz=z+h0z+(h1z-h0z)*dart+.024*Math.cos(time*(24+i*3.7)+i*2.3);
+      const by=(i%2===0?1.22:.88)+h0y+(h1y-h0y)*dart+.020*Math.sin(time*(17+i*3.1)+i);
       const dx=h1x-h0x,dz=h1z-h0z;
       const yaw=Math.hypot(dx,dz)>.01?Math.atan2(dx,dz):i*1.1;
-      const zipPitch=frac<.22?.24*Math.sin(frac/.22*Math.PI):0;
-      m.position.set(bx,by,bz);m.rotation.set(zipPitch+.04*Math.cos(time*8+i),yaw,0,"YXZ");
+      const zipPitch=frac<dartDur?.24*Math.sin(frac/dartDur*Math.PI):0;
+      m.position.set(bx,by,bz);m.rotation.set(zipPitch+.04*Math.cos(time*(7+i*1.9)+i),yaw,0,"YXZ");
       m.scale.set(.028,.027,.132);m.updateMatrix();bodies.setMatrixAt(i,m.matrix);
       for(let j=0;j<4;j++){
         const side=j%2?1:-1;
         m.position.set(bx,by+.011,bz+(j<2?.030:-.037));
-        m.rotation.set(-Math.PI/2,yaw+(side<0?Math.PI:0)+side*.20,Math.sin(time*74+j*.4)*.78,"YXZ");
+        m.rotation.set(-Math.PI/2,yaw+(side<0?Math.PI:0)+side*.20,Math.sin(time*(68+i*7)+j*.4)*.78,"YXZ");
         m.scale.set(.152,.190,1);m.updateMatrix();wings.setMatrixAt(i*4+j,m.matrix);
       }
     }

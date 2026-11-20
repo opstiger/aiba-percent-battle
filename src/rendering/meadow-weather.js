@@ -476,7 +476,8 @@
       wetness:0,ballWetness:0,previousRain:0,
       sunColor:new THREE.Color(0xffe7c5),skyColor:new THREE.Color(0xc1c9d5),wetColor:new THREE.Color(0xa5baca),
       warmColor:new THREE.Color(0xffb06b),coolFog:new THREE.Color(0x879eab),clearingFog:new THREE.Color(0x9aafb7),
-      time:uniforms.meadowClock,stormAt:null,thunderAt:null,nextStrike:0,flashAt:-100};
+      time:uniforms.meadowClock,stormAt:null,thunderAt:null,thunderOpts:null,nextStrike:0,nextStrikeAt:null,
+      flashAt:-100,strikePower:1.2,strikeDur:0.32,strikePulses:1};
     w.airMaterial=airPass(w);
     buildSky(s,w);
     w.mountainClouds=buildMountainClouds(s,w);
@@ -485,11 +486,17 @@
     return w;
   }
 
+  function strikeHash(n,salt){
+    const v=Math.sin(n*127.1+salt*311.7)*43758.5453123;
+    return v-Math.floor(v);
+  }
+
   function reset(w){
     w.score=w.progress=w.progressVel=w.sunProgress=w.sunProgressVel=w.flowerProgress=0;
     w.wetness=w.ballWetness=w.previousRain=0;
     if(w.court)AIBAMeadowCourt.reset(w.court);
-    w.stormAt=w.thunderAt=null;w.nextStrike=0;w.flashAt=-100;
+    w.stormAt=w.thunderAt=w.thunderOpts=w.nextStrikeAt=null;
+    w.nextStrike=0;w.flashAt=-100;w.strikePower=1.2;w.strikeDur=0.32;w.strikePulses=1;
   }
 
   function update(w,time,dt){
@@ -516,22 +523,52 @@
     const u=w.uniforms;
     w.time.value=time;w.wind.value=wind;
     let anticipation=0;
-    if(p>=.366&&p<.573){
-      if(w.stormAt===null)w.stormAt=time;
-      const strikeAt=w.stormAt+1.0+w.nextStrike*10.3;
-      anticipation=curve(time,strikeAt-.53,strikeAt-.20);
-      if(time>=strikeAt){
-        w.flashAt=time;w.thunderAt=time+1.12;w.nextStrike++;
-        w.bolt.position.x=w.nextStrike%2===1?14:-20;
+    // Extended thunderstorm phase (p ∈ [0.22, 0.64]) with irregular intervals, varied intensities, durations & multi-flicker restrikes.
+    if(p>=.22&&p<.64){
+      if(w.stormAt===null){
+        w.stormAt=time;
+        w.nextStrikeAt=time+.75+strikeHash(w.nextStrike+1,1.3)*1.65;
       }
-    }else w.stormAt=null;
-    if(w.thunderAt!==null&&time>=w.thunderAt){
-      w.thunderAt=null;
-      if(typeof playMeadowThunder==="function")playMeadowThunder();
+      const strikeAt=w.nextStrikeAt;
+      anticipation=curve(time,strikeAt-.48,strikeAt-.14)*Math.min(1,w.strikePower*.72);
+      if(time>=strikeAt){
+        const idx=++w.nextStrike;
+        const hGap=strikeHash(idx,2.1),hPow=strikeHash(idx,4.7),hDur=strikeHash(idx,7.3);
+        const hPos=strikeHash(idx,11.9),hDist=strikeHash(idx,15.1),hPulse=strikeHash(idx,19.7);
+        const peakStorm=1-Math.min(1,Math.abs(p-.42)/.24);
+        w.flashAt=time;
+        w.strikePower=lerp(.62,1.95,Math.pow(hPow,.82))*(.78+.28*peakStorm);
+        w.strikeDur=lerp(.15,.78,Math.pow(hDur,1.15));
+        w.strikePulses=hPulse>.66?3:(hPulse>.28?2:1);
+        const dist=lerp(.12,1.0,hDist);
+        const boltX=lerp(-52,48,hPos);
+        w.bolt.position.set(boltX,lerp(8.5,16.5,strikeHash(idx,23.3)),-128);
+        w.bolt.scale.set((hPos>.5?1:-1)*lerp(.72,1.34,hPow),lerp(.78,1.28,hDur),1);
+        w.thunderAt=time+lerp(.30,2.25,dist);
+        w.thunderOpts={power:w.strikePower,distance:dist,pan:clamp(boltX/56,-.78,.78)};
+        // Irregular gap: 2.6s..8.4s (more active at storm peak, occasional rapid follow-up)
+        const minGap=lerp(3.6,2.4,peakStorm),maxGap=lerp(8.8,6.2,peakStorm);
+        w.nextStrikeAt=time+lerp(minGap,maxGap,Math.pow(hGap,1.1));
+      }
+    }else{
+      w.stormAt=null;w.nextStrikeAt=null;
     }
-    const age=time-w.flashAt;
-    const blackout=Math.max(anticipation,(1-curve(age,.12,.91))*.94);
-    const flash=(1-curve(age,.045,.31))*1.32;
+    if(w.thunderAt!==null&&time>=w.thunderAt){
+      const opts=w.thunderOpts;
+      w.thunderAt=null;w.thunderOpts=null;
+      if(typeof playMeadowThunder==="function")playMeadowThunder(opts);
+    }
+    const age=time-w.flashAt,dur=w.strikeDur||.32,pow=w.strikePower||1.2;
+    let env=0;
+    if(age>=0&&age<dur*1.35){
+      const uAge=age/dur;
+      const primary=(1-curve(uAge,.08,.78))*Math.exp(-uAge*1.35);
+      const restrike2=w.strikePulses>=2?Math.exp(-Math.pow((uAge-.42)/.11,2))*.88:0;
+      const restrike3=w.strikePulses>=3?Math.exp(-Math.pow((uAge-.76)/.13,2))*.64:0;
+      env=clamp(primary+restrike2+restrike3,0,1.25);
+    }
+    const blackout=Math.max(anticipation,(1-curve(age,.10,dur*1.85+.35))*.92*Math.min(1,pow*.75));
+    const flash=env*pow;
     u.meadowSky.value.set(clear,gold,rain,wet);
     u.meadowAir.value.set(mist,beams,rainbow,flash);
     u.meadowStorm.value.set(bank,blackout);

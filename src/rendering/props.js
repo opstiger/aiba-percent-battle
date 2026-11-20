@@ -200,7 +200,7 @@ function refillRackBalls(ri){
 const rackThemeNames={
   shonanCoast:{body:0x777863,frame:0x52717a,trim:0xa28760,metalness:.28},
   outdoorSunny:{body:0x526a61,frame:0x434b4f,trim:0xb5a289,metalness:.36},
-  lunarCrater:{body:0xb5ac94,frame:0xb4bac5,trim:0xc0903e,metalness:.74},
+  lunarCrater:{body:0x7d8796,frame:0xb4becb,trim:0x343c48,metalness:.84},
   rainforest:{body:0x65533c,frame:0x42443b,trim:0x9a8060,metalness:.05},
   flowerCourt:{body:0x9d8059,frame:0x416451,trim:0xb0a383,metalness:.09},
   rainyCourt:{body:0x67635c,frame:0x495550,trim:0x9e8355,metalness:.47},
@@ -237,9 +237,317 @@ function localRackWood(){
   }
   return localRackWoodMap;
 }
+/* ---------------- 月球航空级拉丝钛金属 & 磨砂灰反射环境系统 ----------------
+   月球天空是 0x010103 的漆黑真空，若高 metalness 材质不挂 envMap，反射项全黑，
+   再高级的金属也会退化成灰暗塑料块。这里生成专属的阿波罗高对比度天光+地照+低角度太阳
+   PMREM 磨砂环境贴图，以及微米级 CNC 航空拉丝金属纹理与粗糙度贴图。 */
+let lunarEnvMap=null,lunarEnvRT=null,lunarBrushedMap=null,lunarBrushedRoughMap=null,lunarRackBadgeMap=null,lunarRackHazardMap=null;
+function makeLunarEnvMap(){
+  if(lunarEnvMap)return lunarEnvMap;
+  const w=512,h=256,cv=document.createElement("canvas");
+  cv.width=w;cv.height=h;
+  const g=cv.getContext("2d");
+  const gr=g.createLinearGradient(0,0,0,h);
+  gr.addColorStop(0,"#14171d");      // 天顶：中性深空炭灰
+  gr.addColorStop(0.30,"#2c3038");   // 高空：高级钛灰微光过渡
+  gr.addColorStop(0.47,"#b8bcc4");   // 地平线：阿波罗银白金属拉丝主反射带
+  gr.addColorStop(0.55,"#787c84");   // 近地平线：磨砂枪灰环形山脊反光
+  gr.addColorStop(1,"#3a3d42");      // 下半球：月表风化层中性灰漫反射
+  g.fillStyle=gr;g.fillRect(0,0,w,h);
+  // 地球方向柔和冷银蓝微光点缀（控制在低饱和，不把钛金属染蓝）
+  const eg=g.createRadialGradient(w*0.68,h*0.24,6,w*0.68,h*0.24,w*0.20);
+  eg.addColorStop(0,"rgba(205,225,248,0.55)");
+  eg.addColorStop(0.5,"rgba(150,175,205,0.22)");
+  eg.addColorStop(1,"rgba(0,0,0,0)");
+  g.fillStyle=eg;g.fillRect(w*0.44,0,w*0.48,h*0.46);
+  // 低角度太阳方向高强度铂金银白高光带 (Apollo Solar Anisotropic Highlight)
+  const sg=g.createRadialGradient(w*0.24,h*0.44,4,w*0.24,h*0.44,w*0.28);
+  sg.addColorStop(0,"rgba(255,253,248,1.0)");
+  sg.addColorStop(0.32,"rgba(242,243,246,0.88)");
+  sg.addColorStop(0.65,"rgba(188,192,198,0.42)");
+  sg.addColorStop(1,"rgba(0,0,0,0)");
+  g.fillStyle=sg;g.fillRect(0,h*0.14,w*0.56,h*0.58);
+  // 环向航空拉丝软高光条带（保证任何朝向的金属倒角都有细腻磨砂反光）
+  for(let i=0;i<7;i++){
+    const y0=h*(0.34+i*0.030);
+    g.fillStyle=i%2===0?"rgba(240,242,245,0.26)":"rgba(52,55,60,0.24)";
+    g.fillRect(0,y0,w,h*0.015);
+  }
+  lunarEnvMap=new THREE.CanvasTexture(cv);
+  lunarEnvMap.mapping=THREE.EquirectangularReflectionMapping;
+  if(THREE.sRGBEncoding)lunarEnvMap.encoding=THREE.sRGBEncoding;
+  return lunarEnvMap;
+}
+function makeLunarEnvPMREM(){
+  if(lunarEnvRT)return lunarEnvRT.texture;
+  try{
+    const pm=new THREE.PMREMGenerator(renderer);
+    pm.compileEquirectangularShader();
+    lunarEnvRT=pm.fromEquirectangular(makeLunarEnvMap());
+    pm.dispose();
+    return lunarEnvRT.texture;
+  }catch(e){
+    return makeLunarEnvMap();
+  }
+}
+function makeLunarBrushedTex(){
+  if(lunarBrushedMap)return lunarBrushedMap;
+  const random=mulberry32(90417);
+  lunarBrushedMap=pixTex(512,256,(g,w,h)=>{
+    // 高级中性太空钛灰磨砂基底（去蓝偏色，纯正航空钛银灰）
+    const bg=g.createLinearGradient(0,0,w,h);
+    bg.addColorStop(0,"#d6d8dc");bg.addColorStop(0.45,"#c6c9cf");bg.addColorStop(0.75,"#dcdfe4");bg.addColorStop(1,"#bfc2c8");
+    g.fillStyle=bg;g.fillRect(0,0,w,h);
+    // 微喷砂磨砂底噪 (Bead-blasted matte micro-grain)
+    for(let i=0;i<2400;i++){
+      const x=(random()*w)|0,y=(random()*h)|0,v=random()>0.5?246:138;
+      g.fillStyle=`rgba(${v},${v},${v+2},${(0.03+random()*0.05).toFixed(3)})`;
+      g.fillRect(x,y,2,1);
+    }
+    // CNC 精密水平拉丝发丝纹 (Anisotropic brushed titanium hairlines)
+    for(let i=0;i<680;i++){
+      const x=random()*w,y=random()*h,len=35+random()*240;
+      const bright=random()>0.45;
+      g.strokeStyle=bright
+        ?`rgba(252,253,255,${(0.07+random()*0.12).toFixed(3)})`
+        :`rgba(58,60,65,${(0.05+random()*0.09).toFixed(3)})`;
+      g.lineWidth=0.5+random()*1.15;
+      g.beginPath();g.moveTo(x,y);g.lineTo(Math.min(w,x+len),y+(random()-0.5)*0.6);g.stroke();
+    }
+    // 航空蒙皮浅接缝与精密沉头铆钉
+    g.strokeStyle="rgba(64,66,72,0.22)";g.lineWidth=1.2;
+    g.strokeRect(4,4,w-8,h-8);
+    g.beginPath();g.moveTo(w*0.5,4);g.lineTo(w*0.5,h-4);g.stroke();
+    g.fillStyle="rgba(76,78,84,0.35)";
+    for(const rx of [14,w*0.5-10,w*0.5+10,w-14])for(const ry of [14,h-14]){
+      g.beginPath();g.arc(rx,ry,2.4,0,Math.PI*2);g.fill();
+    }
+  },{smooth:true,mipmaps:true});
+  lunarBrushedMap.wrapS=lunarBrushedMap.wrapT=THREE.RepeatWrapping;
+  return lunarBrushedMap;
+}
+function makeLunarBrushedRoughTex(){
+  if(lunarBrushedRoughMap)return lunarBrushedRoughMap;
+  const random=mulberry32(90419);
+  lunarBrushedRoughMap=pixTex(256,128,(g,w,h)=>{
+    g.fillStyle="rgb(172,172,172)";g.fillRect(0,0,w,h);
+    for(let i=0;i<360;i++){
+      const x=random()*w,y=random()*h,len=25+random()*140;
+      const v=Math.round(132+random()*84);
+      g.strokeStyle=`rgba(${v},${v},${v},0.35)`;
+      g.lineWidth=0.6+random()*1.3;
+      g.beginPath();g.moveTo(x,y);g.lineTo(Math.min(w,x+len),y);g.stroke();
+    }
+  },{smooth:true,mipmaps:true,linear:true});
+  lunarBrushedRoughMap.wrapS=lunarBrushedRoughMap.wrapT=THREE.RepeatWrapping;
+  return lunarBrushedRoughMap;
+}
+function makeLunarRackHazardTex(){
+  if(lunarRackHazardMap)return lunarRackHazardMap;
+  const random=mulberry32(90433);
+  lunarRackHazardMap=pixTex(256,64,(g,w,h)=>{
+    g.fillStyle="#c99322";g.fillRect(0,0,w,h);
+    g.fillStyle="#1c1e22";
+    for(let x=-h;x<w+h;x+=36){
+      g.beginPath();g.moveTo(x,h);g.lineTo(x+18,h);g.lineTo(x+18+h,0);g.lineTo(x+h,0);g.closePath();g.fill();
+    }
+    // 工业刮痕与月尘磨损
+    for(let i=0;i<260;i++){
+      g.fillStyle=i%3===0?"rgba(170,174,180,0.22)":"rgba(24,26,30,0.24)";
+      g.fillRect(random()*w,random()*h,2+random()*9,1+random()*2);
+    }
+  },{smooth:true,mipmaps:true});
+  lunarRackHazardMap.wrapS=lunarRackHazardMap.wrapT=THREE.RepeatWrapping;
+  return lunarRackHazardMap;
+}
+function makeLunarRackBadgeTex(){
+  if(lunarRackBadgeMap)return lunarRackBadgeMap;
+  const random=mulberry32(90441);
+  lunarRackBadgeMap=pixTex(512,128,(g,w,h)=>{
+    const gr=g.createLinearGradient(0,0,w,h);
+    gr.addColorStop(0,"#222428");gr.addColorStop(0.5,"#30333a");gr.addColorStop(1,"#1c1e22");
+    g.fillStyle=gr;g.fillRect(0,0,w,h);
+    // 顶部/底部重工业黄黑斜纹警示条
+    g.fillStyle="#c99322";g.fillRect(0,0,w,12);g.fillRect(0,h-12,w,12);
+    g.fillStyle="#181a1e";
+    for(let x=-16;x<w+16;x+=24){
+      g.beginPath();g.moveTo(x,12);g.lineTo(x+11,12);g.lineTo(x+21,0);g.lineTo(x+10,0);g.closePath();g.fill();
+      g.beginPath();g.moveTo(x,h);g.lineTo(x+11,h);g.lineTo(x+21,h-12);g.lineTo(x+10,h-12);g.closePath();g.fill();
+    }
+    // 工业刮痕与钢板铆钉
+    for(let i=0;i<220;i++){
+      g.fillStyle=i%2===0?"rgba(220,224,230,0.06)":"rgba(12,14,16,0.18)";
+      g.fillRect(random()*w,12+random()*(h-24),4+random()*22,1);
+    }
+    g.strokeStyle="#767c86";g.lineWidth=3;g.strokeRect(6,15,w-12,h-30);
+    g.fillStyle="#8a909a";
+    for(const rx of [18,w-18])for(const ry of [26,h-26]){
+      g.beginPath();g.arc(rx,ry,4,0,Math.PI*2);g.fill();
+    }
+    g.fillStyle="#eef0f4";g.font="bold 31px Orbitron, monospace";g.textAlign="center";g.textBaseline="middle";
+    g.fillText("SEC-07  //  HEAVY RIG-04",w/2,h*0.44);
+    g.fillStyle="#d8a23e";g.font="bold 15px Orbitron, monospace";
+    g.fillText("LUNAR INDUSTRIAL BALL RACK  ·  0.166G",w/2,h*0.74);
+  },{smooth:true,mipmaps:true});
+  return lunarRackBadgeMap;
+}
+window.AIBALunarMetal=Object.freeze({
+  makeEnvPMREM:makeLunarEnvPMREM,
+  makeBrushedTex:makeLunarBrushedTex,
+  makeBrushedRoughTex:makeLunarBrushedRoughTex,
+  makeRackBadgeTex:makeLunarRackBadgeTex
+});
+
 function buildVenueEquipment(root,name,theme){
   const moon=name==="lunarCrater",timber=name==="rainforest"||name==="flowerCourt";
   const skin=new THREE.Group();skin.name="rackVenue:"+name;
+  if(moon){
+    const env=makeLunarEnvPMREM(),bTex=makeLunarBrushedTex(),rTex=makeLunarBrushedRoughTex();
+    // 高级航空拉丝钛灰（主装甲与结构梁：纯正高级中性灰 + 细腻磨砂金属反光）
+    const tiBrushed=new THREE.MeshPhysicalMaterial({
+      color:0x9498a0,map:bTex,roughnessMap:rTex,bumpMap:bTex,bumpScale:0.006,
+      roughness:0.27,metalness:0.84,clearcoat:0.24,clearcoatRoughness:0.32,
+      envMap:env,envMapIntensity:1.06
+    });
+    // 精密 CNC 阳极氧化亮银钛（导轨、液压活塞杆、倒角防撞护条）
+    const tiSilver=new THREE.MeshPhysicalMaterial({
+      color:0xd2d6de,map:bTex,roughnessMap:rTex,bumpMap:bTex,bumpScale:0.004,
+      roughness:0.20,metalness:0.90,clearcoat:0.30,clearcoatRoughness:0.24,
+      envMap:env,envMapIntensity:1.22
+    });
+    // 磨砂深枪灰航空合金（内胆机箱、减震筒、登月脚盘基座）
+    const gunmetal=new THREE.MeshStandardMaterial({
+      color:0x363940,roughnessMap:rTex,bumpMap:bTex,bumpScale:0.005,
+      roughness:0.36,metalness:0.76,envMap:env,envMapIntensity:0.90
+    });
+    // 钛金/钨钢精密紧固件点缀色
+    const tiChampagne=new THREE.MeshStandardMaterial({
+      color:0xb8a688,roughness:0.26,metalness:0.85,envMap:env,envMapIntensity:0.98
+    });
+    // 硬核工业黄黑警示装甲材质 + 外露铜质液压管线
+    const hazardMat=new THREE.MeshStandardMaterial({
+      map:makeLunarRackHazardTex(),roughness:0.56,metalness:0.28,envMap:env,envMapIntensity:0.55
+    });
+    const copperPipe=new THREE.MeshStandardMaterial({
+      color:0xa86438,roughness:0.34,metalness:0.84,envMap:env,envMapIntensity:0.92
+    });
+    const badgeMat=new THREE.MeshStandardMaterial({
+      map:makeLunarRackBadgeTex(),roughness:0.38,metalness:0.58,envMap:env,envMapIntensity:0.72
+    });
+    const box=(w,h,d,x,y,z,mat=tiBrushed)=>{
+      const mesh=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+      mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;skin.add(mesh);return mesh;
+    };
+    const rod=(x,y,z,rTop,rBot,height,seg=12,mat=tiSilver)=>{
+      const mesh=new THREE.Mesh(new THREE.CylinderGeometry(rTop,rBot,height,seg),mat);
+      mesh.position.set(x,y,z);mesh.castShadow=true;mesh.receiveShadow=true;skin.add(mesh);return mesh;
+    };
+    const bolt=(x,y,z)=>rod(x,y,z,.017,.017,.026,8,tiChampagne);
+    if(root.userData.rackKind==="rack"){
+      // 1. 四角航天液压减震支腿 + 圆盘形防沉降登月足垫（底面精确落在 y=-0.45）
+      for(const x of [-.57,.57])for(const z of [-.16,.16]){
+        rod(x,-.432,z,.062,.082,.036,12,gunmetal);         // 碟形登月足垫
+        rod(x,-.405,z,.042,.054,.022,12,tiChampagne);      // 钛金球铰锁紧环
+        rod(x,-.315,z,.044,.044,.16,12,gunmetal);          // 下段磨砂枪灰减震外筒
+        const railY=.41-x*.14-.12;
+        const upH=Math.max(.12,railY+.235);
+        rod(x,-.235+upH*.5,z,.031,.031,upH,10,tiSilver);   // 上段精密亮银液压立柱
+        box(.086,.058,.082,x,railY-.01,z,tiBrushed);       // 顶部导轨承力耳座
+        bolt(x,railY+.028,z);
+      }
+      // 前后横向加强龙门横梁 + 工业防撞警示护杠 + 外露铜质液压管线
+      for(const x of [-.57,.57]){
+        box(.065,.048,.34,x,-.24,0,gunmetal);
+        box(.042,.032,.36,x,-.24,0,tiSilver);
+        box(.078,.052,.37,x,-.375,0,hazardMat);
+      }
+      // 机箱底部贯穿式外露双铜液压管
+      for(const pz of [-.11,.11]){
+        const pipe=new THREE.Mesh(new THREE.CylinderGeometry(.014,.014,1.18,8),copperPipe);
+        pipe.rotation.z=Math.PI/2;pipe.position.set(0,-.215,pz);pipe.castShadow=true;skin.add(pipe);
+      }
+      // 2. 硬核工业切角重钢中心设备舱（黄黑防撞护边 + 铆接装甲肋 + 无遮挡工业铭牌）
+      box(1.24,.235,.325,0,-.055,0,gunmetal);              // 深枪灰内胆核心
+      box(1.30,.038,.368,0,.068,0,tiBrushed);              // 顶部拉丝钛灰装甲盖板
+      box(1.28,.034,.358,0,-.172,0,tiBrushed);             // 底部拉丝钛灰托盘护底
+      box(1.32,.016,.376,0,.088,0,tiSilver);               // 上沿 CNC 亮银倒角压条
+      box(1.26,.016,.366,0,-.152,0,tiSilver);              // 下沿 CNC 亮银倒角压条
+      // 两侧工业铭牌面板（加强肋移至两端 x=±0.50，保证中央铭牌文字 100% 无遮挡）
+      for(const sz of [-1,1]){
+        const plate=new THREE.Mesh(new THREE.PlaneGeometry(.82,.175),badgeMat);
+        plate.position.set(-.01,-.052,sz*.166);
+        if(sz<0)plate.rotation.y=Math.PI;
+        skin.add(plate);
+        for(const rx of [-.52,.50]){
+          const rib=box(.052,.205,.028,rx,-.052,sz*.168,gunmetal);
+          rib.rotation.z=-.18;
+          box(.022,.195,.034,rx,-.052,sz*.170,tiSilver).rotation.z=-.18;
+        }
+        for(const bx of [-.56,-.44,.44,.56])bolt(bx,.068,sz*.168);
+      }
+      // 两端重工业黄黑防撞护杠与折叠钢索握把
+      for(const sx of [-1,1]){
+        box(.044,.195,.30,sx*.638,-.052,0,hazardMat);
+        box(.028,.028,.28,sx*.676,.025,0,tiSilver);
+        for(const sz of [-.11,.11])box(.038,.026,.026,sx*.656,.025,sz,gunmetal);
+      }
+      // 3. 双层拉丝银钛斜向承球主导轨 + 侧翼镂空减重护板
+      for(const z of [-.142,.142]){
+        const mainRail=box(1.42,.048,.052,0,.41-.112,z,tiSilver);
+        mainRail.rotation.z=-.139;
+        const sideWing=box(1.45,.040,.032,0,.342,z*1.32,tiBrushed);
+        sideWing.rotation.z=-.139;
+        const underTrim=box(1.38,.018,.044,0,.252,z*1.12,gunmetal);
+        underTrim.rotation.z=-.139;
+        // 导轨与机箱之间的 CNC 竖向支撑立柱（置于两端与内缩中柱，不挡侧面铭牌）
+        for(const kx of [-.44,.44]){
+          const topY=.285-kx*.14,h=Math.max(.04,topY-.075);
+          box(.038,h,.036,kx,.075+h*.5,z,gunmetal);
+          box(.022,h*.75,.042,kx,.075+h*.5,z,tiSilver);
+        }
+      }
+      // 5 个球位下方的钨钢防滑定位横梁
+      for(let i=0;i<5;i++){
+        const sx=(i-2)*.30-.15,sy=.41-(i-2)*.042-.105;
+        box(.026,.038,.31,sx,sy,0,gunmetal);
+        box(.014,.042,.26,sx,sy+.004,0,tiChampagne);
+      }
+      // 低端重型拉丝钛金属液压挡球器
+      box(.052,.148,.39,.765,.248,0,tiSilver);
+      box(.032,.118,.35,.742,.250,0,gunmetal);
+      box(.018,.045,.37,.778,.265,0,tiChampagne);
+    }else{
+      // 超远 5 分球座 & 中圈 10 分球座：航天四爪液压升降立柱座
+      const h=root.userData.rackHeight,y=-h/2;
+      const mid=root.userData.rackKind==="middle",foot=mid?.33:.245;
+      // 底层重型碟形登月基座 + 四向斜撑爪
+      rod(0,y+.035,0,foot*.82,foot,.07,16,gunmetal);
+      rod(0,y+.085,0,foot*.58,foot*.76,.045,16,tiBrushed);
+      for(const s of [-1,1])for(const z of [-1,1]){
+        const leg=box(.048,.075,foot*.62,s*foot*.44,y+.065,z*foot*.44,tiSilver);
+        leg.rotation.y=Math.atan2(s,z);
+        bolt(s*foot*.64,y+.072,z*foot*.64);
+      }
+      // 同轴双层拉丝钛灰+亮银液压立柱、黄黑工业法兰环与外露铜液压管
+      rod(0,y+h*.36,0,mid?.132:.102,mid?.144:.112,h*.54,16,tiBrushed);
+      rod(0,y+h*.64,0,mid?.098:.076,mid?.098:.076,h*.56,16,tiSilver);
+      for(const [idx,ry] of [.24,.54,.80].entries()){
+        rod(0,y+h*ry,0,mid?.152:.124,mid?.152:.124,.044,16,idx===1?hazardMat:gunmetal);
+        rod(0,y+h*ry,0,mid?.158:.129,mid?.158:.129,.014,16,tiChampagne);
+      }
+      for(const px of [-1,1]){
+        rod(px*(mid?.142:.112),y+h*.48,0,.013,.013,h*.62,8,copperPipe);
+      }
+      // 顶部精密承球盘与四爪航空机械卡座
+      rod(0,y+h-.032,0,mid?.222:.178,mid?.155:.125,.058,16,tiBrushed);
+      rod(0,y+h-.002,0,mid?.185:.148,mid?.185:.148,.016,16,gunmetal);
+      for(const x of [-.132,.132])for(const z of [-.132,.132]){
+        rod(x,y+h+.012,z,.022,.028,.054,10,tiSilver);
+        bolt(x,y+h+.040,z);
+      }
+    }
+    return skin;
+  }
   const frame=new THREE.MeshStandardMaterial({color:theme.frame,roughness:moon?.36:.71,metalness:theme.metalness});
   const body=new THREE.MeshStandardMaterial({color:theme.body,roughness:moon?.38:.81,metalness:theme.metalness});
   const trim=new THREE.MeshStandardMaterial({color:theme.trim,roughness:.64,metalness:moon?.5:.12});
@@ -398,6 +706,7 @@ function buildHands(){
   hands.add(handBall);
   hands.position.set(0,-0.5,-0.62);
   camera.add(hands);
+  if(window.AIBACharacterShading?.register)window.AIBACharacterShading.register(hands);
 }
 
 
