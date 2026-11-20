@@ -58,19 +58,29 @@
       vec2 q=canopyFoot(p);
       float ripples=.18*sin(q.y*.53+forestTime*.25)+.125*cos(q.x*.59-forestTime*.19);
       q.x+=ripples;
+      // Distant forest shafts + in-court canopy shafts slicing directly across the court, hoop, and player.
       float rays=.87*lobe(q,vec2(-5.4,-13.8),vec2(1.15,4.6))
         +.55*lobe(q,vec2(-3.55,-16.5),vec2(.68,4.8))
         +.77*lobe(q,vec2(6.7,-22.7),vec2(1.39,7.1))
         +.61*lobe(q,vec2(2.22,-19.4),vec2(1.07,4.1))
         +.70*lobe(q,vec2(12.1,-36.9),vec2(2.15,8.2))
-        +.54*lobe(q,vec2(-18.2,-40.2),vec2(2.41,6.8));
+        +.54*lobe(q,vec2(-18.2,-40.2),vec2(2.41,6.8))
+        +.74*lobe(q,vec2(-2.2,-7.4),vec2(1.35,3.8))
+        +.68*lobe(q,vec2(2.8,-4.2),vec2(1.45,4.2))
+        +.64*lobe(q,vec2(-1.6,-.8),vec2(1.55,3.9))
+        +.58*lobe(q,vec2(3.6,2.4),vec2(1.65,4.4))
+        +.52*lobe(q,vec2(-3.8,3.6),vec2(1.50,4.0));
+      // Fine dappled canopy sun-streaks filtering through overhead leaves across the whole court volume.
+      float courtZone=1.0-smoothstep(9.5,24.0,length(p.xz-vec2(0.0,-2.5)));
+      float streaks=pow(max(0.0,sin(q.x*1.85+q.y*.72+forestTime*.14)*cos(q.y*1.42-q.x*1.15-forestTime*.11)),2.0);
+      rays+=courtZone*streaks*.44;
       return rays*(1.0-smoothstep(18.0,29.0,p.y));
     }
     float forestClearing(vec3 p){
-      float depth=max(0.0,-p.z);
-      float center=p.x+.18*(depth-16.0)-2.0;
-      float open=exp(-pow(center/(21.0+depth*.06),2.0));
-      return smoothstep(10.0,41.0,depth)*open;
+      float depth=max(0.0,-p.z+6.5);
+      float center=p.x+.16*(depth-12.0)-1.2;
+      float open=exp(-pow(center/(19.0+depth*.06),2.0));
+      return smoothstep(1.5,28.0,depth)*open;
     }
     float leafLight(vec3 p){
       vec2 q=canopyFoot(p);
@@ -1501,14 +1511,16 @@
             float window=forestClearing(p);
             float woodland=smoothstep(14.0,54.0,length((p.xz-vec2(0.0,4.5))*vec2(1.0,.79)));
             float glints=.45+.55*sin(p.x*.39+p.z*.29+p.y*.68-forestTime*.16);
-            float nearMist=smoothstep(2.0,18.0,t)*exp(-max(0.0,p.y-.4)*.24)*.0085;
-            float density=.0068+nearMist+valley*(.0168+woodland*.0052)+basin*.019+window*.017+
-              smoothstep(.24,.82,glints)*exp(-max(0.0,p.y)*.085)*.0048;
-            float transmittance=exp(-accumulated*.70);
+            float nearMist=smoothstep(.8,14.0,t)*exp(-max(0.0,p.y-.5)*.20)*.0115;
+            // Swirling dusty aerosol suspended right inside the court volume (0..18m).
+            float courtDust=(1.0-smoothstep(8.0,22.0,length(p.xz-vec2(0.0,-2.0))))*exp(-max(0.0,p.y-2.2)*.18)*(.55+.45*glints)*.0095;
+            float density=.0078+nearMist+courtDust+valley*(.0172+woodland*.0052)+basin*.019+window*.017+
+              smoothstep(.20,.80,glints)*exp(-max(0.0,p.y)*.085)*.0056;
+            float transmittance=exp(-accumulated*.68);
             accumulated+=density*stride;
-            amber+=window*(.38+.62*valley)*stride*.115*transmittance*(.36+.64*angle);
-            glow+=lightShaft(p)*(valley*.78+.44)*stride*.225*transmittance*
-              smoothstep(.65,5.8,t)*(.52+.48*angle);
+            amber+=window*(.42+.58*valley)*stride*.125*transmittance*(.38+.62*angle);
+            glow+=lightShaft(p)*(valley*.78+.52)*stride*.265*transmittance*
+              smoothstep(.35,3.2,t)*(.54+.46*angle);
           }
           float warm=1.0-exp(-amber);
           float mist=(1.0-exp(-accumulated))*(.61+.32*warm);

@@ -305,27 +305,33 @@
           float mid=smoothstep(.10,.45,lum)*(1.0-smoothstep(.55,.92,lum));
           float sun=smoothstep(.30,.88,lum);
           if(forestGrade>.5){
-            // Rainforest CineStill Emerald-Amber LUT + subtle humid near-air integration.
-            float nearHaze=smoothstep(2.5,24.0,lin)*.085;
-            col=mix(col,vec3(.56,.58,.42),nearHaze);
-            vec3 cooled=col*(1.0-.08*shade)+vec3(.004,.016,.014)*shade;
-            vec3 midTint=cooled*mix(vec3(1.0),vec3(1.015,1.006,.935),mid*.62);
-            vec3 warmed=midTint*mix(vec3(1.0),vec3(1.055,1.012,.915),sun);
+            // Rainforest CineStill Emerald-Amber LUT + in-court dusty veiling glare & optical light-wrap.
+            float nearHaze=smoothstep(1.2,20.0,lin)*.115;
+            col=mix(col,vec3(.58,.58,.41),nearHaze);
+            // Optical light-wrap: warm sunlit canopy/mist bleeds softly around dark foreground silhouettes (player/hoop).
+            float wrapMask=clamp(luma(blur)-lum,0.0,1.0)*smoothstep(1.0,16.0,lin);
+            col+=blur*vec3(.30,.25,.14)*wrapMask;
+            vec3 cooled=col*(1.0-.08*shade)+vec3(.006,.018,.014)*shade;
+            vec3 midTint=cooled*mix(vec3(1.0),vec3(1.018,1.006,.932),mid*.64);
+            vec3 warmed=midTint*mix(vec3(1.0),vec3(1.058,1.012,.912),sun);
             col=mix(warmed,warmed/(.90+.18*max(0.0,lum)),sun*.44);
           }else{
-            // Tian Shan Alpine Meadow Kodak-Natural LUT (adapts dynamically with golden-hour meadowGold).
-            float alpineHaze=smoothstep(4.5,38.0,lin)*.075;
-            vec3 hazeTone=mix(vec3(.56,.64,.70),vec3(.82,.72,.58),meadowGold);
+            // Tian Shan Alpine Meadow Kodak-Natural LUT + in-court atmospheric light-wrap & aerial veiling glare.
+            float alpineHaze=smoothstep(1.4,32.0,lin)*.095;
+            vec3 hazeTone=mix(vec3(.58,.65,.70),vec3(.84,.72,.56),meadowGold);
             col=mix(col,hazeTone,alpineHaze);
-            vec3 shadowTint=mix(vec3(-.006,.004,.014),vec3(.006,.002,-.004),meadowGold);
+            // Optical light-wrap: bright sky & Tyndall mist wraps softly around player shoulders, ball rack & timber hoop.
+            float wrapMask=clamp(luma(blur)-lum,0.0,1.0)*smoothstep(1.0,18.0,lin);
+            col+=blur*mix(vec3(.20,.22,.24),vec3(.32,.23,.13),meadowGold)*wrapMask;
+            vec3 shadowTint=mix(vec3(-.004,.005,.014),vec3(.008,.003,-.003),meadowGold);
             vec3 hiTint=mix(vec3(1.028,1.008,.962),vec3(1.075,1.005,.900),meadowGold);
-            vec3 midWarm=mix(vec3(1.005,1.002,.982),vec3(1.038,1.002,.938),meadowGold);
+            vec3 midWarm=mix(vec3(1.006,1.002,.982),vec3(1.040,1.002,.936),meadowGold);
             vec3 toned=col+shadowTint*shade;
-            toned*=mix(vec3(1.0),midWarm,mid*.55);
+            toned*=mix(vec3(1.0),midWarm,mid*.58);
             toned*=mix(vec3(1.0),hiTint,sun*.75);
             // Soft filmic highlight roll-off + warm optical halation glow.
             col=mix(toned,toned/(.92+.15*max(0.0,lum)),sun*.38);
-            col+=max(blur-.62,0.0)*mix(vec3(.09,.085,.07),vec3(.15,.10,.05),meadowGold);
+            col+=max(blur-.56,0.0)*mix(vec3(.11,.10,.08),vec3(.18,.12,.06),meadowGold);
           }
           // Subtle 35mm monochrome micro-grain removes sterile digital CG cleanliness.
           float gHash=fract(sin(dot(gl_FragCoord.xy+vec2(gradeTime*43.1,gradeTime*19.7),vec2(12.9898,78.233)))*43758.5453);
@@ -485,7 +491,8 @@
     u.meadowGold.value=weather?weather.uniforms.meadowSky.value.y:0;
     u.gradeTime.value=(performance.now()%100000)*.001;
     u.tFoliage.value=foliage;
-    u.airStart.value=forest?0:5.5;u.airEnd.value=forest?2.0:28.0;
+    // Allow volumetric air & Tyndall shafts to fill the active basketball court (starting right in front of the player).
+    u.airStart.value=forest?0:0.6;u.airEnd.value=forest?1.8:7.2;
     u.tScene.value=rtScene.texture;u.tBlur.value=(rtB||rtScene).texture;
     u.tDepth.value=rtScene.depthTexture||null;
     u.tFocus.value=lens;u.useDepth.value=lens?1:0;

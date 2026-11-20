@@ -1296,6 +1296,7 @@
       });
       let on=0;s.lights.forEach(l=>{const t=clamp01((p-l.threshold)/.07);l.mesh.material.color.setScalar(.12+t*.88);if(t>.5)on++;});s.root.userData.litWindows=on;
       s.realLights.forEach(l=>l.intensity=clamp01((p-.5)/.3)*1.25);ambient.intensity=.36-p*.08;hemi.intensity=.52-p*.15;sun.intensity=1.25-p*.92;sun.color.setHex(p>.6?0x9aa9c4:0xffbe78);
+      sun.position.set(-22,Math.max(1.8,8.5-p*6.7),-36);
       s.clouds.forEach(c=>c.g.children[0].material.color.copy(s.skyColor).lerp(s.fogTint,.45-p*.25));
       document.documentElement.dataset.environmentPhase=p<.25?"golden":p<.5?"sunset":p<.75?"dusk":"night";
     }else s.lights.forEach(l=>l.mesh.material.color.setScalar(s.name==="rainyCourt"?.9:.18));

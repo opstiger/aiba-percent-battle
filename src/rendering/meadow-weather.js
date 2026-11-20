@@ -122,7 +122,7 @@
       float bank=0.0;
       for(int i=0;i<3;i++){
         float stepDistance=112.0+float(i)*87.0;
-        vec3 p=eye+ray*stepDistance;
+        vec3 p=vec3(0.0,2.0,4.745)+ray*stepDistance;
         float billow=cloudDensity(p.xz*.87+vec2(float(i)*91.0,p.y*3.3));
         float height=1.0-smoothstep(42.0,153.0,p.y+27.0*(billow-.45));
         bank+=height*(.48+.52*billow);
@@ -225,29 +225,40 @@
           vec3 view=normalize((invProjection*vec4(vUv*2.0-1.0,1.0,1.0)).xyz);
           vec3 ray=(cameraWorld*vec4(view,0.0)).xyz;
           vec3 eye=cameraWorld[3].xyz;
-          float end=min(196.0,viewDepth/max(.13,-view.z));
-          float stepSize=max(0.0,end-15.0)/7.0;
+          float end=min(176.0,viewDepth/max(.13,-view.z));
+          float startD=0.8;
+          float stepSize=max(0.0,end-startD)/8.0;
           float mist=0.0,beam=0.0;
-          for(int i=0;i<7;i++){
-            vec3 p=eye+ray*(15.0+(float(i)+.54)*stepSize);
+          vec2 sunSlant=meadowSun.xz/max(.14,meadowSun.y);
+          for(int i=0;i<8;i++){
+            float t=startD+(float(i)+.48)*stepSize;
+            vec3 p=eye+ray*t;
             float dist=length(p.xz-vec2(0.0,4.745));
-            float field=smoothstep(24.0,55.0,dist)*(1.0-smoothstep(144.0,198.0,dist));
+            // Continuous alpine air across the entire court + denser valley ring further out.
+            float courtAir=.36+.64*smoothstep(10.0,48.0,dist)*(1.0-smoothstep(144.0,196.0,dist));
+            // Low ground-hugging meadow evapotranspiration vapor (0..3.2m over grass & court) + valley stratum.
+            float groundVapor=exp(-max(0.0,p.y-.15)*.62)*(.55+.45*sin(p.x*.18+p.z*.15-meadowClock*.35));
             float stratum=exp(-pow((p.y-4.1-1.7*sin(p.x*.035+p.z*.033))*.105,2.0));
             float pockets=.44+.56*cloudDensity(p.xz*2.7+vec2(meadowClock*2.0,33.0));
-            mist+=field*stratum*pockets;
-            float air=exp(-abs(p.y-16.0)*.029)*field*smoothstep(-1.0,4.0,p.y);
-            if(meadowAir.y>.01)beam+=air*sunWindow(p,.17);
+            mist+=(courtAir*stratum+groundVapor*.48)*pockets;
+            // Slanted 3D Tyndall light sheets filtering through cloud breaks right across the court & hillside.
+            vec2 rayFoot=p.xz-p.y*sunSlant;
+            float curtains=.52+.48*(sin(rayFoot.x*.42+rayFoot.y*.29+meadowClock*.18)*cos(rayFoot.y*.58-rayFoot.x*.31-meadowClock*.14));
+            float air=exp(-abs(p.y-7.5)*.045)*courtAir*smoothstep(-.5,2.2,p.y);
+            float sunStrength=max(meadowAir.y,meadowSky.x*.58)*(1.0-meadowSky.z*.75);
+            if(sunStrength>.01)beam+=air*(sunWindow(p,.28)*(.58+.72*curtains)+groundVapor*.26)*sunStrength;
           }
-          float veil=1.0-exp(-stepSize*mist*meadowAir.x*.012);
-          float light=1.0-exp(-stepSize*beam*meadowAir.y*.029);
-          if(meadowAir.y>.01){
-            float throughGap=shaft(beamFromA,beamToA,.047,viewDepth)+.66*shaft(beamFromB,beamToB,.037,viewDepth);
-            light=min(1.0,light+throughGap*meadowAir.y*(.52-.32*meadowSky.y)*(1.0-.54*meadowAir.z));
-          }
-          vec3 cool=mix(vec3(.52,.60,.67),vec3(.46,.57,.65),meadowSky.y)*(1.0-.75*meadowStorm.y);
-          vec3 warm=mix(vec3(1.0,.91,.72),vec3(1.0,.75,.44),meadowSky.y);
-          float opacity=min(.71,veil+light*.82);
-          vec3 col=(cool*veil+warm*light*.82)/max(.001,veil+light*.82);
+          // Keep valley mist anchored below the mountain ridgeline (never a bright curved arc in open sky).
+          float valleyMask=1.0-smoothstep(.04,.22,ray.y);
+          float veil=(1.0-exp(-stepSize*mist*meadowAir.x*.0115))*valleyMask;
+          // Forward Mie scattering + volumetric sunbeams across the court, fading away from the anti-solar rainbow.
+          float sunDot=dot(ray,meadowSun);
+          float towardSun=.28+.72*smoothstep(-.25,.60,sunDot)+.38*pow(max(0.0,sunDot),4.0);
+          float light=(1.0-exp(-stepSize*beam*.034))*towardSun*(1.0-.72*meadowAir.z);
+          vec3 cool=mix(vec3(.34,.41,.47),vec3(.50,.58,.65),meadowSky.x)*(1.0-.75*meadowStorm.y);
+          vec3 warm=mix(vec3(1.0,.91,.72),vec3(1.0,.74,.42),meadowSky.y);
+          float opacity=min(.68,veil+light*.84);
+          vec3 col=(cool*veil+warm*light*.84)/max(.001,veil+light*.84);
           gl_FragColor=vec4(col,opacity);
         }`
     });

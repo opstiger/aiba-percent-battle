@@ -564,7 +564,7 @@ function applyScenePreset(name,opts){
   rainState=null;
   sun.castShadow=false;
   if(window.AIBAWorldPlaces)AIBAWorldPlaces.restore();
-  disposeEnvironmentRoot(environmentRoot);disposeEnvironmentRoot(weatherRoot);if(outdoor&&!rainforest&&window.AIBAVisual)environmentRoot.add(AIBAVisual.makeSkyDome(THREE,name,COURT.midZ));
+  disposeEnvironmentRoot(environmentRoot);disposeEnvironmentRoot(weatherRoot);if(outdoor&&!rainforest&&!flower&&window.AIBAVisual)environmentRoot.add(AIBAVisual.makeSkyDome(THREE,name,COURT.midZ));
   resetStreetCrowd();
   if(courtFloor){
     if(outdoor&&!courtOutdoorTexture)courtOutdoorTexture=makeCourtTexture("outdoorSunny");
@@ -685,6 +685,14 @@ function applyScenePreset(name,opts){
       hemi.color.setHex(0xb7dded);hemi.groundColor.setHex(0x40583b);hemi.intensity=.55;
       sun.color.setHex(0xffe2a3);sun.intensity=.9;sun.position.set(-12,22,14);spot.intensity=0;camFill.intensity=.2;
       arenaLights.forEach(l=>{l.intensity=0;});
+    }
+    if(!sun.castShadow&&renderer.shadowMap&&renderer.shadowMap.enabled){
+      sun.castShadow=true;
+      sun.shadow.mapSize.setScalar(AA_COARSE_POINTER?1024:2048);
+      sun.shadow.camera.left=-22;sun.shadow.camera.right=22;sun.shadow.camera.top=24;sun.shadow.camera.bottom=-24;
+      sun.shadow.camera.near=1;sun.shadow.camera.far=90;
+      sun.shadow.bias=-0.0005;sun.shadow.normalBias=0.028;sun.shadow.radius=1.8;
+      sun.shadow.camera.updateProjectionMatrix();
     }
     const place=window.AIBAWorldPlaces&&(AIBAWorldPlaces.enabled||flower||rainforest);
     if(place){

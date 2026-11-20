@@ -438,43 +438,57 @@
   }
 
   function buildPollen(s){
-    const count=s.mobile?95:240,pos=[],seed=[];
+    const count=s.mobile?280:720,pos=[],seed=[];
     for(let i=0;i<count;i++){
-      pos.push((s.r()-.5)*26,.28+s.r()*3.8,COURT.midZ+(s.r()-.5)*34);
-      seed.push(s.r(),.65+s.r()*1.15);
+      // Concentrate 65% of dust/pollen motes right inside the active court & camera volume.
+      const inCourt=i%3!==0;
+      const spanX=inCourt?15:28,spanZ=inCourt?20:36,maxH=inCourt?3.6:5.2;
+      pos.push((s.r()-.5)*spanX,.18+s.r()*maxH,COURT.midZ+(s.r()-.5)*spanZ);
+      // mote.x = phase seed, mote.y = size/speed, mote.z = 1 for soft foreground bokeh dust orbs (22%)
+      seed.push(s.r(),.60+s.r()*1.25,i%5===0?1:0);
     }
     const geo=new THREE.BufferGeometry();
     geo.setAttribute("position",new THREE.Float32BufferAttribute(pos,3));
-    geo.setAttribute("mote",new THREE.Float32BufferAttribute(seed,2));
+    geo.setAttribute("mote",new THREE.Float32BufferAttribute(seed,3));
     const mat=new THREE.ShaderMaterial({
       transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
       uniforms:{clock:s.meadow.time,wind:s.meadow.wind,meadowSky:s.meadow.uniforms.meadowSky},
       vertexShader:`
-        attribute vec2 mote;
+        attribute vec3 mote;
         uniform float clock,wind;
         uniform vec4 meadowSky;
-        varying float vAlpha;
+        varying float vAlpha,vSoft;
         void main(){
-          float t=clock*(.20+.11*mote.y)+mote.x*62.8;
+          float t=clock*(.18+.11*mote.y)+mote.x*62.8;
           vec3 p=position;
-          p.x+=sin(t)*.95+mod(clock*(.32+.48*wind)+mote.x*26.0,26.0)-13.0;
-          p.y+=sin(t*1.25+mote.x*19.0)*.32;
+          float span=24.0;
+          p.x+=sin(t)*.95+mod(clock*(.30+.46*wind)+mote.x*span,span)-span*.5;
+          p.y+=sin(t*1.25+mote.x*19.0)*.34;
           p.z+=cos(t*.82)*.85;
           vec4 mv=modelViewMatrix*vec4(p,1.0);
           gl_Position=projectionMatrix*mv;
-          gl_PointSize=clamp(42.0*mote.y/max(3.6,-mv.z),1.8,6.2);
-          // Gently visible in all fair/overcast alpine air, fading only in heavy rain and glowing warmest at sunset.
-          float vis=(.32+.68*smoothstep(.08,.68,meadowSky.x))*(1.0-smoothstep(.08,.34,meadowSky.z));
-          vAlpha=vis*(.42+.58*(sin(t*2.0)*.5+.5))*smoothstep(1.2,4.2,-mv.z)*(1.0-smoothstep(22.0,36.0,-mv.z));
+          float depth=max(1.2,-mv.z);
+          vSoft=mote.z;
+          float fineSize=clamp(46.0*mote.y/max(3.0,depth),1.8,6.8);
+          float bokehSize=clamp(58.0*mote.y/max(1.5,depth),5.5,24.0);
+          gl_PointSize=mix(fineSize,bokehSize,vSoft);
+          float vis=(.38+.62*smoothstep(.04,.65,meadowSky.x))*(1.0-smoothstep(.10,.36,meadowSky.z));
+          float range=mix(
+            smoothstep(1.0,3.5,depth)*(1.0-smoothstep(20.0,34.0,depth)),
+            smoothstep(.6,1.6,depth)*(1.0-smoothstep(6.5,13.5,depth))*.52,
+            vSoft);
+          vAlpha=vis*(.45+.55*(sin(t*2.1)*.5+.5))*range;
         }`,
       fragmentShader:`
         uniform vec4 meadowSky;
-        varying float vAlpha;
+        varying float vAlpha,vSoft;
         void main(){
           float r=length(gl_PointCoord*2.0-1.0);
-          float glow=exp(-r*r*3.4)*(1.0-smoothstep(.60,1.0,r));
-          vec3 col=mix(vec3(.96,.97,.92),vec3(1.0,.78,.46),meadowSky.y);
-          gl_FragColor=vec4(col,glow*vAlpha*.56);
+          float fineGlow=exp(-r*r*3.4)*(1.0-smoothstep(.58,1.0,r));
+          float bokehDisc=pow(1.0-smoothstep(.06,.98,r),1.35);
+          float glow=mix(fineGlow,bokehDisc,vSoft);
+          vec3 col=mix(vec3(.96,.97,.90),vec3(1.0,.80,.46),meadowSky.y*.75+.15*meadowSky.x);
+          gl_FragColor=vec4(col,glow*vAlpha*.64);
         }`
     });
     const pts=new THREE.Points(geo,mat);

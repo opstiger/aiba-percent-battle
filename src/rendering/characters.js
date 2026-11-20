@@ -132,12 +132,13 @@ function markShadowCasters(o){
 let _shadowScanTick=0;
 /* 逐帧同步。离地越高影子越摊开、越淡，并沿主光相反方向轻微偏移。 */
 function updGroundShadows(){
-  if(GROUND_SHADOW_SCALE<1&&(++_shadowScanTick%15===0))
+  const realOutdoorSunShadow=typeof sun!=="undefined"&&!!sun&&!!sun.castShadow&&typeof renderer!=="undefined"&&!!renderer?.shadowMap?.enabled;
+  if((GROUND_SHADOW_SCALE<1||realOutdoorSunShadow)&&(++_shadowScanTick%15===0))
     for(let i=0;i<GROUND_SHADOWS.length;i++)markShadowCasters(GROUND_SHADOWS[i]);
   for(let i=0;i<GROUND_SHADOWS.length;i++){
     const o=GROUND_SHADOWS[i],m=o.groundShadow;
     if(!m)continue;
-    if(!o.g||!o.g.visible){m.visible=false;continue;}
+    if(!o.g||!o.g.visible||realOutdoorSunShadow){m.visible=false;continue;}
     m.visible=true;
     const height=Math.max(0,Number(o.g.position.y)||0);
     const k=1+height*0.85;
