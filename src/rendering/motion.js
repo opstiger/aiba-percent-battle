@@ -949,18 +949,31 @@ function applyShotFollowThroughPose(o,state,pose){
   const shoulderK=clamp((Number(state.extend)||0)*force,0,1);
   const elbowK=clamp((Number(state.extend)||0)*(.92+force*.08),0,1);
   const fingerK=clamp((Number(state.follow)||0)*(.94+force*.06),0,1);
+  const style=o.shotStyle;
+  const wrist=o.handRoots&&o.handRoots[0];
+  const elbowFlex=(wrist&&style&&style.releaseElbowFlex||0)*Math.PI/180;
+  let releasePitch;
+  if(elbowFlex){
+    const upper=shootEl.position.length(),lower=wrist.position.length();
+    // 目标指定整条肩腕连线仰角。前臂比大臂更陡，肘在连线下方保留弯曲。
+    const armElevation=style.releaseArmAngle*Math.PI/180;
+    const forearmOffset=Math.atan2(lower*Math.sin(elbowFlex),upper+lower*Math.cos(elbowFlex));
+    releasePitch=-Math.PI/2-armElevation+forearmOffset;
+  }
   ensureShotPoseTemps();
-  const applyQuat=(node,start,targetValues,k)=>{
+  const applyQuat=(node,start,targetValues,k,pitch)=>{
     if(!node||!start)return;
     _shotPoseBaseQuat.copy(node.quaternion);
-    _shotPoseTargetQuat.set(targetValues[0],targetValues[1],targetValues[2],targetValues[3]).normalize();
+    if(pitch==null)
+      _shotPoseTargetQuat.set(targetValues[0],targetValues[1],targetValues[2],targetValues[3]).normalize();
+    else _shotPoseTargetQuat.setFromAxisAngle(_poseXAxis,pitch);
     if(state.recover>0)node.quaternion.copy(_shotPoseTargetQuat).slerp(_shotPoseBaseQuat,state.recover);
     else node.quaternion.set(start.q[0],start.q[1],start.q[2],start.q[3]).slerp(_shotPoseTargetQuat,k);
     node.quaternion.normalize();
   };
   // 肩肘从用户松手前姿势连续伸展；辅助手自然向球侧打开，随后一起回收。
-  applyQuat(shoot,release.shoot,SHOT_FOLLOW_POSE.shooting.armQuat,shoulderK);
-  applyQuat(shootEl,release.elbow,SHOT_FOLLOW_POSE.shooting.elbowQuat,elbowK);
+  applyQuat(shoot,release.shoot,SHOT_FOLLOW_POSE.shooting.armQuat,shoulderK,releasePitch);
+  applyQuat(shootEl,release.elbow,SHOT_FOLLOW_POSE.shooting.elbowQuat,elbowK,elbowFlex?-elbowFlex:undefined);
   applyQuat(guide,guideStart.arm,SHOT_FOLLOW_POSE.guide.armQuat,shoulderK);
   applyQuat(guideEl,guideStart.elbow,SHOT_FOLLOW_POSE.guide.elbowQuat,elbowK);
   applyShootingHandWorldFollow(o,state,release.hand);

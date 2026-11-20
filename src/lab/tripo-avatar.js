@@ -139,6 +139,23 @@
       const q=TQ().setFromAxisAngle(axis.normalize(),bend-limit);
       A.F.applyQuaternion(q);A.N.applyQuaternion(q);
     }
+    /* 皮套腕位经过持球补偿后仍要符合出手方向与肘部余量。以世界向上为准，
+       让躯干后仰、侧倾时也能读到同一个肩腕仰角。 */
+    function releaseWristTarget(A,target,form,weight,up){
+      if(!weight)return target;
+      const reach=TV().copy(target).sub(A.S0),distance=reach.length();
+      const height=reach.dot(up),horizontal=reach.addScaledVector(up,-height);
+      const elevation=Math.atan2(height,horizontal.length());
+      const aim=TV(0,0,1).addScaledVector(up,-up.z).normalize();
+      horizontal.normalize().lerp(aim,weight*.65);
+      if(horizontal.lengthSq()<1e-8)horizontal.copy(aim);
+      else horizontal.normalize();
+      const angle=elevation+(form.releaseArmAngle*Math.PI/180-elevation)*weight;
+      const {l1,l2}=A.L,flex=form.releaseElbowFlex*Math.PI/180;
+      const releaseReach=Math.sqrt(l1*l1+l2*l2+2*l1*l2*Math.cos(flex));
+      const length=distance+(releaseReach-distance)*weight;
+      return horizontal.multiplyScalar(length*Math.cos(angle)).addScaledVector(up,length*Math.sin(angle)).add(A.S0);
+    }
     const LIMB={};
     const FINGERS=["Index","Middle","Ring","Pinky"],FEET=["LeftFoot","RightFoot","LeftToeBase","RightToeBase","LeftToe_End","RightToe_End"];
     const footMin=()=>{let m=Infinity;for(const n of FEET)if(B[n]){wpos(n,_v);if(_v.y<m)m=_v.y;}return m;};
@@ -179,6 +196,32 @@
         if(!push||!o.p)return;
         push(TV().copy(o.p).sub(c).normalize().multiplyScalar(-(o.w+REST)*1.1));
       }
+    }
+
+    function findShootingFingerVertices(mesh){
+      const fingerBones=mesh.skeleton.bones.map(b=>/RightHand(Index|Middle|Ring|Pinky|Thumb)[1-4]$/.test(b.name));
+      const indices=mesh.geometry.attributes.skinIndex.array,weights=mesh.geometry.attributes.skinWeight.array;
+      const vertices=[];
+      for(let i=0;i<indices.length;i+=4){
+        let weight=0;
+        for(let j=i;j<i+4;j++)if(fingerBones[indices[j]])weight+=weights[j];
+        if(weight>.5)vertices.push(i/4);
+      }
+      return vertices;
+    }
+    /* 指骨中心不能代表库里蒙皮的指腹厚度。沿掌面法线求出让球脱离指面所需的最小距离。 */
+    function clearShootingFingerSurface(center,normal,radius){
+      const mesh=state.mesh;
+      mesh.updateMatrixWorld(true);
+      let lift=0;
+      const r2=(radius+.001)**2;
+      for(const index of state.shootingFingerVertices){
+        mesh.boneTransform(index,_fv).applyMatrix4(mesh.matrixWorld).sub(center);
+        const depth=_fv.dot(normal);
+        const across=_fv.lengthSq()-depth*depth;
+        if(across<r2)lift=Math.max(lift,depth+Math.sqrt(r2-across));
+      }
+      center.addScaledVector(normal,lift);
     }
 
     /* ---------- 3. 建模型:缩放、量静止姿势、切第一人称用的前臂网格、读 run 动画 ---------- */
@@ -257,6 +300,7 @@
       fp.position.copy(mesh.position);fp.quaternion.copy(mesh.quaternion);fp.scale.copy(mesh.scale);
       mesh.parent.add(fp);fp.bind(mesh.skeleton,mesh.bindMatrix);fp.visible=false;
       Object.assign(state,{root,M,mesh,fp,hullVerts,modelId:id,base:M.position.clone(),scale:s,footRest:footMin(),hipY:restPos.Hips.y});
+      state.shootingFingerVertices=id==="star30"?findShootingFingerVertices(mesh):null;
       readRun(gltf.animations&&gltf.animations[0]);
     }
     /* run 动画:按骨骼存成采样表;再量出"脚踩地时往后蹬的速度",得到一个循环对应的前进距离 */
@@ -490,7 +534,6 @@
       const setHand=A=>setW(B[A.L.hand],basisQ(A.F,A.N).multiply(A.L.restBasisInv).multiply(restW[A.L.hand]));
       curlFingers("Right",LIMB.armR,.2+.3*rw*(1-state.armHold)+state.holdCurl*hw);curlFingers("Left",LIMB.armL,.2+.3*rw*(1-state.armHold)+state.holdCurl*hw);
       const R=_armSlots.R,Lf=_armSlots.L;
-      solveLimb(R.L,R.free,R.pole);
       /* 球:贴在投篮手掌心。辅助手按 AIBA 里"手腕相对球心"的关系摆到这颗球旁边 */
       let ballK=null,ballR=0;
       const grip=guy.ballGrips&&guy.ballGrips[R.a];
@@ -499,6 +542,13 @@
       const following=shot&&shot.followActive&&(!holding||shot.pendingRelease||atRelease);
       const roll=following?smooth(shot.followAge/SHOT_WRIST_SNAP_DELAY):0;
       const wristFollow=following?1-smooth((shot.followAge-SHOT_WRIST_SNAP_DELAY)/.16):0;
+      const form=guy.shotStyle;
+      const releaseWeight=following&&form&&form.releaseArmAngle
+        ?smooth(shot.followAge/(SHOT_WRIST_SNAP_DELAY*.85))*(1-smooth((shot.followAge-.22)/.23)):0;
+      const up=releaseWeight?TV(0,1,0).applyQuaternion(TQ().copy(_gq).invert()):null;
+      const shootPole=releaseWeight?TV().copy(R.pole).lerp(TV().copy(up).negate().add(TV(-.10,0,0)),releaseWeight):R.pole;
+      if(holding)solveLimb(R.L,R.free,R.pole);
+      else solveLimb(R.L,releaseWristTarget(R,R.free,form,releaseWeight,up),shootPole);
       if(holding&&ball){
         const br=BALL_R*BALL_VIS*Math.max(ball.scale.x,.01);ballR=br;
         /* 球心相对手腕的向量直接取自 AIBA 那只手(方块手里球本来就在掌心),手的朝向已经抄过来了 */
@@ -513,7 +563,8 @@
         shootingWrist(R,f,n,limit);
         const target=original.addScaledVector(R.F,-along).addScaledVector(R.N,-lift);
         // 保住接球后的持球点及举球线，允许肘部让出空间，与腕部一起调整。
-        solveLimb(R.L,TV().copy(wrist).lerp(target,.82),R.pole);
+        const wristTarget=TV().copy(wrist).lerp(target,.82);
+        solveLimb(R.L,releaseWristTarget(R,wristTarget,form,releaseWeight,up),shootPole);
         shootingWrist(R,f,n,limit);
         ballK=wpos(R.L.hand).add(side).addScaledVector(R.F,along).addScaledVector(R.N,lift);
       }else if(airborneShot||wristFollow>0){
@@ -522,6 +573,11 @@
         shootingWrist(R,TV().copy(R.F),TV().copy(R.N),limit);
       }
       setHand(R);
+      if(ballK&&state.shootingFingerVertices?.length){
+        // 托球时松开指节，离手前伸指。球心同时供两个视角、辅助手和离手采样使用。
+        curlFingers("Right",R.L,.12-.08*roll);
+        clearShootingFingerSurface(ballK,R.N,ballR);
+      }
       const tL=TV().copy(Lf.free);
       if(ballK&&grip){
         const rel=TV().copy(Lf.Wa).sub(loc(grip)).multiplyScalar(.86);
@@ -536,7 +592,7 @@
       solveLimb(Lf.L,tL,Lf.pole);setHand(Lf);
       if(ballK&&ballR>0){
         const rad0=.2+.3*rw*(1-state.armHold)+state.holdCurl*hw;
-        fitFingers("Right",R.L,ballK,ballR,rad0,null);
+        if(!state.shootingFingerVertices?.length)fitFingers("Right",R.L,ballK,ballR,rad0,null);
         fitFingers("Left",Lf.L,ballK,ballR,rad0,off=>{tL.add(off);solveLimb(Lf.L,tL,Lf.pole);setHand(Lf);});
       }
 
