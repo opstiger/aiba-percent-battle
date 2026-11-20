@@ -108,6 +108,14 @@
       dust.addColorStop(1,"rgba(119,113,104,0)");
       g.fillStyle=dust;g.fillRect(-1,-1,2,2);g.restore();
     };
+    for(let i=1;i<RACKS.length;i++){
+      const a=RACKS[i-1].p,b=RACKS[i].p;
+      for(let step=1;step<=6;step++){
+        const t=step/7;
+        const x=a.x+(b.x-a.x)*t,z=a.z+(b.z-a.z)*t+.40*Math.sin(Math.PI*t);
+        dustPatch(x,z,.31,.65,Math.atan2(b.x-a.x,b.z-a.z),.12+.05*(step%2));
+      }
+    }
     for(const pad of padDust)dustPatch(...pad,.27);
     for(const [z,dir] of hoopSupports()){
       const base=z-dir*1.55;
@@ -307,7 +315,16 @@
         b.box(0xd6a026,0,.95,base,.26,.16,.26);
         b.box(0xc83228,0,3.46,z-dir*.35,.23,.23,.18);
         b.box(0x8c94a0,0,3.46,base,.27,.27,.27);
-        for(const bx of [-.28,.28])for(const bz of [-.28,.28])b.box(0x282c34,bx,.21,base+bz,.07,.04,.07);
+        for(const side of [-1,1]){
+          // Sloped edge catches the low lunar sun along the aluminum extrusion.
+          b.box(0xe4e8e9,side*.95,3.5,z+dir*.05,.055,1.1,.055,0,Math.PI/4,0);
+          b.box(0xbac4ca,0,3.5+side*.55,z+dir*.05,1.91,.055,.055,Math.PI/4,0,0);
+          b.box(0x889198,side*.16,.34,base,.09,.39,.23,0,0,side*.52);
+          for(const bz of [-.28,.28]){
+            b.box(0xc0bbb1,side*.28,.21,base+bz,.13,.032,.13);
+            b.box(0x666463,side*.28,.249,base+bz,.069,.054,.069,0,.35,0);
+          }
+        }
       }
       if(s.name==="spanishQuarter"||s.name==="beachSunset"){
         const rr=rng(s.name==="spanishQuarter"?197:239);

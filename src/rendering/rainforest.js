@@ -77,14 +77,14 @@
       // Fine dappled canopy sun-streaks filtering through overhead leaves across the whole court volume.
       float courtZone=1.0-smoothstep(9.5,24.0,length(p.xz-vec2(0.0,-2.5)));
       float streaks=pow(max(0.0,sin(q.x*1.85+q.y*.72+forestTime*.14)*cos(q.y*1.42-q.x*1.15-forestTime*.11)),2.0);
-      rays+=courtZone*streaks*.44;
+      rays=mix(rays,rays*.28,courtZone)+courtZone*streaks*.12;
       return rays*canopyWave*passShadow*(1.0-smoothstep(18.0,29.0,p.y));
     }
     float forestClearing(vec3 p){
       float depth=max(0.0,-p.z+6.5);
-      float center=p.x+.16*(depth-12.0)-1.2;
-      float open=exp(-pow(center/(19.0+depth*.06),2.0));
-      return smoothstep(1.5,28.0,depth)*open;
+      float center=p.x+.12*(depth-25.0)+8.0;
+      float open=exp(-pow(center/(7.5+depth*.045),2.0));
+      return smoothstep(12.0,38.0,depth)*open;
     }
     float leafLight(vec3 p){
       vec2 q=canopyFoot(p);
@@ -919,7 +919,7 @@
 
     const framingTrees=[
       {trunk:[-11.4,10.8,31,1.38,0],branches:[
-        {height:5.85,points:[[-8.6,5.2,6.4],[-5.5,4.75,3.46],[-3.94,4.28,1.85],[-3.14,3.91,1.21]]},
+        {height:5.85,points:[[-9.8,6.8,7.8],[-8.4,7.6,5.7],[-7.4,8.2,4.8],[-6.4,8.45,4.1]]},
         {height:5.34,points:[[-10.2,4.8,5.2],[-9.23,4.31,1.3],[-8.16,4.12,-1.65],[-7.01,3.96,-2.8]]}
       ]},
       {trunk:[11.8,12.1,34,1.47,3],branches:[
@@ -1304,7 +1304,7 @@
     // Anchor every perch base directly in sideline/canopy trunks (|x| >= 8.2m) so branches never float in mid-court,
     // while their leafy tips and 1-2 perched birds reach forward into the upper camera framing.
     const sites=[
-      [-8.4,1.2,2.55,-.46,6.1,true],
+      [-8.4,1.2,3.45,-.72,3.0,true],
       [8.5,.8,2.65,-2.63,6.0,false],
       [-9.3,-16.3,3.25,-.28,5.2,false],
       [13.1,-10.0,3.95,2.84,5.8,false],
@@ -1604,6 +1604,7 @@
             float courtDust=(1.0-smoothstep(8.0,22.0,length(p.xz-vec2(0.0,-2.0))))*exp(-max(0.0,p.y-2.2)*.18)*(.55+.45*glints)*.0095;
             float density=.0078+nearMist+courtDust+valley*(.0172+woodland*.0052)+basin*.019+window*.017+
               smoothstep(.20,.80,glints)*exp(-max(0.0,p.y)*.085)*.0056;
+            density*=mix(.28,1.0,woodland);
             float transmittance=exp(-accumulated*.68);
             accumulated+=density*stride;
             amber+=window*(.42+.58*valley)*stride*.125*transmittance*(.38+.62*angle);
@@ -1612,9 +1613,9 @@
           }
           float warm=1.0-exp(-amber);
           float mist=(1.0-exp(-accumulated))*(.56+.30*warm);
-          float shaft=(1.0-exp(-glow))*.72;
+          float shaft=(1.0-exp(-glow))*.59;
           float alpha=min(.86,mist+shaft*(1.0-mist));
-          vec3 shades=mix(vec3(.455,.508,.414),vec3(.99,.827,.56),clamp(warm*1.23,0.0,1.0));
+          vec3 shades=mix(vec3(.30,.43,.38),vec3(.96,.80,.54),clamp(warm*1.23,0.0,1.0));
           vec3 sun=vec3(1.0,.82,.53);
           vec3 rgb=(shades*mist+sun*shaft*(1.0-mist))/max(.001,alpha);
           gl_FragColor=vec4(rgb,alpha);

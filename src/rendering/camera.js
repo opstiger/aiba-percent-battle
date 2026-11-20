@@ -298,10 +298,13 @@ function autoFrameCam(rig,pPos,pJump,faceDir,opts){
   _afCenter.addVectors(_afMin,_afMax).multiplyScalar(0.5);
   _afCenter.y+=opts.lookLift||0.08;
   // 从球员侧后方斜看,但距离由视锥计算得出。转播视角略高、略侧。
+  // Along the rainforest's left sideline, keep the broadcast rig inside the clearing.
+  const lateralRoom=opts.broadcast&&currentScenePreset==="rainforest"
+    ? THREE.MathUtils.smoothstep(pPos.x,-6.5,-.8) : 1;
   const sideK=opts.sideK!=null?opts.sideK:(opts.broadcast?0.62:0.44);
   const backK=opts.backK!=null?opts.backK:(opts.broadcast?0.67:0.82);
   const heightK=opts.heightK!=null?opts.heightK:(opts.broadcast?0.34:0.25);
-  _afBack.set(-dir.x*backK+perp.x*side*sideK,heightK,-dir.z*backK+perp.z*side*sideK).normalize();
+  _afBack.set(-dir.x*backK+perp.x*side*sideK*lateralRoom,heightK,-dir.z*backK+perp.z*side*sideK*lateralRoom).normalize();
   _afForward.copy(_afBack).negate();
   _afRight.crossVectors(_afForward,V3(0,1,0)).normalize();
   _afUp.crossVectors(_afRight,_afForward).normalize();

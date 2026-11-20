@@ -518,6 +518,12 @@
       const col=i%3===0?0x63666c:i%3===1?0x7a7d84:0x6d7076;
       rocks.add("rock",col,rx,ry+sc*.32,rz,sc*(.9+s.r()*.6),sc*(.55+s.r()*.5),sc*(.85+s.r()*.6),s.r()*.4,s.r()*6.28,s.r()*.4);
     }
+    // Split slabs poke out of the dust beside three larger blocks. All share the rock batch.
+    for(const [x,z,angle] of [[-9.8,-11.5,.38],[10.6,-6.8,-.55],[-5.6,-15.2,1.22]]){
+      const y=terrainY(x,z),dx=Math.cos(angle),dz=Math.sin(angle);
+      rocks.add("rock",0x999491,x+dx*.52,y+.17,z+dz*.52,1.15,.32,.77,.13,-angle,-.15);
+      rocks.add("rock",0x787576,x+dx*.99,y+.07,z+dz*.99,.55,.16,.36,-.12,-angle,.21);
+    }
     const rockMesh=rocks.finish(s.root,"lunarRocks");
     if(rockMesh){rockMesh.castShadow=true;rockMesh.receiveShadow=true;}
 
@@ -635,7 +641,7 @@
       fog:false,
       uniforms:{
         uMap:{value:earthTex},
-        uSunDir:{value:new THREE.Vector3(-0.78,0.28,-0.56).normalize()},
+        uSunDir:{value:new THREE.Vector3(-0.88,0.31,-0.17).normalize()},
         uTime:{value:0}
       },
       vertexShader:`varying vec2 vUv;
@@ -682,7 +688,7 @@
     });
     earthMat.map=earthTex;
     const earth=new THREE.Mesh(new THREE.PlaneGeometry(16.5,16.5),earthMat);
-    earth.position.set(23,19.5,-78);earth.name="lunarEarth";earth.frustumCulled=false;
+    earth.position.set(23,22,-78);earth.name="lunarEarth";earth.frustumCulled=false;
     s.root.add(earth);
     s.wonder={kind:"lunar",earth,suit1,suit2};
   }
@@ -1185,8 +1191,11 @@
           float eastPath=exp(-pow((m.x-eastCurve)/1.05,2.0))*smoothstep(10.5,14.5,m.y)*(1.0-smoothstep(48.0,68.0,m.y));
           float westCurve=-9.2-(m.y+6.0)*.38+1.8*cos(m.y*.19);
           float westPath=exp(-pow((m.x-westCurve)/.95,2.0))*smoothstep(-3.0,-8.5,m.y)*(1.0-smoothstep(-34.0,-52.0,m.y));
-          float rawWear=max(max(hoopWear*.55,arcWear*.42),max(eastPath,westPath)*.74);
-          float worn=clamp(rawWear*(.42+coarse*2.4),0.0,.62);
+          vec2 lane=(w-vec2(.22,-5.5))/vec2(2.5,4.6);
+          float shortTurf=1.0-smoothstep(.24,1.18,dot(lane,lane));
+          float rawWear=max(max(hoopWear*.78,arcWear*.63),max(eastPath,westPath)*.74);
+          rawWear=max(rawWear,shortTurf*(.32+coarse*.76));
+          float worn=clamp(rawWear*(.72+coarse*2.1),0.0,.75);
           vec3 loamSoil=mix(vec3(.21,.18,.115),vec3(.29,.25,.165),clamp((micro-.06)*4.5,0.0,1.0));
           diffuseColor.rgb=mix(diffuseColor.rgb,loamSoil,worn);
 
@@ -1223,7 +1232,7 @@
           diffuseColor.rgb=mix(diffuseColor.rgb,hillHazeCol,hillHaze);
           diffuseColor.rgb*=1.0-meadowSky.w*(.18+fine*.22);
           // Hand-dusted lime chalk sits on upper grass blades with organic blade gaps & dirt wear.
-          float chalkFiber=clamp(.52+micro*3.4+fine*1.8,0.35,1.0)*(1.0-worn*.48);
+          float chalkFiber=clamp(.52+micro*3.4+fine*1.8,0.35,1.0)*(1.0-worn*.23);
           diffuseColor.rgb=mix(diffuseColor.rgb,chalk.rgb,chalk.a*(1.0-meadowSky.w*.29)*chalkFiber*.78);
           if(meadowSky.w>.025&&abs(m.x)<8.7&&abs(m.y-4.8)<15.0){
             float edge=poolShape(m)+.072*sin(m.x*17.0+m.y*11.0)+.089*sin(m.y*21.0-m.x*7.0);
@@ -1546,8 +1555,8 @@
           const borderZone=smooth(Math.hypot(dx,dz),0,2.6);
           const clump=.5+.5*(Math.sin(x*.85+z*.72)*Math.cos(x*1.18-z*.94));
           // Keep heavily trampled paint under the hoop sparser and shorter
-          const hoopDist=Math.hypot(x,z-(HOOP.z+1.2));
-          if(hoopDist<2.1&&s.r()<.65){x=Math.sign(x||1)*(5.2+s.r()*3.2);}
+          const hoopDist=Math.hypot(x*.83,(z-(HOOP.z+2.6))*.64);
+          if(hoopDist<2.6&&s.r()<.78){x=Math.sign(x||1)*(7.75+s.r()*1.65);}
           h=(.042+s.r()*.085)*(1.0+borderZone*1.15)*(.65+.65*clump);
         }else{
           const a=s.r()*tau,r=6.8+33*Math.pow(s.r(),1.42);
@@ -1838,7 +1847,7 @@
       }
       const nearCount=s.mobile?453:960;
       for(let i=0;i<nearCount;i++){
-        const side=i%2?1:-1,onCourt=i%5<2;
+        const side=i%2?1:-1,onCourt=i%9===0;
         let x,z;
         if(onCourt){
           do{

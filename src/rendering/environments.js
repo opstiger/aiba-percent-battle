@@ -295,7 +295,7 @@ function buildFlowerCourt(){
     }
   }
   const ground=[];
-  const quantity=mobile?340:720,outer=Math.floor(quantity*.54),edges=Math.floor(quantity*.20);
+  const quantity=mobile?340:720,outer=Math.floor(quantity*.64),edges=Math.floor(quantity*.20);
   for(let i=0;i<quantity;i++){
     // Interleave lawn, sidelines and playing surface while retaining the previous quotas.
     const slot=i*37%quantity,side=i%2?1:-1;
@@ -324,24 +324,26 @@ function buildFlowerCourt(){
     ground.push(flower(x,heightAt(x,z),z,height,size,rng()<.67?form:pick(FLOWER_FORMS)));
   }
   const structure=[];
-  const boardCount=mobile?38:70,supportCount=mobile?24:44,rimCount=mobile?22:38;
+  const boardCount=mobile?15:27,supportCount=mobile?32:62,rimCount=mobile?6:10;
   const attached=(part,x,y,z,axis,h,size)=>{
     const d=flower(x,y,z,h,size,pick(FLOWER_FORMS),axis.normalize());
     d.part=part;structure.push(d);
   };
-  // Grow from both sides and the top edge of the actual board while keeping the aiming square clear.
-  for(let i=0;i<boardCount;i++){
-    const side=i%2?1:-1;
-    if(i%3!==0){
-      attached("board",r(-.91,.91),4.056,r(-8.652,-8.555),new THREE.Vector3(r(-.34,.34),1,r(.035,.31)),r(.14,.51),r(.083,.145));
-    }else{
-      attached("board",side*.947,r(3.06,4.02),r(-8.646,-8.554),new THREE.Vector3(side*.72,.57,r(.16,.33)),r(.14,.34),r(.072,.137));
-    }
-  }
+  // Follow the left spruce leg, cantilever and board edge as the score rises.
+  const boardZ=-8.62,footZ=boardZ-1.62;
   for(let i=0;i<supportCount;i++){
-    const a=r(0,Math.PI*2),dx=Math.cos(a),dz=Math.sin(a);
-    if(i%3===0)attached("support",r(-.101,.101),3.572,r(-10.02,-8.79),new THREE.Vector3(dx*.33,.95,dz*.22),r(.16,.42),r(.069,.121));
-    else attached("support",dx*.126,r(.17,3.32),-10.17+dz*.126,new THREE.Vector3(dx*.68,.63,dz*.68),r(.14,.39),r(.066,.123));
+    const t=i/(supportCount-1),angle=t*Math.PI*13;
+    const leg=Math.min(t/.73,1),reach=Math.max(0,(t-.73)/.27);
+    const x=-.62+.52*leg+.10*reach+.087*Math.cos(angle);
+    const z=footZ+.07*leg+reach*1.50+.087*Math.sin(angle);
+    attached("support",x,.15+leg*3.36,z,new THREE.Vector3(Math.cos(angle)*.7,.66,Math.sin(angle)*.55),
+      r(.13,.28),r(.065,.11));
+  }
+  for(let i=0;i<boardCount;i++){
+    const t=i/(boardCount-1);
+    const x=t<.56?-.93:t<.87?r(-.89,-.34):r(.76,.93);
+    const y=t<.56?3.03+t/.56*1.01:4.045;
+    attached("board",x,y,boardZ-.035,new THREE.Vector3(x*.43,1,.18),r(.12,.28),r(.078,.13));
   }
   for(let i=0;i<rimCount;i++){
     const a=Math.PI+i/(rimCount-1)*Math.PI,dx=Math.cos(a),dz=Math.sin(a);
@@ -349,8 +351,8 @@ function buildFlowerCourt(){
       new THREE.Vector3(dx*.68,-.22,dz*.68),r(.092,.20),r(.052,.088));
   }
   // Small, staggered flower breaks in the grass close to the low sideline sightline.
-  const foreground=[[-6.9,-2.9],[-3.7,.1],[2.45,1.15],[4.10,2.30],[5.95,4.45],
-    [-3.15,5.9],[1.4,9.4],[-5.5,12.2],[4.85,13.8],[-2.2,18.8]];
+  const foreground=[[-6.9,-2.9],[-8.4,.1],[8.65,1.15],[8.2,2.30],[7.85,4.45],
+    [-7.9,5.9],[7.8,9.4],[-8.4,12.2],[4.85,13.8],[-2.2,18.8]];
   for(const [cx,cz] of foreground){
     const count=mobile?10:16,main=pick(FLOWER_FORMS);
     for(let i=0;i<count;i++){

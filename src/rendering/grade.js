@@ -322,7 +322,7 @@
             texture2D(tVenueAir,vUv+vec2(-airOff.x, airOff.y))+
             texture2D(tVenueAir,vUv+vec2( airOff.x, airOff.y))
           )*.25;
-          float minAir=forestGrade>.5?.18:0.0;
+          float minAir=forestGrade>.5?.07:0.0;
           float airWeight=mix(minAir,1.0,smoothstep(airStart,airEnd,lin));
           col=mix(col,air.rgb,air.a*airWeight);
         }
@@ -561,7 +561,7 @@
       u.sunScreen.value.set(focusOffset.x*.5+.5,focusOffset.y*.5+.5,facing);
     }else u.sunScreen.value.set(.5,.2,0);
     // In rainforest, volumetric Tyndall shafts fill the court; in flowerCourt, valley mist starts behind the court (18..36m) so spectators stay crisp.
-    u.airStart.value=forest?0:18;u.airEnd.value=forest?1.4:36;
+    u.airStart.value=forest?3:18;u.airEnd.value=forest?21:36;
     u.tScene.value=rtScene.texture;u.tBlur.value=(rtB||rtScene).texture;
     u.tDepth.value=rtScene.depthTexture||null;
     u.tFocus.value=lens;u.useDepth.value=lens?1:0;
@@ -587,7 +587,9 @@
     const place=RT_SVC.environmentRoot.userData.placeState;
     const weather=place?.meadow,forest=place?.rainforest,atmosphere=forest||weather;
     const foreground=hasDepth&&P.dof>.001?(forest?.94:lowMeadowFocus(weather)):0;
-    const wantsFocus=hasDepth&&P.dof>.001&&(camera.userData.firstPerson===true||foreground>.001);
+    // The lunar landscape and Earth share the horizon focus of the shooting camera.
+    const farLens=camera.userData.firstPerson===true&&currentScenePreset!=="lunarCrater";
+    const wantsFocus=hasDepth&&P.dof>.001&&(farLens||foreground>.001);
     focusActive=false;
     if(failed||!P.enabled||(!FULL&&!wantsFocus&&!(forest&&hasDepth))){
       if(atmosphere)atmosphere.fallback.visible=true;
