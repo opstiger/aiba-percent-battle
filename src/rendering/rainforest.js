@@ -10,20 +10,20 @@
   const fadedLeaves=[0xa18752,0x91683e,0xb1a268,0x8c825a,0xad8560,0x865631,0x746848];
   // Growth habits drawn from Southeast Asian lowland rainforest trees.
   const treeForms=[
-    // Ficus stricta / F. benjamina: spreading crown, low curves, and a smooth, rooted scaffold.
+    // Ficus stricta / F. benjamina: warm weathered teak & olive-brown bark (no flat cement grey).
     {height:.79,girth:1.32,lean:1.40,fork:.29,spread:1.51,wood:1,branches:9,density:1.22,bend:.83,
-      bark:[0xaba697,0x999487,0x9f9b8b],leaf:shadedLeaves},
-    // Koompassia excelsa: high emergent trunk and a fine, open crown.
+      bark:[0x6e5b49,0x7c644c,0x5f5243,0x856d54],leaf:shadedLeaves},
+    // Koompassia excelsa: high emergent trunk with warm amber-taupe bark.
     {height:1.34,girth:.57,lean:.47,fork:.75,spread:1.01,wood:2,branches:6,density:.69,bend:.18,
-      bark:[0xb4aa9c,0xb7b09b,0xa3ad96],leaf:youngLeaves},
-    // Pometia pinnata: spreading footholds and a dense broad crown.
+      bark:[0x8c735a,0x7d6852,0x947b60,0x6d614d],leaf:youngLeaves},
+    // Pometia pinnata: warm reddish-mahogany and cinnamon bark.
     {height:.75,girth:.94,lean:.92,fork:.35,spread:1.56,wood:0,branches:10,density:1.21,bend:.40,
-      bark:[0x9e816b,0x8f7257,0x7d7263],leaf:leaves},
-    // Calophyllum macrocarpum: a bent, irregular crown with hanging limbs.
+      bark:[0x8f694e,0x7c5a42,0x6e5645,0x997455],leaf:leaves},
+    // Calophyllum macrocarpum: deep damp umber understory hardwood.
     {height:1.07,girth:1.10,lean:1.73,fork:.45,spread:1.17,wood:3,branches:7,density:.87,bend:1.03,
-      bark:[0x625344,0x74614f,0x817360],leaf:shadedLeaves},
+      bark:[0x564638,0x665140,0x735e4a,0x4d4335],leaf:shadedLeaves},
     {height:.71,girth:.87,lean:1.36,fork:.37,spread:.85,wood:4,branches:5,density:0,bend:1.08,
-      bark:[0x957d64,0x7d7264,0x776858],leaf:null}
+      bark:[0x7e6850,0x6b5a47,0x635443],leaf:null}
   ];
   const pick=(list,r)=>list[Math.floor(r()*list.length)];
   const floorTint=new THREE.Color(0x74845e).convertSRGBToLinear();
@@ -171,19 +171,26 @@
             float flakes=mossNoise(vForestWorld*vec3(3.3,6.3,3.3));
             float fineRidges=pow(abs(sin(vBarkUV.x*193.0+flakes*.92)),13.0);
             vec3 baseBark=diffuseColor.rgb;
+            // Smooth per-trunk & height organic wood-tone variation (prevents binary two-tone bark).
+            float trunkShift=mossNoise(vForestWorld*vec3(.18,.09,.18));
+            float baseDamp=1.0-smoothstep(.2,4.8,vForestWorld.y);
+            vec3 warmCedar=vec3(.135,.088,.054),oliveBark=vec3(.078,.082,.056),richUmber=vec3(.062,.046,.033);
+            vec3 naturalTone=mix(mix(richUmber,warmCedar,smoothstep(.22,.78,trunkShift)),oliveBark,baseDamp*.42);
             float barkType=floor(vBarkForm+.001);
             if(barkType==1.0){
-              vec3 pale=vec3(.094,.093,.078)*(.77+barkGrain*.43);
-              diffuseColor.rgb=mix(baseBark,pale,.76)*(1.0-split*.12);
+              // Smooth weathered teak/cedar instead of flat pale grey.
+              diffuseColor.rgb=mix(baseBark,naturalTone*(.82+barkGrain*.40),.48)*(1.0-split*.16);
             }else if(barkType==2.0){
-              diffuseColor.rgb=mix(baseBark,vec3(.145,.127,.105),.43)*
-                (.81+.28*flakes)*(1.0-split*.19-fineRidges*.085);
+              diffuseColor.rgb=mix(baseBark,mix(warmCedar,naturalTone,.5),.38)*
+                (.80+.28*flakes)*(1.0-split*.18-fineRidges*.09);
             }else if(barkType>2.0){
-              float scars=smoothstep(.60,.80,flakes+split*.11);
-              diffuseColor.rgb=mix(baseBark*(.68+.46*barkGrain-fineRidges*.16),vec3(.13,.079,.044),scars*.62);
+              float scars=smoothstep(.60,.82,flakes+split*.11);
+              diffuseColor.rgb=mix(baseBark*(.72+.42*barkGrain-fineRidges*.15),vec3(.125,.076,.042),scars*.52);
             }else{
-              diffuseColor.rgb*=.77+.24*barkGrain+.19*flakes-split*.20;
+              diffuseColor.rgb=mix(baseBark,naturalTone,.28)*(.78+.24*barkGrain+.18*flakes-split*.20);
             }
+            // Damp root darkening near humid forest floor.
+            diffuseColor.rgb*=1.0-baseDamp*.24;
           `:""}
           ${moss?`
             vec3 site=vForestWorld*vec3(1.22,.77,1.22);
@@ -1494,13 +1501,14 @@
             float window=forestClearing(p);
             float woodland=smoothstep(14.0,54.0,length((p.xz-vec2(0.0,4.5))*vec2(1.0,.79)));
             float glints=.45+.55*sin(p.x*.39+p.z*.29+p.y*.68-forestTime*.16);
-            float density=.0053+valley*(.0147+woodland*.0046)+basin*.018+window*.015+
-              smoothstep(.29,.83,glints)*exp(-max(0.0,p.y)*.072)*.0030;
-            float transmittance=exp(-accumulated*.73);
+            float nearMist=smoothstep(2.0,18.0,t)*exp(-max(0.0,p.y-.4)*.24)*.0085;
+            float density=.0068+nearMist+valley*(.0168+woodland*.0052)+basin*.019+window*.017+
+              smoothstep(.24,.82,glints)*exp(-max(0.0,p.y)*.085)*.0048;
+            float transmittance=exp(-accumulated*.70);
             accumulated+=density*stride;
-            amber+=window*(.35+.65*valley)*stride*.103*transmittance*(.33+.67*angle);
-            glow+=lightShaft(p)*(valley*.76+.41)*stride*.205*transmittance*
-              smoothstep(.75,6.5,t)*(.51+.49*angle);
+            amber+=window*(.38+.62*valley)*stride*.115*transmittance*(.36+.64*angle);
+            glow+=lightShaft(p)*(valley*.78+.44)*stride*.225*transmittance*
+              smoothstep(.65,5.8,t)*(.52+.48*angle);
           }
           float warm=1.0-exp(-amber);
           float mist=(1.0-exp(-accumulated))*(.61+.32*warm);
@@ -1534,14 +1542,14 @@
   }
 
   function motes(s,uniforms){
-    const r=s.r,dust=s.mobile?370:790,insects=s.mobile?23:39,nearDust=s.mobile?52:106;
+    const r=s.r,dust=s.mobile?560:1380,insects=s.mobile?26:44,nearDust=s.mobile?95:220;
     const p=[],seed=[],scale=[],kind=[];
     for(let i=0;i<dust+insects+nearDust;i++){
       const kindId=i<dust?0:i<dust+insects?1:2;
-      const x=kindId===1?(i%2?1:-1)*(4.5+r()*12.4):(r()-.5)*(kindId===2?19:39);
-      const height=kindId===0?.48+Math.pow(r(),1.71)*10.9:.68+r()*4.5;
-      p.push(x,height,kindId===2?-8+r()*19:-40+r()*67);
-      seed.push(r()*TAU);scale.push(.6+r()*1.3);kind.push(kindId);
+      const x=kindId===1?(i%2?1:-1)*(4.5+r()*12.4):(r()-.5)*(kindId===2?16:36);
+      const height=kindId===0?.35+Math.pow(r(),1.55)*9.6:.45+r()*4.2;
+      p.push(x,height,kindId===2?-10+r()*22:-38+r()*64);
+      seed.push(r()*TAU);scale.push(.65+r()*1.45);kind.push(kindId);
     }
     const geo=new THREE.BufferGeometry();
     for(const [name,values,axes] of [["position",p,3],["seed",seed,1],["size",scale,1],["flyer",kind,1]]){
@@ -1552,7 +1560,7 @@
         attribute float seed,size,flyer;
         varying float spark,insect,flutter,soft;
         void main(){
-          float t=forestTime*(.51+seed*.11)+seed;
+          float t=forestTime*(.46+seed*.10)+seed;
           float breeze=.58+.42*sin(forestTime*.44-position.z*.23+position.x*.19);
           vec3 drift=vec3(sin(t*.91)*1.18+sin(t*2.19)*.21+breeze*.55,
             sin(t*.62+position.y*.27)*.59,cos(t*.65)*1.71+breeze*.32);
@@ -1562,27 +1570,27 @@
           vec4 view=modelViewMatrix*vec4(p,1.0);
           gl_Position=projectionMatrix*view;
           float depth=-view.z;
-          float beam=clamp(lightShaft(p)*1.97+forestClearing(p)*.24,0.0,1.0);
-          float pointSize=clamp(size*mix(34.0,45.0,insect)/max(4.0,depth),1.25,mix(5.4,7.0,insect));
-          gl_PointSize=mix(pointSize,clamp(size*43.0/max(1.63,depth),4.0,28.0),soft);
-          spark=mix(.14+.85*beam,.18+.62*beam,insect)*
-            smoothstep(.8,3.5,depth)*(1.0-smoothstep(24.0,45.0,depth))*
-            mix(.80+.20*sin(t*2.7),.52+.48*smoothstep(-.75,.73,sin(t*1.95)),insect);
-          float near=smoothstep(.60,1.65,depth)*(1.0-smoothstep(5.5,11.4,depth));
-          spark=mix(spark,near*(.077+.26*beam)*(.83+.17*sin(t*2.3)),soft);
+          float beam=clamp(lightShaft(p)*2.05+forestClearing(p)*.34,0.0,1.0);
+          float pointSize=clamp(size*mix(42.0,48.0,insect)/max(3.6,depth),1.6,mix(7.5,7.8,insect));
+          gl_PointSize=mix(pointSize,clamp(size*54.0/max(1.55,depth),5.0,32.0),soft);
+          spark=mix(.26+.84*beam,.20+.62*beam,insect)*
+            smoothstep(.7,3.0,depth)*(1.0-smoothstep(24.0,45.0,depth))*
+            mix(.78+.22*sin(t*2.5),.52+.48*smoothstep(-.75,.73,sin(t*1.95)),insect);
+          float near=smoothstep(.55,1.55,depth)*(1.0-smoothstep(6.5,14.0,depth));
+          spark=mix(spark,near*(.16+.34*beam)*(.82+.18*sin(t*2.1)),soft);
           flutter=.45+.55*abs(sin(t*32.5+seed));
         }`,
       fragmentShader:`
         varying float spark,insect,flutter,soft;
         void main(){
           vec2 p=gl_PointCoord-.5;
-          float dust=1.0-smoothstep(.045,.48,length(p));
+          float dust=exp(-dot(p,p)*12.0)*(1.0-smoothstep(.22,.50,length(p)));
           vec2 uv=vec2(abs(p.x),p.y)-vec2(.14*flutter,-.035);
           float veil=1.0-smoothstep(.08,.61,length(uv*vec2(2.65,2.14)));
           float wings=veil*(.65+.35*flutter);
-          vec3 tone=mix(vec3(1.0,.90,.68),vec3(.98,.965,.89),insect);
-          float aperture=pow(1.0-smoothstep(.075,.49,length(p)),1.36);
-          gl_FragColor=vec4(tone,spark*mix(mix(dust*.60,wings*.60,insect),aperture*.76,soft));
+          vec3 tone=mix(vec3(1.0,.92,.72),vec3(.98,.965,.89),insect);
+          float aperture=pow(1.0-smoothstep(.06,.49,length(p)),1.45);
+          gl_FragColor=vec4(tone,spark*mix(mix(dust*.72,wings*.60,insect),aperture*.68,soft));
         }`});
     const mesh=new THREE.Points(geo,mat);mesh.name="rainforestBacklitMotes";mesh.frustumCulled=false;mesh.renderOrder=3;s.root.add(mesh);
   }

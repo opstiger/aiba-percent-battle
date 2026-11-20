@@ -228,7 +228,7 @@
     uniforms:{
       tScene:{value:null},tBlur:{value:null},tDepth:{value:null},tFocus:{value:null},
       tVenueAir:{value:null},useVenueAir:{value:0},airStart:{value:15},airEnd:{value:30},
-      tFoliage:{value:null},forestGrade:{value:0},
+      tFoliage:{value:null},forestGrade:{value:0},meadowGrade:{value:0},meadowGold:{value:0},gradeTime:{value:0},
       useDepth:{value:0},camNear:{value:0.1},camFar:{value:120},
       exposure:{value:1},contrast:{value:1},saturation:{value:1},lift:{value:0},
       warm:{value:new THREE.Vector3(1,1,1)},
@@ -240,7 +240,7 @@
     vertexShader:VERT,
     fragmentShader:`
       uniform sampler2D tScene,tBlur,tDepth,tFocus,tVenueAir,tFoliage;
-      uniform float forestGrade;
+      uniform float forestGrade,meadowGrade,meadowGold,gradeTime;
       uniform float useDepth,useVenueAir,airStart,airEnd,camNear,camFar;
       uniform float exposure,contrast,saturation,lift;
       uniform vec3 warm;
@@ -271,8 +271,9 @@
             float plantZ=texture2D(tFoliage,vUv).r;
             float plant=camNear*camFar/mix(camFar,camNear,plantZ);
             float visible=1.0-smoothstep(.015+lin*.008,.064+lin*.026,abs(plant-lin));
-            // Run the protection at full resolution after upsampling the bokeh.
-            amount=dofStrength*mix(visible,1.0,smoothstep(dofFar-.08,dofFar+.075,lin));
+            // Restrict foreground bokeh strictly to near foliage (< dofFar) so it never bleeds onto the hoop or pole.
+            float nearOnly=1.0-smoothstep(dofFar-.35,dofFar+.25,lin);
+            amount=dofStrength*visible*nearOnly;
           }
           col=mix(base,lens.rgb/max(.001,lens.a),lens.a*amount);
         }
@@ -292,13 +293,43 @@
         col=mix(col,graded,mix(shadowKeep,1.0,smoothstep(0.0,toeEnd,luma(col))));
         col=mix(vec3(luma(col)),col,saturation);
         col*=warm;
-        if(forestGrade>.5){
-          float luminance=luma(col);
-          float shade=1.0-smoothstep(.055,.43,luminance);
-          float sun=smoothstep(.29,.84,luminance);
-          vec3 cooled=col*(1.0-.10*shade)+vec3(.004,.012,.018)*shade;
-          vec3 warmed=cooled*mix(vec3(1.0),vec3(1.045,1.014,.94),sun);
-          col=mix(warmed,warmed/(.91+.16*max(.0,luminance)),sun*.46);
+        // Unified Filmic LUT + Gamut Harmony + Micro-Grain so characters, balls, hoops & landscape share ONE camera lens.
+        if(forestGrade>.5||meadowGrade>.5){
+          float lum=luma(col);
+          float cMax=max(col.r,max(col.g,col.b)),cMin=min(col.r,min(col.g,col.b));
+          float sat=(cMax-cMin)/max(.001,cMax);
+          // Soft gamut compression tames overly-vivid digital primaries (bright jerseys/hats/balls) into filmic harmony.
+          float overSat=smoothstep(.42,.92,sat);
+          col=mix(col,mix(vec3(lum),col,.80),overSat*(forestGrade>.5?.52:.38));
+          float shade=1.0-smoothstep(.04,.44,lum);
+          float mid=smoothstep(.10,.45,lum)*(1.0-smoothstep(.55,.92,lum));
+          float sun=smoothstep(.30,.88,lum);
+          if(forestGrade>.5){
+            // Rainforest CineStill Emerald-Amber LUT + subtle humid near-air integration.
+            float nearHaze=smoothstep(2.5,24.0,lin)*.085;
+            col=mix(col,vec3(.56,.58,.42),nearHaze);
+            vec3 cooled=col*(1.0-.08*shade)+vec3(.004,.016,.014)*shade;
+            vec3 midTint=cooled*mix(vec3(1.0),vec3(1.015,1.006,.935),mid*.62);
+            vec3 warmed=midTint*mix(vec3(1.0),vec3(1.055,1.012,.915),sun);
+            col=mix(warmed,warmed/(.90+.18*max(0.0,lum)),sun*.44);
+          }else{
+            // Tian Shan Alpine Meadow Kodak-Natural LUT (adapts dynamically with golden-hour meadowGold).
+            float alpineHaze=smoothstep(4.5,38.0,lin)*.075;
+            vec3 hazeTone=mix(vec3(.56,.64,.70),vec3(.82,.72,.58),meadowGold);
+            col=mix(col,hazeTone,alpineHaze);
+            vec3 shadowTint=mix(vec3(-.006,.004,.014),vec3(.006,.002,-.004),meadowGold);
+            vec3 hiTint=mix(vec3(1.028,1.008,.962),vec3(1.075,1.005,.900),meadowGold);
+            vec3 midWarm=mix(vec3(1.005,1.002,.982),vec3(1.038,1.002,.938),meadowGold);
+            vec3 toned=col+shadowTint*shade;
+            toned*=mix(vec3(1.0),midWarm,mid*.55);
+            toned*=mix(vec3(1.0),hiTint,sun*.75);
+            // Soft filmic highlight roll-off + warm optical halation glow.
+            col=mix(toned,toned/(.92+.15*max(0.0,lum)),sun*.38);
+            col+=max(blur-.62,0.0)*mix(vec3(.09,.085,.07),vec3(.15,.10,.05),meadowGold);
+          }
+          // Subtle 35mm monochrome micro-grain removes sterile digital CG cleanliness.
+          float gHash=fract(sin(dot(gl_FragCoord.xy+vec2(gradeTime*43.1,gradeTime*19.7),vec2(12.9898,78.233)))*43758.5453);
+          col+=(gHash-.5)*.020*(.45+.55*mid);
         }
 
         vec2 d=(vUv-0.5)*vec2(aspect,1.0);
@@ -429,9 +460,10 @@
     }else{
       camera.getWorldDirection(focusDirection);
       const rimDepth=focusOffset.copy(HOOP).sub(camera.position).dot(focusDirection);
-      focus.near=Math.max(P.dofNear,Math.max(0,rimDepth)+7,meadow?23:12);
-      focus.far=Math.max(P.dofFar,focus.near+(meadow?57:30));
-      focus.strength=(meadow?.53:P.dof)*(COARSE?.83:1);
+      // Keep the entire hoop + backboard + curved support pole inside the sharp focal plane.
+      focus.near=Math.max(P.dofNear,Math.max(0,rimDepth)+12,meadow?26:16);
+      focus.far=Math.max(P.dofFar,focus.near+(meadow?60:42));
+      focus.strength=(meadow?.48:P.dof)*(COARSE?.83:1);
     }
     const u=focusMat.uniforms,pixels=focus.foreground?(forest?39:34):meadow?13.5:9.0;
     u.foreground.value=focus.foreground?(forest?2:1):0;
@@ -445,11 +477,15 @@
     return rtFocus.texture;
   }
 
-  function composite(air,lens,forest,foliage){
+  function composite(air,lens,forest,foliage,weather){
     const u=compMat.uniforms;
     u.tVenueAir.value=air;u.useVenueAir.value=air?1:0;
-    u.forestGrade.value=forest&&!lookLocked?1:0;u.tFoliage.value=foliage;
-    u.airStart.value=forest?0:15.0;u.airEnd.value=forest?2.0:30.0;
+    u.forestGrade.value=forest&&!lookLocked?1:0;
+    u.meadowGrade.value=weather&&!lookLocked?1:0;
+    u.meadowGold.value=weather?weather.uniforms.meadowSky.value.y:0;
+    u.gradeTime.value=(performance.now()%100000)*.001;
+    u.tFoliage.value=foliage;
+    u.airStart.value=forest?0:5.5;u.airEnd.value=forest?2.0:28.0;
     u.tScene.value=rtScene.texture;u.tBlur.value=(rtB||rtScene).texture;
     u.tDepth.value=rtScene.depthTexture||null;
     u.tFocus.value=lens;u.useDepth.value=lens?1:0;
@@ -504,7 +540,7 @@
       if(!foliage&&rtFoliage){disposeRT(rtFoliage);rtFoliage=null;}
       const lens=wantsFocus&&rtScene.depthTexture?drawFocus(weather,foreground,forest,foliage):null;
       focusActive=!!lens;
-      composite(air,lens,forest,foliage);
+      composite(air,lens,forest,foliage,weather);
       renderer.setRenderTarget(null);
     }catch(e){
       /* 后期挂了不能连累游戏:退回直出,并且不再重试。 */

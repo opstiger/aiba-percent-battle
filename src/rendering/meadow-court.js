@@ -438,10 +438,10 @@
   }
 
   function buildPollen(s){
-    const count=s.mobile?55:135,pos=[],seed=[];
+    const count=s.mobile?95:240,pos=[],seed=[];
     for(let i=0;i<count;i++){
-      pos.push((s.r()-.5)*28,.35+s.r()*3.4,COURT.midZ+(s.r()-.5)*34);
-      seed.push(s.r(),.6+s.r()*.9);
+      pos.push((s.r()-.5)*26,.28+s.r()*3.8,COURT.midZ+(s.r()-.5)*34);
+      seed.push(s.r(),.65+s.r()*1.15);
     }
     const geo=new THREE.BufferGeometry();
     geo.setAttribute("position",new THREE.Float32BufferAttribute(pos,3));
@@ -455,25 +455,26 @@
         uniform vec4 meadowSky;
         varying float vAlpha;
         void main(){
-          float t=clock*(.22+.12*mote.y)+mote.x*62.8;
+          float t=clock*(.20+.11*mote.y)+mote.x*62.8;
           vec3 p=position;
-          p.x+=sin(t)*.9+mod(clock*(.35+.5*wind)+mote.x*28.0,28.0)-14.0;
-          p.y+=sin(t*1.3+mote.x*19.0)*.28;
-          p.z+=cos(t*.85)*.8;
+          p.x+=sin(t)*.95+mod(clock*(.32+.48*wind)+mote.x*26.0,26.0)-13.0;
+          p.y+=sin(t*1.25+mote.x*19.0)*.32;
+          p.z+=cos(t*.82)*.85;
           vec4 mv=modelViewMatrix*vec4(p,1.0);
           gl_Position=projectionMatrix*mv;
-          gl_PointSize=clamp(34.0*mote.y/max(4.0,-mv.z),1.4,4.8);
-          float vis=smoothstep(.20,.72,meadowSky.x)*(1.0-smoothstep(.04,.22,meadowSky.z));
-          vAlpha=vis*(.35+.65*sin(t*2.1)*.5+.5)*smoothstep(1.5,5.0,-mv.z)*(1.0-smoothstep(22.0,36.0,-mv.z));
+          gl_PointSize=clamp(42.0*mote.y/max(3.6,-mv.z),1.8,6.2);
+          // Gently visible in all fair/overcast alpine air, fading only in heavy rain and glowing warmest at sunset.
+          float vis=(.32+.68*smoothstep(.08,.68,meadowSky.x))*(1.0-smoothstep(.08,.34,meadowSky.z));
+          vAlpha=vis*(.42+.58*(sin(t*2.0)*.5+.5))*smoothstep(1.2,4.2,-mv.z)*(1.0-smoothstep(22.0,36.0,-mv.z));
         }`,
       fragmentShader:`
         uniform vec4 meadowSky;
         varying float vAlpha;
         void main(){
           float r=length(gl_PointCoord*2.0-1.0);
-          float glow=exp(-r*r*3.8)*(1.0-smoothstep(.65,1.0,r));
-          vec3 col=mix(vec3(1.0,.96,.82),vec3(1.0,.76,.42),meadowSky.y);
-          gl_FragColor=vec4(col,glow*vAlpha*.52);
+          float glow=exp(-r*r*3.4)*(1.0-smoothstep(.60,1.0,r));
+          vec3 col=mix(vec3(.96,.97,.92),vec3(1.0,.78,.46),meadowSky.y);
+          gl_FragColor=vec4(col,glow*vAlpha*.56);
         }`
     });
     const pts=new THREE.Points(geo,mat);
