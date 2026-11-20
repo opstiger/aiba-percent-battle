@@ -313,9 +313,15 @@
 
         col+=max(blur-bloomThreshold,0.0)*bloomStrength;
         if(useVenueAir>0.5){
-          vec4 air=texture2D(tVenueAir,vUv);
-          // Foreground players & basketballs (1.5..5m) keep 38..100% of the volumetric Tyndall & mist veil — zero vacuum cutout!
-          float airWeight=mix(.40,1.0,smoothstep(airStart,airEnd,lin));
+          // 4-tap tent filter prevents 4x4 block jaggedness along distant tree-to-sky depth discontinuities.
+          vec2 airOff=texelSize*1.25;
+          vec4 air=(
+            texture2D(tVenueAir,vUv+vec2(-airOff.x,-airOff.y))+
+            texture2D(tVenueAir,vUv+vec2( airOff.x,-airOff.y))+
+            texture2D(tVenueAir,vUv+vec2(-airOff.x, airOff.y))+
+            texture2D(tVenueAir,vUv+vec2( airOff.x, airOff.y))
+          )*.25;
+          float airWeight=mix(.22,1.0,smoothstep(airStart,airEnd,lin));
           col=mix(col,air.rgb,air.a*airWeight);
         }
 
@@ -340,8 +346,8 @@
           float mid=smoothstep(.10,.45,lum)*(1.0-smoothstep(.55,.92,lum));
           float sun=smoothstep(.30,.88,lum);
           if(forestGrade>.5){
-            // Rainforest CineStill Emerald-Amber LUT + in-court dusty veiling glare & optical light-wrap.
-            float nearHaze=smoothstep(1.2,20.0,lin)*.115;
+            // Rainforest CineStill Emerald-Amber LUT + subtle humid near-air integration.
+            float nearHaze=smoothstep(2.0,24.0,lin)*.065;
             col=mix(col,vec3(.58,.58,.41),nearHaze);
             // Optical light-wrap: warm sunlit canopy/mist bleeds softly around dark foreground silhouettes (player/hoop).
             float wrapMask=clamp(luma(blur)-lum,0.0,1.0)*smoothstep(1.0,16.0,lin);
@@ -441,8 +447,9 @@
 
   function drawVenueAir(weather){
     if(!rtAir){
-      // Fog has no sharp structure; the final full-resolution depth sample keeps it off the court.
-      rtAir=makeRT(Math.max(2,rtW>>2),Math.max(2,rtH>>2),{depthBuffer:false});
+      // Half-res air pass on desktop (1/4 on coarse mobile) keeps distant tree silhouettes crisp and free of blocky halos.
+      const shift=COARSE?2:1;
+      rtAir=makeRT(Math.max(2,rtW>>shift),Math.max(2,rtH>>shift),{depthBuffer:false});
       rtAir.texture.encoding=THREE.LinearEncoding;
     }
     const mat=weather.airMaterial,u=mat.uniforms;

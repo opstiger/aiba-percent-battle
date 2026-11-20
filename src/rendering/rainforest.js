@@ -10,17 +10,17 @@
   const fadedLeaves=[0xa18752,0x91683e,0xb1a268,0x8c825a,0xad8560,0x865631,0x746848];
   // Growth habits drawn from Southeast Asian lowland rainforest trees.
   const treeForms=[
-    // Ficus stricta / F. benjamina: warm weathered teak & olive-brown bark (no flat cement grey).
-    {height:.79,girth:1.32,lean:1.40,fork:.29,spread:1.51,wood:1,branches:9,density:1.22,bend:.83,
+    // Ficus stricta / F. benjamina: broad, lush banyan canopy with dense layered foliage.
+    {height:.78,girth:1.32,lean:1.40,fork:.25,spread:1.68,wood:1,branches:11,density:1.62,bend:.83,
       bark:[0x6e5b49,0x7c644c,0x5f5243,0x856d54],leaf:shadedLeaves},
     // Koompassia excelsa: high emergent trunk with warm amber-taupe bark.
-    {height:1.34,girth:.57,lean:.47,fork:.75,spread:1.01,wood:2,branches:6,density:.69,bend:.18,
+    {height:1.34,girth:.57,lean:.47,fork:.75,spread:1.05,wood:2,branches:7,density:.82,bend:.18,
       bark:[0x8c735a,0x7d6852,0x947b60,0x6d614d],leaf:youngLeaves},
-    // Pometia pinnata: warm reddish-mahogany and cinnamon bark.
-    {height:.75,girth:.94,lean:.92,fork:.35,spread:1.56,wood:0,branches:10,density:1.21,bend:.40,
+    // Pometia pinnata: massive lush broad-umbrella rainforest giant.
+    {height:.74,girth:1.04,lean:.88,fork:.26,spread:1.74,wood:0,branches:12,density:1.78,bend:.42,
       bark:[0x8f694e,0x7c5a42,0x6e5645,0x997455],leaf:leaves},
-    // Calophyllum macrocarpum: deep damp umber understory hardwood.
-    {height:1.07,girth:1.10,lean:1.73,fork:.45,spread:1.17,wood:3,branches:7,density:.87,bend:1.03,
+    // Calophyllum macrocarpum: deep damp umber understory hardwood with rich drooping crown.
+    {height:1.02,girth:1.10,lean:1.65,fork:.38,spread:1.32,wood:3,branches:9,density:1.28,bend:1.03,
       bark:[0x564638,0x665140,0x735e4a,0x4d4335],leaf:shadedLeaves},
     {height:.71,girth:.87,lean:1.36,fork:.37,spread:.85,wood:4,branches:5,density:0,bend:1.08,
       bark:[0x7e6850,0x6b5a47,0x635443],leaf:null}
@@ -58,6 +58,10 @@
       vec2 q=canopyFoot(p);
       float ripples=.18*sin(q.y*.53+forestTime*.25)+.125*cos(q.x*.59-forestTime*.19);
       q.x+=ripples;
+      // Low-frequency passing canopy breeze / bird-flight shadow sweep shifting light & shade gently across the forest.
+      float sweepPos=mod(forestTime*.42,38.0)-19.0;
+      float canopyWave=.74+.26*sin(forestTime*.23)+.16*cos(forestTime*.13-p.z*.08);
+      float passShadow=1.0-.32*exp(-pow((q.x-sweepPos)/5.5,2.0));
       // Distant forest shafts + in-court canopy shafts slicing directly across the court, hoop, and player.
       float rays=.87*lobe(q,vec2(-5.4,-13.8),vec2(1.15,4.6))
         +.55*lobe(q,vec2(-3.55,-16.5),vec2(.68,4.8))
@@ -74,7 +78,7 @@
       float courtZone=1.0-smoothstep(9.5,24.0,length(p.xz-vec2(0.0,-2.5)));
       float streaks=pow(max(0.0,sin(q.x*1.85+q.y*.72+forestTime*.14)*cos(q.y*1.42-q.x*1.15-forestTime*.11)),2.0);
       rays+=courtZone*streaks*.44;
-      return rays*(1.0-smoothstep(18.0,29.0,p.y));
+      return rays*canopyWave*passShadow*(1.0-smoothstep(18.0,29.0,p.y));
     }
     float forestClearing(vec3 p){
       float depth=max(0.0,-p.z+6.5);
@@ -730,21 +734,24 @@
           limb(treeWood,spur,spur.clone().add(new THREE.Vector3(.32,span*.48+.33,-.24)),rad*.072,.014,tint,span*.05,false,5);
           continue;
         }
-        const bunches=near?3:2;
+        const lush=form.density>=1.45;
+        const bunches=near?(lush?5:4):(wider?(lush?4:3):2);
         for(let j=0;j<bunches;j++){
-          const joint=near?branch.getPoint(.53+.21*j):a.clone().lerp(end,.57+.19*j);
+          const uFrac=lerp(.32,.92,j/Math.max(1,bunches-1));
+          const joint=near?branch.getPoint(uFrac):a.clone().lerp(end,uFrac);
           const twigHeading=angle+(j%2?-1:1)*(.83+r()*.60);
-          const twigLength=span*(.16+r()*.19);
+          const twigLength=span*(lush?.24+r()*.22:.16+r()*.19);
           const twig=joint.clone().add(new THREE.Vector3(Math.cos(twigHeading)*twigLength,
-            span*(.08+r()*.17),Math.sin(twigHeading)*twigLength));
+            span*(.06+r()*.18),Math.sin(twigHeading)*twigLength));
           if(!outer)limb(treeWood,joint,twig,Math.min(.083,rad*.11),.012,tint,.024,false,4);
-          const leafCount=Math.max(3,Math.round((near?11:wider?8:outer?4:6)*form.density));
+          const leafCount=Math.max(4,Math.round((near?13:wider?10:outer?5:8)*form.density));
+          const broadScale=lush?1.28:1.0;
           for(let k=0;k<leafCount;k++){
-            const p=joint.clone().lerp(twig,.17+.81*k/(leafCount-1));
-            const l=(.78+r()*1.49)*Math.pow(h/22,.72)*(form.wood===2?.68:1.0);
-            const heading=twigHeading+(k%2?-1:1)*(.53+r()*1.26);
-            blade(treeLeaf,p,heading,l,l*(.18+r()*.13),-.27*l,.12*l,
-              color(pick(k%13===11?fadedLeaves:form.leaf,r)).multiplyScalar(.74+r()*.39),.07+r()*.12,near?3:2);
+            const p=joint.clone().lerp(twig,.12+.86*k/(leafCount-1));
+            const l=(.86+r()*1.55)*Math.pow(h/22,.72)*(form.wood===2?.68:1.0)*broadScale;
+            const heading=twigHeading+(k%2?-1:1)*(.45+r()*1.45);
+            blade(treeLeaf,p,heading,l,l*(.22+r()*.15),-.24*l,.12*l,
+              color(pick(k%13===11?fadedLeaves:form.leaf,r)).multiplyScalar(.72+r()*.38),.07+r()*.12,near?3:2);
           }
         }
       }
@@ -1494,8 +1501,8 @@
           vec3 direction=(cameraWorld*vec4(normalize(a.xyz/a.w),0.0)).xyz;
           vec3 origin=cameraWorld[3].xyz;
           float rawDepth=min(137.0,length(a.xyz/a.w));
-          // Maintain a continuous foreground Tyndall & dusty-air floor (14m equivalent) so 2m-close players & basketballs sit inside the misty beams, never in a vacuum cutout.
-          float depth=max(rawDepth,mix(14.5,rawDepth,smoothstep(1.2,15.5,rawDepth)));
+          // Gentle foreground Tyndall & dusty-air floor (6.5m) so close players stay crisp while sitting in sunlit beams.
+          float depth=max(rawDepth,mix(6.5,rawDepth,smoothstep(1.0,12.0,rawDepth)));
           float jitter=.27+.48*fract(dot(gl_FragCoord.xy,vec2(.75487766,.56984029)));
           float accumulated=0.0,glow=0.0,amber=0.0;
           float toward=max(.0,dot(direction,forestSun));
@@ -1525,9 +1532,9 @@
               smoothstep(.35,3.2,t)*(.54+.46*angle);
           }
           float warm=1.0-exp(-amber);
-          float mist=(1.0-exp(-accumulated))*(.61+.32*warm);
-          float shaft=(1.0-exp(-glow))*.78;
-          float alpha=min(.97,mist+shaft*(1.0-mist));
+          float mist=(1.0-exp(-accumulated))*(.56+.30*warm);
+          float shaft=(1.0-exp(-glow))*.72;
+          float alpha=min(.86,mist+shaft*(1.0-mist));
           vec3 shades=mix(vec3(.455,.508,.414),vec3(.99,.827,.56),clamp(warm*1.23,0.0,1.0));
           vec3 sun=vec3(1.0,.82,.53);
           vec3 rgb=(shades*mist+sun*shaft*(1.0-mist))/max(.001,alpha);
@@ -1632,6 +1639,52 @@
     return {mesh,items,dummy:new THREE.Object3D()};
   }
 
+  function deepFlyers(s,batch){
+    const r=s.r,flyers=[];
+    const routes=[
+      {z0:-22,z1:-28,y:8.2,span:42,dir:1,period:26,active:6.2,phase:4.0,tint:0x3c4d49,wingTint:0x8c7b55},
+      {z0:-34,z1:-26,y:10.8,span:48,dir:-1,period:34,active:7.4,phase:17.5,tint:0x2c3a3f,wingTint:0x6e8575},
+      {z0:-17,z1:-21,y:6.5,span:36,dir:1,period:41,active:5.4,phase:29.0,tint:0x4a3d34,wingTint:0xa88a56}
+    ];
+    for(const rt of routes){
+      const bird=new THREE.Group();bird.name="rainforestDeepFlyer";
+      const body=batch();
+      body.add("sphere",rt.tint,0,0,0,.065,.058,.21);
+      body.add("sphere",rt.tint,0,.025,.14,.045,.045,.06);
+      body.add("cone",0xd9a84e,0,.02,.22,.022,.08,Math.PI/2,0,0);
+      body.finish(bird,"deepBirdBody");
+      const wings=[];
+      for(const side of [-1,1]){
+        const wRoot=new THREE.Group();wRoot.position.set(side*.045,.018,.01);
+        const w=batch();
+        w.box(rt.wingTint,side*.17,0,0,.34,.014,.13,0,side*.12,0);
+        w.finish(wRoot,"deepBirdWing");
+        bird.add(wRoot);wings.push(wRoot);
+      }
+      bird.visible=false;s.root.add(bird);
+      flyers.push({...rt,bird,wings,seed:r()*TAU});
+    }
+    return flyers;
+  }
+  function updateDeepFlyers(flyers,t){
+    if(!flyers)return;
+    for(const f of flyers){
+      const age=(t+f.phase)%f.period;
+      if(age>=f.active){f.bird.visible=false;continue;}
+      f.bird.visible=true;
+      const u=age/f.active;
+      const x=f.dir*lerp(-f.span*.5,f.span*.5,u);
+      const z=lerp(f.z0,f.z1,u)+Math.sin(u*Math.PI*2+f.seed)*2.2;
+      const y=f.y+Math.sin(u*Math.PI)*.95+Math.sin(t*3.2+f.seed)*.22;
+      f.bird.position.set(x,y,z);
+      f.bird.rotation.y=f.dir>0?Math.PI/2:-Math.PI/2;
+      f.bird.rotation.z=Math.sin(t*2.4+f.seed)*.09;
+      // Alternating wingbeats + brief glides across the sunlit shafts.
+      const glide=Math.sin(age*1.4+f.seed)>0.35?.12:Math.sin(age*15.5+f.seed)*.78;
+      for(let i=0;i<2;i++)f.wings[i].rotation.z=(i===0?-1:1)*glide;
+    }
+  }
+
   function updateFalling(state,t){
     const {mesh,items,dummy}=state;
     let count=0;
@@ -1661,8 +1714,10 @@
     ground(s,uniforms);cliffs(s,uniforms,batch);trees(s,uniforms,batch);waterfall(s,uniforms);motes(s,uniforms);
     reclaimedHoops(s,uniforms);
     state.falling=fallingLeaves(s);
+    state.deepFlyers=deepFlyers(s,batch);
     updateFalling(state.falling,s.time);
     updatePerches(state.perches,s.time);
+    updateDeepFlyers(state.deepFlyers,s.time);
     return state;
   }
 
@@ -1672,6 +1727,7 @@
     if(board)board.panelRig.rotation.x=board.nearPivot.rotation.x;
     updateFalling(s.rainforest.falling,s.time);
     updatePerches(s.rainforest.perches,s.time);
+    updateDeepFlyers(s.rainforest.deepFlyers,s.time);
   }
 
   global.AIBARainforest=Object.freeze({build,update,light});

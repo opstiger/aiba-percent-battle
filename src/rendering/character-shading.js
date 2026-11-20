@@ -65,16 +65,16 @@
     // 2. 次表面散射暖血色 (Subsurface Terminator Warmth)：明暗交界线泛柔和暖红琥珀色，告别死灰塑料感
     "  float terminator=exp(-sunDot*sunDot*7.5)*max(0.0,1.0-abs(up)*0.5);",
     "  gl_FragColor.rgb+=gl_FragColor.rgb*vec3(0.22,0.075,0.025)*terminator;",
-    // 3. 森林球场树冠斑驳遮阴与场内浓密丁达尔空气融合 (抵消森林 2.76x 强光过曝，彻底消除人物/篮球真空割裂感)
+    // 3. 森林球场树冠斑驳遮阴 (保留人物清晰度与立体对比，仅做自然林间斑驳光影，不重复叠加浑浊雾色)
     "  if(aibaSceneMode>0.5&&aibaSceneMode<1.5){",
     "    vec2 q=aibaWPos.xz-aibaWPos.y*vec2(-0.55,0.42);",
     "    float dapple=0.5+0.5*(sin(q.x*1.45+q.y*1.05)*cos(q.y*1.65-q.x*0.92));",
-    "    float canopy=mix(0.48,0.86,smoothstep(0.15,0.85,dapple));",
-    "    vec3 forestTint=mix(vec3(0.76,0.82,0.62),vec3(1.04,0.94,0.74),smoothstep(0.25,0.82,dapple));",
+    "    float canopy=mix(0.76,1.04,smoothstep(0.18,0.85,dapple));",
+    "    vec3 forestTint=mix(vec3(0.86,0.90,0.74),vec3(1.05,0.97,0.82),smoothstep(0.25,0.82,dapple));",
     "    gl_FragColor.rgb*=forestTint*canopy;",
     "    float camDist=length(aibaV);",
-    "    float airVeil=clamp(0.14+smoothstep(0.8,14.0,camDist)*0.22,0.14,0.34);",
-    "    gl_FragColor.rgb=mix(gl_FragColor.rgb,aibaAirColor*(0.85+0.25*dapple),airVeil);",
+    "    float airVeil=clamp(smoothstep(1.5,16.0,camDist)*0.07,0.02,0.08);",
+    "    gl_FragColor.rgb=mix(gl_FragColor.rgb,aibaAirColor,airVeil);",
     "  }else if(aibaSceneMode>1.5&&aibaSceneMode<2.5){",
     // 4. 鲜花草甸高原云影/空气包裹 + 雨天皮肤/球衣湿润高光 (Wet Specular Sheen)
     "    float camDist=length(aibaV);",
