@@ -1301,94 +1301,175 @@
 
   function makePerches(s,leafMat,barkMat,batch){
     const r=s.r;
+    // Anchor every perch base directly in sideline/canopy trunks (|x| >= 8.2m) so branches never float in mid-court,
+    // while their leafy tips and 1-2 perched birds reach forward into the upper camera framing.
     const sites=[
-      [-13.5,-12,6.65,.17,5.5],[13.1,-10,6.1,2.79,5.0],
-      [-5.8,-28.1,9.0,.38,4.4],[19.3,-35,8.5,2.99,5.5],
-      [-13.1,10.2,6.4,-.29,4.0]
+      [-8.4,1.2,2.55,-.46,6.1,true],
+      [8.5,.8,2.65,-2.63,6.0,false],
+      [-9.3,-16.3,3.25,-.28,5.2,false],
+      [13.1,-10.0,3.95,2.84,5.8,false],
+      [-13.1,10.2,2.72,.48,6.2,false]
     ].slice(0,s.mobile?3:5);
-    return sites.map(([x,z,height,heading,length],index)=>{
-      const root=new THREE.Group(),branch=new THREE.Group(),bird=new THREE.Group();
+    const list=[];
+    sites.forEach(([x,z,height,heading,length,hasPair],index)=>{
+      const root=new THREE.Group(),branch=new THREE.Group();
       root.name="rainforestPerch";root.position.set(x,elevation(x,z)+height,z);root.rotation.y=-heading;
       branch.name="rainforestSwayingBranch";
-      root.add(branch);branch.add(bird);s.root.add(root);
+      root.add(branch);s.root.add(root);
       const curve=new THREE.QuadraticBezierCurve3(
         new THREE.Vector3(-.32,0,0),new THREE.Vector3(length*.57,.23,-.13),
-        new THREE.Vector3(length,.60+index*.07,.22)
+        new THREE.Vector3(length,.58+index*.05,.22)
       );
       const wood=meshBuilder(false,true),leavesOnBranch=meshBuilder();
       let from=curve.getPoint(0);
-      const baseTint=color(index%2?0x837468:0x986f51);
+      const baseTint=color(index%2?0x7a6552:0x5e4938);
       for(let j=1;j<=6;j++){
         const u=j/6,to=curve.getPoint(u);
-        limb(wood,from,to,lerp(.30,.035,(j-1)/6),lerp(.30,.035,u),baseTint,.047,false,7);
+        limb(wood,from,to,lerp(.24,.032,(j-1)/6),lerp(.24,.032,u),baseTint,.042,false,7);
         from=to;
       }
       for(let j=0;j<8;j++){
-        const u=.36+j*.076,a=curve.getPoint(u);
-        const side=j%2?1:-1,dir=side*(.65+r()*.92),spread=(.89+r()*.66)*(1-u*.26);
-        const tip=a.clone().add(new THREE.Vector3(Math.cos(dir)*spread,.22+r()*.4,Math.sin(dir)*spread));
-        limb(wood,a,tip,.046*(1-u)+.017,.012,baseTint,.050,false,5);
+        const u=.34+j*.078,a=curve.getPoint(u);
+        const side=j%2?1:-1,dir=side*(.65+r()*.92),spread=(.78+r()*.58)*(1-u*.26);
+        const tip=a.clone().add(new THREE.Vector3(Math.cos(dir)*spread,.20+r()*.36,Math.sin(dir)*spread));
+        limb(wood,a,tip,.042*(1-u)+.015,.011,baseTint,.045,false,5);
         for(let k=0;k<6;k++){
           const p=a.clone().lerp(tip,.42+k*.10),angle=dir+.5*(k%2?-1:1)+r()*.33;
-          const len=.28+r()*.48;
+          const len=.26+r()*.44;
           blade(leavesOnBranch,p,angle,len,len*.20,-len*.16,len*.12,
             color(pick(k===4?fadedLeaves:index%2?youngLeaves:shadedLeaves,r)),.041,4);
         }
       }
       finish(branch,wood,barkMat,"rainforestPerchWood");
       finish(branch,leavesOnBranch,leafMat,"rainforestPerchFoliage");
-      bird.name="rainforestCanopyBird";
-      const shapes=batch(),wings=[];
-      const brown=index%2?0x302b23:0x3d3b2c;
-      shapes.add("blob",brown,-.017,.069,0,.102,.067,.052,0,0,-.15);
-      shapes.add("blob",index%2?0x443832:0x3c4134,.082,.107,0,.044,.043,.038);
-      shapes.add("blob",0x5a4b35,.115,.103,0,.025,.010,.012);
-      shapes.add("blob",0x302d25,-.148,.047,0,.073,.013,.026,0,0,.16);
-      shapes.finish(bird,"rainforestBirdBody");
-      for(const side of [-1,1]){
-        const wingRoot=new THREE.Group(),wing=batch();
-        wingRoot.position.set(-.012,.076,side*.038);
-        wing.add("blob",0x35372c,-.019,0,side*.034,.077,.016,.065,0,.11*side,0);
-        wing.finish(wingRoot,"rainforestBirdWing");
-        bird.add(wingRoot);wings.push(wingRoot);
+
+      const birdCount=hasPair?2:1;
+      for(let bIdx=0;bIdx<birdCount;bIdx++){
+        const bird=new THREE.Group(),head=new THREE.Group();
+        bird.name="rainforestCanopyBird";
+        branch.add(bird);
+        const shapes=batch(),headShapes=batch(),wings=[];
+        const palette=[
+          {back:0x217a6b,breast:0xe89638,wing:0x175248,beak:0xf2b63d},
+          {back:0x326e45,breast:0xdc6834,wing:0x234c30,beak:0xe8a638},
+          {back:0x286282,breast:0xe6aa42,wing:0x1b4259,beak:0xf0ab3c}
+        ][(index+bIdx)%3];
+        // Plump tropical songbird body + breast + long notched tail
+        shapes.add("blob",palette.back,-.020,.078,0,.118,.078,.062,0,0,-.16);
+        shapes.add("blob",palette.breast,.012,.064,0,.092,.064,.056,0,0,-.08);
+        shapes.add("blob",palette.wing,-.168,.052,0,.092,.016,.032,0,0,.18);
+        shapes.finish(bird,"rainforestBirdBody");
+        head.position.set(.088,.122,0);
+        headShapes.add("blob",palette.back,0,0,0,.052,.050,.045);
+        headShapes.add("blob",palette.beak,.046,-.004,0,.032,.013,.014);
+        headShapes.finish(head,"rainforestBirdHead");
+        bird.add(head);
+        for(const side of [-1,1]){
+          const wingRoot=new THREE.Group(),wing=batch();
+          wingRoot.position.set(-.014,.086,side*.044);
+          wing.add("blob",palette.wing,-.022,0,side*.038,.092,.018,.074,0,.11*side,0);
+          wing.finish(wingRoot,"rainforestBirdWing");
+          bird.add(wingRoot);wings.push(wingRoot);
+        }
+        bird.scale.setScalar(bIdx===0?1.62:1.42);
+        const duration=.28+r()*.10,period=21.0+index*3.2+bIdx*4.5+r()*4.0;
+        const uShift=bIdx===0?0:-.16;
+        const hops=[
+          {at:1.4+r()*.9,from:.68+uShift,to:.80+uShift},
+          {at:4.2+r()*1.1,from:.80+uShift,to:.90+uShift},
+          {at:7.5+r()*1.4,from:.90+uShift,to:.74+uShift},
+          {at:10.8+r()*1.2,from:.74+uShift,to:.68+uShift}
+        ];
+        // Fly-away window: bird crouches, launches off the branch into the forest canopy, and glides back to land.
+        const flyStart=13.6+bIdx*1.8+r()*1.2;
+        const flyOutDur=3.1,awayDur=2.0,returnDur=2.3;
+        const flyVec=new THREE.Vector3(
+          (index%2===0?1:-1)*(5.5+r()*3.5),
+          3.4+r()*1.8,
+          (bIdx%2===0?-1:1)*(6.5+r()*4.0)
+        );
+        // Offset phase so at t=0 the foreground framing birds are perched and actively hopping/looking around.
+        const phase=(index===0?(bIdx===0?2.2:5.1):index===1?3.6:r()*period);
+        list.push({branch,bird,head,wings,curve,duration,period,hops,flyStart,flyOutDur,awayDur,returnDur,flyVec,phase,bIdx});
       }
-      const duration=.29+r()*.11,period=18.6+r()*12.2;
-      // A few quick hops, a longer pause, and a hop back into the cover.
-      const hops=[
-        {at:1.6+r()*1.4,from:.33,to:.51},
-        {at:4.6+r()*1.6,from:.51,to:.71},
-        {at:8.6+r()*2.3,from:.71,to:.48},
-        {at:13.2+r()*2.0,from:.48,to:.33}
-      ];
-      return {branch,bird,wings,curve,duration,period,hops,phase:r()*period};
     });
+    return list;
   }
 
   function updatePerches(perches,time){
     for(const perch of perches){
-      const {branch,bird,wings,curve,duration,period,hops,phase}=perch;
+      const {branch,bird,head,wings,curve,duration,period,hops,flyStart,flyOutDur,awayDur,returnDur,flyVec,phase,bIdx}=perch;
       const t=(time+phase)%period;
-      let u=hops[0].from,lift=0,lean=0,turn=0,flutter=0,shake=0;
+      let u=hops[0].from,lift=0,lean=0,turn=bIdx%2?Math.PI:0,flutter=0,shake=0;
       for(const {at,from,to} of hops){
         const age=t-at;
         if(age<0)break;
         const p=Math.min(1,age/duration);
         u=lerp(from,to,smoothstep(p,0,1));turn=to>from?0:Math.PI;
         if(age<duration){
-          lift=.235*Math.sin(Math.PI*p);
-          lean=.14*Math.sin(p*TAU);
-          flutter=Math.sin(Math.PI*p)*(.48+.49*Math.abs(Math.sin(age*39)));
+          lift=.24*Math.sin(Math.PI*p);
+          lean=.15*Math.sin(p*TAU);
+          flutter=Math.sin(Math.PI*p)*(.55+.45*Math.abs(Math.sin(age*42)));
         }
         const after=age-duration;
-        if(after>=0&&after<1.5)shake+=.043*Math.exp(-after*4.0)*Math.sin(after*19);
+        if(after>=0&&after<1.5)shake+=.045*Math.exp(-after*4.0)*Math.sin(after*19);
       }
       curve.getPoint(u,bird.position);
-      bird.position.y+=lift+.053+.005*Math.sin(time*3.7+phase);
-      bird.rotation.y=turn;
-      bird.rotation.z=lean+.040*Math.sin(time*4.7+phase);
-      for(let i=0;i<2;i++)wings[i].rotation.x=(i===0?-1:1)*(.13+flutter*1.1);
-      branch.rotation.z=.014*Math.sin(time*1.43+phase)+shake;
-      branch.rotation.x=.009*Math.sin(time*.89+phase)+shake*.40;
+      const flyEnd=flyStart+flyOutDur,returnStart=flyEnd+awayDur,returnEnd=Math.min(period-.1,returnStart+returnDur);
+      if(t>=flyStart-.45&&t<flyStart){
+        // Pre-takeoff crouch & wing prep
+        const prep=(t-(flyStart-.45))/.45;
+        lift-=.032*Math.sin(prep*Math.PI);
+        lean+=.22*prep;
+        flutter=.35*prep;
+      }
+      if(t>=flyStart&&t<flyEnd){
+        // Launch & fly away into the forest canopy
+        bird.visible=true;
+        const age=t-flyStart,p=age/flyOutDur;
+        if(age<1.8)shake+=.082*Math.exp(-age*3.1)*Math.sin(age*21);
+        const ease=Math.pow(p,1.28);
+        bird.position.x+=flyVec.x*ease;
+        bird.position.y+=flyVec.y*Math.pow(p,1.1)+.45*Math.sin(p*Math.PI);
+        bird.position.z+=flyVec.z*ease;
+        turn=Math.atan2(-flyVec.z,flyVec.x);
+        lean=.38*(1-p*.4);
+        flutter=.72+.58*Math.sin(time*34+phase);
+      }else if(t>=flyEnd&&t<returnStart){
+        bird.visible=false;
+      }else if(t>=returnStart&&t<returnEnd){
+        // Swoop back from canopy and flare wings to land on the branch
+        bird.visible=true;
+        const p=1-(t-returnStart)/Math.max(.1,returnEnd-returnStart);
+        const ease=Math.pow(p,1.35);
+        bird.position.x+=flyVec.x*ease;
+        bird.position.y+=flyVec.y*Math.pow(p,1.15)+.38*Math.sin(p*Math.PI);
+        bird.position.z+=flyVec.z*ease;
+        turn=Math.atan2(flyVec.z,-flyVec.x);
+        lean=-.28*Math.sin(p*Math.PI);
+        flutter=p<.32?(.85*Math.sin(time*36+phase)):(.25+.45*Math.sin(time*26+phase));
+        const landAge=(t-returnStart)-(returnEnd-returnStart-.25);
+        if(landAge>0)shake+=.055*Math.exp(-landAge*4.5)*Math.sin(landAge*20);
+      }else{
+        bird.visible=true;
+        // Occasional stationary wing-flick while perched
+        const flick=Math.sin(time*1.35+phase*2.1);
+        if(flick>.92)flutter=Math.max(flutter,((flick-.92)/.08)*(.45+.45*Math.abs(Math.sin(time*38))));
+      }
+      bird.position.y+=lift+.056+.006*Math.sin(time*3.9+phase);
+      bird.rotation.y=turn+.12*Math.sin(time*1.7+phase);
+      bird.rotation.z=lean+.042*Math.sin(time*4.5+phase);
+      if(head){
+        // Curious head turns & tilts
+        const lookWave=Math.sin(time*2.3+phase*1.7)+.55*Math.sin(time*4.8+phase);
+        head.rotation.y=clamp(lookWave*.38,-.58,.58);
+        head.rotation.z=.18*Math.cos(time*2.9+phase);
+      }
+      for(let i=0;i<2;i++)wings[i].rotation.x=(i===0?-1:1)*(.13+flutter*1.12);
+      if(bIdx===0){
+        branch.rotation.z=.014*Math.sin(time*1.43+phase)+shake;
+        branch.rotation.x=.009*Math.sin(time*.89+phase)+shake*.40;
+      }
     }
   }
 
@@ -1500,9 +1581,7 @@
           vec4 a=invProjection*vec4(tex*2.0-1.0,z*2.0-1.0,1.0);
           vec3 direction=(cameraWorld*vec4(normalize(a.xyz/a.w),0.0)).xyz;
           vec3 origin=cameraWorld[3].xyz;
-          float rawDepth=min(137.0,length(a.xyz/a.w));
-          // Gentle foreground Tyndall & dusty-air floor (6.5m) so close players stay crisp while sitting in sunlit beams.
-          float depth=max(rawDepth,mix(6.5,rawDepth,smoothstep(1.0,12.0,rawDepth)));
+          float depth=min(137.0,length(a.xyz/a.w));
           float jitter=.27+.48*fract(dot(gl_FragCoord.xy,vec2(.75487766,.56984029)));
           float accumulated=0.0,glow=0.0,amber=0.0;
           float toward=max(.0,dot(direction,forestSun));
@@ -1563,13 +1642,16 @@
   }
 
   function motes(s,uniforms){
-    const r=s.r,dust=s.mobile?560:1380,insects=s.mobile?26:44,nearDust=s.mobile?95:220;
+    const r=s.r,dust=s.mobile?560:1380,insects=s.mobile?32:56,nearDust=s.mobile?95:220;
     const p=[],seed=[],scale=[],kind=[];
     for(let i=0;i<dust+insects+nearDust;i++){
       const kindId=i<dust?0:i<dust+insects?1:2;
-      const x=kindId===1?(i%2?1:-1)*(4.5+r()*12.4):(r()-.5)*(kindId===2?16:36);
-      const height=kindId===0?.35+Math.pow(r(),1.55)*9.6:.45+r()*4.2;
-      p.push(x,height,kindId===2?-10+r()*22:-38+r()*64);
+      // Place blurred flying insects in BOTH near camera sightline (-3..3m) and mid/far court sightline (-22..-4m).
+      const nearFly=kindId===1&&i%2===0;
+      const x=kindId===1?(nearFly?(r()-.5)*7.5:(r()-.5)*16.0):(r()-.5)*(kindId===2?16:36);
+      const height=kindId===0?.35+Math.pow(r(),1.55)*9.6:(nearFly?1.05+r()*2.2:.65+r()*3.8);
+      const z=kindId===1?(nearFly?-3.2+r()*6.2:-22.0+r()*18.0):(kindId===2?-10+r()*22:-38+r()*64);
+      p.push(x,height,z);
       seed.push(r()*TAU);scale.push(.65+r()*1.45);kind.push(kindId);
     }
     const geo=new THREE.BufferGeometry();
@@ -1581,39 +1663,135 @@
         attribute float seed,size,flyer;
         varying float spark,insect,flutter,soft;
         void main(){
-          float t=forestTime*(.46+seed*.10)+seed;
-          float breeze=.58+.42*sin(forestTime*.44-position.z*.23+position.x*.19);
-          vec3 drift=vec3(sin(t*.91)*1.18+sin(t*2.19)*.21+breeze*.55,
-            sin(t*.62+position.y*.27)*.59,cos(t*.65)*1.71+breeze*.32);
-          vec3 flight=vec3(1.69*sin(t*1.43)+.48*sin(t*4.42),.79*cos(t*2.23)+.25*sin(t*6.36),1.49*cos(t*1.04));
+          // Independent 360-degree 3D curl drift per mote so dust hangs weightlessly without synchronized left-right sway.
+          float t=forestTime*(.078+fract(seed*2.37)*.042)+seed*11.3;
+          float az=seed*7.13+position.y*1.9;
+          vec2 dir=vec2(cos(az),sin(az));
+          vec2 perp=vec2(-dir.y,dir.x);
+          vec2 eddy=dir*(sin(t*.85)*.38+cos(t*1.57+seed)*.12)+perp*(cos(t*.73+seed*3.1)*.34);
+          vec3 drift=vec3(eddy.x,sin(t*.58+position.y*.31)*.26+cos(t*.93+seed)*.08,eddy.y);
+          // Fast hover-and-dart motion for out-of-focus flying insects (hover 78% of cycle, zip rapidly in 22%).
+          float flyRate=.64+fract(seed*1.37)*.34;
+          float cyc=forestTime*flyRate+seed*4.2;
+          float slot=floor(cyc);
+          float dart=smoothstep(0.0,.20,fract(cyc));
+          vec3 h0=vec3(sin(slot*4.13+seed),cos(slot*2.71+seed*1.3)*.42,cos(slot*3.37-seed));
+          vec3 h1=vec3(sin((slot+1.0)*4.13+seed),cos((slot+1.0)*2.71+seed*1.3)*.42,cos((slot+1.0)*3.37-seed));
+          vec3 hoverTremor=vec3(sin(forestTime*29.0+seed),cos(forestTime*35.0+seed),sin(forestTime*24.0))*.034;
+          vec3 flight=mix(h0,h1,dart)*vec3(2.25,.88,2.05)+hoverTremor;
           insect=step(.5,flyer)*(1.0-step(1.5,flyer));soft=step(1.5,flyer);
           vec3 p=position+mix(drift,flight,insect);
           vec4 view=modelViewMatrix*vec4(p,1.0);
           gl_Position=projectionMatrix*view;
-          float depth=-view.z;
+          float depth=max(.9,-view.z);
           float beam=clamp(lightShaft(p)*2.05+forestClearing(p)*.34,0.0,1.0);
-          float pointSize=clamp(size*mix(42.0,48.0,insect)/max(3.6,depth),1.6,mix(7.5,7.8,insect));
+          float pointSize=clamp(size*mix(42.0,64.0,insect)/max(mix(3.6,1.35,insect),depth),1.6,mix(7.5,20.0,insect));
           gl_PointSize=mix(pointSize,clamp(size*54.0/max(1.55,depth),5.0,32.0),soft);
-          spark=mix(.26+.84*beam,.20+.62*beam,insect)*
-            smoothstep(.7,3.0,depth)*(1.0-smoothstep(24.0,45.0,depth))*
-            mix(.78+.22*sin(t*2.5),.52+.48*smoothstep(-.75,.73,sin(t*1.95)),insect);
+          spark=mix(.26+.84*beam,.28+.68*beam,insect)*
+            smoothstep(.65,2.4,depth)*(1.0-smoothstep(24.0,45.0,depth))*
+            mix(.80+.20*sin(t*1.6),.58+.42*smoothstep(-.75,.73,sin(forestTime*2.4+seed)),insect);
           float near=smoothstep(.55,1.55,depth)*(1.0-smoothstep(6.5,14.0,depth));
-          spark=mix(spark,near*(.16+.34*beam)*(.82+.18*sin(t*2.1)),soft);
-          flutter=.45+.55*abs(sin(t*32.5+seed));
+          spark=mix(spark,near*(.16+.34*beam)*(.84+.16*sin(t*1.4)),soft);
+          flutter=.45+.55*abs(sin(forestTime*44.0+seed));
         }`,
       fragmentShader:`
         varying float spark,insect,flutter,soft;
         void main(){
           vec2 p=gl_PointCoord-.5;
           float dust=exp(-dot(p,p)*12.0)*(1.0-smoothstep(.22,.50,length(p)));
-          vec2 uv=vec2(abs(p.x),p.y)-vec2(.14*flutter,-.035);
-          float veil=1.0-smoothstep(.08,.61,length(uv*vec2(2.65,2.14)));
-          float wings=veil*(.65+.35*flutter);
-          vec3 tone=mix(vec3(1.0,.92,.72),vec3(.98,.965,.89),insect);
+          vec2 uv=vec2(abs(p.x),p.y)-vec2(.15*flutter,-.03);
+          float veil=1.0-smoothstep(.06,.60,length(uv*vec2(2.35,2.10)));
+          float bodyBlur=exp(-dot(p*vec2(4.2,2.0),p*vec2(4.2,2.0))*9.0);
+          float wings=clamp(veil*(.62+.38*flutter)+bodyBlur*.55,0.0,1.0);
+          vec3 tone=mix(vec3(1.0,.92,.72),vec3(.99,.97,.88),insect);
           float aperture=pow(1.0-smoothstep(.06,.49,length(p)),1.45);
-          gl_FragColor=vec4(tone,spark*mix(mix(dust*.72,wings*.60,insect),aperture*.68,soft));
+          gl_FragColor=vec4(tone,spark*mix(mix(dust*.72,wings*.68,insect),aperture*.68,soft));
         }`});
     const mesh=new THREE.Points(geo,mat);mesh.name="rainforestBacklitMotes";mesh.frustumCulled=false;mesh.renderOrder=3;s.root.add(mesh);
+  }
+
+  function forestInsects(s){
+    // 1) Hover-and-dart dragonflies across near camera sightline and mid/far forest court
+    const dfCount=s.mobile?4:6;
+    const bodies=new THREE.InstancedMesh(new THREE.SphereGeometry(1,6,4),new THREE.MeshLambertMaterial({
+      color:0x3b6e5c
+    }),dfCount);
+    const dShape=new THREE.Shape();
+    dShape.moveTo(0,0);dShape.quadraticCurveTo(.38,-.25,1,-.08);
+    dShape.quadraticCurveTo(.96,.30,.47,.26);dShape.lineTo(0,0);
+    const dfWings=new THREE.InstancedMesh(new THREE.ShapeGeometry(dShape,4),new THREE.MeshBasicMaterial({
+      color:0xdcebe2,transparent:true,opacity:.48,depthWrite:false,side:THREE.DoubleSide
+    }),dfCount*4);
+    bodies.name="rainforestDragonflies";dfWings.name="rainforestDragonflyWings";
+    for(const mesh of [bodies,dfWings]){
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.frustumCulled=false;s.root.add(mesh);
+    }
+    const centers=[[-1.75,.95],[1.95,-.75],[-3.1,-4.6],[3.3,-5.8],[-2.4,-11.8],[3.0,-13.4]].slice(0,dfCount);
+
+    // 2) At most 2 butterflies (<= 2) fluttering near sunlit sideline ferns
+    const bfCount=2;
+    const bShape=new THREE.Shape();
+    bShape.moveTo(0,0);bShape.quadraticCurveTo(.45,.45,.95,.28);
+    bShape.quadraticCurveTo(1.0,-.05,.55,-.20);bShape.quadraticCurveTo(.72,-.48,.22,-.52);bShape.lineTo(0,0);
+    const bfWings=new THREE.InstancedMesh(new THREE.ShapeGeometry(bShape,4),new THREE.MeshLambertMaterial({
+      color:0xffffff,side:THREE.DoubleSide,emissive:0xffdfa0,emissiveIntensity:.16
+    }),bfCount*2);
+    const palette=[0xffe699,0x7fd4e6];
+    const col=new THREE.Color();
+    for(let i=0;i<bfCount;i++){
+      col.set(palette[i]);bfWings.setColorAt(i*2,col);bfWings.setColorAt(i*2+1,col);
+    }
+    bfWings.instanceColor.needsUpdate=true;
+    bfWings.name="rainforestButterflies";bfWings.frustumCulled=false;
+    bfWings.instanceMatrix.setUsage(THREE.DynamicDrawUsage);s.root.add(bfWings);
+    const homes=[[-4.8,-2.8],[5.1,-4.5]];
+    return {bodies,dfWings,centers,bfWings,homes,dummy:new THREE.Object3D()};
+  }
+
+  function updateForestInsects(ins,time){
+    if(!ins)return;
+    const {bodies,dfWings,centers,bfWings,homes,dummy:m}=ins;
+    for(let i=0;i<centers.length;i++){
+      const [x,z]=centers[i];
+      const rate=.54+(i%3)*.13;
+      const cyc=time*rate+i*2.31;
+      const slot=Math.floor(cyc),frac=cyc-slot;
+      const dart=smoothstep(frac,0,.21);
+      const h0x=Math.sin(slot*3.7+i*1.9)*1.55,h0z=Math.cos(slot*2.9+i*2.3)*1.75,h0y=Math.sin(slot*2.3+i)*.38;
+      const h1x=Math.sin((slot+1)*3.7+i*1.9)*1.55,h1z=Math.cos((slot+1)*2.9+i*2.3)*1.75,h1y=Math.sin((slot+1)*2.3+i)*.38;
+      const bx=x+h0x+(h1x-h0x)*dart+.026*Math.sin(time*25+i*3);
+      const bz=z+h0z+(h1z-h0z)*dart+.026*Math.cos(time*28+i*2);
+      const by=(i<2?1.35:1.05)+h0y+(h1y-h0y)*dart+.020*Math.sin(time*20+i);
+      const dx=h1x-h0x,dz=h1z-h0z;
+      const yaw=Math.hypot(dx,dz)>.01?Math.atan2(dx,dz):i*1.2;
+      const zipPitch=frac<.21?.24*Math.sin(frac/.21*Math.PI):0;
+      m.position.set(bx,by,bz);m.rotation.set(zipPitch+.04*Math.cos(time*8+i),yaw,0,"YXZ");
+      m.scale.set(.027,.026,.130);m.updateMatrix();bodies.setMatrixAt(i,m.matrix);
+      for(let j=0;j<4;j++){
+        const side=j%2?1:-1;
+        m.position.set(bx,by+.011,bz+(j<2?.030:-.036));
+        m.rotation.set(-Math.PI/2,yaw+(side<0?Math.PI:0)+side*.20,Math.sin(time*76+j*.4)*.78,"YXZ");
+        m.scale.set(.148,.186,1);m.updateMatrix();dfWings.setMatrixAt(i*4+j,m.matrix);
+      }
+    }
+    bodies.instanceMatrix.needsUpdate=true;dfWings.instanceMatrix.needsUpdate=true;
+
+    for(let i=0;i<homes.length;i++){
+      const [hx,hz]=homes[i],t=time*(.52+i*.05)+i*3.4;
+      const bx=hx+1.35*Math.sin(t*.70)+.38*Math.cos(t*1.6);
+      const bz=hz+1.25*Math.cos(t*.56)+.34*Math.sin(t*1.3);
+      const by=elevation(bx,bz)+.72+.28*Math.sin(t*1.85+i)+.12*Math.cos(t*3.0);
+      const yaw=Math.atan2(1.35*.70*Math.cos(t*.70),-1.25*.56*Math.sin(t*.56));
+      const flap=.22+Math.sin(time*(11.2+i*.8)+i*2.1)*.90;
+      for(let side=0;side<2;side++){
+        const dir=side?1:-1;
+        m.position.set(bx,by,bz);
+        m.rotation.set(0,yaw+(dir<0?Math.PI:0),dir*flap,"YXZ");
+        m.scale.set(.066,.066,.066);m.updateMatrix();
+        bfWings.setMatrixAt(i*2+side,m.matrix);
+      }
+    }
+    bfWings.instanceMatrix.needsUpdate=true;
   }
 
   function fallingLeaves(s){
@@ -1715,9 +1893,11 @@
     reclaimedHoops(s,uniforms);
     state.falling=fallingLeaves(s);
     state.deepFlyers=deepFlyers(s,batch);
+    state.insects=forestInsects(s);
     updateFalling(state.falling,s.time);
     updatePerches(state.perches,s.time);
     updateDeepFlyers(state.deepFlyers,s.time);
+    updateForestInsects(state.insects,s.time);
     return state;
   }
 
@@ -1728,6 +1908,7 @@
     updateFalling(s.rainforest.falling,s.time);
     updatePerches(s.rainforest.perches,s.time);
     updateDeepFlyers(s.rainforest.deepFlyers,s.time);
+    updateForestInsects(s.rainforest.insects,s.time);
   }
 
   global.AIBARainforest=Object.freeze({build,update,light});

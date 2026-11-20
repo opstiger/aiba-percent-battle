@@ -1151,52 +1151,80 @@
           vec2 m = vMeadowPos.xz;
           vec2 uvMarks = vec2(m.x/32.0+0.5, 1.0-(m.y+13.0)/36.0);
           vec4 chalk = mapTexelToLinear(texture2D(map, uvMarks));
-          vec2 bladesUV = (mat2(0.91,-0.41,0.41,0.91)*m) * 0.48;
-          vec3 blades = mapTexelToLinear(texture2D(grassDetail, bladesUV)).rgb;
-          vec3 patches = mapTexelToLinear(texture2D(grassDetail, m*0.085+vec2(0.26,0.31))).rgb;
+          mat2 rot = mat2(0.91,-0.41,0.41,0.91);
+          vec3 microTex = mapTexelToLinear(texture2D(grassDetail, (rot*m)*1.75)).rgb;
+          vec3 blades = mapTexelToLinear(texture2D(grassDetail, (rot*m)*0.52)).rgb;
+          vec3 patches = mapTexelToLinear(texture2D(grassDetail, m*0.095+vec2(0.26,0.31))).rgb;
+          vec3 macroTex = mapTexelToLinear(texture2D(grassDetail, m*0.026+vec2(0.61,0.17))).rgb;
+          float micro = dot(microTex,vec3(0.22,0.70,0.08));
           float fine = dot(blades,vec3(0.22,0.70,0.08));
           float coarse = dot(patches,vec3(0.22,0.70,0.08));
+          float macro = dot(macroTex,vec3(0.22,0.70,0.08));
           float meadowLiquid = 0.0;
           float meadowCapillary = 0.0;
         `).replace("#include <color_fragment>",`
           #include <color_fragment>
-          vec2 w=m-vec2(.44,4.63);
-          w.x+=.93*sin(m.y*.29)-.54*cos(m.y*.69);
-          w.y+=1.04*sin(m.x*.39)+.48*cos(m.x*1.27);
-          vec2 clearing=vec2(w.x/(8.45+1.9*sin(m.y*.26)),w.y/15.40);
-          float margin=length(clearing)+(coarse-.20)*1.4;
-          float worn=(1.0-smoothstep(.59,1.25,margin))*(.30+coarse*.63);
-          worn=max(worn,.61*exp(-dot(w-vec2(-.75,-8.4),w-vec2(-.75,-8.4))/11.0));
-          worn=max(worn,.48*exp(-dot(w-vec2(1.9,3.6),w-vec2(1.9,3.6))/10.0));
-          // Winding pasture dirt footpath leading off the court into the eastern and western hills.
+          // Seamless alpine meadow turf across both court and hillsides (warm olive-clover & golden thatch, never cold dark bottle-green!).
+          float camDist=length(cameraPosition.xz-m);
+          float closeGrain=1.0-smoothstep(22.0,95.0,camDist);
+          // Multi-octave grass blade luminance contrast around 1.0 preserves warm olive chlorophyll tones.
+          float bladeDetail=0.82+coarse*1.58+(fine-.13)*1.45*closeGrain+(micro-.13)*1.18*closeGrain;
+          diffuseColor.rgb*=bladeDetail*mix(1.28,1.0,meadowSky.x);
+          // Natural alpine meadow color variation: warm sun-cured straw thatch & rich olive-clover patches
+          float thatchMask=smoothstep(.10,.24,coarse*.58+macro*.42+(micro-.12)*.35);
+          vec3 cloverTone=diffuseColor.rgb*vec3(.94,1.02,.84);
+          vec3 strawTone=diffuseColor.rgb*vec3(1.24,1.14,.82);
+          diffuseColor.rgb=mix(cloverTone,strawTone,thatchMask*.65);
+
+          // Organic, localized trampled earth & grit ONLY in real footwork pivots (under hoop, 3pt spots) and winding hill trails.
+          vec2 w=m+vec2(.42*sin(m.y*.73)-.28*cos(m.x*.91),.38*cos(m.x*.67)+.25*sin(m.y*1.12));
+          float hoopWear=exp(-dot((w-vec2(0.0,-8.2))/vec2(2.0,2.4),(w-vec2(0.0,-8.2))/vec2(2.0,2.4)));
+          float arcDist=abs(length(w-vec2(0.0,-9.25))-7.15);
+          float arcWear=exp(-arcDist*arcDist/.85)*smoothstep(-10.5,-1.2,w.y)*(.42+.58*sin(atan(w.x,w.y+9.25)*5.0));
           float eastCurve=8.8+(m.y-13.5)*.46+2.2*sin(m.y*.16+.5);
           float eastPath=exp(-pow((m.x-eastCurve)/1.05,2.0))*smoothstep(10.5,14.5,m.y)*(1.0-smoothstep(48.0,68.0,m.y));
           float westCurve=-9.2-(m.y+6.0)*.38+1.8*cos(m.y*.19);
           float westPath=exp(-pow((m.x-westCurve)/.95,2.0))*smoothstep(-3.0,-8.5,m.y)*(1.0-smoothstep(-34.0,-52.0,m.y));
-          float trail=max(eastPath,westPath)*(.42+.58*coarse);
-          worn=max(worn,trail*.72);
-          float closeGrain = 1.0-smoothstep(25.0,115.0,length(cameraPosition.xz-m));
-          diffuseColor.rgb *= 0.77 + coarse*1.72 + (fine-.095)*1.16*closeGrain;
-          diffuseColor.rgb = mix(diffuseColor.rgb,vec3(0.205,0.191,0.111),worn);
+          float rawWear=max(max(hoopWear*.55,arcWear*.42),max(eastPath,westPath)*.74);
+          float worn=clamp(rawWear*(.42+coarse*2.4),0.0,.62);
+          vec3 loamSoil=mix(vec3(.21,.18,.115),vec3(.29,.25,.165),clamp((micro-.06)*4.5,0.0,1.0));
+          diffuseColor.rgb=mix(diffuseColor.rgb,loamSoil,worn);
+
+          // Grazing-angle anisotropic velvet turf backscatter eliminates flat plastic sheen.
+          vec3 viewDir=normalize(cameraPosition-vMeadowPos);
+          float velvet=pow(1.0-max(0.0,dot(viewDir,normalize(vMeadowNormal))),2.2)*(.38+.62*clamp(micro*4.5,0.0,1.0))*(1.0-worn*.75);
+          diffuseColor.rgb+=vec3(.072,.098,.038)*velvet;
+
           vec2 fromCenter=m-vec2(0.0,4.745);
           vec2 flowersUV=vec2(fromCenter.x,-fromCenter.y)/232.0+0.5;
           vec4 drift=mapTexelToLinear(texture2D(flowerCover,flowersUV));
           float wake=clamp(.095+(length(fromCenter)-16.0)/121.0,.07,.84);
           float flowering=smoothstep(wake+.025,wake+.15,fieldProgress);
-          float farCover=smoothstep(6.0,24.0,length(cameraPosition.xz-m));
+          float farCover=smoothstep(6.0,24.0,camDist);
           diffuseColor.rgb=mix(diffuseColor.rgb,drift.rgb*.83,drift.a*flowering*farCover*.68);
+
+          // Unified cloud-gap dappling & 3D slope relief across both court and hillsides.
           float movingLight=sunWindow(vMeadowPos,1.0);
-          float outside=smoothstep(.79,1.48,margin);
-          float cloudShade=1.0-.35*meadowSky.x*(1.0-meadowSky.y)*(1.0-movingLight)*mix(.64,1.0,outside);
-          cloudShade+=movingLight*meadowAir.y*.54;
+          float overcastDapple=mix(.74,1.24,movingLight);
+          float sunnyDapple=1.0-.34*(1.0-meadowSky.y)*(1.0-movingLight);
+          float cloudShade=mix(overcastDapple,sunnyDapple,meadowSky.x)+movingLight*meadowAir.y*.52;
           float horizonSun=smoothstep(vTerrainHorizon-.018,vTerrainHorizon+.026,
             meadowSun.y/max(.1,length(meadowSun.xz)));
           float facing=dot(normalize(vMeadowNormal),meadowSun);
+          float slopeRelief=mix(.78,1.22,smoothstep(-.22,.32,facing));
+          cloudShade*=slopeRelief;
           float sideLight=horizonSun*smoothstep(-.023,.185,facing);
           vec3 dusk=mix(vec3(.43,.55,.47),vec3(1.44,1.40,.81),sideLight);
-          diffuseColor.rgb*=cloudShade*mix(vec3(1.0),dusk,meadowSky.y*mix(.61,1.0,outside));
-          diffuseColor.rgb*=1.0-meadowSky.w*(.20+fine*.24);
-          diffuseColor.rgb=mix(diffuseColor.rgb,chalk.rgb,chalk.a*(1.0-meadowSky.w*.29)*(.90+fine*.4));
+          vec3 overcastTint=mix(vec3(.82,.90,.98),vec3(1.08,1.06,.98),movingLight*smoothstep(-.15,.28,facing));
+          diffuseColor.rgb*=cloudShade*mix(overcastTint,mix(vec3(1.0),dusk,meadowSky.y),meadowSky.x);
+
+          float hillHaze=smoothstep(24.0,105.0,camDist)*mix(.38,.22,meadowSky.x);
+          vec3 hillHazeCol=mix(vec3(.44,.53,.60),vec3(.68,.64,.54),meadowSky.y);
+          diffuseColor.rgb=mix(diffuseColor.rgb,hillHazeCol,hillHaze);
+          diffuseColor.rgb*=1.0-meadowSky.w*(.18+fine*.22);
+          // Hand-dusted lime chalk sits on upper grass blades with organic blade gaps & dirt wear.
+          float chalkFiber=clamp(.52+micro*3.4+fine*1.8,0.35,1.0)*(1.0-worn*.48);
+          diffuseColor.rgb=mix(diffuseColor.rgb,chalk.rgb,chalk.a*(1.0-meadowSky.w*.29)*chalkFiber*.78);
           if(meadowSky.w>.025&&abs(m.x)<8.7&&abs(m.y-4.8)<15.0){
             float edge=poolShape(m)+.072*sin(m.x*17.0+m.y*11.0)+.089*sin(m.y*21.0-m.x*7.0);
             float liquid=(1.0-smoothstep(.15+meadowSky.w*.65,.39+meadowSky.w*.70,edge))*smoothstep(.045,.63,meadowSky.w);
@@ -1297,16 +1325,16 @@
       const atlas=document.createElement("canvas");atlas.width=256;atlas.height=256;
       const g=atlas.getContext("2d"),r=mulberry32(0x4f6c835d);
       // Needle region (0..192) uses alpha cutout along the outer bough tips for natural jagged silhouettes.
+      // Keep atlas luminance high and neutral so per-instance species colors (golden larch, blue spruce, emerald pine) shine clearly!
       g.clearRect(0,0,192,256);
-      // Core dense inner foliage (top/center of UV) tapering to jagged hanging boughs at the bottom.
-      g.fillStyle="#8a9180";
+      g.fillStyle="#c8d1c2";
       g.beginPath();g.moveTo(0,0);g.lineTo(192,0);g.lineTo(192,165);
       for(let x=192;x>=0;x-=8)g.lineTo(x,150+34*Math.sin(x*.09)+r()*36);
       g.closePath();g.fill();
       for(let i=0;i<420;i++){
         const x=r()*190,y=r()*236,len=10+r()*36,direction=i%2?1:-1;
-        const bright=i%4===0;
-        g.strokeStyle=bright?"rgba(218,228,184,.92)":(i%3?"rgba(46,66,48,.92)":"rgba(128,144,110,.95)");
+        const bright=i%3===0;
+        g.strokeStyle=bright?"rgba(250,253,242,.95)":(i%2?"rgba(122,138,118,.92)":"rgba(188,202,176,.95)");
         g.lineWidth=1.1+r()*2.1;g.beginPath();
         g.moveTo(x,y);g.quadraticCurveTo(x+direction*len*.24,y+len*.42,x+direction*len*.46,y+len);g.stroke();
         for(let j=1;j<6;j++){
@@ -1315,9 +1343,9 @@
         }
       }
       // Bark strip (192..256) stays fully opaque.
-      g.fillStyle="#7f7568";g.fillRect(192,0,64,256);
+      g.fillStyle="#8e8274";g.fillRect(192,0,64,256);
       for(let i=0;i<165;i++){
-        const x=193+r()*63,y=r()*256,h=11+r()*75,shade=i%3?46:178;
+        const x=193+r()*63,y=r()*256,h=11+r()*75,shade=i%3?58:188;
         g.strokeStyle=`rgba(${shade},${shade-4},${shade-8},.50)`;g.lineWidth=.6+r()*2.4;
         g.beginPath();g.moveTo(x,y);g.lineTo(x+(r()-.5)*3,y+h*.68);g.lineTo(x+(r()-.5)*4,y+h);g.stroke();
       }
@@ -1327,7 +1355,8 @@
 
     function spruceForest(s){
       const p=[],colors=[],uv=[],seg=s.mobile?10:14;
-      const dark=linear(0x2a4035),tipColor=linear(0x7c8e63),bark=linear(0x6b5a4e),c=new THREE.Color();
+      // Rich interior-to-tip botanical gradient: deep shaded pine interior to sun-catching needle tips.
+      const dark=linear(0x4e6352),tipColor=linear(0xc6d4a8),bark=linear(0x6e5a4c),c=new THREE.Color();
       function surface(triangle,coords,color){
         for(let i=0;i<3;i++){p.push(...triangle[i]);uv.push(...coords[i]);colors.push(color.r,color.g,color.b);}
       }
@@ -1364,7 +1393,7 @@
         shader.uniforms.meadowWind=s.meadow.wind;
         shader.uniforms.meadowSun=s.meadow.uniforms.meadowSun;
         shader.uniforms.meadowSky=s.meadow.uniforms.meadowSky;
-        shader.vertexShader="uniform float meadowTime,meadowWind;\nvarying float vSpruceH;\nvarying vec3 vSpruceWorld;\n"+
+        shader.vertexShader="uniform float meadowTime,meadowWind;\nvarying float vSpruceH;\nvarying vec3 vSpruceWorld,vSpruceCrownN;\n"+
           shader.vertexShader.replace("#include <begin_vertex>",`
             #include <begin_vertex>
             vSpruceH=clamp(position.y,0.0,1.0);
@@ -1373,14 +1402,25 @@
             transformed.x+=sway;
             transformed.z+=sway*.45;
             vSpruceWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
+            vSpruceCrownN=normalize(mat3(instanceMatrix)*vec3(position.x,.36,position.z));
           `);
-        shader.fragmentShader="uniform vec3 meadowSun;\nuniform vec4 meadowSky;\nvarying float vSpruceH;\nvarying vec3 vSpruceWorld;\n"+
+        shader.fragmentShader="uniform vec3 meadowSun;\nuniform vec4 meadowSky;\nvarying float vSpruceH;\nvarying vec3 vSpruceWorld,vSpruceCrownN;\n"+
           shader.fragmentShader.replace("#include <dithering_fragment>",`
-            float crownAO=mix(.56,1.08,smoothstep(.04,.88,vSpruceH));
+            float crownAO=mix(.48,1.16,smoothstep(.04,.88,vSpruceH));
+            // 3D cylindrical crown lighting separates sunlit vs shaded sides of every tree even in overcast weather.
+            float sunSide=smoothstep(-.38,.52,dot(normalize(vSpruceCrownN),meadowSun));
+            vec3 shadeTint=vec3(.70,.82,.94);
+            vec3 litTint=mix(vec3(1.18,1.22,1.12),vec3(1.36,1.18,.88),meadowSky.y);
+            vec3 crownLight=mix(shadeTint,litTint,sunSide);
             vec3 viewDir=normalize(cameraPosition-vSpruceWorld);
-            float rim=pow(clamp(dot(-viewDir,meadowSun),0.0,1.0),3.5)*vSpruceH*meadowSky.x;
-            vec3 rimCol=mix(vec3(.24,.34,.18),vec3(.88,.54,.24),meadowSky.y);
-            gl_FragColor.rgb=gl_FragColor.rgb*crownAO*(1.0-meadowSky.w*.14)+rimCol*rim*.26;
+            float rim=pow(clamp(dot(-viewDir,meadowSun),0.0,1.0),3.0)*vSpruceH*(.35+.65*meadowSky.x);
+            vec3 rimCol=mix(vec3(.42,.56,.34),vec3(.94,.60,.26),meadowSky.y);
+            vec3 col=gl_FragColor.rgb*crownAO*crownLight*(1.0-meadowSky.w*.14)+rimCol*rim*.32;
+            // Distance-based alpine aerial perspective separates near hero spruces (22m) from mid (60m) and far (95m) tree belts.
+            float treeDist=length(vSpruceWorld-cameraPosition);
+            float treeHaze=smoothstep(24.0,112.0,treeDist)*mix(.54,.30,meadowSky.x);
+            vec3 hazeCol=mix(vec3(.45,.55,.63),vec3(.72,.66,.55),meadowSky.y);
+            gl_FragColor.rgb=mix(col,hazeCol,treeHaze);
             #include <dithering_fragment>
           `);
       };
@@ -1388,6 +1428,8 @@
       const count=(s.mobile?310:610)+heroSpruces.length;
       const forest=new THREE.InstancedMesh(geo,mat,count);
       const tree=new THREE.Object3D(),tone=new THREE.Color();
+      // Cohesive, natural Tian Shan evergreen conifer palette (mature spruce, olive pine, glaucous blue-green fir, fresh-shoot spruce).
+      const sprucePalette=[0x4d6e4e,0x5f7d4c,0x45665c,0x6b8550,0x3f5e46,0x738252,0x537349,0x486b55];
       const ridges=[[-1.04,61,17],[-.68,82,23],[.35,67,14],[.71,86,23],[1.59,82,31],[-1.81,78,23],[2.7,88,30],[-2.66,97,32]];
       let idx=0;
       for(const [hx,hz,hh] of heroSpruces){
@@ -1395,7 +1437,8 @@
         tree.rotation.set((s.r()-.5)*.035,s.r()*tau,(s.r()-.5)*.035);
         tree.scale.set(hh*.76,hh,hh*.76);tree.updateMatrix();
         forest.setMatrixAt(idx,tree.matrix);
-        tone.setScalar(.84+.16*s.r());forest.setColorAt(idx,tone);
+        tone.set(sprucePalette[idx%sprucePalette.length]).convertSRGBToLinear().multiplyScalar(.92+.20*s.r());
+        forest.setColorAt(idx,tone);
         idx++;
       }
       for(;idx<forest.count;idx++){
@@ -1406,7 +1449,8 @@
         tree.rotation.set((s.r()-.5)*.045,s.r()*tau,(s.r()-.5)*.05);
         tree.scale.set(h*(.68+s.r()*.4),h,h*(.68+s.r()*.4));tree.updateMatrix();
         forest.setMatrixAt(idx,tree.matrix);
-        tone.setScalar(.64+.36*s.r());forest.setColorAt(idx,tone);
+        tone.set(sprucePalette[(idx*3+Math.floor(s.r()*7))%sprucePalette.length]).convertSRGBToLinear().multiplyScalar(.78+.36*s.r());
+        forest.setColorAt(idx,tone);
       }
       forest.name="alpineSpruceBelts";forest.frustumCulled=false;s.root.add(forest);
     }
@@ -1415,14 +1459,16 @@
       function buildTuftGeo(blades,segs,widthScale){
         const positions=[],normals=[],bladeH=[],indices=[];
         for(let blade=0;blade<blades;blade++){
-          const a=blade*(tau/blades)+blade*.47,dx=Math.sin(a),dz=Math.cos(a),start=positions.length/3;
-          const heightScale=.72+(blade%3)*.16;
+          const a=blade*(tau/blades)+blade*.61,dx=Math.sin(a),dz=Math.cos(a),start=positions.length/3;
+          // Spread blades across a natural 32cm turf patch rather than a single V-point so tufts never look like spiky ticks!
+          const ox=Math.sin(blade*2.399)*.15*(1+(blade%2)*.4),oz=Math.cos(blade*2.399)*.15*(1+((blade+1)%2)*.4);
+          const heightScale=.74+(blade%3)*.16;
           for(let row=0;row<=segs;row++){
-            const t=row/segs,h=heightScale*t,lean=(.24+.14*(blade%2))*t*t,w=.052*widthScale*Math.pow(1-t,.68);
+            const t=row/segs,h=heightScale*t,lean=(.14+.08*(blade%2))*t*t,w=.064*widthScale*Math.pow(1-t,.62);
             for(const side of [-1,1]){
-              positions.push(dx*(.025+lean)+dz*w*side,h,dz*(.025+lean)-dx*w*side);
-              // Blend blade normals strongly upward so grass catches sunlight softly like real meadow turf.
-              normals.push(dx*.22,1.0,dz*.22);
+              positions.push(ox+dx*lean+dz*w*side,h,oz+dz*lean-dx*w*side);
+              // Blend blade normals strongly upward so grass blades share the exact same sky/sun luminance as the turf below.
+              normals.push(dx*.14,1.0,dz*.14);
               bladeH.push(t);
             }
             if(row<segs){const k=start+row*2;indices.push(k,k+1,k+2,k+1,k+3,k+2);}
@@ -1469,11 +1515,11 @@
         shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+"varying float vBladeH;\nvarying vec3 vGrassWorld;\n"+
           shader.fragmentShader.replace("#include <color_fragment>",`
             #include <color_fragment>
-            // Root ambient occlusion anchors tufts into soil; sunlit tips warm up slightly.
-            float rootAO=mix(.34,1.06,smoothstep(0.0,.68,vBladeH));
-            vec3 tipTint=mix(vec3(.78,.86,.72),vec3(1.12,1.10,.86),vBladeH);
-            float cloudLight=.74+.26*sunWindow(vGrassWorld,1.0);
-            diffuseColor.rgb*=rootAO*tipTint*cloudLight*(1.0-meadowSky.w*.22);
+            // Soft root-to-tip gradient so 3D grass blades merge seamlessly with the photographic grass ground plane (never dark V-ticks!).
+            float rootAO=mix(.88,1.18,smoothstep(0.0,.72,vBladeH));
+            vec3 tipTint=mix(vec3(.92,.98,.84),vec3(1.16,1.14,.88),vBladeH);
+            float cloudLight=.78+.22*sunWindow(vGrassWorld,1.0);
+            diffuseColor.rgb*=rootAO*tipTint*cloudLight*(1.0-meadowSky.w*.18);
           `).replace("#include <dithering_fragment>",`
             // Backlit subsurface scattering (SSS): sunlit blades glow warm chartreuse/gold.
             vec3 gView=normalize(cameraPosition-vGrassWorld);
@@ -1485,18 +1531,33 @@
       };
       const dummy=new THREE.Object3D(),color=new THREE.Color();
       const green=[0x5c7c3d,0x6b8a47,0x78924d,0x4d7038,0x8c9b56,0x648042];
-      // Near/mid dense grass sea (up to 7,200 5-blade tufts = 36,000 blades on desktop).
-      const nearGeo=buildTuftGeo(5,4,1.0);
-      const nearMesh=new THREE.InstancedMesh(nearGeo,mat,s.mobile?2400:6800);
+      // Near/mid dense grass sea (up to 9,400 5-blade tufts = 47,000 blades on desktop),
+      // including real 3D pasture grass tufts growing across the court itself & over the chalk lines so the court merges seamlessly with the meadow!
+      const nearGeo=buildTuftGeo(5,4,1.32);
+      const nearMesh=new THREE.InstancedMesh(nearGeo,mat,s.mobile?3200:9400);
       for(let i=0;i<nearMesh.count;i++){
-        const a=s.r()*tau,r=7.8+32*Math.pow(s.r(),1.45);
-        let x=Math.sin(a)*r,z=COURT.midZ-Math.cos(a)*r;
-        const dx=Math.max(0,Math.abs(x)-7.55),dz=Math.max(0,Math.abs(z-COURT.midZ)-14.3);
-        const edgeDist=Math.hypot(dx,dz);
-        if(edgeDist<.18){x=Math.sign(x||1)*(7.75+s.r()*1.8);z=COURT.midZ+(s.r()-.5)*30;}
-        const edgeTaper=smooth(edgeDist,0,2.4);
-        const h=(.11+s.r()*.30)*(.38+.62*edgeTaper);
-        dummy.position.set(x,elevation(x,z)-.015,z);dummy.rotation.y=s.r()*tau;
+        let x,z,h;
+        const inCourtTuft=i%3===0;
+        if(inCourtTuft){
+          // Organic clumps of short trampled pasture grass inside the court & taller ragged clumps straddling the sidelines/baselines.
+          x=(s.r()-.5)*16.8;
+          z=COURT.nearBaseline-1.2+s.r()*(COURT.farBaseline-COURT.nearBaseline+2.4);
+          const dx=Math.max(0,Math.abs(x)-6.4),dz=Math.max(0,Math.abs(z-COURT.midZ)-12.6);
+          const borderZone=smooth(Math.hypot(dx,dz),0,2.6);
+          const clump=.5+.5*(Math.sin(x*.85+z*.72)*Math.cos(x*1.18-z*.94));
+          // Keep heavily trampled paint under the hoop sparser and shorter
+          const hoopDist=Math.hypot(x,z-(HOOP.z+1.2));
+          if(hoopDist<2.1&&s.r()<.65){x=Math.sign(x||1)*(5.2+s.r()*3.2);}
+          h=(.042+s.r()*.085)*(1.0+borderZone*1.15)*(.65+.65*clump);
+        }else{
+          const a=s.r()*tau,r=6.8+33*Math.pow(s.r(),1.42);
+          x=Math.sin(a)*r;z=COURT.midZ-Math.cos(a)*r;
+          const dx=Math.max(0,Math.abs(x)-7.2),dz=Math.max(0,Math.abs(z-COURT.midZ)-13.8);
+          const edgeDist=Math.hypot(dx,dz);
+          const edgeTaper=smooth(edgeDist,0,2.8);
+          h=(.09+s.r()*.30)*(.32+.68*edgeTaper);
+        }
+        dummy.position.set(x,elevation(x,z)-.014,z);dummy.rotation.y=s.r()*tau;
         dummy.scale.set(h*(.85+s.r()*.45),h,h*(.85+s.r()*.45));dummy.updateMatrix();nearMesh.setMatrixAt(i,dummy.matrix);
         nearMesh.setColorAt(i,color.set(green[i%green.length]).convertSRGBToLinear().multiplyScalar(.82+.32*s.r()));
       }
@@ -1724,13 +1785,19 @@
           varying float alpha;
           uniform float clock,wind,bloom;
           void main(){
-            float life=fract(travel.x+clock*(.077+.013*travel.y));
-            vec3 p=position+vec3(life*(8.0+6.4*wind)+.36*sin(life*11.0+travel.x*38.0),
-              .13+life*travel.y*3.8+.22*sin(life*13.0),life*6.0+.41*cos(life*19.0));
+            // Independent 360-degree 3D thermal float per seed (never multiplying by oscillating wind uniform).
+            float life=fract(travel.x+clock*(.024+.011*travel.y));
+            float az=travel.x*62.8318+travel.y*19.0;
+            vec2 dir=vec2(cos(az),sin(az));
+            vec2 perp=vec2(-dir.y,dir.x);
+            float driftDist=life*(2.2+1.4*travel.y);
+            float swirl=sin(life*6.283+travel.x*41.0)*(.28+.18*travel.y);
+            vec2 horiz=dir*driftDist+perp*swirl;
+            vec3 p=position+vec3(horiz.x,.12+life*travel.y*2.4+.18*sin(life*9.4+travel.x*27.0),horiz.y);
             vec4 mv=modelViewMatrix*vec4(p,1.0);
             gl_Position=projectionMatrix*mv;
-            gl_PointSize=clamp(107.0*travel.y/max(9.0,-mv.z),1.3,7.5);
-            alpha=smoothstep(.0,.17,life)*(1.0-smoothstep(.67,1.0,life))*smoothstep(emerges+.05,emerges+.24,bloom);
+            gl_PointSize=clamp(102.0*travel.y/max(9.0,-mv.z),1.3,7.2);
+            alpha=smoothstep(.0,.18,life)*(1.0-smoothstep(.68,1.0,life))*smoothstep(emerges+.05,emerges+.24,bloom);
           }
         `,
         fragmentShader:`
@@ -1882,14 +1949,15 @@
       }
       drifts.seeds.visible=p>.40;
       ambient.color.copy(weather.skyColor);
-      ambient.intensity=(.51-.23*clear-.07*gold)*(1-.82*blackout)+.21*flash;
-      hemi.intensity=(.56-.10*rain-.10*gold)*(1-.77*blackout)+.12*flash;
-      sun.intensity=(.12+.97*clear+.24*gold)*(1-.88*blackout)+.24*flash;
+      // Strong directional cloud-break contrast even at opening overcast phase (clear == 0) so terrain, trees & boulders have 3D depth.
+      ambient.intensity=(.28-.08*clear-.04*gold)*(1-.82*blackout)+.21*flash;
+      hemi.intensity=(.40-.06*rain-.08*gold)*(1-.77*blackout)+.12*flash;
+      sun.intensity=(.56+.62*clear+.22*gold)*(1-.88*blackout)+.24*flash;
       // Long shadows, from the same direction the cloud and mountain shaders use.
       sun.position.copy(weather.uniforms.meadowSun.value).multiplyScalar(49);
       sun.color.copy(weather.wetColor).lerp(weather.sunColor,clear).lerp(weather.warmColor,gold);
       scene.fog.color.copy(weather.coolFog).lerp(weather.clearingFog,clear);
-      scene.fog.near=52+17*clear;scene.fog.far=600-126*rain+277*clear;
+      scene.fog.near=24+18*clear;scene.fog.far=265-55*rain+210*clear;
       const data=document.documentElement.dataset;
       if(data.environmentPhase!==weather.stage)data.environmentPhase=weather.stage;
       const count=String(drifts.count);
@@ -1925,9 +1993,11 @@
           vec3 snow=peakSnow*(.75+.36*weathering+.29*grain+.16*streak);
           vec3 terrain=mix(stone,snow,ice);
           float face=dot(normalize(vRockNormal),meadowSun);
-          float light=smoothstep(.04,.31,face+.15*(weathering-.28))*vRockExposure.z;
-          vec3 day=terrain*vRockExposure.y*mix(.73,.94,meadowSky.x);
-          day=mix(day,day*vec3(.69,.87,1.16)+vec3(.015,.024,.037),(1.0-meadowSky.x)*.60);
+          float light=smoothstep(-.08,.34,face+.15*(weathering-.28))*vRockExposure.z;
+          // Preserve strong 3D rock-rib & snow-chute relief even in the opening overcast phase (meadowSky.x == 0).
+          float overcastRelief=mix(.58,1.22,smoothstep(-.28,.38,face));
+          vec3 day=terrain*vRockExposure.y*mix(overcastRelief*.88,.96,meadowSky.x);
+          day=mix(day,day*vec3(.74,.89,1.14)+vec3(.018,.028,.044),(1.0-meadowSky.x)*.48);
           vec3 shadow=terrain*vec3(.35,.46,.69)+peakShade*.22;
           vec3 amber=terrain*vec3(1.14,.59,.32)+peakAmber*(.28+.27*ice+.28*grain);
           vec3 sunset=mix(shadow,amber,light);
@@ -1935,17 +2005,50 @@
           vec3 path=vRockWorld-cameraPosition;
           float distanceToRock=length(path);
           vec3 ray=path/max(.001,distanceToRock);
-          float billow=cloudDensity(vRockWorld.xz*.82+vec2(vRockWorld.y*2.9,74.0));
-          float travel=max(0.0,distanceToRock-91.0);
-          float opticalDepth=travel*meadowStorm.x*meadowStorm.x*(.15+billow*.086);
-          float through=exp(-opticalDepth);
-          float distanceHaze=smoothstep(105.0,590.0,distanceToRock)*.29;
-          // Soft valley-floor mist at the mountain foothills blends the rock base into the meadow hills.
-          float footMist=smoothstep(16.0,-5.0,vRockWorld.y)*(.30+.34*meadowAir.x);
+          // 3D Domain-Warped Orographic Volumetric Cloud System ("云雾环山 / 随机不同厚度局部体积云挡山"):
+          // Multi-scale FBM noise creates localized cloud islands so some peaks/ridges are heavily occluded while adjacent ridges stay clear.
+          vec2 cUV=vRockWorld.xz*1.45+vec2(meadowClock*1.9,-meadowClock*.75);
+          vec2 cWarp=vec2(cloudDensity(cUV+vec2(37.0,19.0)),cloudDensity(cUV+vec2(-53.0,71.0)))-.48;
+          float nMacro=cloudDensity(cUV*.48+cWarp*110.0);
+          float nBillow=cloudDensity(cUV*1.35-cWarp*72.0+vec2(vRockWorld.y*2.4,0.0));
+          float nWisp=cloudDensity(cUV*3.4+vec2(vRockWorld.y*5.8,meadowClock*2.2));
+          float cloudFbm=nMacro*.50+nBillow*.34+nWisp*.16;
+
+          // 1) Mid-Mountain Waist Cloud Belt ("云海缠山腰"): wraps around mid-slopes while leaving summits & lower rock visible.
+          float waistAlt=32.0+15.0*sin(vRockWorld.x*.019+meadowClock*.035)+11.0*cos(vRockWorld.z*.023);
+          float waistProfile=exp(-pow((vRockWorld.y-waistAlt)/(10.5+9.5*nBillow),2.0));
+          float waistCloud=smoothstep(.35,.66,cloudFbm+waistProfile*.34)*waistProfile;
+
+          // 2) Localized High-Altitude Cumulus Masses ("局部厚体积云团挡山头"): thick opaque clouds over random sectors, clear gaps elsewhere.
+          float sectorMask=smoothstep(.46,.72,nMacro+.22*nBillow);
+          float highProfile=smoothstep(24.0,46.0,vRockWorld.y)*(1.0-smoothstep(84.0,118.0,vRockWorld.y-(nBillow-.45)*26.0));
+          float peakCloud=sectorMask*highProfile*smoothstep(.34,.68,cloudFbm*1.32);
+
+          // 3) Ravine & Valley Cloud Tongues ("山谷云舌"): pool inside mountain gorges/chutes rather than a flat horizontal line.
+          float valleyTop=6.0+24.0*pow(nMacro,1.35)+15.0*vRockExposure.x+9.0*(nBillow-.4);
+          float valleyCloud=smoothstep(valleyTop+8.0,valleyTop-10.0,vRockWorld.y)*(.42+.58*cloudFbm);
+
+          float rawCloud=max(max(waistCloud*1.25,peakCloud*1.35),valleyCloud);
+          float weatherDensity=mix(.98,.38,meadowSky.x)*(1.0-meadowSky.y*.22);
+          float cloudOpacity=clamp(pow(rawCloud*weatherDensity,1.15),0.0,.985);
+
+          // Cloud-cast shadow on the mountain rock right beneath overhanging cloud belts grounds the clouds in 3D space.
+          float cloudAbove=exp(-pow((vRockWorld.y-(waistAlt-11.0))/9.0,2.0))*smoothstep(.38,.66,nMacro)+peakCloud*.65;
+          col*=1.0-clamp(cloudAbove*weatherDensity*.44,0.0,.42);
+
+          // Subtle aerial distance haze on clear rock faces (never a heavy flat overlay).
+          float distanceHaze=smoothstep(135.0,620.0,distanceToRock)*mix(.26,.16,meadowSky.x);
           vec3 skyCol=alpineSky(ray,cameraPosition);
-          vec3 rockOut=mix(skyCol,col*(1.0-meadowStorm.y*.78),through*(1.0-distanceHaze));
-          vec3 mistCol=mix(vec3(.48,.58,.64),vec3(.74,.68,.56),meadowSky.y*.65)*(1.0-meadowStorm.y*.72);
-          diffuseColor.rgb=mix(rockOut,mistCol,footMist);
+          vec3 rockOut=mix(col*(1.0-meadowStorm.y*.78),skyCol,distanceHaze);
+
+          // 3D Volumetric Cloud Self-Shading: bright silver/warm upper billow rim, deep slate-blue self-shadowed cloud belly.
+          float billowTop=clamp((vRockWorld.y-waistAlt+14.0)/28.0+(nBillow-.46)*.75-(nWisp-.48)*.25,0.0,1.0);
+          float coreThickness=smoothstep(.38,.90,cloudOpacity);
+          vec3 cloudBelly=mix(vec3(.23,.30,.39),vec3(.38,.46,.54),meadowSky.x)*(1.0-.72*meadowStorm.y);
+          vec3 cloudLitTop=mix(vec3(.79,.84,.89),mix(vec3(.96,.95,.90),vec3(1.0,.75,.46),meadowSky.y),meadowSky.x*.75+.25);
+          vec3 volumetricCloudCol=mix(cloudBelly,cloudLitTop,smoothstep(.14,.84,billowTop*(1.0-coreThickness*.24)));
+
+          diffuseColor.rgb=mix(rockOut,volumetricCloudCol,cloudOpacity);
         `);
       };
       mountainRange(s,true,mountain);mountainRange(s,false,mountain);
@@ -1987,7 +2090,13 @@
     if(w.kind!=="arctic")return;
     w.auroras.forEach(mesh=>{mesh.material.uniforms.time.value=s.time;});
     const a=w.snow.geometry.attributes.position.array;
-    for(let i=0;i<w.speed.length;i++){const j=i*3;a[j]=w.base[j]+Math.sin(s.time*.15+i)*.65;a[j+1]=((w.base[j+1]-s.time*w.speed[i])%15+15)%15;a[j+2]=w.base[j+2]+Math.sin(s.time*.1+i*.7)*.25;}
+    for(let i=0;i<w.speed.length;i++){
+      const j=i*3,freq=.08+(i%9)*.019,az=i*2.39996;
+      const sway=Math.sin(s.time*freq+i*1.71)*.45+Math.cos(s.time*(freq*.67)+i*3.1)*.18;
+      a[j]=w.base[j]+Math.cos(az)*sway;
+      a[j+1]=((w.base[j+1]-s.time*w.speed[i])%15+15)%15;
+      a[j+2]=w.base[j+2]+Math.sin(az)*sway;
+    }
     w.snow.geometry.attributes.position.needsUpdate=true;
   }
   window.AIBAWorldWonders={palettes,build,update};

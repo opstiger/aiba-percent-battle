@@ -321,7 +321,7 @@
     for(const mesh of [bodies,wings]){
       mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);mesh.count=0;mesh.frustumCulled=false;s.root.add(mesh);
     }
-    const centers=[[-7.3,-2.5],[7.5,5.1],[-5.3,8.5],[5.8,-5.7],[-10,2.2],[9,14],[-8.9,14],[2.1,17.7]];
+    const centers=[[-1.9,1.0],[2.1,-.8],[-3.3,-4.5],[3.5,-5.7],[-2.8,-11.4],[3.2,-12.8],[-6.4,2.8],[6.6,4.4]];
     return {bodies,wings,centers:centers.slice(0,s.mobile?4:8)};
   }
 
@@ -415,7 +415,8 @@
   }
 
   function buildButterflies(s){
-    const count=s.mobile?4:8;
+    // Cap butterflies to at most 2 so they stay a subtle, natural accent rather than a swarm.
+    const count=2;
     const shape=new THREE.Shape();
     shape.moveTo(0,0);shape.quadraticCurveTo(.45,.45,.95,.28);
     shape.quadraticCurveTo(1.0,-.05,.55,-.20);shape.quadraticCurveTo(.72,-.48,.22,-.52);shape.lineTo(0,0);
@@ -424,7 +425,7 @@
       color:0xffffff,roughness:.55,side:THREE.DoubleSide,emissive:0xffe8b5,emissiveIntensity:.14
     });
     const wings=new THREE.InstancedMesh(geo,mat,count*2);
-    const palette=[0xfff2c2,0xf6d57a,0xd8ecfa,0xf7e4b6];
+    const palette=[0xfff2c2,0xf6d57a];
     const c=new THREE.Color();
     for(let i=0;i<count;i++){
       c.set(palette[i%palette.length]).convertSRGBToLinear();
@@ -433,7 +434,7 @@
     wings.instanceColor.needsUpdate=true;
     wings.name="meadowButterflies";wings.count=0;wings.frustumCulled=false;
     wings.instanceMatrix.setUsage(THREE.DynamicDrawUsage);s.root.add(wings);
-    const homes=[[-8.6,-4.2],[8.8,1.8],[-9.1,7.5],[9.4,11.6],[-6.8,-10.2],[7.2,18.4],[-10.8,14.2],[10.4,-6.5]];
+    const homes=[[-5.2,-2.6],[5.4,1.6]];
     return {wings,homes:homes.slice(0,count)};
   }
 
@@ -441,11 +442,12 @@
     const count=s.mobile?280:720,pos=[],seed=[];
     for(let i=0;i<count;i++){
       // Concentrate 65% of dust/pollen motes right inside the active court & camera volume.
-      const inCourt=i%3!==0;
-      const spanX=inCourt?15:28,spanZ=inCourt?20:36,maxH=inCourt?3.6:5.2;
-      pos.push((s.r()-.5)*spanX,.18+s.r()*maxH,COURT.midZ+(s.r()-.5)*spanZ);
-      // mote.x = phase seed, mote.y = size/speed, mote.z = 1 for soft foreground bokeh dust orbs (22%)
-      seed.push(s.r(),.60+s.r()*1.25,i%5===0?1:0);
+      const isFly=i%9===1;
+      const inCourt=isFly||i%3!==0;
+      const spanX=isFly?11:(inCourt?15:28),spanZ=isFly?16:(inCourt?20:36),maxH=isFly?3.2:(inCourt?3.6:5.2);
+      pos.push((s.r()-.5)*spanX,(isFly?.75:.18)+s.r()*maxH,COURT.midZ+(s.r()-.5)*spanZ);
+      // mote.x = phase seed, mote.y = size/speed, mote.z = 0 (fine dust), 1 (soft foreground bokeh dust), 2 (fast hover-and-dart blurred insect)
+      seed.push(s.r(),.60+s.r()*1.25,isFly?2:(i%5===0?1:0));
     }
     const geo=new THREE.BufferGeometry();
     geo.setAttribute("position",new THREE.Float32BufferAttribute(pos,3));
@@ -457,36 +459,64 @@
         attribute vec3 mote;
         uniform float clock,wind;
         uniform vec4 meadowSky;
-        varying float vAlpha,vSoft;
+        varying float vAlpha,vSoft,vFly,vFlutter;
         void main(){
-          float t=clock*(.18+.11*mote.y)+mote.x*62.8;
+          vFly=step(1.5,mote.z);
+          vSoft=step(.5,mote.z)*(1.0-vFly);
+          // Independent 360-degree 3D local curl orbit per mote (never multiplying clock by oscillating wind!).
+          float t=clock*(.042+.026*fract(mote.x*13.7))+mote.x*62.8318;
+          float az=mote.x*62.8318+mote.y*17.3;
+          vec2 dir=vec2(cos(az),sin(az));
+          vec2 perp=vec2(-dir.y,dir.x);
+          vec2 eddy=dir*(sin(t)*.36+cos(t*1.63+mote.y*11.0)*.12)+perp*(cos(t*.79+mote.x*29.0)*.32);
           vec3 p=position;
-          float span=24.0;
-          p.x+=sin(t)*.95+mod(clock*(.30+.46*wind)+mote.x*span,span)-span*.5;
-          p.y+=sin(t*1.25+mote.x*19.0)*.34;
-          p.z+=cos(t*.82)*.85;
+          vec3 dustPos=p+vec3(
+            eddy.x,
+            sin(t*.84+mote.x*19.0)*.22+cos(t*.51+mote.y*13.0)*.09,
+            eddy.y
+          );
+          // Fast hover-and-dart blurred insects (hover 78% of cycle, zip rapidly in 22%).
+          float rate=.62+mote.y*.26;
+          float cyc=clock*rate+mote.x*31.4;
+          float slot=floor(cyc);
+          float dart=smoothstep(0.0,.20,fract(cyc));
+          vec3 h0=vec3(sin(slot*4.1+mote.x*17.0),cos(slot*2.7+mote.x*11.0)*.38,cos(slot*3.3-mote.x*13.0));
+          vec3 h1=vec3(sin((slot+1.0)*4.1+mote.x*17.0),cos((slot+1.0)*2.7+mote.x*11.0)*.38,cos((slot+1.0)*3.3-mote.x*13.0));
+          vec3 jitter=vec3(sin(clock*29.0+mote.x*40.0),cos(clock*35.0+mote.x*25.0),sin(clock*24.0))*.032;
+          vec3 flyPos=p+mix(h0,h1,dart)*vec3(2.2,.85,2.0)+jitter;
+          p=mix(dustPos,flyPos,vFly);
           vec4 mv=modelViewMatrix*vec4(p,1.0);
           gl_Position=projectionMatrix*mv;
-          float depth=max(1.2,-mv.z);
-          vSoft=mote.z;
-          float fineSize=clamp(46.0*mote.y/max(3.0,depth),1.8,6.8);
+          float depth=max(1.1,-mv.z);
+          float fineSize=clamp(44.0*mote.y/max(3.0,depth),1.8,6.5);
           float bokehSize=clamp(58.0*mote.y/max(1.5,depth),5.5,24.0);
-          gl_PointSize=mix(fineSize,bokehSize,vSoft);
+          float flySize=clamp(62.0*mote.y/max(1.35,depth),4.2,19.5);
+          gl_PointSize=mix(mix(fineSize,bokehSize,vSoft),flySize,vFly);
           float vis=(.38+.62*smoothstep(.04,.65,meadowSky.x))*(1.0-smoothstep(.10,.36,meadowSky.z));
           float range=mix(
-            smoothstep(1.0,3.5,depth)*(1.0-smoothstep(20.0,34.0,depth)),
-            smoothstep(.6,1.6,depth)*(1.0-smoothstep(6.5,13.5,depth))*.52,
-            vSoft);
-          vAlpha=vis*(.45+.55*(sin(t*2.1)*.5+.5))*range;
+            mix(
+              smoothstep(1.0,3.5,depth)*(1.0-smoothstep(20.0,34.0,depth)),
+              smoothstep(.6,1.6,depth)*(1.0-smoothstep(6.5,13.5,depth))*.52,
+              vSoft),
+            smoothstep(.75,1.8,depth)*(1.0-smoothstep(18.0,28.0,depth))*.85,
+            vFly);
+          vAlpha=vis*(.48+.52*(sin(t*1.15)*.5+.5))*range;
+          vFlutter=.45+.55*abs(sin(clock*42.0+mote.x*30.0));
         }`,
       fragmentShader:`
         uniform vec4 meadowSky;
-        varying float vAlpha,vSoft;
+        varying float vAlpha,vSoft,vFly,vFlutter;
         void main(){
-          float r=length(gl_PointCoord*2.0-1.0);
+          vec2 p=gl_PointCoord*2.0-1.0;
+          float r=length(p);
           float fineGlow=exp(-r*r*3.4)*(1.0-smoothstep(.58,1.0,r));
           float bokehDisc=pow(1.0-smoothstep(.06,.98,r),1.35);
-          float glow=mix(fineGlow,bokehDisc,vSoft);
+          // Soft out-of-focus hovering insect silhouette + rapid blurred wing halo
+          vec2 wUv=vec2(abs(p.x)-.24*vFlutter,p.y+.05);
+          float wingBlur=exp(-dot(wUv*vec2(1.8,2.6),wUv*vec2(1.8,2.6))*2.4)*(1.0-smoothstep(.55,1.0,r));
+          float bodyBlur=exp(-dot(p*vec2(3.6,1.6),p*vec2(3.6,1.6))*3.2);
+          float flyShape=clamp(wingBlur*(.62+.38*vFlutter)+bodyBlur*.75,0.0,1.0);
+          float glow=mix(mix(fineGlow,bokehDisc,vSoft),flyShape,vFly);
           vec3 col=mix(vec3(.96,.97,.90),vec3(1.0,.80,.46),meadowSky.y*.75+.15*meadowSky.x);
           gl_FragColor=vec4(col,glow*vAlpha*.64);
         }`
@@ -581,18 +611,27 @@
     const count=Math.round(centers.length*visibility);
     bodies.count=count;wings.count=count*4;
     for(let i=0;i<count;i++){
-      const [x,z]=centers[i],t=time*(.86+i*.033)+i*2.9;
-      const dash=t*.88+Math.sin(t*1.55)*.30;
-      const bx=x+1.12*Math.sin(dash)+.26*Math.cos(t*2.4),bz=z+1.45*Math.cos(t*.67);
-      const by=.61+.25*Math.sin(t*1.19+i)+.13*Math.cos(t*2.3);
-      const yaw=Math.atan2(Math.cos(dash)*1.12,-.97*Math.sin(t*.67));
-      m.position.set(bx,by,bz);m.rotation.set(.08*Math.cos(t*1.7),yaw,0,"YXZ");
-      m.scale.set(.028,.027,.129);m.updateMatrix();bodies.setMatrixAt(i,m.matrix);
+      const [x,z]=centers[i];
+      // Dragonfly hover-and-dart kinematics: hover stationary 78% of cycle, zip rapidly to new 3D point in 22%.
+      const rate=.52+(i%3)*.13;
+      const cyc=time*rate+i*2.17;
+      const slot=Math.floor(cyc),frac=cyc-slot;
+      const dart=smoothstep(frac,0,.22);
+      const h0x=Math.sin(slot*3.7+i*1.9)*1.65,h0z=Math.cos(slot*2.9+i*2.3)*1.85,h0y=Math.sin(slot*2.3+i)*.42;
+      const h1x=Math.sin((slot+1)*3.7+i*1.9)*1.65,h1z=Math.cos((slot+1)*2.9+i*2.3)*1.85,h1y=Math.sin((slot+1)*2.3+i)*.42;
+      const bx=x+h0x+(h1x-h0x)*dart+.028*Math.sin(time*24+i*3);
+      const bz=z+h0z+(h1z-h0z)*dart+.028*Math.cos(time*27+i*2);
+      const by=(i<2?1.25:.85)+h0y+(h1y-h0y)*dart+.022*Math.sin(time*19+i);
+      const dx=h1x-h0x,dz=h1z-h0z;
+      const yaw=Math.hypot(dx,dz)>.01?Math.atan2(dx,dz):i*1.1;
+      const zipPitch=frac<.22?.24*Math.sin(frac/.22*Math.PI):0;
+      m.position.set(bx,by,bz);m.rotation.set(zipPitch+.04*Math.cos(time*8+i),yaw,0,"YXZ");
+      m.scale.set(.028,.027,.132);m.updateMatrix();bodies.setMatrixAt(i,m.matrix);
       for(let j=0;j<4;j++){
         const side=j%2?1:-1;
         m.position.set(bx,by+.011,bz+(j<2?.030:-.037));
-        m.rotation.set(-Math.PI/2,yaw+(side<0?Math.PI:0)+side*.20,Math.sin(t*67+j*.4)*.73,"YXZ");
-        m.scale.set(.147,.185,1);m.updateMatrix();wings.setMatrixAt(i*4+j,m.matrix);
+        m.rotation.set(-Math.PI/2,yaw+(side<0?Math.PI:0)+side*.20,Math.sin(time*74+j*.4)*.78,"YXZ");
+        m.scale.set(.152,.190,1);m.updateMatrix();wings.setMatrixAt(i*4+j,m.matrix);
       }
     }
     if(count){bodies.instanceMatrix.needsUpdate=true;wings.instanceMatrix.needsUpdate=true;}

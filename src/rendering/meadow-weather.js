@@ -96,28 +96,34 @@
       float a=cloudDensity(skyAt)*.81+details*.19;
       float litEdge=cloudDensity(skyAt+vec2(-24.0,13.0));
       float edge=cloudEdge();
-      float cloud=max(smoothstep(edge-.057,edge+.10,a),(.94-meadowSky.x*.92)*smoothstep(-.09,.08,up));
-      if(meadowAir.y>.015&&ray.y>.04){
+      // Preserve 3D cloud gaps and layered sky depth even in the opening overcast phase (meadowSky.x == 0).
+      float baseCover=(.68-meadowSky.x*.64)*smoothstep(-.09,.08,up)*(.55+.45*a);
+      float cloud=max(smoothstep(edge-.065,edge+.11,a),baseCover);
+      float openBeam=max(meadowAir.y,.36*(1.0-meadowSky.z));
+      if(openBeam>.015&&ray.y>.04){
         vec3 atCloud=eye+ray*((62.0-eye.y)/ray.y);
-        cloud*=1.0-sunWindow(atCloud,.25)*meadowAir.y*.76;
+        cloud*=1.0-sunWindow(atCloud,.32)*openBeam*.78;
       }
       float sunCos=max(0.0,dot(ray,meadowSun));
-      float sunSide=pow(sunCos,11.0);
-      float mieHalo=pow(sunCos,6.0)*.24+pow(sunCos,48.0)*.42;
+      float sunSide=pow(sunCos,8.0);
+      float mieHalo=pow(sunCos,5.0)*.26+pow(sunCos,38.0)*.44;
       float sunDisc=smoothstep(.9986,.9996,sunCos);
-      vec3 day=mix(vec3(.075,.205,.36),vec3(.33,.48,.58),haze);
+      vec3 day=mix(vec3(.075,.215,.38),vec3(.34,.50,.62),haze);
       vec3 dusk=mix(vec3(.025,.075,.100),vec3(.16,.25,.28),haze);
       vec3 sky=mix(day,dusk,meadowSky.w*.14+meadowSky.y*.76);
-      sky=mix(sky,vec3(.60,.39,.21),sunSide*meadowSky.x*.48);
-      vec3 sunGlowCol=mix(vec3(1.0,.90,.72),vec3(1.0,.66,.34),meadowSky.y);
-      sky+=sunGlowCol*(mieHalo*.34+sunDisc*.85)*meadowSky.x*(1.0-cloud*.72);
-      float roll=smoothstep(.16,.73,a+(a-litEdge)*.71);
-      vec3 storm=mix(vec3(.103,.139,.186),vec3(.47,.50,.53),roll);
-      storm*=1.04-meadowSky.z*.36;
-      vec3 open=mix(vec3(.23,.295,.36),vec3(.72,.68,.58),roll);
+      float sunPresence=.38+.62*meadowSky.x;
+      sky=mix(sky,vec3(.62,.42,.24),sunSide*sunPresence*.48);
+      vec3 sunGlowCol=mix(vec3(.96,.92,.82),vec3(1.0,.66,.34),meadowSky.y);
+      sky+=sunGlowCol*(mieHalo*.36+sunDisc*.85*meadowSky.x)*sunPresence*(1.0-cloud*.68);
+      float roll=smoothstep(.14,.74,a+(a-litEdge)*.85);
+      // High-contrast 3D cloud undersides vs silver-lit cloud tops even at progress=0.
+      vec3 storm=mix(vec3(.12,.17,.24),vec3(.64,.69,.74),roll);
+      storm+=vec3(.22,.20,.16)*pow(sunCos,6.0)*(1.0-roll)*(.45+.55*(1.0-meadowSky.z));
+      storm*=1.04-meadowSky.z*.32;
+      vec3 open=mix(vec3(.23,.295,.36),vec3(.76,.72,.62),roll);
       open=mix(open,vec3(.63,.39,.22),sunSide*meadowSky.y*.48);
       vec3 col=mix(sky,mix(storm,open,meadowSky.x),cloud);
-      col+=sunGlowCol*pow(sunCos,18.0)*cloud*(1.0-roll)*.22*meadowSky.x;
+      col+=sunGlowCol*pow(sunCos,14.0)*cloud*(1.0-roll)*.34*sunPresence;
       float flash=pow(max(0.0,dot(ray,normalize(vec3(-.44,.20,-.91)))),13.0);
       float bank=0.0;
       for(int i=0;i<3;i++){
@@ -127,8 +133,10 @@
         float height=1.0-smoothstep(42.0,153.0,p.y+27.0*(billow-.45));
         bank+=height*(.48+.52*billow);
       }
-      float veil=(1.0-exp(-bank*meadowStorm.x*1.73))*.92;
-      col=mix(col,mix(vec3(.25,.325,.41),vec3(.53,.57,.60),a),veil);
+      // Keep horizon cloud bank localized near the mountain bases so it never flattens the entire sky dome.
+      float horizonBand=1.0-smoothstep(.02,.28,up);
+      float veil=(1.0-exp(-bank*meadowStorm.x*.85))*.42*horizonBand;
+      col=mix(col,mix(vec3(.24,.32,.42),vec3(.58,.63,.68),a),veil);
       col=mix(col,col*vec3(.075,.103,.185)+vec3(.006,.010,.025),meadowStorm.y*.91);
       col+=vec3(.58,.70,.98)*meadowAir.w*flash*.81;
       // A primary bow is a continuous angular arc centred on the anti-solar direction;
@@ -225,42 +233,31 @@
           vec3 view=normalize((invProjection*vec4(vUv*2.0-1.0,1.0,1.0)).xyz);
           vec3 ray=(cameraWorld*vec4(view,0.0)).xyz;
           vec3 eye=cameraWorld[3].xyz;
-          float rawEnd=min(176.0,viewDepth/max(.13,-view.z));
-          // Maintain a continuous foreground alpine air & sunbeam floor so close players & basketballs never sit in a vacuum cutout.
-          float end=max(rawEnd,mix(24.0,rawEnd,smoothstep(1.2,18.0,rawEnd)));
-          float startD=0.8;
+          // Stop ray-marching strictly at the true surface depth (never march virtual fog behind close spectators or hills!).
+          float end=min(176.0,viewDepth/max(.13,-view.z));
+          float startD=18.0;
           float stepSize=max(0.0,end-startD)/8.0;
           float mist=0.0,beam=0.0;
-          vec2 sunSlant=meadowSun.xz/max(.14,meadowSun.y);
           for(int i=0;i<8;i++){
             float t=startD+(float(i)+.48)*stepSize;
             vec3 p=eye+ray*t;
             float dist=length(p.xz-vec2(0.0,4.745));
-            // Continuous alpine air across the entire court + denser valley ring further out.
-            float courtAir=.36+.64*smoothstep(10.0,48.0,dist)*(1.0-smoothstep(144.0,196.0,dist));
-            // Low ground-hugging meadow evapotranspiration vapor (0..3.2m over grass & court) + valley stratum.
-            float groundVapor=exp(-max(0.0,p.y-.15)*.62)*(.55+.45*sin(p.x*.18+p.z*.15-meadowClock*.35));
-            float stratum=exp(-pow((p.y-4.1-1.7*sin(p.x*.035+p.z*.033))*.105,2.0));
-            float pockets=.44+.56*cloudDensity(p.xz*2.7+vec2(meadowClock*2.0,33.0));
-            mist+=(courtAir*stratum+groundVapor*.48)*pockets;
-            // Slanted 3D Tyndall light sheets filtering through cloud breaks right across the court & hillside.
-            vec2 rayFoot=p.xz-p.y*sunSlant;
-            float curtains=.52+.48*(sin(rayFoot.x*.42+rayFoot.y*.29+meadowClock*.18)*cos(rayFoot.y*.58-rayFoot.x*.31-meadowClock*.14));
-            float air=exp(-abs(p.y-7.5)*.045)*courtAir*smoothstep(-.5,2.2,p.y);
-            float sunStrength=max(meadowAir.y,meadowSky.x*.58)*(1.0-meadowSky.z*.75);
-            if(sunStrength>.01)beam+=air*(sunWindow(p,.28)*(.58+.72*curtains)+groundVapor*.26)*sunStrength;
+            // Keep valley mist strictly in the outer valley & foothills (36m..190m), never smearing across the court or spectators.
+            float valleyRing=smoothstep(34.0,76.0,dist)*(1.0-smoothstep(148.0,198.0,dist));
+            float stratum=exp(-pow((p.y-5.2-1.7*sin(p.x*.035+p.z*.033))*.095,2.0));
+            float pockets=.44+.56*cloudDensity(p.xz*2.7+vec2(meadowClock*1.4,33.0));
+            mist+=valleyRing*stratum*pockets;
+            float air=exp(-abs(p.y-9.5)*.038)*valleyRing*smoothstep(0.0,3.5,p.y);
+            if(meadowAir.y>.01)beam+=air*sunWindow(p,.26)*meadowAir.y;
           }
-          // Keep valley mist anchored below the mountain ridgeline (never a bright curved arc in open sky).
-          float valleyMask=1.0-smoothstep(.04,.22,ray.y);
-          float veil=(1.0-exp(-stepSize*mist*meadowAir.x*.0115))*valleyMask;
-          // Forward Mie scattering + volumetric sunbeams across the court, fading away from the anti-solar rainbow.
-          float sunDot=dot(ray,meadowSun);
-          float towardSun=.28+.72*smoothstep(-.25,.60,sunDot)+.38*pow(max(0.0,sunDot),4.0);
-          float light=(1.0-exp(-stepSize*beam*.034))*towardSun*(1.0-.72*meadowAir.z);
-          vec3 cool=mix(vec3(.34,.41,.47),vec3(.50,.58,.65),meadowSky.x)*(1.0-.75*meadowStorm.y);
+          float veil=1.0-exp(-stepSize*mist*meadowAir.x*.013);
+          float shaftA=shaft(beamFromA,beamToA,.24,end);
+          float shaftB=shaft(beamFromB,beamToB,.31,end);
+          float light=min(1.0,(1.0-exp(-stepSize*beam*.045))+(shaftA+.82*shaftB)*meadowAir.y*.42)*(1.0-.72*meadowAir.z);
+          vec3 cool=mix(vec3(.42,.51,.59),vec3(.54,.62,.69),meadowSky.x)*(1.0-.75*meadowStorm.y);
           vec3 warm=mix(vec3(1.0,.91,.72),vec3(1.0,.74,.42),meadowSky.y);
-          float opacity=min(.68,veil+light*.84);
-          vec3 col=(cool*veil+warm*light*.84)/max(.001,veil+light*.84);
+          float opacity=min(.62,veil+light*.82);
+          vec3 col=(cool*veil+warm*light*.82)/max(.001,veil+light*.82);
           gl_FragColor=vec4(col,opacity);
         }`
     });
@@ -376,6 +373,100 @@
     return bolt;
   }
 
+  function buildMountainClouds(s,w){
+    // 3 continuous 360-degree closed volumetric cloud rings at staggered depths (128m, 188m, 248m).
+    // Closed rings have ZERO vertical polygon edges/seams, while hardware Z-testing makes clouds
+    // physically weave in front of and behind the near mountain ridges (166m) and far snow peaks (290m).
+    const mat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,depthTest:true,side:THREE.DoubleSide,uniforms:w.uniforms,
+      vertexShader:`
+        attribute vec2 ringMeta;
+        varying vec2 vUv,vMeta;
+        varying vec3 vWorld;
+        void main(){
+          vUv=uv;vMeta=ringMeta;
+          vWorld=(modelMatrix*vec4(position,1.0)).xyz;
+          gl_Position=projectionMatrix*viewMatrix*vec4(vWorld,1.0);
+        }`,
+      fragmentShader:cloudGLSL+`
+        varying vec2 vUv,vMeta;
+        varying vec3 vWorld;
+        void main(){
+          // Strict zero-alpha envelope at top & bottom of ring (vUv.y == 0 and vUv.y == 1) guarantees zero hard edges.
+          float edgeFade=smoothstep(0.0,.28,vUv.y)*(1.0-smoothstep(.70,1.0,vUv.y));
+          if(edgeFade<.005)discard;
+          vec2 wUV=vWorld.xz*1.45+vec2(meadowClock*(1.6+vMeta.x*.7)+vMeta.x*113.0,-meadowClock*.75);
+          vec2 warp=vec2(cloudDensity(wUV+vec2(31.0,53.0)),cloudDensity(wUV+vec2(-47.0,19.0)))-.48;
+          // Multi-scale FBM: nMacro creates localized cloud islands & clear gaps around the 360 horizon; nBillow & nWisp sculpt cumulus lobes.
+          float nMacro=cloudDensity(wUV*.52+warp*95.0);
+          float nBillow=cloudDensity(wUV*1.45-warp*60.0+vec2(vWorld.y*2.4,0.0));
+          float nWisp=cloudDensity(wUV*3.4+vec2(0.0,vWorld.y*5.2));
+          float fbm=nMacro*.50+nBillow*.34+nWisp*.16;
+          // Undulating cumulus top & bottom contours inside the safe envelope
+          float yNorm=vUv.y*2.0-1.0;
+          float billowShape=smoothstep(-.82,-.12,yNorm+(nBillow-.46)*.55)*(1.0-smoothstep(.08,.82,yNorm-(fbm-.46)*.75));
+          float shape=edgeFade*billowShape;
+          // Localized islands of varying thickness: some sectors are clear (density=0), others have wispy mist or thick opaque cloud cores.
+          float thresh=mix(.26,.46,meadowSky.x*(1.0-meadowSky.z));
+          float raw=fbm*shape*1.65;
+          float density=smoothstep(thresh,thresh+.34,raw);
+          if(density<.008)discard;
+          // 3D volumetric internal billow shading: bright silver/warm upper rim, deep slate-blue self-shadowed belly.
+          float topGrad=clamp((yNorm+.38)*.72+(nBillow-.46)*.60-(nWisp-.48)*.22,0.0,1.0);
+          float sunFacing=.5+.5*dot(normalize(vec3(vWorld.x,0.0,vWorld.z)),meadowSun);
+          vec3 bellyCol=mix(vec3(.24,.31,.40),vec3(.38,.46,.54),meadowSky.x)*(1.0-.72*meadowStorm.y);
+          vec3 topCol=mix(vec3(.80,.85,.90),mix(vec3(.96,.95,.90),vec3(1.0,.76,.48),meadowSky.y),meadowSky.x*.75+.25);
+          topCol+=vec3(.16,.13,.08)*sunFacing*topGrad*(.4+.6*meadowSky.x);
+          float coreThick=smoothstep(.35,.90,density);
+          vec3 cloudCol=mix(bellyCol,topCol,smoothstep(.12,.84,topGrad*(1.0-coreThick*.24)));
+          float weatherVis=mix(.95,.42,meadowSky.x)*(1.0-meadowSky.y*.22);
+          float alpha=clamp(pow(density,1.15)*weatherVis*vMeta.y,0.0,.94);
+          gl_FragColor=vec4(cloudCol,alpha);
+          #include <tonemapping_fragment>
+          #include <encodings_fragment>
+        }`
+    });
+    // 3 concentric 360-degree undulating cloud rings:
+    // Ring 0 (r=132m, y=8..44m): in front of & intersecting the near mountain ridges (166m)
+    // Ring 1 (r=194m, y=20..68m): right between the near ridges (166m) and far snow peaks (290m)
+    // Ring 2 (r=252m, y=34..96m): wrapping around the mid-upper waist of the far snow peaks (290m)
+    const rings=[
+      [132,8,44,.86,0.17],
+      [194,20,68,.94,0.53],
+      [252,34,96,.96,0.89]
+    ];
+    const positions=[],uvs=[],metas=[],indices=[];
+    let vOffset=0;
+    const cols=144,rows=8;
+    rings.forEach(([baseR,yMin,yMax,op,seed])=>{
+      for(let iy=0;iy<=rows;iy++){
+        const ty=iy/rows;
+        for(let ix=0;ix<=cols;ix++){
+          const tx=ix/cols,a=(tx-.5)*Math.PI*2;
+          const waveR=baseR+14*Math.sin(a*3+seed*6.28)+9*Math.cos(a*5-seed*4.1);
+          const waveY=lerp(yMin,yMax,ty)+6*Math.sin(a*4+seed*5.1)+4*Math.cos(a*7-ty*2.2);
+          positions.push(Math.sin(a)*waveR,waveY,COURT.midZ-Math.cos(a)*waveR);
+          uvs.push(tx,ty);
+          metas.push(seed,op);
+          if(iy<rows&&ix<cols){
+            const k=vOffset+iy*(cols+1)+ix;
+            indices.push(k,k+1,k+cols+1,k+1,k+cols+2,k+cols+1);
+          }
+        }
+      }
+      vOffset+=(cols+1)*(rows+1);
+    });
+    const geo=new THREE.BufferGeometry();
+    geo.setIndex(indices);
+    geo.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+    geo.setAttribute("uv",new THREE.Float32BufferAttribute(uvs,2));
+    geo.setAttribute("ringMeta",new THREE.Float32BufferAttribute(metas,2));
+    const mesh=new THREE.Mesh(geo,mat);
+    mesh.name="alpineOrographicClouds";mesh.frustumCulled=false;mesh.renderOrder=1;
+    s.root.add(mesh);
+    return mesh;
+  }
+
   function build(s){
     const uniforms={meadowClouds:{value:cloudMap()},meadowSky:{value:new THREE.Vector4()},
       meadowAir:{value:new THREE.Vector4()},meadowStorm:{value:new THREE.Vector2()},meadowSun:{value:new THREE.Vector3()},meadowOpening:{value:new THREE.Vector2()},
@@ -388,6 +479,7 @@
       time:uniforms.meadowClock,stormAt:null,thunderAt:null,nextStrike:0,flashAt:-100};
     w.airMaterial=airPass(w);
     buildSky(s,w);
+    w.mountainClouds=buildMountainClouds(s,w);
     w.fallback=buildFallback(s,w);
     w.rain=buildRain(s,w);w.bolt=buildLightning(s,w);
     return w;

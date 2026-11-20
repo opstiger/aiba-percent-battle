@@ -204,17 +204,18 @@
         float mask=smoothstep(clearRange.x-1.6,clearRange.x+2.4,depth);
         if(foreground>.5)blur=mask=1.0-smoothstep(clearRange.x,clearRange.y,depth);
         if(mask<.002){gl_FragColor=vec4(0.0);return;}
-        vec3 color=texture2D(tScene,vUv).rgb*1.45;
-        float weight=1.45;
-        float reject=max(clearRange.x-1.0,depth-max(3.0,depth*.17));
-        vec2 spread=radius*mix(.40,1.0,blur);
-        for(int i=0;i<8;i++){
+        vec3 color=texture2D(tScene,vUv).rgb*.85;
+        float weight=.85;
+        float reject=max(clearRange.x-.8,depth-max(2.5,depth*.16));
+        vec2 spread=radius*mix(.35,1.0,blur);
+        for(int i=0;i<18;i++){
           float angle=float(i)*2.399963;
-          float r=sqrt((float(i)+.65)/8.0);
+          float r=sqrt((float(i)+.55)/18.0);
           vec2 uv=vUv+vec2(cos(angle),sin(angle))*spread*r;
           float tap=depthAt(uv);
+          // Strict bilateral depth rejection prevents foreground silhouettes or dark trees from bleeding into sky.
           float w=foreground>.5?1.0-smoothstep(clearRange.x,clearRange.y,tap):
-            smoothstep(reject-1.5,reject+2.0,tap);
+            smoothstep(reject-1.0,reject+1.5,tap)*(1.0-smoothstep(depth*1.25+6.0,depth*1.65+18.0,tap)*.82);
           color+=texture2D(tScene,uv).rgb*w;
           weight+=w;
         }
@@ -275,7 +276,7 @@
         if(useDepth>0.5||useVenueAir>0.5){
           lin=linearDepthAt(vUv);
           float blurAmount=smoothstep(dofNear,dofFar,lin);
-          coc=mix(blurAmount,1.0-blurAmount,dofForeground)*dofStrength*useDepth;
+          coc=mix(blurAmount,1.0-blurAmount,clamp(dofForeground,0.0,1.0))*dofStrength*useDepth;
         }
         vec3 col=base;
         if(coc>.001||dofNearCoverage>.5){
@@ -321,7 +322,8 @@
             texture2D(tVenueAir,vUv+vec2(-airOff.x, airOff.y))+
             texture2D(tVenueAir,vUv+vec2( airOff.x, airOff.y))
           )*.25;
-          float airWeight=mix(.22,1.0,smoothstep(airStart,airEnd,lin));
+          float minAir=forestGrade>.5?.18:0.0;
+          float airWeight=mix(minAir,1.0,smoothstep(airStart,airEnd,lin));
           col=mix(col,air.rgb,air.a*airWeight);
         }
 
@@ -504,11 +506,13 @@
 
   function drawFocus(weather,foreground,forest,foliage){
     if(!rtFocus){
-      rtFocus=makeRT(Math.max(2,rtW>>2),Math.max(2,rtH>>2),{depthBuffer:false});
+      const fShift=COARSE?2:1;
+      rtFocus=makeRT(Math.max(2,rtW>>fShift),Math.max(2,rtH>>fShift),{depthBuffer:false});
       rtFocus.texture.encoding=THREE.LinearEncoding;
     }
     const meadow=weather&&!lookLocked;
-    focus.foreground=foreground>.001;
+    const isFP=camera.userData.firstPerson===true;
+    focus.foreground=!isFP&&foreground>.001;
     if(focus.foreground){
       focus.near=forest ? .34 : foregroundRange.x;
       focus.far=forest ? 4.15 : foregroundRange.y;
@@ -516,12 +520,19 @@
     }else{
       camera.getWorldDirection(focusDirection);
       const rimDepth=focusOffset.copy(HOOP).sub(camera.position).dot(focusDirection);
-      // Keep the entire hoop + backboard + curved support pole inside the sharp focal plane.
-      focus.near=Math.max(P.dofNear,Math.max(0,rimDepth)+12,meadow?26:16);
-      focus.far=Math.max(P.dofFar,focus.near+(meadow?60:42));
-      focus.strength=(meadow?.48:P.dof)*(COARSE?.83:1);
+      if(isFP){
+        // In First-Person, keep the entire court, hoop, backboard & courtside spectators (< rimDepth+5.2m) tack-sharp,
+        // then smoothly defocus the distant hills, forest belts & mountain backdrop behind them.
+        focus.near=Math.max(13.5,Math.max(0,rimDepth)+5.2);
+        focus.far=focus.near+(meadow?24:18);
+        focus.strength=(COARSE?.72:.84);
+      }else{
+        focus.near=Math.max(P.dofNear,Math.max(0,rimDepth)+11,meadow?22:16);
+        focus.far=Math.max(P.dofFar,focus.near+(meadow?48:38));
+        focus.strength=(meadow?.48:P.dof)*(COARSE?.83:1);
+      }
     }
-    const u=focusMat.uniforms,pixels=focus.foreground?(forest?39:34):meadow?13.5:9.0;
+    const u=focusMat.uniforms,pixels=focus.foreground?(forest?39:34):isFP?19.5:(meadow?12.5:9.5);
     u.foreground.value=focus.foreground?(forest?2:1):0;
     const scale=rtH/Math.max(1,renderer.domElement.clientHeight);
     u.tScene.value=rtScene.texture;u.tDepth.value=rtScene.depthTexture;
@@ -549,8 +560,8 @@
       focusOffset.multiplyScalar(120).add(camera.position).project(camera);
       u.sunScreen.value.set(focusOffset.x*.5+.5,focusOffset.y*.5+.5,facing);
     }else u.sunScreen.value.set(.5,.2,0);
-    // Allow volumetric air & Tyndall shafts to fill the active basketball court (starting right in front of the player).
-    u.airStart.value=forest?0:0.4;u.airEnd.value=forest?1.4:5.5;
+    // In rainforest, volumetric Tyndall shafts fill the court; in flowerCourt, valley mist starts behind the court (18..36m) so spectators stay crisp.
+    u.airStart.value=forest?0:18;u.airEnd.value=forest?1.4:36;
     u.tScene.value=rtScene.texture;u.tBlur.value=(rtB||rtScene).texture;
     u.tDepth.value=rtScene.depthTexture||null;
     u.tFocus.value=lens;u.useDepth.value=lens?1:0;
