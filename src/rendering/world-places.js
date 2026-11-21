@@ -523,6 +523,37 @@
       addBox(.60,.18,.26,0,3.46,base,gunmetal);
       addBox(.62,.07,.28,0,3.58,base,hazardMat);
 
+      // 顶部双联工业工作泛光灯 + 菲涅尔柔化微尘光锥（无硬边，从斜上方照亮粗糙圆形玄武岩石板与篮筐）
+      const floodConeGeo=new THREE.CylinderGeometry(0.06,0.62,1.35,16,1,true);
+      const floodConeMat=new THREE.ShaderMaterial({
+        transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,fog:false,
+        vertexShader:`varying vec2 vUv;varying vec3 vN,vV;
+          void main(){
+            vUv=uv;
+            vec4 mv=modelViewMatrix*vec4(position,1.0);
+            vN=normalize(normalMatrix*normal);vV=normalize(-mv.xyz);
+            gl_Position=projectionMatrix*mv;
+          }`,
+        fragmentShader:`varying vec2 vUv;varying vec3 vN,vV;
+          void main(){
+            float fr=pow(abs(dot(normalize(vN),normalize(vV))),1.9);
+            float vFade=smoothstep(0.0,0.65,vUv.y)*smoothstep(1.0,0.82,vUv.y);
+            gl_FragColor=vec4(1.0,0.95,0.84,fr*vFade*0.18);
+          }`
+      });
+      const lampLensMat=new THREE.MeshBasicMaterial({color:0xfff6de,side:THREE.DoubleSide});
+      for(const sx of [-0.46,0.46]){
+        addRodBeam(sx*0.48,3.56,z-dir*0.18,sx,4.18,z+dir*0.36,0.020,tiSilver);
+        addBox(0.22,0.09,0.13,sx,4.20,z+dir*0.38,gunmetal);
+        const lens=new THREE.Mesh(new THREE.PlaneGeometry(0.18,0.07),lampLensMat);
+        lens.position.set(sx,4.15,z+dir*0.39);
+        lens.rotation.x=Math.PI/2-dir*0.32;
+        rigGrp.add(lens);
+        const cone=new THREE.Mesh(floodConeGeo,floodConeMat);
+        cone.position.set(sx*0.82,3.52,z+dir*0.24);
+        cone.rotation.x=-dir*0.20;cone.rotation.z=sx*0.22;
+        rigGrp.add(cone);
+      }
       // 4. 月球就地取材粗糙圆形玄武岩石板篮板 (Rough Circular Lunar Basalt Stone Slab Backboard)
       const slab=new THREE.Mesh(stoneSlabGeo,stoneMat);
       slab.name="lunarBasaltBackboard";

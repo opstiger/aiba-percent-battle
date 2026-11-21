@@ -308,7 +308,10 @@ function buildUpperRibbon(){
     }
   }
 }
+let arenaShaftMat=null,arenaMotesMat=null;
 function updUpperRibbon(t){
+  if(arenaShaftMat)arenaShaftMat.uniforms.uTime.value=t;
+  if(arenaMotesMat)arenaMotesMat.uniforms.uTime.value=t;
   if(!upperRibbonTex.length)return;
   const cyc=(t*0.5)%6,run=Math.min(cyc,3.2),off=-run*0.10;
   for(const tx of upperRibbonTex)tx.offset.x=off;
@@ -755,18 +758,84 @@ function shaftGradientTex(){
 const SHAFTS_ON=(()=>{try{return !/(\?|&)shafts=0(&|#|$)/.test(location.search);}catch(e){return true;}})();
 function buildLightShafts(lampPos){
   if(!lampPos.length||!SHAFTS_ON)return;
-  const height=20.5;
-  const geo=new THREE.CylinderGeometry(0.85,4.2,height,16,1,true);
-  const mat=new THREE.MeshBasicMaterial({map:shaftGradientTex(),transparent:true,opacity:.115,
-    depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,fog:false});
+  const height=21.5;
+  const geo=new THREE.CylinderGeometry(0.95,4.8,height,24,1,true);
+  // 次世代 NBA 剧场级体积聚光灯束：菲涅尔边缘柔化（零几何硬边）+ 紫金氛围散射 + 缓慢热气波动
+  arenaShaftMat=new THREE.ShaderMaterial({
+    transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,fog:false,
+    uniforms:{uTime:{value:0}},
+    vertexShader:`varying vec2 vUv;varying vec3 vNormalV,vViewDir;
+      void main(){
+        vUv=uv;
+        vec4 mv=modelViewMatrix*vec4(position,1.0);
+        vNormalV=normalize(normalMatrix*normal);
+        vViewDir=normalize(-mv.xyz);
+        gl_Position=projectionMatrix*mv;
+      }`,
+    fragmentShader:`uniform float uTime;varying vec2 vUv;varying vec3 vNormalV,vViewDir;
+      void main(){
+        float fresnel=pow(abs(dot(normalize(vNormalV),normalize(vViewDir))),1.85);
+        float topFade=smoothstep(1.0,0.82,vUv.y);
+        float botFade=pow(smoothstep(0.0,0.72,vUv.y),1.35);
+        float shimmer=0.86+0.14*sin(vUv.x*18.85+vUv.y*5.5-uTime*0.42)*cos(vUv.y*8.0+uTime*0.28);
+        vec3 warm=vec3(1.0,0.92,0.76);
+        vec3 violet=vec3(0.76,0.58,1.0);
+        vec3 col=mix(violet,warm,smoothstep(0.12,0.78,vUv.y));
+        float a=fresnel*topFade*botFade*shimmer*0.155;
+        gl_FragColor=vec4(col,a);
+      }`
+  });
   for(const p of lampPos){
-    const m=new THREE.Mesh(geo,mat);
-    // 光锥下沉至 y=2.0~22.5m 区间并微向球场中心聚拢，使主比赛机位清晰可见剧场级丁达尔光束
-    const tiltX=p[0]>0?0.11:-0.11;
-    m.position.set(p[0]*0.86,height/2+2.0,p[2]);
+    const m=new THREE.Mesh(geo,arenaShaftMat);
+    const tiltX=p[0]>0?0.12:-0.12;
+    m.position.set(p[0]*0.84,height/2+1.6,p[2]);
     m.rotation.z=tiltX;
     m.renderOrder=6;freezeStaticMesh(m);indoorRoot.add(m);
   }
+  // 球馆镁粉/浮尘体积微粒：360° 独立热对流缓慢漂浮在聚光灯柱内
+  const moteCount=(typeof IS_MOBILE!=="undefined"&&IS_MOBILE)?90:220;
+  const mPos=new Float32Array(moteCount*3),mSeed=new Float32Array(moteCount*3);
+  const mr=mulberry32(61423);
+  for(let i=0;i<moteCount;i++){
+    mPos[i*3]=(mr()-0.5)*22.0;
+    mPos[i*3+1]=1.2+mr()*12.5;
+    mPos[i*3+2]=COURT.midZ+(mr()-0.5)*28.0;
+    mSeed[i*3]=mr();
+    mSeed[i*3+1]=0.55+mr()*1.05;
+    mSeed[i*3+2]=mr()*6.283185;
+  }
+  const mGeo=new THREE.BufferGeometry();
+  mGeo.setAttribute("position",new THREE.BufferAttribute(mPos,3));
+  mGeo.setAttribute("aSeed",new THREE.BufferAttribute(mSeed,3));
+  arenaMotesMat=new THREE.ShaderMaterial({
+    transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,
+    uniforms:{uTime:{value:0}},
+    vertexShader:`attribute vec3 aSeed;uniform float uTime;varying float vAlpha;
+      void main(){
+        float t=uTime*(0.08+0.06*aSeed.y)+aSeed.x*62.8318;
+        vec2 dir=vec2(cos(aSeed.z),sin(aSeed.z));
+        vec2 perp=vec2(-dir.y,dir.x);
+        vec2 drift=dir*(sin(t)*0.42+cos(t*0.63)*0.18)+perp*(cos(t*0.81)*0.30);
+        vec3 wp=position+vec3(drift.x,sin(t*0.92+aSeed.z)*0.24,drift.y);
+        vec4 mv=modelViewMatrix*vec4(wp,1.0);
+        float dist=max(1.5,-mv.z);
+        gl_Position=projectionMatrix*mv;
+        gl_PointSize=clamp(52.0*aSeed.y/dist,1.5,5.8);
+        float range=smoothstep(1.8,5.0,dist)*(1.0-smoothstep(24.0,42.0,dist));
+        vAlpha=range*(0.35+0.65*(0.5+0.5*sin(t*1.3+aSeed.z)))*0.42;
+      }`,
+    fragmentShader:`varying float vAlpha;
+      void main(){
+        vec2 p=gl_PointCoord*2.0-1.0;
+        float r=length(p);
+        if(r>1.0)discard;
+        float glow=exp(-r*r*3.6)*(1.0-smoothstep(0.55,1.0,r));
+        gl_FragColor=vec4(1.0,0.93,0.78,glow*vAlpha);
+      }`
+  });
+  const motes=new THREE.Points(mGeo,arenaMotesMat);
+  motes.name="arenaChalkMotes";motes.frustumCulled=false;motes.renderOrder=6;
+  indoorRoot.add(motes);
 }
 const POOLS_ON=(()=>{
   try{return !/(\?|&)pools=0(&|#|$)/.test(location.search);}catch(e){return true;}

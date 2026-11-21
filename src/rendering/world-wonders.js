@@ -918,6 +918,25 @@
     rover.position.set(6,terrainY(6,-28.5),-28.5);
     s.root.add(rover);
 
+    // 8B. 远处环形山脊上的 SEC-07 月球采矿桁架塔与深空警示信标 (Distant Industrial Lunar Mining Derrick)
+    const derrick=new THREE.Group();derrick.name="lunarMiningDerrick";
+    const dx=-25,dz=-44,dy=terrainY(dx,dz);
+    derrick.position.set(dx,dy,dz);derrick.rotation.y=0.42;
+    addPart(new THREE.BoxGeometry(3.8,0.65,3.8),outGun,0,0.32,0,0,0,0,derrick);
+    for(const sx of [-1,1])for(const sz of [-1,1]){
+      addPart(new THREE.BoxGeometry(0.28,11.5,0.28),outTi,sx*1.15,6.0,sz*1.15,sz*-0.08,0,sx*0.08,derrick);
+    }
+    for(const ly of [2.6,5.4,8.2,10.8]){
+      const w=2.55-ly*0.14;
+      addPart(new THREE.BoxGeometry(w,0.20,w),outGun,0,ly,0,0,0,0,derrick);
+    }
+    // 顶部横向工业吊臂与钻探主轴
+    addPart(new THREE.BoxGeometry(6.8,0.42,0.52),outTi,1.2,11.4,0,0,0,0.06,derrick);
+    addPart(new THREE.CylinderGeometry(0.14,0.20,10.8,8),outSil,0,5.6,0,0,0,0,derrick);
+    const derrickBeaconMat=beaconAmber.clone();
+    addPart(new THREE.SphereGeometry(0.26,8,6),derrickBeaconMat,0,12.1,0,0,0,0,derrick);
+    s.root.add(derrick);
+
     // 9. 硬核工业轨道空间站 + 悬吊巨型实时比分大屏 + 偶发微流星 (Orbital Industrial Station & Hanging Live Scoreboard)
     const gateway=new THREE.Group();gateway.name="lunarOrbitalStation";
     // 主工业桁架脊梁 (18m 跨度)
@@ -1034,7 +1053,7 @@
     s.wonder={
       kind:"lunar",earth,suit1,suit2,
       solarCorona,shaftMat,horizonGlow,lunarDust,
-      dishPivot,solarPivot,cornerBeacons,
+      dishPivot,solarPivot,cornerBeacons,derrickBeaconMat,
       rover,roverWheels,roverDish,roverBeaconMat,terrainY,
       gateway,gwBeaconMat,gwAmberMat,drawOrbitalBoard,orbitalBoardKey:"",
       meteor,meteorMat
@@ -2317,6 +2336,13 @@
         mesh.count=low;drifts.count+=low*3;
       }
       drifts.seeds.visible=rain<.42;
+      if(weather.livestock){
+        const t=s.time;
+        for(const a of weather.livestock){
+          // Gentle independent grazing head-nodding
+          a.headPivot.rotation.x=0.35+0.32*Math.sin(t*a.rate+a.phase);
+        }
+      }
       ambient.color.copy(weather.skyColor);
       // Strong directional cloud-break contrast even at opening overcast phase (clear == 0) so terrain, trees & boulders have 3D depth.
       ambient.intensity=(.28-.08*clear-.04*gold)*(1-.82*blackout)+.21*flash;
@@ -2331,6 +2357,48 @@
       if(data.environmentPhase!==weather.stage)data.environmentPhase=weather.stage;
       const count=String(drifts.count);
       if(data.flowerMeadow!==count)data.flowerMeadow=count;
+    }
+
+    function pastureLivestock(s){
+      // Distant alpine grazing sheep (6) & cows (2) on the sunlit meadow hillsides to visually anchor the distant pasture audio.
+      const grp=new THREE.Group();grp.name="meadowPastureLivestock";
+      const woolMat=new THREE.MeshLambertMaterial({color:0xe8e5dc});
+      const darkFaceMat=new THREE.MeshLambertMaterial({color:0x363432});
+      const cowBrownMat=new THREE.MeshLambertMaterial({color:0x6b4a34});
+      const cowPatchMat=new THREE.MeshLambertMaterial({color:0xebe6db});
+      const animals=[];
+      const placements=[
+        {kind:"sheep",x:34,z:-28,yaw:1.8},{kind:"sheep",x:37.5,z:-25.5,yaw:2.5},{kind:"sheep",x:32,z:-24.5,yaw:0.9},
+        {kind:"sheep",x:40.5,z:-30,yaw:-1.2},{kind:"sheep",x:-38,z:-22,yaw:-0.7},{kind:"sheep",x:-34.5,z:-25,yaw:0.4},
+        {kind:"cow",x:44,z:-19,yaw:2.2},{kind:"cow",x:-41,z:-17,yaw:-1.1}
+      ];
+      for(let i=0;i<placements.length;i++){
+        const a=placements[i],isCow=a.kind==="cow";
+        const root=new THREE.Group();
+        const py=elevation(a.x,a.z);
+        root.position.set(a.x,py,a.z);root.rotation.y=a.yaw;
+        const bodyMat=isCow?cowBrownMat:woolMat;
+        const bw=isCow?0.78:0.48,bh=isCow?0.72:0.42,bl=isCow?1.58:0.86,legH=isCow?0.72:0.34;
+        const body=new THREE.Mesh(new THREE.BoxGeometry(bw,bh,bl),bodyMat);
+        body.position.y=legH+bh*0.5;root.add(body);
+        if(isCow){
+          const patch=new THREE.Mesh(new THREE.BoxGeometry(bw+0.03,bh*0.58,bl*0.42),cowPatchMat);
+          patch.position.set(0,legH+bh*0.52,-0.12);root.add(patch);
+        }
+        for(const lx of [-bw*0.32,bw*0.32])for(const lz of [-bl*0.34,bl*0.34]){
+          const leg=new THREE.Mesh(new THREE.BoxGeometry(isCow?0.12:0.08,legH,isCow?0.12:0.08),darkFaceMat);
+          leg.position.set(lx,legH*0.5,lz);root.add(leg);
+        }
+        const headPivot=new THREE.Group();
+        headPivot.position.set(0,legH+bh*0.62,bl*0.52);
+        const head=new THREE.Mesh(new THREE.BoxGeometry(isCow?0.36:0.24,isCow?0.34:0.22,isCow?0.48:0.30),isCow?cowBrownMat:darkFaceMat);
+        head.position.set(0,-0.04,isCow?0.20:0.12);
+        headPivot.add(head);root.add(headPivot);
+        grp.add(root);
+        animals.push({headPivot,phase:i*1.93,rate:0.38+(i%4)*0.11});
+      }
+      s.root.add(grp);
+      return animals;
     }
 
     function buildMeadow(s){
@@ -2422,6 +2490,7 @@
       };
       mountainRange(s,true,mountain);mountainRange(s,false,mountain);
       spruceForest(s);meadowGrass(s);meadowRocks(s,rock);meadowShrubs(s);
+      s.meadow.livestock=pastureLivestock(s);
       s.meadow.drifts=distantFlowers(s,s.meadow);
       updateMeadow(s,0);
     }
@@ -2488,14 +2557,18 @@
           w.roverBeaconMat.color.setRGB(1.0*bp,0.65*bp,0.18*bp);
         }
       }
+      if(w.derrickBeaconMat){
+        const dp=0.18+0.82*Math.pow(0.5+0.5*Math.sin(t*2.1+0.8),4);
+        w.derrickBeaconMat.color.setRGB(1.0*dp,0.52*dp,0.12*dp);
+      }
       // 硬核工业轨道空间站沿弧形近月轨道缓慢横越星海 + 实时比分大屏同步 + 偶发流星
       if(w.gateway){
-        const gt=((t*0.36+82)%135)/135;
-        const orbAng=-0.52+gt*1.48;
+        const gt=((t*0.34+98)%140)/140;
+        const orbAng=-0.30+gt*1.42;
         const orbR=66;
         const gx=Math.sin(orbAng)*orbR;
         const gz=-6-Math.cos(orbAng)*orbR;
-        w.gateway.position.set(gx,16.2+Math.sin(gt*Math.PI)*2.4,gz);
+        w.gateway.position.set(gx,15.6+Math.sin(gt*Math.PI)*2.2,gz);
         // 悬吊巨型比分大屏始终微调朝向球场中心，第三人称/第一人称/各底角均清晰可见
         w.gateway.rotation.y=Math.atan2(-gx,-gz+2)*0.82;
         w.gateway.rotation.z=Math.cos(gt*Math.PI)*0.025;

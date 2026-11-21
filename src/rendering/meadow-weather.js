@@ -541,9 +541,9 @@
         w.strikeDur=lerp(.15,.78,Math.pow(hDur,1.15));
         w.strikePulses=hPulse>.66?3:(hPulse>.28?2:1);
         const dist=lerp(.12,1.0,hDist);
-        const boltX=lerp(-52,48,hPos);
-        w.bolt.position.set(boltX,lerp(8.5,16.5,strikeHash(idx,23.3)),-128);
-        w.bolt.scale.set((hPos>.5?1:-1)*lerp(.72,1.34,hPow),lerp(.78,1.28,hDur),1);
+        const boltX=lerp(-48,46,hPos);
+        w.bolt.position.set(boltX,lerp(16,25,strikeHash(idx,23.3)),-126);
+        w.bolt.scale.set((hPos>.5?1:-1)*lerp(.88,1.48,hPow),lerp(.90,1.38,hDur),1);
         w.thunderAt=time+lerp(.30,2.25,dist);
         w.thunderOpts={power:w.strikePower,distance:dist,pan:clamp(boltX/56,-.78,.78)};
         // Irregular gap: 2.6s..8.4s (more active at storm peak, occasional rapid follow-up)
