@@ -49,7 +49,8 @@
   const forestLight=`
     uniform vec3 forestSun;
     uniform float forestTime;
-    vec2 canopyFoot(vec3 p){return p.xz-p.y*forestSun.xz/forestSun.y;}
+    uniform vec4 forestCycle; // x=sunset, y=night, z=firefly, w=darkPitch
+    vec2 canopyFoot(vec3 p){return p.xz-p.y*forestSun.xz/max(.08,forestSun.y);}
     float lobe(vec2 p,vec2 origin,vec2 spread){
       vec2 d=(p-origin)/spread;
       return exp(-dot(d,d));
@@ -148,8 +149,21 @@
             float space=length(cameraPosition-leafCenter)-leafBounds.w;
             vLeafOpacity=smoothstep(.075,.33,space);
           `:""}`);
-      shader.fragmentShader=forestLight+(marks||moss?mossTexture:"")+marksUniform+shared+
+      const revealUniform=plant||bark?"uniform float forestCourtReveal;\n":"";
+      shader.fragmentShader=forestLight+(marks||moss?mossTexture:"")+marksUniform+shared+revealUniform+
         shader.fragmentShader.replace("#include <color_fragment>",`#include <color_fragment>
+          ${plant||bark?`
+            // The airborne camera reveals the court through its overhanging canopy.
+            if(forestCourtReveal>0.0 && vForestWorld.y>3.5 && cameraPosition.y>vForestWorld.y+.2){
+              float rayScale=cameraPosition.y/(cameraPosition.y-vForestWorld.y);
+              vec2 target=cameraPosition.xz+(vForestWorld.xz-cameraPosition.xz)*rayScale;
+              vec2 margin=abs(target-vec2(0.0,4.745))/vec2(10.0,17.5);
+              float edge=max(margin.x,margin.y);
+              vec2 dither=mod(floor(gl_FragCoord.xy),4.0);
+              float noise=fract(dot(dither,vec2(.5,.75))+.124*floor(dither.x*.5)+.063*floor(dither.y*.5));
+              if(forestCourtReveal*(1.0-smoothstep(1.0,1.24,edge))>noise)discard;
+            }
+          `:""}
           ${nearLeaves?`
             // Fade an entire blade as the lens passes it, including in the depth pass.
             vec2 j=mod(floor(gl_FragCoord.xy),4.0);
@@ -221,17 +235,18 @@
             `:""}
             diffuseColor.rgb=mix(diffuseColor.rgb,mossColor,mossCover*.79);`:""}
         `).replace("#include <lights_fragment_end>",`#include <lights_fragment_end>
-          float daylight=leafLight(vForestWorld);
+          float daylight=mix(leafLight(vForestWorld),1.0,forestCycle.y*.85);
           reflectedLight.directDiffuse*=daylight;
           reflectedLight.directSpecular*=daylight;
           ${plant?`
-            float beam=lightShaft(vForestWorld);
+            float beam=lightShaft(vForestWorld)*(1.0-forestCycle.y);
             vec3 lightView=normalize((viewMatrix*vec4(forestSun,0.0)).xyz);
             float transmittance=.31+.69*pow(max(0.0,dot(normal,-lightView)),.72);
             float forwardLight=pow(max(0.0,dot(normalize(vForestWorld-cameraPosition),forestSun)),3.8);
-            float transmission=(beam*.78+forestClearing(vForestWorld)*forwardLight*.51)*transmittance;
-            totalEmissiveRadiance+=diffuseColor.rgb*vec3(.81,.66,.29)*beam
-              +vec3(.49,.278,.055)*transmission;
+            float transmission=(beam*.78+forestClearing(vForestWorld)*forwardLight*.51*(1.0-forestCycle.y))*transmittance;
+            vec3 sunBeamCol=mix(vec3(.81,.66,.29),vec3(1.0,.44,.14),forestCycle.x);
+            vec3 transCol=mix(vec3(.49,.278,.055),vec3(.78,.24,.06),forestCycle.x);
+            totalEmissiveRadiance+=diffuseColor.rgb*sunBeamCol*beam+transCol*transmission;
           `:""}`);
     };
     mat.customProgramCacheKey=()=>`rainforest:${plant}:${!!marks}:${moss}:${nearLeaves}:${bark}`;
@@ -1550,13 +1565,30 @@
     const mat=new THREE.ShaderMaterial({side:THREE.BackSide,depthWrite:false,fog:false,uniforms,
       vertexShader:`varying vec3 ray;void main(){ray=(modelMatrix*vec4(position,1.0)).xyz-cameraPosition;
         gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
-      fragmentShader:`varying vec3 ray;uniform vec3 forestSun;
+      fragmentShader:`varying vec3 ray;uniform vec3 forestSun;uniform vec4 forestCycle;uniform float forestTime;
         void main(){
           vec3 d=normalize(ray);
-          vec3 horizon=vec3(.23,.25,.16),sky=vec3(.21,.285,.255);
+          float dusk=forestCycle.x,night=forestCycle.y,ff=forestCycle.z;
+          vec3 dayHor=vec3(.23,.25,.16),daySky=vec3(.21,.285,.255);
+          vec3 duskHor=vec3(.68,.25,.10),duskSky=vec3(.18,.11,.22);
+          vec3 nightHor=vec3(.008,.014,.022)+vec3(.012,.024,.008)*ff;
+          vec3 nightSky=vec3(.003,.006,.013);
+          vec3 horizon=mix(mix(dayHor,duskHor,dusk),nightHor,night);
+          vec3 sky=mix(mix(daySky,duskSky,dusk),nightSky,night);
           vec3 c=mix(horizon,sky,smoothstep(.015,.69,d.y));
           float toward=max(0.0,dot(d,forestSun));
-          c+=vec3(.84,.54,.17)*pow(toward,4.2)+vec3(.48,.25,.06)*pow(toward,34.0);
+          vec3 sunGlow=mix(vec3(.84,.54,.17),vec3(1.0,.36,.10),dusk)*(1.0-night*.96);
+          vec3 sunCore=mix(vec3(.48,.25,.06),vec3(1.0,.52,.14),dusk)*(1.0-night*.98);
+          c+=sunGlow*pow(toward,mix(4.2,2.8,dusk))+sunCore*pow(toward,30.0);
+          // Faint deep-night stars glinting above the dark canopy
+          if(night>.25&&d.y>.14){
+            vec2 cell=floor(d.xz/(d.y+.15)*58.0);
+            float h=fract(sin(dot(cell,vec2(127.1,311.7)))*43758.5453);
+            if(h>.988){
+              float tw=.55+.45*sin(forestTime*(1.8+fract(h*41.0)*2.5)+h*60.0);
+              c+=vec3(.55,.72,.95)*tw*smoothstep(.25,.85,night)*smoothstep(.14,.42,d.y)*.55;
+            }
+          }
           gl_FragColor=vec4(c,1.0);
           #include <tonemapping_fragment>
           #include <encodings_fragment>
@@ -1611,23 +1643,28 @@
             glow+=lightShaft(p)*(valley*.78+.52)*stride*.265*transmittance*
               smoothstep(.35,3.2,t)*(.54+.46*angle);
           }
-          float warm=1.0-exp(-amber);
-          float mist=(1.0-exp(-accumulated))*(.56+.30*warm);
-          float shaft=(1.0-exp(-glow))*.59;
+          float dusk=forestCycle.x,night=forestCycle.y,ff=forestCycle.z;
+          float warm=(1.0-exp(-amber))*(1.0-night*.94);
+          float mist=(1.0-exp(-accumulated))*(.56+.30*warm)*mix(1.0,.62,night);
+          float shaft=(1.0-exp(-glow))*.59*(1.0-night*.98);
           float alpha=min(.86,mist+shaft*(1.0-mist));
-          vec3 shades=mix(vec3(.30,.43,.38),vec3(.96,.80,.54),clamp(warm*1.23,0.0,1.0));
-          vec3 sun=vec3(1.0,.82,.53);
+          vec3 dayMist=mix(vec3(.30,.43,.38),vec3(.96,.80,.54),clamp(warm*1.23,0.0,1.0));
+          vec3 duskMist=mix(vec3(.34,.20,.24),vec3(1.0,.48,.20),clamp(warm*1.35,0.0,1.0));
+          vec3 nightMist=vec3(.009,.016,.024)+vec3(.022,.042,.014)*ff;
+          vec3 shades=mix(mix(dayMist,duskMist,dusk),nightMist,night);
+          vec3 sun=mix(vec3(1.0,.82,.53),vec3(1.0,.44,.16),dusk);
           vec3 rgb=(shades*mist+sun*shaft*(1.0-mist))/max(.001,alpha);
           gl_FragColor=vec4(rgb,alpha);
         }`});
     const fallback=new THREE.Group();fallback.name="rainforestAirFallback";
     const beamMat=new THREE.ShaderMaterial({side:THREE.DoubleSide,transparent:true,depthWrite:false,fog:false,
       uniforms,vertexShader:`varying vec2 tex;void main(){tex=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
-      fragmentShader:`varying vec2 tex;uniform float forestTime;
+      fragmentShader:`varying vec2 tex;uniform float forestTime;uniform vec4 forestCycle;
         void main(){float width=.98-abs(tex.x-.5)*2.0;
           float fall=sin(tex.y*3.14159);
-          float a=pow(max(0.0,width),2.3)*fall*.25*(.93+.07*cos(tex.y*17.0-forestTime*.47));
-          gl_FragColor=vec4(1.0,.81,.51,a);
+          float a=pow(max(0.0,width),2.3)*fall*.25*(.93+.07*cos(tex.y*17.0-forestTime*.47))*(1.0-forestCycle.y);
+          vec3 col=mix(vec3(1.0,.81,.51),vec3(1.0,.45,.18),forestCycle.x);
+          gl_FragColor=vec4(col,a);
         }`});
     for(const [x,z,w] of [[-5.4,-13.8,3.0],[-3.55,-16.5,2.0],[6.7,-22.7,4.3],[12.1,-36.9,4.6]]){
       const from=new THREE.Vector3(x,.5,z),span=32;
@@ -1692,10 +1729,11 @@
             smoothstep(.65,2.4,depth)*(1.0-smoothstep(24.0,45.0,depth))*
             mix(.80+.20*sin(t*1.6),.58+.42*smoothstep(-.75,.73,sin(forestTime*2.4+seed)),insect);
           float near=smoothstep(.55,1.55,depth)*(1.0-smoothstep(6.5,14.0,depth));
-          spark=mix(spark,near*(.16+.34*beam)*(.84+.16*sin(t*1.4)),soft);
+          spark=mix(spark,near*(.16+.34*beam)*(.84+.16*sin(t*1.4)),soft)*(1.0-forestCycle.y*.92);
           flutter=.45+.55*abs(sin(forestTime*44.0+seed));
         }`,
       fragmentShader:`
+        uniform vec4 forestCycle;
         varying float spark,insect,flutter,soft;
         void main(){
           vec2 p=gl_PointCoord-.5;
@@ -1704,7 +1742,8 @@
           float veil=1.0-smoothstep(.06,.60,length(uv*vec2(2.35,2.10)));
           float bodyBlur=exp(-dot(p*vec2(4.2,2.0),p*vec2(4.2,2.0))*9.0);
           float wings=clamp(veil*(.62+.38*flutter)+bodyBlur*.55,0.0,1.0);
-          vec3 tone=mix(vec3(1.0,.92,.72),vec3(.99,.97,.88),insect);
+          vec3 dayTone=mix(vec3(1.0,.92,.72),vec3(.99,.97,.88),insect);
+          vec3 tone=mix(dayTone,vec3(1.0,.58,.26),forestCycle.x*.72);
           float aperture=pow(1.0-smoothstep(.06,.49,length(p)),1.45);
           gl_FragColor=vec4(tone,spark*mix(mix(dust*.72,wings*.68,insect),aperture*.68,soft));
         }`});
@@ -1883,9 +1922,364 @@
     if(mesh.instanceColor)mesh.instanceColor.needsUpdate=true;
   }
 
+  function buildForestFireflies(s,uniforms){
+    // Hundreds of bioluminescent fireflies awakening across the deep dark rainforest (900 desktop / 360 mobile).
+    const r=s.r,count=s.mobile?360:900;
+    const pos=new Float32Array(count*3),meta=new Float32Array(count*4);
+    for(let i=0;i<count;i++){
+      const nearCourt=i%3!==0;
+      const x=(r()-.5)*(nearCourt?22:52);
+      const y=nearCourt?(.35+Math.pow(r(),1.25)*5.8):(.55+Math.pow(r(),1.15)*11.5);
+      const z=nearCourt?(-16+r()*28):(-46+r()*66);
+      pos[i*3]=x;pos[i*3+1]=y;pos[i*3+2]=z;
+      // meta: x=phase, y=size, z=staggered wake threshold (0..1), w=hue shift (warm chartreuse <-> golden lime)
+      meta[i*4]=r()*TAU;
+      meta[i*4+1]=.72+r()*1.35;
+      // First ~8% wake early during the pitch-black transition; the rest flood the forest as night deepens.
+      meta[i*4+2]=i<count*.08?r()*.18:(.16+Math.pow(r(),.85)*.84);
+      meta[i*4+3]=r();
+    }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute("position",new THREE.BufferAttribute(pos,3));
+    geo.setAttribute("aMeta",new THREE.BufferAttribute(meta,4));
+    const mat=new THREE.ShaderMaterial({
+      uniforms,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,
+      vertexShader:`
+        uniform float forestTime;
+        uniform vec4 forestCycle;
+        attribute vec4 aMeta;
+        varying float vGlow,vHue;
+        void main(){
+          float ff=forestCycle.z;
+          float wake=smoothstep(aMeta.z*.82,min(1.0,aMeta.z*.82+.22),ff);
+          float ph=aMeta.x,sz=aMeta.y;
+          float t=forestTime*(.34+.26*fract(ph*3.17))+ph*9.7;
+          // Organic meandering 3D firefly flight (aperiodic multi-harmonic drift)
+          vec3 drift=vec3(
+            sin(t*.71+ph)*.95+cos(t*1.37-ph*2.1)*.42,
+            sin(t*.89+ph*1.7)*.52+cos(t*.43+ph)*.28,
+            cos(t*.63-ph*1.3)*.95+sin(t*1.21+ph)*.40
+          );
+          vec3 wp=position+drift;
+          vec4 mv=modelViewMatrix*vec4(wp,1.0);
+          float dist=max(1.0,-mv.z);
+          gl_Position=projectionMatrix*mv;
+          // Asynchronous bioluminescent breathing blink (slow glow pulse + dark pause)
+          float blinkWave=sin(forestTime*(1.35+fract(ph*5.3)*1.45)+ph*13.0);
+          float pulse=.22+.78*pow(max(0.0,blinkWave*.5+.5),1.75);
+          float range=smoothstep(.6,2.0,dist)*(1.0-smoothstep(34.0,62.0,dist));
+          vGlow=wake*pulse*range;
+          vHue=aMeta.w;
+          gl_PointSize=clamp(sz*(66.0+28.0*pulse)/max(1.4,dist),1.8,24.0)*step(.01,vGlow);
+        }`,
+      fragmentShader:`
+        varying float vGlow,vHue;
+        void main(){
+          if(vGlow<.01)discard;
+          vec2 p=gl_PointCoord*2.0-1.0;
+          float r2=dot(p,p);
+          if(r2>1.0)discard;
+          float core=exp(-r2*14.0);
+          float halo=exp(-r2*3.4)*.58;
+          vec3 lime=vec3(.78,1.0,.28),gold=vec3(1.0,.90,.36);
+          vec3 col=mix(mix(lime,gold,vHue),vec3(1.0,1.0,.86),core*.65);
+          float a=clamp((core+halo)*vGlow,0.0,1.0);
+          gl_FragColor=vec4(col*a*1.15,a);
+        }`
+    });
+    const mesh=new THREE.Points(geo,mat);
+    mesh.name="rainforestFireflies";mesh.frustumCulled=false;mesh.renderOrder=6;mesh.visible=false;
+    s.root.add(mesh);
+    return mesh;
+  }
+
+  function buildHoopFireflies(s,uniforms){
+    // Interactive firefly swarm clustered densely around the hoop with viscous damped "ink-in-water" shockwave physics.
+    const r=s.r,count=s.mobile?110:260;
+    const pos=new Float32Array(count*3),sizeArr=new Float32Array(count),glowArr=new Float32Array(count),hueArr=new Float32Array(count);
+    const items=[];
+    const hx0=HOOP.x,hy0=HOOP.y+.15,hz0=HOOP.z;
+    for(let i=0;i<count;i++){
+      const inRimHalo=i<count*.58;
+      const rad=inRimHalo?(.32+Math.pow(r(),1.25)*1.75):(1.6+r()*3.0);
+      const theta=r()*TAU,elev=(r()-.42)*(inRimHalo?1.55:2.4);
+      const hx=hx0+Math.cos(theta)*rad;
+      const hy=Math.max(.55,hy0+elev);
+      const hz=hz0+Math.sin(theta)*rad*.85;
+      // Per-firefly perpendicular swirl axis so shockwaves curl & billow like ink diffusing in water
+      const sa=r()*TAU,sb=(r()-.5)*1.4;
+      const sx=Math.cos(sa)*Math.cos(sb),sy=Math.sin(sb),sz=Math.sin(sa)*Math.cos(sb);
+      const wake=i<count*.10?r()*.16:(.14+Math.pow(r(),.85)*.86);
+      const szScale=.82+r()*1.35,hue=r();
+      items.push({
+        hx,hy,hz,dx:0,dy:0,dz:0,vx:0,vy:0,vz:0,
+        sx,sy,sz,phase:r()*TAU,rate:.45+r()*.55,blinkRate:1.3+r()*1.5,
+        wake,size:szScale,hue,excited:0
+      });
+      pos[i*3]=hx;pos[i*3+1]=hy;pos[i*3+2]=hz;
+      sizeArr[i]=szScale;glowArr[i]=0;hueArr[i]=hue;
+    }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute("position",new THREE.BufferAttribute(pos,3));
+    geo.setAttribute("aSize",new THREE.BufferAttribute(sizeArr,1));
+    geo.setAttribute("aGlow",new THREE.BufferAttribute(glowArr,1));
+    geo.setAttribute("aHue",new THREE.BufferAttribute(hueArr,1));
+    const mat=new THREE.ShaderMaterial({
+      uniforms,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,
+      vertexShader:`
+        attribute float aSize,aGlow,aHue;
+        varying float vGlow,vHue;
+        void main(){
+          vGlow=aGlow;vHue=aHue;
+          vec4 mv=modelViewMatrix*vec4(position,1.0);
+          float dist=max(.9,-mv.z);
+          gl_Position=projectionMatrix*mv;
+          gl_PointSize=clamp(aSize*(74.0+36.0*min(1.4,aGlow))/max(1.2,dist),2.0,28.0)*step(.01,aGlow);
+        }`,
+      fragmentShader:`
+        varying float vGlow,vHue;
+        void main(){
+          if(vGlow<.01)discard;
+          vec2 p=gl_PointCoord*2.0-1.0;
+          float r2=dot(p,p);
+          if(r2>1.0)discard;
+          float core=exp(-r2*13.0);
+          float halo=exp(-r2*3.1)*.62;
+          vec3 lime=vec3(.80,1.0,.30),gold=vec3(1.0,.91,.38);
+          vec3 col=mix(mix(lime,gold,vHue),vec3(1.0,1.0,.90),core*.72);
+          float a=clamp((core+halo)*min(1.35,vGlow),0.0,1.0);
+          gl_FragColor=vec4(col*a*1.25,a);
+        }`
+    });
+    const mesh=new THREE.Points(geo,mat);
+    mesh.name="rainforestHoopFireflies";mesh.frustumCulled=false;mesh.renderOrder=7;mesh.visible=false;
+    s.root.add(mesh);
+    // Warm bioluminescent point light near the hoop so the timber backboard & rim catch firefly glow at night
+    const hoopLight=new THREE.PointLight(0xbfff4a,0,12,1.8);
+    hoopLight.name="rainforestHoopFireflyLight";
+    hoopLight.position.set(HOOP.x,HOOP.y+.35,HOOP.z+.45);
+    s.root.add(hoopLight);
+    return {mesh,geo,pos,glowArr,items,hoopLight,scatterEnergy:0};
+  }
+
+  function applyFireflyImpulse(hf,ox,oy,oz,strength,radius){
+    if(!hf||!hf.items)return;
+    const rad=radius||3.6,str=Math.max(.4,strength||3.2);
+    hf.scatterEnergy=Math.min(1,hf.scatterEnergy+str*.16);
+    for(let i=0;i<hf.items.length;i++){
+      const f=hf.items[i];
+      const px=f.hx+f.dx,py=f.hy+f.dy,pz=f.hz+f.dz;
+      const rx=px-ox,ry=py-oy,rz=pz-oz;
+      const dist=Math.hypot(rx,ry,rz);
+      if(dist>rad)continue;
+      const inv=dist>.04?1/dist:0;
+      const nx=dist>.04?rx*inv:f.sx,ny=dist>.04?ry*inv:f.sy,nz=dist>.04?rz*inv:f.sz;
+      // Smooth exponential falloff + tangential ink-in-water vortex curl
+      const fall=Math.exp(-dist/(rad*.44));
+      const kick=str*fall;
+      // Cross(normal, swirlAxis) creates swirling ink-plume curls rather than rigid radial rays
+      const cx=ny*f.sz-nz*f.sy,cy=nz*f.sx-nx*f.sz,cz=nx*f.sy-ny*f.sx;
+      f.vx+=(nx*.76+cx*.52)*kick;
+      f.vy+=(ny*.72+cy*.48+.14)*kick;
+      f.vz+=(nz*.76+cz*.52)*kick;
+      f.excited=Math.min(1.2,f.excited+fall*.95);
+    }
+  }
+
+  function updateHoopFireflies(hf,t,dt,ffAmount){
+    if(!hf)return;
+    const active=ffAmount>.015;
+    hf.mesh.visible=active;
+    if(!active){
+      hf.hoopLight.intensity=0;
+      return;
+    }
+    const step=Math.min(.05,Math.max(.001,dt||1/60));
+    // Check live flying basketballs passing near the hoop for continuous fluid slipstream wake push
+    const activeBalls=(typeof balls!=="undefined"&&Array.isArray(balls))?balls:null;
+    const bPts=[];
+    if(activeBalls){
+      for(let bi=0;bi<activeBalls.length;bi++){
+        const b=activeBalls[bi],mp=b?.mesh?.position;
+        if(!mp||!b.mesh.visible)continue;
+        if(Math.hypot(mp.x-HOOP.x,mp.y-HOOP.y,mp.z-HOOP.z)<5.2)bPts.push(mp);
+      }
+    }
+    // Overdamped viscous fluid parameters ("像水里的墨水一样被弹开，然后又缓缓聚回来"):
+    // High fluid drag (3.45) brakes outward burst softly in mid-air; gentle restoring spring (0.58) regathers dreamily over ~3.5s.
+    const drag=Math.exp(-3.45*step);
+    const springK=.58;
+    const {items,pos,glowArr}=hf;
+    let avgDisp=0;
+    for(let i=0;i<items.length;i++){
+      const f=items[i];
+      // Natural slow organic hover around home position
+      const tt=t*f.rate+f.phase;
+      const idleX=Math.sin(tt*.82)*.26+Math.cos(tt*1.43+f.phase)*.10;
+      const idleY=Math.sin(tt*1.05+f.phase)*.18+Math.cos(tt*.57)*.09;
+      const idleZ=Math.cos(tt*.74-f.phase)*.24+Math.sin(tt*1.29)*.10;
+      // Continuous fluid wake push from any basketball flying close to this firefly
+      for(let bi=0;bi<bPts.length;bi++){
+        const bp=bPts[bi];
+        const px=f.hx+idleX+f.dx,py=f.hy+idleY+f.dy,pz=f.hz+idleZ+f.dz;
+        const rx=px-bp.x,ry=py-bp.y,rz=pz-bp.z;
+        const d=Math.hypot(rx,ry,rz);
+        if(d<2.15&&d>.02){
+          const fall=Math.exp(-d*.95),nx=rx/d,ny=ry/d,nz=rz/d;
+          const cx=ny*f.sz-nz*f.sy,cy=nz*f.sx-nx*f.sz,cz=nx*f.sy-ny*f.sx;
+          const wake=14.0*fall*step;
+          f.vx+=(nx*.70+cx*.55)*wake;
+          f.vy+=(ny*.68+cy*.48)*wake;
+          f.vz+=(nz*.70+cz*.55)*wake;
+          f.excited=Math.min(1.15,f.excited+fall*step*3.2);
+        }
+      }
+      // Overdamped ink-in-water spring-damper integration
+      f.vx=(f.vx-f.dx*springK*step)*drag;
+      f.vy=(f.vy-f.dy*springK*step)*drag;
+      f.vz=(f.vz-f.dz*springK*step)*drag;
+      f.dx+=f.vx*step;f.dy+=f.vy*step;f.dz+=f.vz*step;
+      // Soft max displacement clamp so fireflies stay within the hoop clearing
+      const dLen=Math.hypot(f.dx,f.dy,f.dz);
+      if(dLen>3.8){const sc=3.8/dLen;f.dx*=sc;f.dy*=sc;f.dz*=sc;}
+      avgDisp+=dLen;
+      f.excited=Math.max(0,f.excited-step*.48);
+
+      pos[i*3]=f.hx+idleX+f.dx;
+      pos[i*3+1]=Math.max(.25,f.hy+idleY+f.dy);
+      pos[i*3+2]=f.hz+idleZ+f.dz;
+
+      const wake=smoothstep(ffAmount,f.wake*.78,Math.min(1,f.wake*.78+.22));
+      const blink=.24+.76*Math.pow(Math.max(0,Math.sin(t*f.blinkRate+f.phase*11)*.5+.5),1.65);
+      glowArr[i]=wake*(blink+f.excited*.85);
+    }
+    hf.geo.attributes.position.needsUpdate=true;
+    hf.geo.attributes.aGlow.needsUpdate=true;
+    hf.scatterEnergy=Math.max(0,hf.scatterEnergy-step*.55);
+    // Warm firefly glow on the hoop softens slightly when the swarm scatters outward, then blooms back as they regather
+    const densityFactor=Math.max(.35,1-(avgDisp/items.length)*.28);
+    hf.hoopLight.intensity=ffAmount*(1.15+.25*Math.sin(t*2.1))*densityFactor+hf.scatterEnergy*.35*ffAmount;
+  }
+
+  function smoothDampVal(cur,target,obj,velKey,smoothTime,maxSpeed,dt){
+    if(dt<=0)return cur;
+    const st=Math.max(.0001,smoothTime),omega=2/st,x=omega*dt;
+    const exp=1/(1+x+.48*x*x+.235*x*x*x);
+    const maxCh=maxSpeed*st;
+    const ch=Math.max(-maxCh,Math.min(maxCh,cur-target));
+    const ct=cur-ch;
+    const temp=(obj[velKey]+omega*ch)*dt;
+    obj[velKey]=(obj[velKey]-omega*temp)*exp;
+    let out=ct+(ch+temp)*exp;
+    if((target-cur>0)===(out>target)){out=target;obj[velKey]=0;}
+    return out;
+  }
+
+  const DAY_SUN=new THREE.Color(0xffe1b0),DUSK_SUN=new THREE.Color(0xff6b2c),NIGHT_SUN=new THREE.Color(0x3a5882);
+  const DAY_AMB=new THREE.Color(0x9fb8a8),DUSK_AMB=new THREE.Color(0x88544c),NIGHT_AMB=new THREE.Color(0x0b1622);
+  const DAY_HEMI_SKY=new THREE.Color(0xb8d4c8),DUSK_HEMI_SKY=new THREE.Color(0x9e5042),NIGHT_HEMI_SKY=new THREE.Color(0x102032);
+  const DAY_HEMI_GND=new THREE.Color(0x35442b),DUSK_HEMI_GND=new THREE.Color(0x2a1d14),NIGHT_HEMI_GND=new THREE.Color(0x07100a);
+  const DAY_FOG=new THREE.Color(0x4b6356),DUSK_FOG=new THREE.Color(0x52312a),NIGHT_FOG=new THREE.Color(0x03070c);
+  const FIREFLY_FOG=new THREE.Color(0x07120c);
+  const _sunDir=new THREE.Vector3(),_tmpCol=new THREE.Color();
+
+  function updateCycle(rf,dt,targetProgress){
+    const isBattle=typeof G!=="undefined"&&!!G&&G.mode==="battle";
+    const tgt=Math.max(0,Math.min(1,typeof targetProgress==="number"?targetProgress:rf.targetProgress));
+    rf.targetProgress=tgt;
+    rf.progress=dt>0?smoothDampVal(rf.progress,tgt,rf,"progressVel",isBattle?5.5:3.2,isBattle?.024:.042,dt):tgt;
+    const p=rf.progress;
+    // 4 poetic phases:
+    // 0.00..0.28 Afternoon Sunlight -> 0.28..0.56 Sunset Dusk -> 0.56..0.72 Pitch-Black Night -> 0.64..1.00 Dense Firefly Night
+    const dusk=smoothstep(p,.20,.44)*(1-smoothstep(p,.50,.63));
+    const night=smoothstep(p,.47,.61);
+    const darkPitch=smoothstep(p,.55,.64)*(1-smoothstep(p,.74,.92)*.35);
+    const firefly=smoothstep(p,.62,.92);
+    rf.uniforms.forestCycle.value.set(dusk,night,firefly,darkPitch);
+
+    // Sun arcs down from afternoon to sunset horizon, then shifts to faint high moonlight
+    const sunElev=lerp(.255,.095,smoothstep(p,.18,.54));
+    _sunDir.set(lerp(-.33,-.52,dusk),lerp(sunElev,.42,night),lerp(-.91,-.78,dusk)).normalize();
+    rf.uniforms.forestSun.value.copy(_sunDir);
+
+    if(typeof sun!=="undefined"&&sun){
+      sun.position.copy(_sunDir).multiplyScalar(46);
+      sun.color.copy(DAY_SUN).lerp(DUSK_SUN,dusk).lerp(NIGHT_SUN,night);
+      // Pitch-black night drops sun to a whisper of moonlight so dark forest truly feels pitch-black!
+      sun.intensity=lerp(lerp(1.52,1.08,dusk),.07+.04*firefly,night);
+    }
+    if(typeof ambient!=="undefined"&&ambient){
+      ambient.color.copy(DAY_AMB).lerp(DUSK_AMB,dusk).lerp(NIGHT_AMB,night);
+      ambient.intensity=lerp(lerp(.42,.28,dusk),.055+.035*firefly,night);
+    }
+    if(typeof hemi!=="undefined"&&hemi){
+      hemi.color.copy(DAY_HEMI_SKY).lerp(DUSK_HEMI_SKY,dusk).lerp(NIGHT_HEMI_SKY,night);
+      hemi.groundColor.copy(DAY_HEMI_GND).lerp(DUSK_HEMI_GND,dusk).lerp(NIGHT_HEMI_GND,night);
+      hemi.intensity=lerp(lerp(.68,.38,dusk),.065+.045*firefly,night);
+    }
+    if(typeof scene!=="undefined"&&scene?.fog){
+      _tmpCol.copy(DAY_FOG).lerp(DUSK_FOG,dusk).lerp(NIGHT_FOG,night).lerp(FIREFLY_FOG,firefly*.45);
+      scene.fog.color.copy(_tmpCol);
+      scene.fog.near=lerp(28,16,night);
+      scene.fog.far=lerp(155,92,night);
+    }
+    if(rf.forestFireflies)rf.forestFireflies.visible=firefly>.01;
+    // Daytime insects & birds quiet down as deep night settles
+    const dayLife=1-smoothstep(p,.44,.60);
+    if(rf.insects){
+      rf.insects.bodies.visible=dayLife>.02;
+      rf.insects.dfWings.visible=dayLife>.02;
+      rf.insects.bfWings.visible=dayLife>.02;
+    }
+    const stage=p>=.66?"fireflies":p>=.54?"midnight":p>=.26?"sunset":"afternoon";
+    if(rf.stage!==stage){
+      rf.stage=stage;
+      document.documentElement.dataset.environmentPhase=stage;
+    }
+    return {dusk,night,firefly,darkPitch};
+  }
+
+  function reset(s){
+    const rf=s?.rainforest;
+    if(!rf)return;
+    rf.progress=0;rf.progressVel=0;rf.targetProgress=0;rf.stage="afternoon";
+    if(rf.hoopFireflies){
+      for(const f of rf.hoopFireflies.items){f.dx=f.dy=f.dz=f.vx=f.vy=f.vz=f.excited=0;}
+      rf.hoopFireflies.scatterEnergy=0;
+    }
+    updateCycle(rf,0,0);
+  }
+
+  function activeRainforestState(){
+    const env=(typeof environmentRoot!=="undefined"&&environmentRoot)||global.environmentRoot;
+    return env?.userData?.placeState?.rainforest||null;
+  }
+
+  function fireflyTrailMix(){
+    if(typeof currentScenePreset!=="undefined"&&currentScenePreset!=="rainforest")return 0;
+    const rf=activeRainforestState();
+    if(!rf?.uniforms?.forestCycle)return 0;
+    return rf.uniforms.forestCycle.value.z||0;
+  }
+
+  function impulse(x,y,z,strength,kind){
+    if(typeof currentScenePreset!=="undefined"&&currentScenePreset!=="rainforest")return;
+    const rf=activeRainforestState();
+    if(!rf?.hoopFireflies)return;
+    const ff=rf.uniforms?.forestCycle?.value?.z||0;
+    if(ff<.02)return;
+    const mult=kind==="made"?1.35:kind==="rim"?1.15:.85;
+    applyFireflyImpulse(rf.hoopFireflies,x,y,z,(strength||3.0)*mult,kind==="made"?4.2:3.5);
+  }
+
   function build(s,batch){
-    const uniforms={forestSun:{value:light},forestTime:{value:0}};
-    const state={uniforms,foregroundLayer,...air(s,uniforms)};
+    const uniforms={
+      forestSun:{value:light.clone()},
+      forestTime:{value:0},
+      forestCourtReveal:{value:0},
+      forestCycle:{value:new THREE.Vector4(0,0,0,0)}
+    };
+    const state={uniforms,foregroundLayer,progress:0,progressVel:0,targetProgress:0,stage:"afternoon",...air(s,uniforms)};
     s.rainforest=state;s.heightAt=elevation;s.menuOrbit=[13.1,17.5,5.6,2.2];
     // The offscreen material has no scene mesh, so the owned sky material disposes it.
     canopySky(s,uniforms);
@@ -1895,22 +2289,29 @@
     state.falling=fallingLeaves(s);
     state.deepFlyers=deepFlyers(s,batch);
     state.insects=forestInsects(s);
+    state.forestFireflies=buildForestFireflies(s,uniforms);
+    state.hoopFireflies=buildHoopFireflies(s,uniforms);
     updateFalling(state.falling,s.time);
     updatePerches(state.perches,s.time);
     updateDeepFlyers(state.deepFlyers,s.time);
     updateForestInsects(state.insects,s.time);
+    updateCycle(state,0,0);
     return state;
   }
 
-  function update(s){
-    s.rainforest.uniforms.forestTime.value=s.time;
-    const board=s.rainforest.boardMotion;
+  function update(s,dt=0,progress){
+    const rf=s.rainforest;
+    rf.uniforms.forestTime.value=s.time;
+    const {night,firefly}=updateCycle(rf,dt,progress);
+    const board=rf.boardMotion;
     if(board)board.panelRig.rotation.x=board.nearPivot.rotation.x;
-    updateFalling(s.rainforest.falling,s.time);
-    updatePerches(s.rainforest.perches,s.time);
-    updateDeepFlyers(s.rainforest.deepFlyers,s.time);
-    updateForestInsects(s.rainforest.insects,s.time);
+    updateFalling(rf.falling,s.time);
+    updatePerches(rf.perches,s.time);
+    if(night<.82)updateDeepFlyers(rf.deepFlyers,s.time);
+    else if(rf.deepFlyers)rf.deepFlyers.forEach(f=>{f.bird.visible=false;});
+    if(night<.75)updateForestInsects(rf.insects,s.time);
+    updateHoopFireflies(rf.hoopFireflies,s.time,dt,firefly);
   }
 
-  global.AIBARainforest=Object.freeze({build,update,light});
+  global.AIBARainforest=Object.freeze({build,update,reset,impulse,fireflyTrailMix,light});
 })(window);

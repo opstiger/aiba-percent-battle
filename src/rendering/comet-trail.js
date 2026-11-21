@@ -20,22 +20,29 @@
   /* ---------- 彗星尾：柔和低亮度的渐隐飘带（头尾双向平滑收尖，绝不硬切） ---------- */
   const trailMat=new T.ShaderMaterial({
     transparent:true,depthWrite:false,blending:T.AdditiveBlending,side:T.DoubleSide,
-    uniforms:{uRainbow:{value:0},uTime:{value:0}},
+    uniforms:{uRainbow:{value:0},uFirefly:{value:0},uTime:{value:0}},
     vertexShader:`attribute float aT;attribute float aSide;attribute float aFade;varying float vT;varying float vSide;varying float vFade;
       void main(){vT=aT;vSide=aSide;vFade=aFade;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.);}`,
-    fragmentShader:`uniform float uRainbow,uTime;varying float vT;varying float vSide;varying float vFade;
+    fragmentShader:`uniform float uRainbow,uFirefly,uTime;varying float vT;varying float vSide;varying float vFade;
       vec3 ramp(float t){
         vec3 c0=vec3(1.,.94,.76),c1=vec3(1.,.76,.34),c2=vec3(1.,.48,.22),c3=vec3(.96,.32,.58),c4=vec3(.48,.42,1.);
         if(t<.12)return mix(c0,c1,t/.12);if(t<.36)return mix(c1,c2,(t-.12)/.24);
         if(t<.68)return mix(c2,c3,(t-.36)/.32);return mix(c3,c4,(t-.68)/.32);}
+      vec3 fireflyRamp(float t){
+        vec3 f0=vec3(1.,1.,.84),f1=vec3(.88,1.,.36),f2=vec3(.46,.92,.28),f3=vec3(.14,.52,.22);
+        if(t<.18)return mix(f0,f1,t/.18);if(t<.55)return mix(f1,f2,(t-.18)/.37);
+        return mix(f2,f3,(t-.55)/.45);
+      }
       vec3 rainbow(float t){return .55+.45*cos(6.2832*(t*1.3-uTime*.9+vec3(0.,.33,.67)));}
       void main(){
         float edge=1.-vSide*vSide;edge=edge*edge*edge;             // 横向更柔和
         float headIn=smoothstep(0.,.14,vT);                        // 头部渐入，避免平头硬切
         float tailOut=pow(1.-vT,1.85);                             // 尾部平滑渐隐
-        vec3 c=mix(ramp(vT),rainbow(vT),uRainbow*smoothstep(.08,.35,vT));
-        float a=clamp(headIn*tailOut*edge*.46,0.,1.)*vFade;
-        gl_FragColor=vec4(c*a*.85,a);}`
+        vec3 cometCol=mix(ramp(vT),rainbow(vT),uRainbow*smoothstep(.08,.35,vT));
+        float ffWave=.82+.18*sin(vT*18.-uTime*6.5);
+        vec3 c=mix(cometCol,fireflyRamp(vT)*ffWave,uFirefly);
+        float a=clamp(headIn*tailOut*edge*mix(.46,.54,uFirefly),0.,1.)*vFade;
+        gl_FragColor=vec4(c*a*mix(.85,1.05,uFirefly),a);}`
   });
   const trails=[];
   function makeTrail(p){
@@ -82,11 +89,11 @@
   starGeo.setAttribute("aSize",new T.BufferAttribute(sSize,1));
   starGeo.setAttribute("aSeed",new T.BufferAttribute(sSeed,1));
   const starMat=new T.ShaderMaterial({
-    transparent:true,depthWrite:false,blending:T.AdditiveBlending,uniforms:{uScale:{value:600},uTime:{value:0}},
+    transparent:true,depthWrite:false,blending:T.AdditiveBlending,uniforms:{uScale:{value:600},uFirefly:{value:0},uTime:{value:0}},
     vertexShader:`attribute vec3 aCol;attribute float aSize;attribute float aSeed;uniform float uScale;varying vec3 vCol;varying float vSeed;varying float vA;
       void main(){vCol=aCol;vSeed=aSeed;vec4 mv=modelViewMatrix*vec4(position,1.);vA=step(.0001,aSize);
         gl_PointSize=aSize*uScale/max(.1,-mv.z);gl_Position=projectionMatrix*mv;}`,
-    fragmentShader:`uniform float uTime;varying vec3 vCol;varying float vSeed;varying float vA;
+    fragmentShader:`uniform float uTime,uFirefly;varying vec3 vCol;varying float vSeed;varying float vA;
       float sdStar5(vec2 p,float r,float rf){
         const vec2 k1=vec2(.809016994375,-.587785252292);
         const vec2 k2=vec2(-k1.x,k1.y);
@@ -99,14 +106,26 @@
         return length(p-ba*h)*sign(p.y*ba.x-p.x*ba.y);
       }
       void main(){if(vA<.5)discard;
-        vec2 d=gl_PointCoord-.5;float rot=vSeed*6.2832+uTime*2.1*(fract(vSeed*7.)-.5);
-        float cs=cos(rot),sn=sin(rot);d=vec2(cs*d.x-sn*d.y,sn*d.x+cs*d.y);
-        float sd=sdStar5(d,.42,.44);
+        vec2 d=gl_PointCoord-.5;
+        float r2=dot(d,d);
+        float rot=vSeed*6.2832+uTime*2.1*(fract(vSeed*7.)-.5);
+        float cs=cos(rot),sn=sin(rot);vec2 dr=vec2(cs*d.x-sn*d.y,sn*d.x+cs*d.y);
+        float sd=sdStar5(dr,.42,.44);
         float starShape=smoothstep(.035,-.025,sd);
-        float halo=exp(-dot(d,d)*22.)*.28;
+        float halo=exp(-r2*22.)*.28;
         float tw=.72+.28*sin(uTime*12.+vSeed*40.);
-        float a=clamp((starShape*.82+halo)*tw,0.,1.);if(a<.02)discard;
-        gl_FragColor=vec4(mix(vCol,vec3(1.),starShape*.25)*a,a);}`
+        float starA=clamp((starShape*.82+halo)*tw,0.,1.);
+        vec3 starC=mix(vCol,vec3(1.),starShape*.25);
+        // 深夜萤火虫尾迹粒子：柔和双层生物发光圆球 + 呼吸闪烁
+        float ffCore=exp(-r2*48.);
+        float ffHalo=exp(-r2*12.)*.62;
+        float ffPulse=.48+.52*sin(uTime*(5.5+fract(vSeed*9.)*4.)+vSeed*37.);
+        float ffA=clamp((ffCore+ffHalo)*ffPulse,0.,1.);
+        vec3 ffC=mix(mix(vec3(.78,1.,.28),vec3(1.,.90,.36),fract(vSeed*5.3)),vec3(1.,1.,.88),ffCore*.72);
+        float a=mix(starA,ffA,uFirefly);
+        if(a<.02)discard;
+        vec3 c=mix(starC,ffC,uFirefly);
+        gl_FragColor=vec4(c*a*mix(1.,1.2,uFirefly),a);}`
   });
   const stars=new T.Points(starGeo,starMat);stars.frustumCulled=false;stars.renderOrder=21;scene.add(stars);
   const PALETTE=[[1,.86,.38],[1,.98,.9],[.52,.9,1],[1,.58,.8],[.75,.65,1],[1,.7,.32]];
@@ -151,8 +170,10 @@
     dt=Math.max(0,Math.min(.1,dt||0));
     clock+=dt;const t=now();
     const hide=typeof firePts!=="undefined"&&firePts&&firePts.visible===false;   // 画质设置关掉特效时一起隐藏
+    const ffMix=(global.AIBARainforest&&typeof global.AIBARainforest.fireflyTrailMix==="function")?global.AIBARainforest.fireflyTrailMix():0;
     trailMat.uniforms.uTime.value=t;starMat.uniforms.uTime.value=t;
     trailMat.uniforms.uRainbow.value=hotLevel()>=3?1:0;
+    trailMat.uniforms.uFirefly.value=ffMix;starMat.uniforms.uFirefly.value=ffMix;
     if(typeof renderer!=="undefined"&&renderer.getSize){const s=renderer.getSize(new T.Vector2());starMat.uniforms.uScale.value=s.y*renderer.getPixelRatio()*.5;}
     for(let i=trails.length-1;i>=0;i--){
       const tr=trails[i];
@@ -171,7 +192,15 @@
       sLife[i]-=dt;
       if(sLife[i]<=0){sSize[i]=0;continue;}
       sPos[i*3]+=sVel[i*3]*dt;sPos[i*3+1]+=sVel[i*3+1]*dt;sPos[i*3+2]+=sVel[i*3+2]*dt;
-      sVel[i*3]*=1-dt*2.2;sVel[i*3+1]=sVel[i*3+1]*(1-dt*2.2)-dt*.15;sVel[i*3+2]*=1-dt*2.2;
+      if(ffMix>.25){
+        // 萤火虫尾迹颗粒带轻柔上升悬浮与游弋阻尼，不像火星那样直直下坠
+        const ph=sSeed[i]*25+t*3.8;
+        sVel[i*3]=(sVel[i*3]+Math.sin(ph)*1.1*dt)*(1-dt*2.8);
+        sVel[i*3+1]=(sVel[i*3+1]+(.38+Math.cos(ph*1.3)*.7)*dt)*(1-dt*2.6);
+        sVel[i*3+2]=(sVel[i*3+2]+Math.cos(ph*.9)*1.1*dt)*(1-dt*2.8);
+      }else{
+        sVel[i*3]*=1-dt*2.2;sVel[i*3+1]=sVel[i*3+1]*(1-dt*2.2)-dt*.15;sVel[i*3+2]*=1-dt*2.2;
+      }
       const k=sLife[i]/sMax[i];sSize[i]*=k>.3?1:(1-dt*6);        // 最后三成寿命快速缩没
     }
     stars.visible=!hide;

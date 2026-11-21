@@ -616,18 +616,12 @@ function noteVisionInference(start){
 }
 function visionCanTurnAim(){
   if(typeof G==="undefined"||!G)return false;
-  return !!G.canShoot&&!G.charging&&!G.moving;
+  return !!G.canShoot&&!G.charging&&!G.moving&&!cosmicShotInFlight();
 }
-function visionUpdateFaceAim(lm){
-  if(!VISION.aimMode||!lm){
-    if(!VISION.aimMode)VISION.faceAim=0;
-    return VISION.faceAim||0;
-  }
-  // 仅在接球待投、尚未蓄力时允许转头瞄准；蓄力与出球飞行期间锁定视角与轨迹，接新球后再解锁
-  if(!visionCanTurnAim())return VISION.faceAim||0;
+function visionReadFaceAim(lm){
   const nose=visionGoodPoint(lm,0,.28),eyeL=visionGoodPoint(lm,2,.25),eyeR=visionGoodPoint(lm,5,.25),
     earL=visionGoodPoint(lm,7,.25),earR=visionGoodPoint(lm,8,.25),sL=visionGoodPoint(lm,11,.28),sR=visionGoodPoint(lm,12,.28);
-  if(!nose)return VISION.faceAim||0;
+  if(!nose)return null;
   let headYaw=0,hasHead=false;
   if(earL&&earR){
     const hw=Math.max(.04,Math.abs(earL.x-earR.x));
@@ -641,14 +635,24 @@ function visionUpdateFaceAim(lm){
     const sw=Math.max(.08,Math.abs(sL.x-sR.x));
     bodyOff=clamp((nose.x-(sL.x+sR.x)*.5)/(sw*.45),-1.5,1.5);hasBody=true;
   }
-  if(!hasHead&&!hasBody)return VISION.faceAim||0;
+  if(!hasHead&&!hasBody)return null;
   const rawYaw=hasHead&&hasBody?(headYaw*.6+bodyOff*.4):(hasHead?headYaw:bodyOff);
   // 右手投篮天然朝左侧（辅助手侧）略转一点，左手投篮天然朝右侧略转一点
   const lefty=typeof player!=="undefined"&&player&&!!player.lefty;
   const stanceBias=lefty?-.12:.12;
   const centered=rawYaw-stanceBias,dead=.08;
   const adj=Math.abs(centered)<dead?0:(centered-Math.sign(centered)*dead)/(1-dead);
-  const target=clamp(adj*1.05,-1,1);
+  return clamp(adj*1.05,-1,1);
+}
+function visionUpdateFaceAim(lm){
+  if(!VISION.aimMode||!lm){
+    if(!VISION.aimMode)VISION.faceAim=0;
+    return VISION.faceAim||0;
+  }
+  // 仅在接球待投、尚未蓄力时允许转头瞄准；蓄力与出球飞行期间锁定视角与轨迹，接新球后再解锁
+  if(!visionCanTurnAim())return VISION.faceAim||0;
+  const target=visionReadFaceAim(lm);
+  if(target===null)return VISION.faceAim||0;
   VISION.faceAim=(VISION.faceAim||0)*.84+target*.16;
   return VISION.faceAim;
 }
@@ -794,7 +798,7 @@ const AIM_ARC_SEGS=16;
 let aimArcLine=null,_aimP0=null;
 function updateAimArc(){
   if(typeof THREE==="undefined"||typeof scene==="undefined"||typeof HOOP==="undefined"||typeof P==="undefined")return;
-  const show=!!(VISION.enabled&&VISION.aimMode&&typeof G!=="undefined"&&G&&(G.canShoot||G.charging)&&!G.moving);
+  const show=!!(VISION.enabled&&VISION.aimMode&&typeof G!=="undefined"&&G&&(G.canShoot||G.charging)&&!G.moving&&!cosmicShotInFlight());
   if(!show){if(aimArcLine)aimArcLine.visible=false;return;}
   if(!aimArcLine){
     const g=new THREE.BufferGeometry();
@@ -830,6 +834,10 @@ window.AIBAVisionAim=Object.freeze({
   active:()=>!!(VISION.enabled&&VISION.aimMode),
   raw:()=>VISION.faceAim||0,
   yawRad:()=>(VISION.enabled&&VISION.aimMode)?(VISION.faceAim||0)*(Math.PI/4):0,
+  cinematicYawRad:()=>{
+    if(!VISION.enabled||!VISION.aimMode||VISION.orientationBlocked||performance.now()-VISION.lastPoseAt>350)return 0;
+    return (visionReadFaceAim(VISION.lastPose)||0)*.18;
+  },
   shotLat:(dist)=>(VISION.enabled&&VISION.aimMode)?(dist||6.75)*Math.tan((VISION.faceAim||0)*(Math.PI/4)):0,
   canTurn:()=>visionCanTurnAim(),
   updateArc:updateAimArc,

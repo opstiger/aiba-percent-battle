@@ -17,6 +17,7 @@ function startReplay(){
   startClip();
 }
 function startClip(){
+  endCosmicView();
   const h=G.highlights[rep.idx];
   rep.clip=h;rep.t=0;rep.scoredFx=false;
   rep.ghost.visible=true;rep.gBlob.visible=true;
@@ -64,7 +65,7 @@ function startClip(){
 }
 function updReplay(dt){
   const h=rep.clip;if(!h)return;
-  rep.t+=dt*0.42; // slow-mo
+  rep.t+=dt*(h.cosmic?1:.42); // 宇宙弧线已有专属演出节奏
   const photo=rep.t<REPLAY_PHOTO_DUR;
   const t=Math.min(Math.max(0,rep.t-REPLAY_PHOTO_DUR),rep.end);
   // 同步角色姿势:按回放时间映射投篮相位
@@ -109,6 +110,10 @@ function updReplay(dt){
     rig.pos.copy(rep.photoCam.p);rig.pos.y+=Math.sin(rep.t*8)*0.03;
     rig.look.copy(rep.photoCam.look);
     window.AIBASetIcon("repCam","video","机位 0 · "+rep.photoCam.n);
+  }else if(h.cosmic){
+    rep.spin.t=t;
+    updateCosmicCamera(rep.spin,dt,false);
+    window.AIBASetIcon("repCam","video","宇宙弧线 · 长镜头");
   }else if(t<cut){
     rig.pos.copy(rep.camA.p);rig.pos.x+=Math.sin(rep.t*0.5)*0.5;rig.pos.y+=Math.sin(rep.t*0.7)*0.15;
     window.AIBASetIcon("repCam","video","机位 1 · "+rep.camA.n);
@@ -116,7 +121,7 @@ function updReplay(dt){
     rig.pos.copy(rep.camB.p);rig.pos.y+=Math.sin(rep.t*0.6)*0.12;
     window.AIBASetIcon("repCam","video","机位 2 · "+rep.camB.n);
   }
-  if(!photo)rig.look.copy(rep.ghost.position);
+  if(!photo&&!h.cosmic)rig.look.copy(rep.ghost.position);
   if(!rep.scoredFx&&t>=(h.scoreT!=null?h.scoreT:h.tf*0.98)){
     rep.scoredFx=true;pulseNet(1,rep.ball&&rep.ball.netDir);sSwish();cheerSound(true);G.cheer=1;
   }
@@ -127,6 +132,7 @@ function updReplay(dt){
   }
 }
 function finishReplay(){
+  endCosmicView();
   rep.on=false;
   if(rep.ghost){rep.ghost.visible=false;rep.gBlob.visible=false;}
   player.g.visible=false;passer.g.visible=false; // applyCamMode 重置

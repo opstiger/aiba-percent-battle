@@ -8,6 +8,15 @@ const pauseLook=V3(0,0,0);
 function setPauseAudio(on){
   try{if(window.AIBAAudio&&AIBAAudio.setPauseAudioDuck)AIBAAudio.setPauseAudioDuck(on);}catch(e){}
 }
+function renderGameScene(){
+  const fog=scene.fog;
+  if(!cosmicView||!fog?.isFog)return renderer.render(scene,camera);
+  // Preserve the venue's atmospheric falloff relative to the court when looking down from orbit.
+  const near=fog.near,far=fog.far,altitude=Math.max(0,camera.position.y-14);
+  fog.near+=altitude;fog.far+=altitude;
+  try{renderer.render(scene,camera);}
+  finally{fog.near=near;fog.far=far;}
+}
 function updatePausePresentation(dt){
   if(!pauseWasOn){pauseWasOn=true;pausePresentationT=0;pauseAmbienceAcc=0;setPauseAudio(true);}
   const step=Math.min(.05,Math.max(0,Number(dt)||0));
@@ -30,7 +39,7 @@ function updatePausePresentation(dt){
   pauseLook.copy(rig.look);pauseLook.x+=sway*.34;pauseLook.y+=lift*.4;
   camera.lookAt(pauseLook);camera.updateMatrixWorld();
   if(typeof updGroundShadows==="function")updGroundShadows();
-  renderer.render(scene,camera);
+  renderGameScene();
 }
 function animate(){
   requestAnimationFrame(animate);
@@ -69,7 +78,7 @@ function animate(){
   if(typeof updGroundShadows==="function")updGroundShadows();
   if(G.state==="aishow")updShow(realDt);
   if(G.state==="battle"&&!G.battleCut)updBattle(realDt);
-  if(G.state==="rackrush")updateRackRush(realDt);
+  if(G.state==="rackrush"&&!cosmicShotInFlight())updateRackRush(realDt);
   if(G.state==="lastshot"&&typeof updateLastShot==="function")updateLastShot(realDt);
   if(G.state==="pregame")updPreGameShow(realDt);
   updFire(dt);
@@ -95,7 +104,7 @@ function animate(){
   updatePractice(realDt);
   // states
   if(G.state==="round"&&G.running&&!G.practice){
-    G.timer-=realDt;
+    if(!cosmicShotInFlight())G.timer-=realDt;
     if(G.timer<35&&!G.organed){G.organed=true;organCharge();}if(G.timer<=12&&window.AIBARecorder&&AIBARecorder.arm)AIBARecorder.arm(G.stage==="final"?"决赛最后三球":"半决赛最后三球");if(!G.finalTenTriggered&&G.timer<=10&&G.seq&&G.shotIdx<G.seq.length){G.finalTenTriggered=true;playAudioEvent("contest_final10");}
     const tl=$("hudTimer"),tv=Math.max(0,G.timer).toFixed(1);
     if(tl.textContent!==tv)tl.textContent=tv;
@@ -142,7 +151,7 @@ function animate(){
     const coarse=typeof AA_COARSE_POINTER!=="undefined"&&AA_COARSE_POINTER;
     renderer.shadowMap.autoUpdate=!coarse||((++_shadowTick&1)===0);
   }
-  renderer.render(scene,camera);
+  renderGameScene();
   if(window.AIBASpine)AIBASpine.restore();
   if(window.AIBARecorder)AIBARecorder.tick({canvas:renderer.domElement});
   updSpotDots();

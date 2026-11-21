@@ -730,8 +730,8 @@ function buildCeiling(){
       if(Math.abs(xRow)<10&&z>COURT.nearBaseline-3.0&&z<COURT.playMaxZ+4.5)lampPos.push(p);
     }
   }
-  bakeVoxelMesh(indoorRoot,parts,{materialKey:"ceiling"});
-  bakeVoxelMesh(indoorRoot,lamps,{materialKey:"ceilingLamp",material:{emissive:0xffe6b4}});
+  bakeVoxelMesh(indoorRoot,parts,{materialKey:"ceiling"}).name="arenaCeiling";
+  bakeVoxelMesh(indoorRoot,lamps,{materialKey:"ceilingLamp",material:{emissive:0xffe6b4}}).name="arenaCeilingLamps";
   buildLightShafts(lampPos);
   buildFloorLightPools(lampPos);
   buildUpperRibbon();

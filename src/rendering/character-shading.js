@@ -165,10 +165,14 @@
       const preset=(typeof currentScenePreset==="string"&&currentScenePreset)||document.documentElement.dataset.scenePreset||"indoor";
       if(preset==="rainforest"){
         uniforms.aibaSceneMode.value=1;
-        uniforms.aibaRimColor.value.setHex(0xffd488);
-        uniforms.aibaRimStrength.value=.44;
-        uniforms.aibaGroundColor.value.setHex(0x525832);
-        uniforms.aibaAirColor.value.setHex(0x9a895a);
+        const envRoot=(typeof environmentRoot!=="undefined"&&environmentRoot)||global.environmentRoot;
+        const rf=envRoot?.userData?.placeState?.rainforest;
+        const cyc=rf?.uniforms?.forestCycle?.value;
+        const dusk=cyc?cyc.x:0,night=cyc?cyc.y:0,ff=cyc?cyc.z:0;
+        uniforms.aibaRimColor.value.setHex(0xffd488).lerp(new THREE.Color(0xff7e38),dusk).lerp(new THREE.Color(0x88d468),night*(.35+.65*ff));
+        uniforms.aibaRimStrength.value=THREE.MathUtils.lerp(.44+.12*dusk,.14+.22*ff,night);
+        uniforms.aibaGroundColor.value.setHex(0x525832).lerp(new THREE.Color(0x4a3420),dusk*.7).lerp(new THREE.Color(0x0a1410),night);
+        uniforms.aibaAirColor.value.setHex(0x9a895a).lerp(new THREE.Color(0xa85a32),dusk*.8).lerp(new THREE.Color(0x060c10),night);
         uniforms.aibaWetness.value=.15;
       }else if(preset==="flowerCourt"){
         uniforms.aibaSceneMode.value=2;

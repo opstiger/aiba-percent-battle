@@ -43,12 +43,21 @@
     return true;
   }
 
+  function resetRainforest(){
+    const place=environmentRoot&&environmentRoot.userData&&environmentRoot.userData.placeState;
+    if(!place||!place.rainforest)return false;
+    if(window.AIBARainforest&&typeof AIBARainforest.reset==="function")AIBARainforest.reset(place);
+    document.documentElement.dataset.environmentPhase="afternoon";
+    return true;
+  }
+
   function resetForRun(){
     const preset=SCENE_PRESETS[currentScenePreset];
     if(!preset||preset.progression==="none")return true;
     let reset=false;
     if(preset.progression==="flowerBloom")reset=resetFlower();
     else if(preset.progression==="sunsetToNight")reset=resetBeach();
+    else if(preset.progression==="rainforestNight")reset=resetRainforest();
     if(!reset){applyScenePreset(currentScenePreset,{persist:false});return false;}
     environmentRoot.userData.progress=0;
     return true;

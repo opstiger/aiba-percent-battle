@@ -159,9 +159,12 @@ for (const [name, p0] of SPOTS) {
   const strong=Array.from({length:21},(_,i)=>shoot(80+i));
   check(strong.some(s=>s.kind==="bank")&&strong.some(s=>s.boardHits&&!s.made),"过力要能打板进也能打板出");
   const special=P.cosmicFlight(p,{tuning:TUNING});
-  check(P.sampleAt(special.path,2.2).y<11.5&&P.sampleAt(special.path,2.55).y>6.5,"俯拍应跟得上飞向篮筐的球");
+  const apex=P.COSMIC_APEX_T;
+  const height=t=>P.sampleAt(special.path,t).y;
+  check(height(apex-.45)<height(apex-.2)&&height(apex+.2)>height(apex+.45),"长镜头应经过可读的上升和下落");
+  check(special.madeT-apex>4&&height(4.7)>30&&height(5.35)<20,"俯拍应有时间跟随飞向篮筐的球");
   check(special.kind==="swish","落地后回弹擦筐不能改写已经落袋的空心球");
-  check(Math.abs(P.sampleAt(special.path,1.5).y-300)<2&&special.events.filter(e=>e.type==="made").length===1,"宇宙弧线应升到百层楼并只结算一次");
+  check(Math.abs(height(apex)-300)<2&&special.events.filter(e=>e.type==="made").length===1,"宇宙弧线应升到百层楼并只结算一次");
 }
 
 /* ---------- 4. 平衡 ---------- */

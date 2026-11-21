@@ -666,6 +666,7 @@ function physicsBallEvent(b,e){
   switch(e.type){
     case "rim":
       if(fx)fx.impact("rim",e);
+      if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(e.x??HOOP.x,e.y??HOOP.y,e.z??HOOP.z,Math.max(2.4,Math.min(5.2,(e.impulse||2.6)*1.25)),"rim");
       haptic(b,e.impulse);
       b.rimHitCount=(b.rimHitCount||0)+1;
       if(e.hitIndex==null)e.hitIndex=b.rimHitCount-1;
@@ -679,6 +680,7 @@ function physicsBallEvent(b,e){
       break;
     case "board":case "connector":
       if(fx)fx.impact(e.type,e);
+      if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(e.x??HOOP.x,e.y??(HOOP.y+.35),e.z??(HOOP.z-.35),Math.max(1.8,Math.min(4.2,(e.impulse||2.2)*1.05)),"board");
       sfx("board",sBoard);haptic(b,e.impulse);break;
     case "support":case "scenery":sfx("floor",sBounce);break;
     case "floor":
@@ -686,6 +688,7 @@ function physicsBallEvent(b,e){
     case "made":
       if(b.made)break;
       b._madeEvent=e;
+      if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(HOOP.x,HOOP.y,HOOP.z,4.2,"made");
       if(b.opp){oppScore(b);b.made=true;}
       else if(b.silent)silentBallMade(b);
       else madeBall(b);
@@ -732,6 +735,7 @@ function updBalls(dt){
       if(b.t>=b.tf){
         const vy=b.v0.y-9.8*b.tf;
         if(b.outcome==="swish"){
+          if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(HOOP.x,HOOP.y,HOOP.z,4.2,"made");
           if(b.opp){
             oppScore(b);b.made=true;
           }else if(b.silent)silentBallMade(b);
@@ -740,13 +744,16 @@ function updBalls(dt){
           b.vel.copy(postNetVelocity(b,vy));
           b.mesh.position.set(HOOP.x+rnd(-.04,.04),HOOP.y-0.05,HOOP.z+rnd(-.04,.04));
         }else if(b.outcome==="bank"){
+          if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(HOOP.x,HOOP.y+.35,HOOP.z-.35,3.2,"board");
           sBoard();b.phase="bankdrop";b.bt=0;
           b.bFrom=b.mesh.position.clone();
         }else if(b.outcome==="rattle"||b.outcome==="rattleout"){
+          if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(HOOP.x,HOOP.y,HOOP.z,3.8,"rim");
           playerRimHaptic(b);b.rin=b.outcome==="rattle";playRimImpactSound(b,b.rin);b.phase="rattle";b.rt=0;
           b.ra=Math.atan2(b.mesh.position.z-HOOP.z,b.mesh.position.x-HOOP.x);
           b.rdir=Math.random()<.5?1:-1;
         }else if(b.outcome==="rimout"){
+          if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(HOOP.x,HOOP.y,HOOP.z,3.6,"rim");
           playerRimHaptic(b);playRimImpactSound(b,false);if(b.opp)triggerStreetCrowdReaction("oppMiss",0);else if(b.silent){if(typeof announceAIShowResult==="function")announceAIShowResult(b,false);}else missBall();b.phase="free";
           const d=V3(b.mesh.position.x-HOOP.x,0,b.mesh.position.z-HOOP.z).normalize();
           b.vel.set(d.x*rnd(1.2,2.2)+rnd(-.6,.6),rnd(2.4,3.6),d.z*rnd(1.2,2.2)+rnd(-.6,.6));
@@ -825,11 +832,12 @@ function updBalls(dt){
       }
     }
     if(b.perfect&&(b.phase==="fly"||(b.phase==="path"&&b.t<b.tf)))emitFire(b.mesh.position);
+    else if((globalThis.AIBARainforest?.fireflyTrailMix?.()||0)>.25&&(b.phase==="fly"||(b.phase==="path"&&b.t<b.tf)))emitFire(b.mesh.position);
     b.blob.position.set(b.mesh.position.x,0.02,b.mesh.position.z);
     const s=clamp(1.4-b.mesh.position.y*0.12,0.3,1.4);
     b.blob.scale.set(s,s,1);
     if(b.cosmic&&b.rec.length&&b.t-b.rec[b.rec.length-1][0]<1/60)continue;
-    if(b.rec.length<(b.cosmic?380:240))b.rec.push([b.t,b.mesh.position.x,b.mesh.position.y,b.mesh.position.z]);
+    if(b.rec.length<(b.cosmic?560:240))b.rec.push([b.t,b.mesh.position.x,b.mesh.position.y,b.mesh.position.z]);
   }
 }
 

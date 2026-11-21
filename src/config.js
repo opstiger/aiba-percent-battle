@@ -22,7 +22,7 @@
     rainyCourt:{name:"雨天 · 京都雨巷",type:"outdoor",weather:"rain",progression:"none",desc:"木屋瓦檐、暖灯与雨中的石板巷"},
     // Stable preset ID preserves saved selections and the score-driven bloom.
     flowerCourt:{name:"鲜花 · 天山草甸",type:"outdoor",weather:"sunny",progression:"flowerBloom",desc:"随比分穿过山雨与彩虹，野花开满草坡，终场暖光照亮雪峰"},
-    rainforest:{name:"热带雨林 · 森林峡谷",type:"outdoor",weather:"sunny",progression:"none",desc:"巨树板根围着林间球场，林雾和斜光一直延伸到峡谷深处"},
+    rainforest:{name:"热带雨林 · 森林峡谷",type:"outdoor",weather:"sunny",progression:"rainforestNight",desc:"随投篮进度从午后斜阳滑入暮色与漆黑深夜，满林萤火虫渐次点亮，球过篮筐如墨水涟漪震散又缓缓聚拢"},
     /* 湘南海岸高校:一侧校舍铁丝网、一侧防波堤与大海,远景电线杆与架空线。
        progression 用 none —— 夜转场是 beachSunset 的招牌,两张都做会撞。 */
     /* 地中海半岛:锚点是蓝海+白建筑。主篮筐朝海湾,所以海在篮筐后方而不是侧面。 */

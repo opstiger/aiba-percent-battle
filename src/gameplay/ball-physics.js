@@ -565,26 +565,29 @@
     const w=backspinFor(v,opts.backspin==null?tu.backspin:opts.backspin);
     return {p:[p0[0],p0[1],p0[2]],v,w,scale,cal,u,depth,k};
   }
-  // The secret shot compresses the ascent and descent into three seconds.
-  // Its last metre and everything after it use the same net and floor as a normal shot.
+  const COSMIC_APEX_T=1.65,COSMIC_DROP_T=5.75;
   function cosmicFlight(p0,opts){
-    const rim=GEOM.rim,duration=3,dropY=rim.y+1;
-    const vy=(dropY-p0[1]-9*Math.PI)/duration;
+    const rim=GEOM.rim,peak=300,dropY=rim.y+1,vy=-9.4;
+    const descent=COSMIC_DROP_T-COSMIC_APEX_T;
+    const endSlope=-vy*descent/(peak-dropY);
     const landing=simulate({p:[rim.x,dropY,rim.z],v:[0,vy,0],w:[-9,1,0]},opts);
-    const frames=Math.round(duration/SAMPLE_DT),prefix=frames*STRIDE;
+    const frames=Math.round(COSMIC_DROP_T/SAMPLE_DT),prefix=frames*STRIDE;
     const path=new Float32Array(prefix+landing.path.length);
     for(let i=0;i<frames;i++){
-      const u=i/frames,h=Math.sin(u*Math.PI),travel=u*u*(3-2*u);
-      // Compress the high-altitude return. The last eleven metres stay on screen
-      // long enough to follow the ball from the wide shot down to the rim.
-      const highArc=u<=.5?h:Math.cos(Math.min(1,(u-.5)/.23)*Math.PI/2);
-      path.set([i*SAMPLE_DT,p0[0]+(rim.x-p0[0])*travel,
-        p0[1]+(dropY-p0[1])*u+9*h+288*highArc**3,p0[2]+(rim.z-p0[2])*travel,-9,1,0],i*STRIDE);
+      const t=i*SAMPLE_DT;
+      const rise=Math.sin(Math.min(1,t/COSMIC_APEX_T)*Math.PI/2);
+      const fall=clamp((t-COSMIC_APEX_T)/descent,0,1);
+      // Slow time approaching the rim so the high dive can join the actual net simulation.
+      const drop=fall*fall*((3-endSlope)-(2-endSlope)*fall);
+      const y=p0[1]+9*rise+(peak-p0[1]-9)*rise**3-(peak-dropY)*drop;
+      const u=Math.min(1,t/(COSMIC_DROP_T-.65)),travel=u*u*(3-2*u);
+      path.set([t,p0[0]+(rim.x-p0[0])*travel,y,p0[2]+(rim.z-p0[2])*travel,-9,1,0],i*STRIDE);
     }
     path.set(landing.path,prefix);
-    for(let j=prefix;j<path.length;j+=STRIDE)path[j]+=duration;
-    for(const event of landing.events)event.t+=duration;
-    return Object.assign(landing,{path,madeT:duration+landing.madeT,decidedT:duration+landing.decidedT,endT:duration+landing.endT});
+    for(let j=prefix;j<path.length;j+=STRIDE)path[j]+=COSMIC_DROP_T;
+    for(const event of landing.events)event.t+=COSMIC_DROP_T;
+    return Object.assign(landing,{path,madeT:COSMIC_DROP_T+landing.madeT,
+      decidedT:COSMIC_DROP_T+landing.decidedT,endT:COSMIC_DROP_T+landing.endT});
   }
   /* 走位途中先把这个点的校准与均衡算好，出手那一帧就只剩 1 次模拟。 */
   function prewarm(p0,tf,map,tuning){
@@ -636,7 +639,7 @@
   }
 
   const api=Object.freeze({GEOM,RAINFOREST_HOOP,hitsRainforestBoard,INDOOR_COLLIDERS,TUNING_PRESETS,DEFAULT_TUNING,DEFAULT_MAP,DIFF_MAPS,DT,SAMPLE_DT,STRIDE,
-    simulate,sampleAt,aimVelocity,backspinFor,crossOffset,scaleForDepth,calibrate,designMake,equalize,prewarm,launch,cosmicFlight,launchForOutcome,legacyOutcome});
+    COSMIC_APEX_T,COSMIC_DROP_T,simulate,sampleAt,aimVelocity,backspinFor,crossOffset,scaleForDepth,calibrate,designMake,equalize,prewarm,launch,cosmicFlight,launchForOutcome,legacyOutcome});
   if(typeof module!=="undefined"&&module.exports)module.exports=api;
   if(global)global.AIBABallPhysics=api;
 })(typeof window!=="undefined"?window:globalThis);
