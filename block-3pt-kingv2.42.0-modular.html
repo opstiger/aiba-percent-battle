@@ -9,7 +9,7 @@
 <script src="src/i18n.js?v=ca36788f"></script>
 <script src="src/ui/icons.js?v=78666fc8"></script>
 <link rel="preload" href="assets/fonts/orbitron/Orbitron-VariableFont_wght.ttf" as="font" type="font/ttf" crossorigin="anonymous">
-<link rel="stylesheet" href="styles.css?v=940aba8f">
+<link rel="stylesheet" href="styles.css?v=3bc40b62">
 </head>
 <body>
 <canvas id="c"></canvas>
@@ -38,10 +38,11 @@
     <svg viewBox="0 0 78 124" role="presentation">
       <defs>
         <linearGradient id="ppGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#2e8bff"/><stop offset="55%" stop-color="#39d3ff"/><stop offset="78%" stop-color="#ffd23f"/><stop offset="100%" stop-color="#ff4040"/></linearGradient>
+        <clipPath id="ppSweetClip"><rect id="ppSweetClipRect" x="0" y="124" width="78" height="0"/></clipPath>
         <clipPath id="ppFillClip"><rect id="ppFillClipRect" x="0" y="124" width="78" height="0"/></clipPath>
       </defs>
       <path class="ppTrack" d="M30 112 C67 88 72 36 46 12" pathLength="100"/>
-      <path class="ppSweet" d="M30 112 C67 88 72 36 46 12" pathLength="100"/>
+      <path class="ppSweet" clip-path="url(#ppSweetClip)" d="M30 112 C67 88 72 36 46 12" pathLength="100"/>
       <g clip-path="url(#ppFillClip)">
         <path class="ppFill" d="M30 112 C67 88 72 36 46 12" pathLength="100"/>
       </g>
@@ -119,7 +120,7 @@
 <script>typeof THREE==="undefined"&&document.write('<script src="https://unpkg.com/three@0.128.0/build/three.min.js"><\/script>')</script>
 <script>typeof THREE==="undefined"&&document.write('<script src="https://cdn.jsdelivr.net/npm/three@0.128.0/build/three.min.js"><\/script>')</script>
 <script>typeof THREE==="undefined"&&document.write('<script src="https://lib.baomitu.com/three.js/r128/three.min.js"><\/script>')</script>
-<script src="src/assets-manifest.js?v=fd91d043"></script>
+<script src="src/assets-manifest.js?v=e799b661"></script>
 <script src="src/config.js?v=2829d82e"></script>
 <script src="src/player-select.js?v=1adb89a4"></script>
 <script src="src/opponent-select.js?v=63432ad3"></script>
@@ -130,7 +131,7 @@
 <script src="src/leaderboard-ui.js?v=8eee1c7e"></script>
 <script src="src/share.js?v=d31735fc"></script>
 <script src="src/recorder.js?v=a6180c11"></script>
-<script src="src/shot-physics.js?v=22df2dc9"></script>
+<script src="src/shot-physics.js?v=f5badb46"></script>
 <script src="src/face-overlays.js?v=43a85883"></script>
 <script src="src/haptics.js?v=b940f32d"></script>
 <script src="src/visual-director.js?v=d7cb0ca0"></script>
@@ -143,7 +144,7 @@
 <script src="src/ui/result-copy.js?v=825670ef"></script>
 <script src="src/vision.js?v=a3730ab0"></script>
 <script src="src/audio/hoop-audio.js?v=20c758a8"></script>
-<script src="src/audio.js?v=7da9e503"></script>
+<script src="src/audio.js?v=80eab6f2"></script>
 <script src="src/rendering/core.js?v=96db100e"></script>
 <script src="src/rendering/materials.js?v=12789eb2"></script>
 <script src="src/rendering/model-detail.js?v=337c8d5e"></script>
@@ -152,47 +153,47 @@
 <script src="src/rendering/arena.js?v=61bf8082"></script>
 <script src="src/rendering/crowd-life.js?v=83a8b3b0"></script>
 <script src="src/rendering/spectators.js?v=923a7c63"></script>
-<script src="src/rendering/hoop.js?v=19d92161"></script>
-<script src="src/rendering/hoop-dynamics.js?v=38431d04"></script>
+<script src="src/rendering/hoop.js?v=d6cbee59"></script>
+<script src="src/rendering/hoop-dynamics.js?v=c5a93732"></script>
 <script src="src/rendering/environment-craft.js?v=65311c23"></script>
-<script src="src/rendering/meadow-court.js?v=c1abc2c3"></script>
-<script src="src/rendering/meadow-weather.js?v=96d1a285"></script>
-<script src="src/rendering/world-wonders.js?v=cecfa5e8"></script>
+<script src="src/rendering/meadow-court.js?v=a04e67d1"></script>
+<script src="src/rendering/meadow-weather.js?v=a4b8c87e"></script>
+<script src="src/rendering/world-wonders.js?v=133e8787"></script>
 <script src="src/rendering/world-life.js?v=19915b90"></script>
 <script src="src/rendering/rainforest.js?v=e83f2a96"></script>
-<script src="src/rendering/world-places.js?v=777804f6"></script>
+<script src="src/rendering/world-places.js?v=ccf6d907"></script>
 <script src="src/rendering/environments.js?v=cee5a517"></script>
-<script src="src/rendering/props.js?v=7c1090fa"></script>
+<script src="src/rendering/props.js?v=3918446a"></script>
 <script src="src/rendering/shoe-last.js?v=923f6b14"></script>
 <script src="src/rendering/retro-high.js?v=8b767ac2"></script>
 <script src="src/rendering/shoe-styles.js?v=0ceb1069"></script>
 <script src="src/rendering/basketball-shoes.js?v=1315c123"></script>
 <script src="src/rendering/shoe-colorways.js?v=eecaa395"></script>
 <script src="src/rendering/player-kit.js?v=5e6f9d96"></script>
-<script src="src/rendering/character-shading.js?v=f72d8913"></script>
+<script src="src/rendering/character-shading.js?v=2d3e6cd9"></script>
 <script src="src/rendering/spine-layer.js?v=d267d1ee"></script>
 <script src="src/rendering/characters.js?v=2a0042a7"></script>
-<script src="src/rendering/camera.js?v=3b38daae"></script>
+<script src="src/rendering/camera.js?v=38225f54"></script>
 <script src="src/data/tstage-motion-pack.js?v=2b9f4029"></script>
-<script src="src/rendering/motion.js?v=643e4827"></script>
+<script src="src/rendering/motion.js?v=368ed3df"></script>
 <script src="src/rendering/effects.js?v=dfe3f523"></script>
-<script src="src/rendering/grade.js?v=c6c772ae"></script>
-<script src="src/presentation/cinematics.js?v=ec8ea5fc"></script>
+<script src="src/rendering/grade.js?v=7830829d"></script>
+<script src="src/presentation/cinematics.js?v=26fe45ba"></script>
 <script src="src/presentation/result-beat.js?v=f045c3b9"></script>
 <script src="src/presentation/dance.js?v=4d606e12"></script>
 <script src="src/presentation/pregame.js?v=e05c0381"></script>
-<script src="src/presentation/battle.js?v=36aa7b5d"></script>
-<script src="src/gameplay/ball-physics.js?v=fe229ff9"></script>
-<script src="src/gameplay/shots.js?v=8be8fe41"></script>
+<script src="src/presentation/battle.js?v=026b4d77"></script>
+<script src="src/gameplay/ball-physics.js?v=9deb0f58"></script>
+<script src="src/gameplay/shots.js?v=604c2613"></script>
 <script src="src/presentation/replay.js?v=aefc2c78"></script>
-<script src="src/ui/battle-controls.js?v=f95632f8"></script>
-<script src="src/gameplay/collisions.js?v=acd640f5"></script>
+<script src="src/ui/battle-controls.js?v=4ee87021"></script>
+<script src="src/gameplay/collisions.js?v=057bf7a0"></script>
 <script src="src/presentation/win-cinematic.js?v=8c46204a"></script>
 <script src="src/core/input.js?v=511f9c28"></script>
-<script src="src/core/game-loop.js?v=07687f4e"></script>
+<script src="src/core/game-loop.js?v=dd502087"></script>
 <script src="src/core/scene-init.js?v=05d143e5"></script>
 <script src="src/core/legacy-adapter.js?v=7df7d8ef"></script>
-<script src="src/modes/rack-rush.js?v=888c8290"></script>
+<script src="src/modes/rack-rush.js?v=da6615c9"></script>
 <script src="src/modes/contest.js?v=11186475"></script>
 <script src="src/modes/practice.js?v=37ab7b3b"></script>
 <script src="src/modes/percent-battle/state.js?v=2ca87d76"></script>
@@ -202,7 +203,7 @@
 <script src="src/modes/percent-battle/index.js?v=46318d1c"></script>
 <script src="src/modes/last-shot/config.js?v=46547884"></script>
 <script src="src/modes/last-shot/squad.js?v=9fdb7a91"></script>
-<script src="src/modes/last-shot/sequence.js?v=e15ad84f"></script>
+<script src="src/modes/last-shot/sequence.js?v=1df92a67"></script>
 <script src="src/modes/last-shot/index.js?v=b0de6025"></script>
 <script src="src/ui/panels.js?v=75d88e41"></script>
 <script src="src/ui/boot-shot.js?v=210bd828"></script>
@@ -221,7 +222,7 @@
 <script src="src/avatar-customizer.js?v=59bc0091"></script>
 <script src="src/roster-style.js?v=1c626af6"></script>
 <script src="src/rendering/character-visuals.js?v=782ebf5a"></script>
-<script src="src/shot-motion.js?v=bc88bc1f"></script>
+<script src="src/shot-motion.js?v=6a2fdba1"></script>
 <script src="src/gameplay/reaction.js?v=d8bd3c16"></script>
 <script src="src/presentation/motion-show.js?v=c8a3f8ea"></script>
 <script src="src/presentation/frenzy.js?v=609f9fd3"></script>

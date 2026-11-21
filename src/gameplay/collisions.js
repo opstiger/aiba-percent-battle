@@ -3,9 +3,9 @@
 function ballAirborne(b){return b.phase==="fly"||(b.phase==="path"&&b.t<b.tf);}
 function checkBallCollisions(){
   for(let i=0;i<balls.length;i++){
-    const a=balls[i];if(!ballAirborne(a))continue;
+    const a=balls[i];if(a.cosmic||!ballAirborne(a))continue;
     for(let j=i+1;j<balls.length;j++){
-      const b=balls[j];if(!ballAirborne(b))continue;
+      const b=balls[j];if(b.cosmic||!ballAirborne(b))continue;
       if(a.collided&&b.collided)continue;
       // 只有玩家球 vs 对手球之间才判定(同一人的球不互撞)
       if(!!a.opp===!!b.opp)continue;

@@ -1875,7 +1875,7 @@ function updPose(dt){
   poseK=G.charging?G.power/ideal:Math.max(0,poseK-dt*4.5);
   const base=shotCurves(poseK,player&&player.shotStyle);
   const phys=globalThis.AIBAShotPhysics
-    ?AIBAShotPhysics.update({charging:G.charging,dt,ideal,rate:playerChargeRate(),curve:base})
+    ?AIBAShotPhysics.update({charging:G.charging,power:G.power,dt,ideal,rate:playerChargeRate(),curve:base})
     :null;
   const c=phys?phys.curve:base;
   // apex cue: tiny vibration + faint tick at the top of the jump
@@ -1884,7 +1884,7 @@ function updPose(dt){
     if(navigator.vibrate)navigator.vibrate(12);
     blip(960,0.03,"square",0.045);
   }
-  if(phys&&phys.autoRelease&&G.charging)doRelease();
+  if(phys&&phys.autoRelease&&G.charging)doRelease(true);
   if(phys&&phys.justLanded)landT=0.3;
   if(landT>0)landT-=dt;
   const lk=landT>0?Math.sin((0.3-landT)/0.3*Math.PI):0;

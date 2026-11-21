@@ -10,7 +10,7 @@
    3) 顶点即落：接线 AIBAShotPhysics(v1.52 已实现但未接入)——蓄力过顶后
       人物按时间轴自然下落，落地前自动出手并按严重晚释放/短球惩罚。
    4) 实体篮板：飞行段做线段穿越检测，过力平射被篮板正面弹回(算投失)；
-      蓄力接近拉满的超远失误会拉高弧线从篮板上方绕过去，永不穿板。 */
+      极端力度交给球体碰撞模拟，保留打板入网的轨迹。 */
 (function(global){
   "use strict";
 
@@ -20,8 +20,6 @@
   /* ---- 篮板实体参数(与内联 free 阶段碰撞常量一致) ---- */
   const BOARD_Z=-8.5,BOARD_HALF_W=0.98,BOARD_Y_MIN=2.9,BOARD_Y_MAX=4.1;
   const BOUNCE_K=0.42;          // 篮板反弹衰减
-  const OVER_ERR=19;            // 过力超过该值 → 高弧绕过篮板上方
-  const OVER_TOP={y:4.42,z:-9.05,maxX:1.5};
 
   let on=true;
   try{on=localStorage.getItem(LS_KEY)!=="off";}catch(e){}
@@ -342,7 +340,7 @@
       global.AIBAInteractiveTutorial.isHoldingRelease());
     // v1.52 物理:顶点前沿用原曲线,顶点后接管自然下落;落地前自动出手
     const flowJump=style&&style.flow&&typeof shotFlowJump==="function"?{push:SHOT_FLOW_PUSH,pow:SHOT_FLOW_POW,air:SHOT_FLOW_AIR,lag:SHOT_FLOW_LAG,height:SHOT_FLOW_HEIGHT}:null;
-    const phys=AIBAShotPhysics.update({charging:G.charging,paused:tutorialHold,dt,ideal,rate:playerChargeRate(),curve:base,flow:flowJump});
+    const phys=AIBAShotPhysics.update({charging:G.charging,power:G.power,paused:tutorialHold,dt,ideal,rate:playerChargeRate(),curve:base,flow:flowJump});
     const rawCurve=phys.curve;
     if(G.charging)lastPoseCurve={dip:rawCurve.dip,lift:rawCurve.lift,rise:rawCurve.rise,jmp:rawCurve.jmp,over:rawCurve.over};
     /* 真实弹道版:蹬地途中松手后腿还在继续蹬(物理按时间走完这一跳),出手跟随不能把下蹲/蹬伸/举球冻在松手那一刻,
@@ -353,7 +351,7 @@
       if(navigator.vibrate)navigator.vibrate(12);
       blip(960,0.03,"square",0.045);
     }
-    if(phys.autoRelease&&G.charging){doRelease();}
+    if(phys.autoRelease&&G.charging){doRelease(true);}
     if(phys.justLanded)landT=0.3;
     if(landT>0)landT-=dt;
     const lk=landT>0?Math.sin((0.3-landT)/0.3*Math.PI):0;
@@ -462,24 +460,16 @@
     if(pendingRelease&&followAge>=BALL_RELEASE_AT)completePendingRelease();
   }
 
-  /* ================= releaseShot V2：晚释放惩罚 + 高弧过板 ================= */
+  /* ================= releaseShot V2：晚释放与满条力度 ================= */
   const chainedReleaseShot=global.releaseShot; // 可能已被 gear.js 包装,保持链
   function completePendingRelease(){
     if(!pendingRelease)return false;
     const p=pendingRelease;pendingRelease=null;
     if(player&&player.g)player.g.updateMatrixWorld(true);
     if(typeof hands!=="undefined"&&hands)hands.updateMatrixWorld(true);
-    const r=chainedReleaseShot.call(p.ctx,p.power,p.shot);
-    // 蓄力接近拉满的超远过力:抬高弧线从篮板上方绕过去(落到板后,正常算投失)
-    const b=(typeof balls!=="undefined")&&balls[balls.length-1];
-    // 真实物理球（b.physics）的轨迹已由碰撞模拟决定，不再改写初速度
-    if(b&&!b.physics&&!b.opp&&!b.silent&&b.outcome==="miss"&&(G.lastErr||0)>=OVER_ERR){
-      const xT=clampN(b.p0.x+b.v0.x*b.tf,-OVER_TOP.maxX,OVER_TOP.maxX);
-      b.v0.set((xT-b.p0.x)/b.tf,(OVER_TOP.y-b.p0.y)/b.tf+4.9*b.tf,(OVER_TOP.z-b.p0.z)/b.tf);
-    }
-    return r;
+    return chainedReleaseShot.call(p.ctx,p.power,p.shot,p.automatic,p.meterPower);
   }
-  function releaseShotV2(power,shot){
+  function releaseShotV2(power,shot,automatic=false){
     if(!on)return chainedReleaseShot.apply(this,arguments);
     if(pendingRelease)return false;
     markShotCycleReleased();
@@ -495,7 +485,7 @@
       (shot&&shot.money?.025:0),.86,1.18);
     G.lastReleaseLate=AIBAShotPhysics.lastLate?AIBAShotPhysics.lastLate():0;
     const adj=AIBAShotPhysics.releasePower(power,ideal); // 下落中出手→明显偏短
-    pendingRelease={ctx:this,power:adj,shot};
+    pendingRelease={ctx:this,power:adj,shot,automatic,meterPower:power};
     G.canShoot=false;
     return true;
   }

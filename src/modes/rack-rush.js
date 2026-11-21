@@ -400,7 +400,7 @@
       if(rush.uiAcc>=.1){rush.uiAcc=0;updateRackRushHUD();}
       if(G.timer<=0&&!G.buzzed){
         G.buzzed=true;G.running=false;sBuzz();paSay("时间到!",true);
-        if(G.charging)doRelease();G.canShoot=false;G.charging=false;handBall.visible=false;pBall.visible=false;
+        if(G.charging)doRelease(true);G.canShoot=false;G.charging=false;handBall.visible=false;pBall.visible=false;
         toast("时间到 · 等待最后一球","#ff8d7a");
       }
     }

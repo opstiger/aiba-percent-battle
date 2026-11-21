@@ -1263,7 +1263,7 @@
     // 超时:球到手了但没出手,或者根本没敢出手
     if(!LS.released&&!LS.timedOut&&clock<=0){
       LS.timedOut=true;G.buzzed=true;G.running=false;
-      if(G.charging)doRelease();
+      if(G.charging)doRelease(true);
       if(!G.charging&&G.shotIdx===0){
         G.canShoot=false;handBall.visible=false;pBall.visible=false;
         LS.buzzed=true;sBuzz();toast("⏱ 终场蜂鸣 · 没能出手","#ff8d7a");

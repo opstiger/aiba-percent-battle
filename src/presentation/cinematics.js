@@ -301,7 +301,7 @@ window.announceAIShowResult=announceAIShowResult;
 /* ---------------- 反超对手 → 3秒特写 ---------------- */
 function tryCutAway(){
   if(!G.cutQ||!G.cutQ.length)return;
-  if(G.cutAway||G.charging||hero.on||G.state!=="round")return;
+  if(G.cutAway||G.charging||hero.on||cosmicShotInFlight()||G.state!=="round")return;
   const p=G.cutQ.shift();
   G.cutAway={p,t:0};G.running=false;
   hands.visible=false;

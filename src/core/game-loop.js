@@ -104,7 +104,7 @@ function animate(){
     jumboAcc+=realDt;if(jumboAcc>0.5){jumboAcc=0;updJumbo();}
     if(G.timer<=0&&!G.buzzed){
       G.buzzed=true;sBuzz();paSay("时间到!",true);
-      if(G.charging)doRelease();
+      if(G.charging)doRelease(true);
       G.canShoot=false;G.charging=false;handBall.visible=false;
       toast("⏱ 时间到!","#ff8d7a");
     }

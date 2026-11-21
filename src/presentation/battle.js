@@ -30,7 +30,7 @@ function checkBattleOvertake(prevMe,prevOpp){
   const cutCount=G.battleCutCount||0;
   const locked=G.tNow<(G.battleCutLockUntil||0);
   const reserveFinal=cutCount>=2&&top<90;
-  if(top<CUTAWAY_MIN_SCORE||margin<3||elapsed<BATTLE_CUT_COOLDOWN||scoreGap<BATTLE_CUT_MIN_SCORE_EVENTS||cutCount>=BATTLE_CUT_MAX||locked||reserveFinal){hint();return;}
+  if(cosmicShotInFlight()||top<CUTAWAY_MIN_SCORE||margin<3||elapsed<BATTLE_CUT_COOLDOWN||scoreGap<BATTLE_CUT_MIN_SCORE_EVENTS||cutCount>=BATTLE_CUT_MAX||locked||reserveFinal){hint();return;}
   G.battleCutCount=cutCount+1;G.battleLastCutAt=G.tNow;G.battleLastCutEvent=G.battleScoreEvents;
   const key=top>=BATTLE_TARGET-15||(byMe?G.score-prevMe:G.battleOppScore-prevOpp)>=10;
   battleCutaway(byMe,key);

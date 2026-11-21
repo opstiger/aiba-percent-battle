@@ -719,6 +719,19 @@ catch(e){fail("shot physics script syntax error: "+e.message);}
 try{
   const sandbox={};new Function("window",shotPhysicsScript)(sandbox);
   const physics=sandbox.AIBAShotPhysics;physics.reset();
+  for(const rate of [59,67,95,120])for(const ideal of [74,86,94]){
+    physics.reset();
+    let power=0,previous=0;
+    while(power<100){
+      physics.update({charging:true,dt:1/120,ideal,rate,power});
+      power=Math.min(100,power+rate/120);
+      const effective=physics.releasePower(power,ideal);
+      if(effective<previous-1e-8){fail("continued charging reduced release power");break;}
+      previous=effective;
+    }
+    if(power===100&&Math.abs(previous-100)>1e-8)fail("late full meter lost power");
+  }
+  physics.reset();
   let held=physics.update({charging:true,dt:.4,ideal:74,rate:95,curve:{jmp:1}});
   const heldAt=held.t;
   for(let i=0;i<20;i++)held=physics.update({charging:true,paused:true,dt:.08,ideal:74,rate:95,curve:{jmp:1}});

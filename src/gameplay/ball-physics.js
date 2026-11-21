@@ -341,7 +341,7 @@
     /* 兜底：游戏靠 decided 事件判负（missBall），任何情况下都必须发出 */
     if(!state.decided){state.decided=true;state.decidedT=t;note("decided",t,0);}
     let kind;
-    if(state.made)kind=state.boardHits&&events.findIndex(e=>e.type==="board")<events.findIndex(e=>e.type==="made")?"bank":(state.rimHits?"rattleIn":"swish");
+    if(state.made)kind=last.made.ev.boardHits?"bank":(last.made.ev.rimHits?"rattleIn":"swish");
     else kind=(state.rimHits||state.boardHits)?"rimOut":"air";
     return {kind,made:state.made,madeT:state.madeT,decidedT:state.decidedT,rimHits:state.rimHits,boardHits:state.boardHits,
       supportHits:state.supportHits,events,path:new Float32Array(samples),endT:t};
@@ -545,10 +545,46 @@
     const tu=Object.assign({},DEFAULT_TUNING,opts.tuning||{}),map=Object.assign({},DEFAULT_MAP,opts.map||{});
     const tf=opts.tf,cal=calibrate(p0,tf),u=Number(opts.u)||0;
     const k=map.equalize?equalize(p0,tf,map,tu):1;
-    const depth=depthFor(p0,cal,map,u,opts.noise,k,opts.luck==null?null:Number(opts.luck));
-    const {v,scale}=velocityFor(p0,tf,cal,depth,opts.lat,map);
+    let depth=depthFor(p0,cal,map,u,opts.noise,k,opts.luck==null?null:Number(opts.luck));
+    // Only player releases have an absolute meter reading. Preserve the calibrated
+    // shooting window and let the outer ends express force over the whole distance.
+    const power=opts.power,ideal=opts.ideal;
+    const inMeter=Number.isFinite(power)&&ideal>0;
+    if(inMeter&&u>1){
+      const over=clamp((power-ideal)/Math.max(1,100-ideal),0,1);
+      const edge=clamp(u-1,0,1);
+      depth+=1.25*over*over*edge;
+    }
+    let {v,scale}=velocityFor(p0,tf,cal,depth,opts.lat,map);
+    if(inMeter&&power<ideal*.65){
+      const f=clamp(power/(ideal*.65),0,1);
+      const weight=.15+.85*f*f*(3-2*f);
+      v=v.map(speed=>speed*weight);
+      scale*=weight;
+    }
     const w=backspinFor(v,opts.backspin==null?tu.backspin:opts.backspin);
     return {p:[p0[0],p0[1],p0[2]],v,w,scale,cal,u,depth,k};
+  }
+  // The secret shot compresses the ascent and descent into three seconds.
+  // Its last metre and everything after it use the same net and floor as a normal shot.
+  function cosmicFlight(p0,opts){
+    const rim=GEOM.rim,duration=3,dropY=rim.y+1;
+    const vy=(dropY-p0[1]-9*Math.PI)/duration;
+    const landing=simulate({p:[rim.x,dropY,rim.z],v:[0,vy,0],w:[-9,1,0]},opts);
+    const frames=Math.round(duration/SAMPLE_DT),prefix=frames*STRIDE;
+    const path=new Float32Array(prefix+landing.path.length);
+    for(let i=0;i<frames;i++){
+      const u=i/frames,h=Math.sin(u*Math.PI),travel=u*u*(3-2*u);
+      // Compress the high-altitude return. The last eleven metres stay on screen
+      // long enough to follow the ball from the wide shot down to the rim.
+      const highArc=u<=.5?h:Math.cos(Math.min(1,(u-.5)/.23)*Math.PI/2);
+      path.set([i*SAMPLE_DT,p0[0]+(rim.x-p0[0])*travel,
+        p0[1]+(dropY-p0[1])*u+9*h+288*highArc**3,p0[2]+(rim.z-p0[2])*travel,-9,1,0],i*STRIDE);
+    }
+    path.set(landing.path,prefix);
+    for(let j=prefix;j<path.length;j+=STRIDE)path[j]+=duration;
+    for(const event of landing.events)event.t+=duration;
+    return Object.assign(landing,{path,madeT:duration+landing.madeT,decidedT:duration+landing.decidedT,endT:duration+landing.endT});
   }
   /* 走位途中先把这个点的校准与均衡算好，出手那一帧就只剩 1 次模拟。 */
   function prewarm(p0,tf,map,tuning){
@@ -600,7 +636,7 @@
   }
 
   const api=Object.freeze({GEOM,RAINFOREST_HOOP,hitsRainforestBoard,INDOOR_COLLIDERS,TUNING_PRESETS,DEFAULT_TUNING,DEFAULT_MAP,DIFF_MAPS,DT,SAMPLE_DT,STRIDE,
-    simulate,sampleAt,aimVelocity,backspinFor,crossOffset,scaleForDepth,calibrate,designMake,equalize,prewarm,launch,launchForOutcome,legacyOutcome});
+    simulate,sampleAt,aimVelocity,backspinFor,crossOffset,scaleForDepth,calibrate,designMake,equalize,prewarm,launch,cosmicFlight,launchForOutcome,legacyOutcome});
   if(typeof module!=="undefined"&&module.exports)module.exports=api;
   if(global)global.AIBABallPhysics=api;
 })(typeof window!=="undefined"?window:globalThis);

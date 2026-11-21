@@ -145,6 +145,25 @@ for (const [name, p0] of SPOTS) {
   check(res.kind === "swish", `${name} 零误差不是空心（${res.kind}）`);
 }
 
+// Explicit meter readings exercise the player branch, which AI launches bypass.
+{
+  const p=[0,2.6,-.37],ideal=74;
+  const params=power=>({tf:tfFor(p),power,ideal,u:(power-ideal)/5.5,tuning:TUNING});
+  const shoot=power=>P.simulate(P.launch(p,params(power)),{tuning:TUNING});
+  const range=power=>{
+    const floor=shoot(power).events.find(e=>e.type==="floor");
+    return floor?Math.hypot(floor.x-p[0],floor.z-p[2]):Infinity;
+  };
+  check(range(0)<1&&range(5)<1&&range(20)>range(5),"轻点应落在身前，继续蓄力应增加距离");
+  check(shoot(ideal).kind==="swish","标准力度应保留空心");
+  const strong=Array.from({length:21},(_,i)=>shoot(80+i));
+  check(strong.some(s=>s.kind==="bank")&&strong.some(s=>s.boardHits&&!s.made),"过力要能打板进也能打板出");
+  const special=P.cosmicFlight(p,{tuning:TUNING});
+  check(P.sampleAt(special.path,2.2).y<11.5&&P.sampleAt(special.path,2.55).y>6.5,"俯拍应跟得上飞向篮筐的球");
+  check(special.kind==="swish","落地后回弹擦筐不能改写已经落袋的空心球");
+  check(Math.abs(P.sampleAt(special.path,1.5).y-300)<2&&special.events.filter(e=>e.type==="made").length===1,"宇宙弧线应升到百层楼并只结算一次");
+}
+
 /* ---------- 4. 平衡 ---------- */
 if (args.has("--tune")) {
   const grid = [];

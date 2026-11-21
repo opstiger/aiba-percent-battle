@@ -1,7 +1,7 @@
 /* ---------------- shot jump timing physics ---------------- */
 (function(global){
   "use strict";
-  const S={t:0,lastCharging:false,apexed:false,late:0,releaseLate:0,airborne:false,justLanded:false,releaseJump:0,releaseRise:0,lastJump:0,lastLaunch:0,landingImpact:0};
+  const S={t:0,lastCharging:false,lateStartPower:null,apexed:false,late:0,releaseLate:0,airborne:false,justLanded:false,releaseJump:0,releaseRise:0,lastJump:0,lastLaunch:0,landingImpact:0};
   const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
   const ease=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
   function params(ideal,rate){
@@ -13,7 +13,7 @@
     return {peak,land,auto:land-.07};
   }
   function reset(){
-    S.t=0;S.lastCharging=false;S.apexed=false;S.late=0;S.releaseLate=0;S.airborne=false;S.justLanded=false;S.releaseJump=0;S.releaseRise=0;S.lastJump=0;S.lastLaunch=0;S.landingImpact=0;
+    S.t=0;S.lastCharging=false;S.lateStartPower=null;S.apexed=false;S.late=0;S.releaseLate=0;S.airborne=false;S.justLanded=false;S.releaseJump=0;S.releaseRise=0;S.lastJump=0;S.lastLaunch=0;S.landingImpact=0;
   }
   function update(opts){
     opts=opts||{};
@@ -34,7 +34,7 @@
     const riseOf=t=>{const u=clamp((t-takeoff)/Math.max(.12,apex-takeoff),0,1);return flow?1-(1-u)*(1-u):ease(u);};
     S.justLanded=false;
     if(charging){
-      if(!S.lastCharging){S.topJump=0;S.t=0;S.releaseLate=0;S.releaseJump=0;S.releaseRise=0;S.lastJump=0;S.lastLaunch=0;S.landingImpact=0;}
+      if(!S.lastCharging){S.lateStartPower=null;S.topJump=0;S.t=0;S.releaseLate=0;S.releaseJump=0;S.releaseRise=0;S.lastJump=0;S.lastLaunch=0;S.landingImpact=0;}
       if(!paused)S.t+=dt;
     }else{
       if(S.lastCharging){
@@ -68,6 +68,9 @@
     const liveLate=clamp((S.t-p.peak-.08)/Math.max(.12,p.auto-p.peak-.08),0,1);
     const late=charging?liveLate:S.releaseLate;
     S.late=afterPeak?late:0;
+    if(charging&&S.late>0&&S.lateStartPower===null){
+      S.lateStartPower=Number.isFinite(opts.power)?opts.power:S.t*rate;
+    }
     /* 连贯版:顶点前出手后身体会继续升到顶点,下落要从**实际到过的高度**开始,不能跳回出手那一刻的高度 */
     const launchJump=Math.max(0,S.releaseJump||base.jmp||0,flow&&!charging?(S.topJump||0):0);
     /* 顶点前松手：蓄力时 base.jmp 按力度走(理想力度就到 1)，常常比按时间走的 rise 先到顶；
@@ -104,13 +107,15 @@
     const apexCue=charging&&!paused&&!S.apexed&&S.t>=p.peak;
     if(apexCue)S.apexed=true;
     S.lastJump=jump;
-    return {curve,jump,late,landingImpact:S.landingImpact,apexCue,autoRelease:charging&&!paused&&S.t>=p.auto,airborne:S.airborne,offGround:S.airborne&&S.t>=takeoff,justLanded:S.justLanded,t:S.t,params:p};
+    return {curve,jump,late,landingImpact:S.landingImpact,apexCue,autoRelease:charging&&!paused&&S.t>=Math.max(p.auto,100/Math.max(1,rate)+.09),airborne:S.airborne,offGround:S.airborne&&S.t>=takeoff,justLanded:S.justLanded,t:S.t,params:p};
   }
   function releasePower(power,ideal){
-    const late=S.late||0;
-    if(late<=0)return power;
-    const short=10+late*28;
-    return Math.max(0,Math.min(power-short,ideal-short*.72));
+    if(!S.late||S.lateStartPower===null)return power;
+    // 下落后新增的蓄力打折；已蓄的力度保留。越接近满条，折扣越小。
+    const start=Math.max(ideal,S.lateStartPower);
+    if(power<=start||start>=100)return power;
+    const extra=power-start,remaining=(100-power)/(100-start);
+    return power-.7*extra*remaining*remaining;
   }
   function isAirborne(){return S.airborne;}
   // 供诊断用：releasePower 内部读的就是这个值，暴露出来才能区分

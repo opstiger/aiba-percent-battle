@@ -34,6 +34,12 @@ function avoidPowerHudOverlap(el,x,y,W,H){
   else y=clamp(rr.top-gap-halfH,halfH,H-halfH);
   return{x,y};
 }
+// The fill and the green band share the same vertical 0–100 meter scale.
+function playerPowerSweetBand(){
+  const training=G.practice||G.tutorial||G.interactiveTutorial;
+  const zone=clamp(playerSweetZone()*1.05,4.5,training?15:10),center=78;
+  return {start:clamp(center-zone*.5,training?68:70,86),end:clamp(center+zone*.5,74,training?92:90)};
+}
 function updatePlayerPowerUI(){
   const el=$("playerPower");if(!el)return;
   const fixed=$("powerWrap");if(fixed)fixed.style.display="none";
@@ -51,18 +57,15 @@ function updatePlayerPowerUI(){
   y=clamp(y-14,78,H-78);
   ({x,y}=avoidPowerHudOverlap(el,x,y,W,H));
   el.style.display="block";el.style.left=x+"px";el.style.top=y+"px";
-  const fill=el.querySelector("#ppFillClipRect"),sweet=el.querySelector(".ppSweet");
+  const fill=el.querySelector("#ppFillClipRect"),sweet=el.querySelector("#ppSweetClipRect");
   const power=clamp(G.power,0,100);
   if(fill){
     if(power<=0.5){fill.setAttribute("y","124");fill.setAttribute("height","0");}
     else{const y=112-power;fill.setAttribute("y",String(clamp(y,12,112)));fill.setAttribute("height",String(124-clamp(y,12,112)));}
   }
   if(sweet){
-    const training=G.practice||G.tutorial||G.interactiveTutorial;
-    const zone=clamp(playerSweetZone()*1.05,4.5,training?15:10),center=78;
-    const start=clamp(center-zone*.5,training?68:70,86),end=clamp(center+zone*.5,74,training?92:90),span=end-start;
-    sweet.style.strokeDasharray=span+" 100";
-    sweet.style.strokeDashoffset=String(-start);
+    const {start,end}=playerPowerSweetBand();
+    sweet.setAttribute("y",String(112-end));sweet.setAttribute("height",String(end-start));
   }
 }
 function updSpotDots(){

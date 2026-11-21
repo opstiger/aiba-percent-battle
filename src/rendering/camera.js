@@ -472,11 +472,97 @@ function updPlayCam(dt){
     window.AIBAVisionAim.updateArc();
   }
 }
+// A small star dome follows only the secret ball. It is shared across runs and
+// detached on the cut back to court level, where each venue renders normally.
+let cosmicSky=null,cosmicTrail=null,cosmicViewOn=false;
+function cosmicSkyDome(){
+  if(cosmicSky)return cosmicSky;
+  const canvas=document.createElement("canvas");canvas.width=1024;canvas.height=512;
+  const g=canvas.getContext("2d"),sky=g.createLinearGradient(0,0,0,512);
+  sky.addColorStop(0,"#030719");sky.addColorStop(.48,"#0c193c");
+  sky.addColorStop(.66,"#334773");sky.addColorStop(1,"#101a33");
+  g.fillStyle=sky;g.fillRect(0,0,1024,512);
+  let seed=1709;
+  const rand=()=>((seed=Math.imul(seed,1664525)+1013904223>>>0)/4294967296);
+  for(let i=0;i<1300;i++){
+    const x=rand()*1024,y=rand()*512,r=.28+rand()**3*1.25;
+    g.fillStyle=i%5?"#e5edff":"#ffd49a";g.globalAlpha=.3+rand()*.65;
+    g.beginPath();g.arc(x,y,r,0,Math.PI*2);g.fill();
+  }
+  const tex=new THREE.CanvasTexture(canvas);tex.encoding=THREE.sRGBEncoding;
+  cosmicSky=new THREE.Mesh(new THREE.SphereGeometry(15,24,14),new THREE.MeshBasicMaterial({
+    map:tex,side:THREE.BackSide,fog:false,transparent:true,depthWrite:false,toneMapped:false
+  }));
+  cosmicSky.renderOrder=-10;
+  return cosmicSky;
+}
+// One camera-facing plume shared by every secret shot. Keeping the head at the
+// ball centre makes the same highlight visible through the two camera cuts.
+function updateCosmicTrail(ball,overhead){
+  if(!cosmicTrail){
+    const canvas=document.createElement("canvas");canvas.width=96;canvas.height=192;
+    const g=canvas.getContext("2d");
+    for(let i=15;i>=0;i--){
+      const k=i/15,y=31+145*k,r=3+28*(1-k);
+      const glow=g.createRadialGradient(48,y,0,48,y,r);
+      glow.addColorStop(0,i<3?"rgba(255,246,200,.95)":"rgba(255,174,78,.80)");
+      glow.addColorStop(.4,"rgba(255,160,62,.48)");glow.addColorStop(1,"rgba(255,110,36,0)");
+      g.fillStyle=glow;g.fillRect(48-r,y-r,2*r,2*r);
+    }
+    const texture=new THREE.CanvasTexture(canvas);texture.encoding=THREE.sRGBEncoding;
+    cosmicTrail=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,depthWrite:false,toneMapped:false,fog:false}));
+    cosmicTrail.center.set(.5,1-31/192);cosmicTrail.renderOrder=2;
+  }
+  if(cosmicTrail.parent!==ball.mesh)ball.mesh.add(cosmicTrail);
+  const y=ball.mesh.position.y;
+  const fade=clamp((y-HOOP.y-.2)/1.8,0,1);
+  // At the apex the plume contracts before it reverses on the way down.
+  const motion=clamp(Math.abs(ball.t-1.5)*4,0,1);
+  cosmicTrail.material.opacity=fade*(.4+.55*motion);
+  cosmicTrail.material.rotation=ball.t<1.5?0:Math.PI;
+  const width=overhead?1.35:.69;
+  cosmicTrail.scale.set(width,width*(.55+1.95*motion),1);
+}
+function updateCosmicCamera(ball){
+  const p=ball.mesh.position,u=Math.min(1,ball.t/3);
+  cosmicViewOn=true;hands.visible=false;player.g.visible=true;
+  const following=u<.5||p.y>11.5,overhead=!following&&p.y>6.5;
+  updateCosmicTrail(ball,overhead);
+  if(following){
+    // Rise with the ball, rotating from a sideline profile into a low-angle close-up.
+    if(p.y>=296&&!ball.peakAnnounced){ball.peakAnnounced=true;toast("宇宙弧线 · 百层楼高度","#a9dfff");}
+    const lift=clamp((p.y-4)/25,0,1),angle=.6+u*1.8,dist=4.5-3.15*lift;
+    rig.pos.set(p.x+Math.sin(angle)*dist,p.y+.45-1.05*lift,p.z+Math.cos(angle)*dist);
+    rig.look.copy(p);
+    if(p.y>10){
+      const sky=cosmicSkyDome();
+      if(sky.parent!==ball.mesh)ball.mesh.add(sky);
+      sky.quaternion.copy(ball.mesh.quaternion).invert();
+      sky.material.opacity=clamp((p.y-10)/13,0,1);
+    }
+  }else if(overhead){
+    // Broadcast overhead, below the indoor roof: the entire floor is readable.
+    if(cosmicSky?.parent)cosmicSky.parent.remove(cosmicSky);
+    if(camera.aspect>=1)rig.pos.set(7,23,COURT.midZ+.15);
+    else rig.pos.set(0,24,COURT.midZ+1.5);
+    rig.look.set(0,1,COURT.midZ-2);
+  }else{
+    rig.pos.set(2.1,4.2,HOOP.z+3.4);
+    rig.look.set(HOOP.x,Math.max(HOOP.y-.15,(p.y+HOOP.y)*.5),HOOP.z);
+  }
+}
 /* CameraDirector：所有镜头的唯一调度入口。镜头优先级固定为
    调试编辑器 > 回放/胜利/英雄演出 > 过场接管 > 模式专属镜头 > 常规跟随。
    具体镜头仍由各演出模块提供，这里只决定本帧谁拥有 rig，避免 game-loop
    里不断增长的 if/else 互相抢写相机。 */
 function updateCameraDirector(dt){
+  const cosmic=cosmicShotInFlight()&&["round","tiebreak","battle","rackrush"].includes(G.state)&&!G.cutAway&&!G.battleCut;
+  if(cosmicViewOn&&!cosmic){
+    cosmicViewOn=false;
+    if(cosmicTrail?.parent)cosmicTrail.parent.remove(cosmicTrail);
+    if(cosmicSky?.parent)cosmicSky.parent.remove(cosmicSky);
+    applyCamMode();
+  }
   if(window.AIBACamera&&AIBACamera.isEditing&&AIBACamera.isEditing()){
     AIBACamera.updateEditor(dt);return "editor";
   }
@@ -484,6 +570,7 @@ function updateCameraDirector(dt){
   if(rep.on){updReplay(dt);return "replay";}
   if(VICTORY_CINE.on){updVictoryCine(dt);return "victory";}
   if(winCine.on){updWinCine(dt);return "win";}
+  if(cosmic){updateCosmicCamera(cosmicBall);return "cosmic";}
   if(hero.on){updHero(dt);return "hero";}
   if(G.cutAway||G.battleCut||G.state==="pregame")return "takeover";
   if(G.state==="aishow"){updShowCam();return "show";}

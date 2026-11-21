@@ -181,7 +181,13 @@ function updDotsUI(){
   }
   wrap.innerHTML=h;
 }
+// G.seq is replaced at the start of every run, including battle and rack rush.
+let overchargeRun=null,overchargeCount=0,cosmicBall=null;
+function cosmicShotInFlight(){
+  return cosmicBall&&cosmicBall.t<cosmicBall.scoreT+.18&&balls.includes(cosmicBall);
+}
 function startCharge(){
+  if(cosmicShotInFlight())return false;
   if(!G.canShoot||G.charging||G.moving||G.cutAway||G.battleCut)return false;
   if(G.mode==="battle"&&!battleSpotAvailable(G.battleSpot)){
     if(!battleAutoMoveIfNeeded())toast(battleSpotStatus(G.battleSpot).label,"#9fd1ff");
@@ -200,7 +206,7 @@ function startCharge(){
   if(!G.practice&&G.seq&&G.shotIdx===G.seq.length-1&&G.mode==="contest")playAudioEvent("final_shot");else if(Math.random()<0.28)playerEffort("load");
   return true;
 }
-function doRelease(){
+function doRelease(automatic=false){
   if(!G.charging){VISION.ownsCharge=false;return;}
   VISION.ownsCharge=false;
   G.charging=false;
@@ -208,7 +214,7 @@ function doRelease(){
   const power=G.power;$("pFill").style.height="0%";
   hidePlayerPowerUI();
   const shot=curShot(); if(!shot){return;}
-  releaseShot(power,shot);
+  releaseShot(power,shot,automatic);
 }
 function afterPlayerLands(delay,callback){
   const started=performance.now(),minimum=Math.max(0,delay||0);
@@ -326,7 +332,7 @@ function resimPhysicsBall(b,p,v,w,t0){
   applyPhysicsResult(b,res,t0);
   return res;
 }
-function spawnPhysicsBall(shot,err,latErr,zone,isDeep,faceAim,faceYawRad){
+function spawnPhysicsBall(shot,err,latErr,zone,isDeep,faceAim,faceYawRad,power,ideal,cosmic){
   const PHYS=globalThis.AIBABallPhysics;
   const p0=new THREE.Vector3();ballWorldPos(p0);
   handBall.visible=false;pBall.visible=false;
@@ -334,19 +340,19 @@ function spawnPhysicsBall(shot,err,latErr,zone,isDeep,faceAim,faceYawRad){
   const dist=Math.hypot(HOOP.x-sim.x,HOOP.z-sim.z);
   const tf0=shotFlightTime(0.78+dist*0.062,G.myStar,shot);
   const u=err/Math.max(.5,zone);
-  const lOpts=physicsLaunchOpts({tf:tf0,u,lat:latErr,noise:aibaGauss(),luck:aibaRoll()});
+  const lOpts=physicsLaunchOpts({tf:tf0,u,power,ideal,lat:latErr,noise:aibaGauss(),luck:aibaRoll()});
   const latM=(lOpts.map&&lOpts.map.latMeters)||0.9;
   // ball-physics.js 里 +ang 往 +X(右)偏，而视觉/相机/player.rotation.y 里 +yawRad 往 -X(左)转，故取反并按弧度换算
   if(faceYawRad)lOpts.lat=(latErr-(faceAim||0))-(faceYawRad*dist)/latM;
   const L=PHYS.launch([sim.x,sim.y,sim.z],lOpts);
-  const res=PHYS.simulate(L,lOpts);
+  const res=cosmic?PHYS.cosmicFlight(L.p,lOpts):PHYS.simulate(L,lOpts);
   L.tf=tf0;L.u=u;
   return newPhysicsBall(p0,L,res,shotMat(shot),{
     val:shot.val,baseVal:shot.baseVal||shot.val,bonus:shot.bonus||0,money:shot.money,deep:isDeep,super:!!shot.super,rush:G.mode==="rackrush",
-    timeLeft:G.timer,hot:G.streak>=3,perfect:Math.abs(u)<=.5,lateralError:latErr,netDir:clamp(latErr*.9/.3,-1,1),
+    timeLeft:G.timer,cosmic,hot:G.streak>=3,perfect:Math.abs(u)<=.5,lateralError:latErr,netDir:clamp(latErr*.9/.3,-1,1),
     shooterPos:P.pos.clone(),shooterFace:P.face,poseNoiseKey:G.shotPoseNoiseKey,superChanceId:shot.superChanceId||0});
 }
-function releaseShot(power,shot){
+function releaseShot(power,shot,automatic=false,meterPower=power){
   const isBattle=G.mode==="battle";
   const isRush=G.mode==="rackrush";
   const isDeep=shot.deep!=null||shot.super;
@@ -400,7 +406,20 @@ function releaseShot(power,shot){
   if(!isBattle&&!isRush&&shot.deep!=null)deepBalls[shot.deep].visible=false;
   /* 真实物理（?physics=real）：上面的 outcome 只是旧判定的参考值，不再生效——
      误差映射成出手速度，结果交给 ball-physics.js 的碰撞模拟。 */
-  if(physicsShotsOn())return afterBallSpawn(spawnPhysicsBall(shot,err,latErr,zone,isDeep,faceAim,faceYawRad),shot,err,isBattle,isRush,isDeep);
+  if(overchargeRun!==G.seq){overchargeRun=G.seq;overchargeCount=0;}
+  const overcharged=!automatic&&meterPower>playerPowerSweetBand().end;
+  overchargeCount=overcharged?overchargeCount+1:0;
+  const cosmic=overchargeCount===5;
+  if(cosmic){overchargeCount=0;toast("宇宙弧线","#a9dfff");}
+  else if(overcharged)toast("蛮力投篮 "+overchargeCount+"/5","#ffc570");
+  // Even the classic rules use collision resolution for extreme player releases:
+  // after a board contact it must still be possible to score.
+  const extreme=power<ideal*.55||(err>zone&&err>(100-ideal)*.7);
+  if(physicsShotsOn()||((extreme||cosmic)&&globalThis.AIBABallPhysics)){
+    const ball=spawnPhysicsBall(shot,err,latErr,zone,isDeep,faceAim,faceYawRad,power,ideal,cosmic);
+    if(cosmic)cosmicBall=ball;
+    return afterBallSpawn(ball,shot,err,isBattle,isRush,isDeep);
+  }
   // spawn from the hands (any camera mode)
   const p0=new THREE.Vector3();ballWorldPos(p0);
   handBall.visible=false;pBall.visible=false;
@@ -467,13 +486,13 @@ function afterBallSpawn(B,shot,err,isBattle,isRush,isDeep){
     const speedFeed=G.diff==="easy"?1.16:(G.diff==="hard"?.96:1.06);
     const feed=isRackRushSpeed(rush)?speedFeed:cfg.feed;
     if(rush.supply)rush.supply.readyIn=Math.max(.06,feed-expectedCharge-RACK_PICKUP_SECONDS);
-    window.AIBAHeroMoments?.onRackRushBallSpawn(B);
+    if(!B.cosmic)window.AIBAHeroMoments?.onRackRushBallSpawn(B);
     return;
   }
   // hero moment: last ball / buzzer beater / tiebreak
   const isLast=G.shotIdx===G.seq.length-1;
   /* 每日绝杀模式的核心是第一人称看球和全场反应,不切英雄时刻特写。 */
-  if(G.mode!=="lastshot"&&!G.practice&&(isLast||G.state==="tiebreak"||(G.state==="round"&&G.timer<=3)))startHero(B);
+  if(!B.cosmic&&G.mode!=="lastshot"&&!G.practice&&(isLast||G.state==="tiebreak"||(G.state==="round"&&G.timer<=3)))startHero(B);
   // advance
   G.shotIdx++;G.canShoot=false;
   const nxt=curShot();if(nxt){if(G.mode==="contest"&&shot&&nxt.rack!==shot.rack&&shot.rack!==null){if(nxt.rack===G.moneyRack)playAudioEvent("contest_moneyrack");else if(nxt.rack===4)playAudioEvent("contest_finalrack");}const samePos=isSameShotSpot(nxt,shot);afterPlayerLands(samePos?260:200,()=>{if(G.state!=="round"&&G.state!=="tiebreak")return;if(samePos){readyBall();}else{walkTo(nxt,readyBall,{overlapPass:true});}});}
@@ -692,6 +711,7 @@ function updPhysicsBall(b,dt,index){
   const omega=b._pathOmega||(b._pathOmega=new THREE.Vector3());
   omega.set(s.wx,s.wy,s.wz);rotateBallWorld(b,omega,dt,1);
   while(b.evi<b.events.length&&b.events[b.evi].t<=lt)physicsBallEvent(b,b.events[b.evi++]);
+  if(b===cosmicBall&&b.t>=b.scoreT+.18)cosmicBall=null;
   if(b.t>=b.endT){
     if(b.rushRunId)window.queueRackRushReturn?.(b);
     scene.remove(b.mesh);scene.remove(b.blob);
@@ -808,7 +828,8 @@ function updBalls(dt){
     b.blob.position.set(b.mesh.position.x,0.02,b.mesh.position.z);
     const s=clamp(1.4-b.mesh.position.y*0.12,0.3,1.4);
     b.blob.scale.set(s,s,1);
-    if(b.rec.length<240)b.rec.push([b.t,b.mesh.position.x,b.mesh.position.y,b.mesh.position.z]);
+    if(b.cosmic&&b.rec.length&&b.t-b.rec[b.rec.length-1][0]<1/60)continue;
+    if(b.rec.length<(b.cosmic?380:240))b.rec.push([b.t,b.mesh.position.x,b.mesh.position.y,b.mesh.position.z]);
   }
 }
 
