@@ -667,6 +667,7 @@ function physicsBallEvent(b,e){
     case "rim":
       if(fx)fx.impact("rim",e);
       if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(e.x??HOOP.x,e.y??HOOP.y,e.z??HOOP.z,Math.max(2.4,Math.min(5.2,(e.impulse||2.6)*1.25)),"rim");
+      if(globalThis.AIBAWorldWonders?.lunarImpulse)globalThis.AIBAWorldWonders.lunarImpulse(e.x??HOOP.x,e.y??HOOP.y,e.z??HOOP.z,Math.max(2.2,Math.min(5.0,(e.impulse||2.5)*1.2)),"rim");
       haptic(b,e.impulse);
       b.rimHitCount=(b.rimHitCount||0)+1;
       if(e.hitIndex==null)e.hitIndex=b.rimHitCount-1;
@@ -681,6 +682,7 @@ function physicsBallEvent(b,e){
     case "board":case "connector":
       if(fx)fx.impact(e.type,e);
       if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(e.x??HOOP.x,e.y??(HOOP.y+.35),e.z??(HOOP.z-.35),Math.max(1.8,Math.min(4.2,(e.impulse||2.2)*1.05)),"board");
+      if(globalThis.AIBAWorldWonders?.lunarImpulse)globalThis.AIBAWorldWonders.lunarImpulse(e.x??HOOP.x,e.y??(HOOP.y+.35),e.z??(HOOP.z-.35),Math.max(1.8,Math.min(4.0,(e.impulse||2.1)*1.0)),"board");
       sfx("board",sBoard);haptic(b,e.impulse);break;
     case "support":case "scenery":sfx("floor",sBounce);break;
     case "floor":
@@ -689,6 +691,8 @@ function physicsBallEvent(b,e){
       if(b.made)break;
       b._madeEvent=e;
       if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(HOOP.x,HOOP.y,HOOP.z,4.2,"made");
+      if(globalThis.AIBAWorldWonders?.lunarImpulse)globalThis.AIBAWorldWonders.lunarImpulse(HOOP.x,HOOP.y,HOOP.z,4.2,"made");
+      if(globalThis.AIBAWorldWonders?.lunarCelebrate)globalThis.AIBAWorldWonders.lunarCelebrate();
       if(b.opp){oppScore(b);b.made=true;}
       else if(b.silent)silentBallMade(b);
       else madeBall(b);

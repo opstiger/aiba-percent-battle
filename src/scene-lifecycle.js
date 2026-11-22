@@ -51,6 +51,14 @@
     return true;
   }
 
+  function resetLunar(){
+    const place=environmentRoot&&environmentRoot.userData&&environmentRoot.userData.placeState;
+    if(!place||!place.wonder||place.wonder.kind!=="lunar")return false;
+    if(window.AIBAWorldWonders&&typeof AIBAWorldWonders.resetLunar==="function")AIBAWorldWonders.resetLunar(place);
+    document.documentElement.dataset.environmentPhase="apolloDay";
+    return true;
+  }
+
   function resetForRun(){
     const preset=SCENE_PRESETS[currentScenePreset];
     if(!preset||preset.progression==="none")return true;
@@ -58,6 +66,7 @@
     if(preset.progression==="flowerBloom")reset=resetFlower();
     else if(preset.progression==="sunsetToNight")reset=resetBeach();
     else if(preset.progression==="rainforestNight")reset=resetRainforest();
+    else if(preset.progression==="lunarEclipse")reset=resetLunar();
     if(!reset){applyScenePreset(currentScenePreset,{persist:false});return false;}
     environmentRoot.userData.progress=0;
     return true;

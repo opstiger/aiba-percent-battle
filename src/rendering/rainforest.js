@@ -2187,18 +2187,18 @@
     const isBattle=typeof G!=="undefined"&&!!G&&G.mode==="battle";
     const tgt=Math.max(0,Math.min(1,typeof targetProgress==="number"?targetProgress:rf.targetProgress));
     rf.targetProgress=tgt;
-    rf.progress=dt>0?smoothDampVal(rf.progress,tgt,rf,"progressVel",isBattle?5.5:3.2,isBattle?.024:.042,dt):tgt;
+    rf.progress=dt>0?smoothDampVal(rf.progress,tgt,rf,"progressVel",isBattle?3.2:2.0,isBattle?.08:.15,dt):tgt;
     const p=rf.progress;
-    // 4 poetic phases:
-    // 0.00..0.28 Afternoon Sunlight -> 0.28..0.56 Sunset Dusk -> 0.56..0.72 Pitch-Black Night -> 0.64..1.00 Dense Firefly Night
-    const dusk=smoothstep(p,.20,.44)*(1-smoothstep(p,.50,.63));
-    const night=smoothstep(p,.47,.61);
-    const darkPitch=smoothstep(p,.55,.64)*(1-smoothstep(p,.74,.92)*.35);
-    const firefly=smoothstep(p,.62,.92);
+    // 4 poetic phases (paced so players experience every stage in Contest, Rack Rush & Battle!):
+    // 0.00..0.22 Afternoon Sunlight -> 0.22..0.44 Sunset Dusk -> 0.44..0.56 Pitch-Black Midnight -> 0.52..1.00 Dense Firefly Night
+    const dusk=smoothstep(p,.14,.34)*(1-smoothstep(p,.40,.52));
+    const night=smoothstep(p,.38,.50);
+    const darkPitch=smoothstep(p,.45,.53)*(1-smoothstep(p,.64,.84)*.35);
+    const firefly=smoothstep(p,.52,.80);
     rf.uniforms.forestCycle.value.set(dusk,night,firefly,darkPitch);
 
     // Sun arcs down from afternoon to sunset horizon, then shifts to faint high moonlight
-    const sunElev=lerp(.255,.095,smoothstep(p,.18,.54));
+    const sunElev=lerp(.255,.095,smoothstep(p,.14,.46));
     _sunDir.set(lerp(-.33,-.52,dusk),lerp(sunElev,.42,night),lerp(-.91,-.78,dusk)).normalize();
     rf.uniforms.forestSun.value.copy(_sunDir);
 
@@ -2220,18 +2220,19 @@
     if(typeof scene!=="undefined"&&scene?.fog){
       _tmpCol.copy(DAY_FOG).lerp(DUSK_FOG,dusk).lerp(NIGHT_FOG,night).lerp(FIREFLY_FOG,firefly*.45);
       scene.fog.color.copy(_tmpCol);
+      if(scene.background&&scene.background.isColor)scene.background.copy(_tmpCol);
       scene.fog.near=lerp(28,16,night);
       scene.fog.far=lerp(155,92,night);
     }
     if(rf.forestFireflies)rf.forestFireflies.visible=firefly>.01;
     // Daytime insects & birds quiet down as deep night settles
-    const dayLife=1-smoothstep(p,.44,.60);
+    const dayLife=1-smoothstep(p,.36,.50);
     if(rf.insects){
       rf.insects.bodies.visible=dayLife>.02;
       rf.insects.dfWings.visible=dayLife>.02;
       rf.insects.bfWings.visible=dayLife>.02;
     }
-    const stage=p>=.66?"fireflies":p>=.54?"midnight":p>=.26?"sunset":"afternoon";
+    const stage=p>=.56?"fireflies":p>=.44?"midnight":p>=.20?"sunset":"afternoon";
     if(rf.stage!==stage){
       rf.stage=stage;
       document.documentElement.dataset.environmentPhase=stage;

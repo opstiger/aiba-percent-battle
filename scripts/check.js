@@ -8,7 +8,7 @@ const childProcess=require("child_process");
 
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
-const snapshot="block-3pt-kingv2.43.0-modular.html";
+const snapshot="block-3pt-kingv2.44.0-modular.html";
 const requiredFiles=[
   entry,
   snapshot,
@@ -504,9 +504,9 @@ for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"]
 if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js"></script>'))fail("Percent Battle opponent cache version missing");
 if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js"></script>')>entryHtml.indexOf('<script src="src/game-flow.js"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
-for(const token of ["v2.43.0 MODULAR","MODULAR / v2.43.0"])
+for(const token of ["v2.44.0 MODULAR","MODULAR / v2.44.0"])
   if(!entryHtml.includes(token))fail("visible version token missing "+token);
-if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.43.0";'))fail("GAME_VERSION must be v2.43.0");
+if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.44.0";'))fail("GAME_VERSION must be v2.44.0");
 /* GAME_VERSION 会随成绩上报(见 percent-battle/state.js 的 version 字段)。以前靠手工让
    game-config.js 的 ?v= 跟着发版号走；现在 v 是内容 hash，改常量就会换 v，上面已校验不过期。 */
 const playerMeterGradient='<linearGradient id="ppGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#2e8bff"/><stop offset="55%" stop-color="#39d3ff"/><stop offset="78%" stop-color="#ffd23f"/><stop offset="100%" stop-color="#ff4040"/></linearGradient>';

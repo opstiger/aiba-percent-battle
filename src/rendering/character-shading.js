@@ -186,10 +186,13 @@
         uniforms.aibaAirColor.value.setHex(0x889ca8).lerp(new THREE.Color(0xd8b888),gold*.75+.2*clear);
       }else if(preset==="lunarCrater"){
         uniforms.aibaSceneMode.value=4;
-        uniforms.aibaRimColor.value.setHex(0xf4f8ff);
-        uniforms.aibaRimStrength.value=.50;
-        uniforms.aibaGroundColor.value.setHex(0x6e737c);
-        uniforms.aibaAirColor.value.setHex(0x828a96);
+        const envRoot=(typeof environmentRoot!=="undefined"&&environmentRoot)||global.environmentRoot;
+        const lw=envRoot?.userData?.placeState?.wonder;
+        const ecl=(lw&&lw.kind==="lunar")?(lw.eclipseAmount||0):0;
+        uniforms.aibaRimColor.value.setHex(0xf4f8ff).lerp(new THREE.Color(0xff6a3c),ecl*.82);
+        uniforms.aibaRimStrength.value=.50+.16*ecl;
+        uniforms.aibaGroundColor.value.setHex(0x6e737c).lerp(new THREE.Color(0x5a241a),ecl*.85);
+        uniforms.aibaAirColor.value.setHex(0x828a96).lerp(new THREE.Color(0x521c16),ecl*.85);
         uniforms.aibaWetness.value=0;
       }else if(preset!=="indoor"){
         uniforms.aibaSceneMode.value=3;

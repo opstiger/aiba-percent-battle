@@ -625,13 +625,14 @@
     starGeo.setAttribute("color",new THREE.BufferAttribute(sCol,3));
     const starMat=new THREE.ShaderMaterial({
       transparent:true,depthWrite:false,fog:false,vertexColors:true,
-      vertexShader:`varying vec3 vCol;void main(){vCol=color;vec4 mv=modelViewMatrix*vec4(position,1.0);gl_PointSize=clamp(220.0/max(1.0,-mv.z),1.2,2.6);gl_Position=projectionMatrix*mv;}`,
-      fragmentShader:`varying vec3 vCol;void main(){vec2 d=gl_PointCoord-.5;float a=smoothstep(.5,.05,length(d));if(a<.02)discard;gl_FragColor=vec4(vCol,a*.72);}`
+      uniforms:{uEclipse:{value:0}},
+      vertexShader:`uniform float uEclipse;varying vec3 vCol;void main(){vCol=color*(1.0+uEclipse*0.95);vec4 mv=modelViewMatrix*vec4(position,1.0);gl_PointSize=clamp((220.0+uEclipse*95.0)/max(1.0,-mv.z),1.2,3.4);gl_Position=projectionMatrix*mv;}`,
+      fragmentShader:`uniform float uEclipse;varying vec3 vCol;void main(){vec2 d=gl_PointCoord-.5;float a=smoothstep(.5,.05,length(d));if(a<.02)discard;gl_FragColor=vec4(vCol,a*min(1.0,.72+uEclipse*.28));}`
     });
     const stars=new THREE.Points(starGeo,starMat);
     stars.name="lunarStars";stars.renderOrder=-10;stars.frustumCulled=false;s.root.add(stars);
 
-    // 4. 远处挂在漆黑宇宙中的蓝色地球（射线球体公告板：永不拉扁、柔和大气晕、大半阴影）
+    // 4. 远处挂在漆黑宇宙中的蓝色地球（支持真实「月面日全食 · 地球红环」演进：地球遮住太阳时，大气折射出炽热红金光环！）
     const earthTex=new THREE.TextureLoader().load("assets/lunar/earth.jpg");
     earthTex.wrapS=THREE.RepeatWrapping;
     if(THREE.sRGBEncoding)earthTex.encoding=THREE.sRGBEncoding;
@@ -642,7 +643,8 @@
       uniforms:{
         uMap:{value:earthTex},
         uSunDir:{value:new THREE.Vector3(-0.88,0.31,-0.17).normalize()},
-        uTime:{value:0}
+        uTime:{value:0},
+        uEclipse:{value:0}
       },
       vertexShader:`varying vec2 vUv;
         void main(){
@@ -651,50 +653,76 @@
           mvPos.xy+=position.xy;
           gl_Position=projectionMatrix*mvPos;
         }`,
-      fragmentShader:`uniform sampler2D uMap;uniform vec3 uSunDir;uniform float uTime;
+      fragmentShader:`uniform sampler2D uMap;uniform vec3 uSunDir;uniform float uTime,uEclipse;
         varying vec2 vUv;
         void main(){
-          vec2 p=(vUv*2.0-1.0)/0.72;
+          // 扩大外围散射画布比例 (0.50)，让真实光学大气红晕自然衰减至 0，彻底消除硬边！
+          vec2 p=(vUv*2.0-1.0)/0.50;
           float r2=dot(p,p);
           float r=sqrt(r2);
           float outerDist=max(0.0,r-1.0);
-          float halo=exp(-outerDist*8.5)*smoothstep(1.38,1.0,r);
-          vec3 N=vec3(p,sqrt(max(0.0,1.0-r2)));
+          float edgeMask=smoothstep(1.98,1.25,r);
+          float ang=atan(p.y,p.x);
+          // 真实大气层云量与太阳微偏造成的非均匀光学红环（类似 NASA Blue Ghost 月面日全食实拍）
+          vec2 limbDir=normalize(p+vec2(1e-4));
+          float diamondArc=pow(max(0.0,dot(limbDir,normalize(vec2(-0.72,0.68)))),3.2);
+          float cloudMod=0.78+0.22*sin(ang*5.0+uTime*0.18)*cos(ang*9.0-0.7)+0.12*sin(ang*13.0+1.2);
+          float limbIntensity=(0.68+0.78*diamondArc)*cloudMod;
+
+          // 3 层物理光学散射：极细白金炽热内大气层 + 柔和深红瑞利折射环 + 宽广柔雾米氏散射外晕
+          float thinRim=exp(-pow((r-1.006)/0.024,2.0));
+          float midGlow=exp(-outerDist*6.8)*edgeMask;
+          float wideBloom=exp(-outerDist*2.4)*edgeMask;
+          float blueHalo=exp(-outerDist*7.5)*smoothstep(1.55,1.0,r);
+
           vec3 L=normalize(uSunDir);
-          float ndl=dot(N,L);
-          float lit=smoothstep(-0.18,0.34,ndl);
-          float rim=pow(1.0-N.z,2.6);
           if(r>1.0){
             float sunSide=smoothstep(-0.45,0.55,dot(normalize(vec3(p,0.0)),L));
-            vec3 haloCol=vec3(0.24,0.62,1.0)*halo*(0.06+0.78*sunSide);
-            gl_FragColor=vec4(haloCol,halo*(0.08+0.72*sunSide));
+            vec3 dayCol=vec3(0.24,0.62,1.0)*blueHalo*(0.06+0.76*sunSide);
+            float dayA=blueHalo*(0.08+0.70*sunSide);
+            vec3 eclCol=(
+              vec3(1.0,0.88,0.62)*thinRim*1.15*diamondArc+
+              vec3(1.0,0.34,0.08)*thinRim*1.25+
+              vec3(0.88,0.20,0.04)*midGlow*0.72+
+              vec3(0.55,0.09,0.02)*wideBloom*0.30
+            )*limbIntensity;
+            float eclA=clamp((thinRim*0.92+midGlow*0.58+wideBloom*0.24)*limbIntensity,0.0,1.0);
+            gl_FragColor=vec4(mix(dayCol,eclCol,uEclipse),mix(dayA,eclA,uEclipse));
             return;
           }
+          vec3 N=vec3(p,sqrt(max(0.0,1.0-r2)));
+          float ndl=dot(N,L);
+          float lit=smoothstep(-0.18,0.34,ndl)*(1.0-uEclipse);
           float lon=atan(N.x,N.z)/6.2831853+0.5+uTime*0.003;
           float lat=asin(clamp(N.y,-0.999,0.999))/3.14159265+0.5;
           vec3 albedo=texture2D(uMap,vec2(fract(lon),lat)).rgb;
-          float edgeFade=smoothstep(1.0,0.96,r);
-          // 柔和的海面太阳高光与锐利的瑞利蓝大气边缘散射
+          float edgeFade=smoothstep(1.0,0.972,r);
           vec3 H=normalize(L+vec3(0.0,0.0,1.0));
           float spec=pow(max(dot(N,H),0.0),28.0)*0.22*lit;
-          vec3 atmo=vec3(0.24,0.64,1.0)*pow(1.0-N.z,3.4)*(0.05+0.95*lit)*1.15;
-          vec3 surface=albedo*(0.008+1.26*lit)+vec3(0.75,0.88,1.0)*spec+atmo;
-          vec3 col=mix(vec3(0.22,0.60,1.0)*(0.05+0.72*lit),surface,edgeFade);
-          float alpha=max(edgeFade,halo*0.85);
-          gl_FragColor=vec4(col,clamp(alpha,0.0,1.0));
+          vec3 blueAtmo=vec3(0.24,0.64,1.0)*pow(1.0-N.z,3.4)*(0.05+0.95*lit)*1.15;
+          // 地球背阳面边缘极其细腻的渐入红铜大气内散射（无硬描边！）
+          float innerAtmo=pow(1.0-N.z,6.5)*limbIntensity;
+          vec3 redAtmo=(vec3(1.0,0.36,0.09)*innerAtmo*1.35+vec3(1.0,0.84,0.58)*pow(1.0-N.z,12.0)*diamondArc*1.2);
+          // 地球黑夜面极其微弱的暗影轮廓
+          vec3 nightEarth=albedo*0.018+vec3(0.04,0.012,0.008)*pow(1.0-N.z,2.0);
+          vec3 daySurface=albedo*(0.008+1.26*lit)+vec3(0.75,0.88,1.0)*spec+blueAtmo;
+          vec3 surface=mix(daySurface,nightEarth+redAtmo,uEclipse);
+          vec3 limbEdgeCol=mix(vec3(0.22,0.60,1.0)*(0.05+0.72*lit),(vec3(1.0,0.38,0.10)*1.3+vec3(1.0,0.85,0.55)*diamondArc*0.9)*limbIntensity,uEclipse);
+          vec3 col=mix(limbEdgeCol,surface,edgeFade);
+          gl_FragColor=vec4(col,1.0);
           #include <tonemapping_fragment>
           #include <encodings_fragment>
         }`
     });
     earthMat.map=earthTex;
-    const earth=new THREE.Mesh(new THREE.PlaneGeometry(16.5,16.5),earthMat);
+    const earth=new THREE.Mesh(new THREE.PlaneGeometry(25.0,25.0),earthMat);
     earth.position.set(16.5,18.5,-76);earth.name="lunarEarth";earth.frustumCulled=false;
     s.root.add(earth);
 
-    // 5. 阿波罗低角度太阳日冕星芒 + 环形山静电尘埃光束与地平线微光带 (Apollo Solar Corona, Vacuum Dust Shafts & Horizon Glow)
+    // 5. 阿波罗低角度太阳日冕星芒 + 环形山静电尘埃光束与地平线微光带 (支持月面日全食红环过渡)
     const coronaMat=new THREE.ShaderMaterial({
       transparent:true,depthWrite:false,fog:false,blending:THREE.AdditiveBlending,
-      uniforms:{uTime:{value:0}},
+      uniforms:{uTime:{value:0},uEclipse:{value:0}},
       vertexShader:`varying vec2 vUv;
         void main(){
           vUv=uv;
@@ -702,7 +730,7 @@
           mvPos.xy+=position.xy;
           gl_Position=projectionMatrix*mvPos;
         }`,
-      fragmentShader:`uniform float uTime;varying vec2 vUv;
+      fragmentShader:`uniform float uTime,uEclipse;varying vec2 vUv;
         void main(){
           vec2 p=vUv*2.0-1.0;
           float r=length(p);
@@ -710,12 +738,11 @@
           float core=exp(-r*r*46.0);
           float innerHalo=exp(-r*5.4)*0.52;
           float outerCorona=exp(-r*2.4)*smoothstep(1.0,0.14,r)*0.24;
-          // 哈苏 6 叶片光圈星芒 + 宽银幕水平变形拉丝亮线
           float ang=atan(p.y,p.x);
           float rays=pow(max(0.0,cos(ang*3.0)),18.0)*exp(-r*3.6)*(0.32+0.05*sin(uTime*1.7));
           float anamorphic=exp(-abs(p.y)*24.0)*exp(-abs(p.x)*2.0)*0.38;
           vec3 col=vec3(1.0,0.99,0.95)*core+vec3(0.96,0.93,0.86)*(innerHalo+rays)+vec3(0.80,0.88,0.98)*(outerCorona+anamorphic);
-          float alpha=clamp(core+innerHalo+outerCorona+rays*0.72+anamorphic*0.82,0.0,1.0);
+          float alpha=clamp(core+innerHalo+outerCorona+rays*0.72+anamorphic*0.82,0.0,1.0)*(1.0-uEclipse*0.96);
           gl_FragColor=vec4(col,alpha);
         }`
     });
@@ -749,7 +776,7 @@
     const hGlowGeo=new THREE.CylinderGeometry(96,96,24,48,1,true);
     const hGlowMat=new THREE.ShaderMaterial({
       transparent:true,depthWrite:false,fog:false,side:THREE.BackSide,blending:THREE.AdditiveBlending,
-      uniforms:{uTime:{value:0}},
+      uniforms:{uTime:{value:0},uEclipse:{value:0}},
       vertexShader:`varying vec3 vWPos;varying vec2 vUv;
         void main(){
           vUv=uv;
@@ -757,15 +784,17 @@
           vWPos=wp.xyz;
           gl_Position=projectionMatrix*viewMatrix*wp;
         }`,
-      fragmentShader:`uniform float uTime;varying vec3 vWPos;varying vec2 vUv;
+      fragmentShader:`uniform float uTime,uEclipse;varying vec3 vWPos;varying vec2 vUv;
         void main(){
           vec3 dir=normalize(vWPos-vec3(0.0,0.0,4.0));
           float sunSide=smoothstep(-0.35,0.95,dot(dir,normalize(vec3(-0.38,0.18,-0.90))));
           float earthSide=smoothstep(-0.25,0.92,dot(dir,normalize(vec3(0.22,0.20,-0.95))));
           float vProfile=smoothstep(0.0,0.26,vUv.y)*exp(-max(0.0,vUv.y-0.22)*3.8);
           float wave=0.82+0.18*sin(dir.x*9.0+dir.z*7.0+uTime*0.22);
-          vec3 col=vec3(0.92,0.90,0.84)*sunSide*0.18+vec3(0.36,0.64,1.0)*earthSide*0.12+vec3(0.48,0.52,0.60)*0.04;
-          float a=vProfile*wave*(0.04+0.13*sunSide+0.09*earthSide);
+          vec3 dayCol=vec3(0.92,0.90,0.84)*sunSide*0.18+vec3(0.36,0.64,1.0)*earthSide*0.12+vec3(0.48,0.52,0.60)*0.04;
+          vec3 redCol=vec3(0.92,0.26,0.09)*(0.12+0.24*sunSide+0.16*earthSide);
+          vec3 col=mix(dayCol,redCol,uEclipse);
+          float a=vProfile*wave*mix(0.04+0.13*sunSide+0.09*earthSide,0.14+0.18*sunSide,uEclipse);
           gl_FragColor=vec4(col,a);
         }`
     });
@@ -1050,13 +1079,350 @@
     meteor.position.set(-18,46,-98);meteor.rotation.z=-0.38;meteor.visible=false;
     s.root.add(meteor);
 
+    // 10. 随机多形态自然月海晶石簇（六方水晶柱 / 八面体切面晶块 / 十二面体晶洞 / 斜切板状片晶）+ 切面星芒闪光
+    const crystalGrp=new THREE.Group();crystalGrp.name="lunarCrystalClusters";
+    const crystalMats=[
+      new THREE.MeshPhysicalMaterial({color:0x96eeff,emissive:0x2da6dc,emissiveIntensity:0.20,roughness:0.12,metalness:0.22,clearcoat:0.92,envMap:lEnv,envMapIntensity:1.45,flatShading:true}),
+      new THREE.MeshPhysicalMaterial({color:0xffe4aa,emissive:0xd48e28,emissiveIntensity:0.18,roughness:0.14,metalness:0.28,clearcoat:0.88,envMap:lEnv,envMapIntensity:1.38,flatShading:true}),
+      new THREE.MeshPhysicalMaterial({color:0xd8caff,emissive:0x785ce0,emissiveIntensity:0.18,roughness:0.12,metalness:0.24,clearcoat:0.90,envMap:lEnv,envMapIntensity:1.42,flatShading:true}),
+      new THREE.MeshPhysicalMaterial({color:0xdff8f0,emissive:0x4cc4a6,emissiveIntensity:0.18,roughness:0.10,metalness:0.20,clearcoat:0.95,envMap:lEnv,envMapIntensity:1.50,flatShading:true})
+    ];
+    const crystalBaseMat=new THREE.MeshStandardMaterial({color:0x484c54,roughness:0.92,metalness:0.06,flatShading:true});
+    // 5 种差异化真实天然矿物几何（彻底告别单调圆锥！）
+    // (1) 六方天然水晶柱（六棱柱身 + 顶部斜切晶尖）
+    const makeHexQuartzGeo=()=>{
+      const g=new THREE.CylinderGeometry(0.11,0.14,0.62,6,2);
+      const pos=g.attributes.position;
+      for(let i=0;i<pos.count;i++){
+        const y=pos.getY(i);
+        if(y>0.28){pos.setX(i,pos.getX(i)*0.18);pos.setZ(i,pos.getZ(i)*0.18);pos.setY(i,0.44);}
+        else if(y>0.0){pos.setX(i,pos.getX(i)*1.08);pos.setZ(i,pos.getZ(i)*0.94);}
+      }
+      g.translate(0,0.28,0);g.computeVertexNormals();return g;
+    };
+    const hexQuartzGeo=makeHexQuartzGeo();
+    // (2) 八面体钻石/萤石原矿晶块
+    const octaGeo=new THREE.OctahedronGeometry(0.22,0);
+    // (3) 十二面体晶洞原石
+    const dodecaGemGeo=new THREE.DodecahedronGeometry(0.20,0);
+    // (4) 斜切层状板晶（扁平不规则六角矿物片）
+    const bladeGemGeo=new THREE.CylinderGeometry(0.16,0.19,0.52,5,1);
+    bladeGemGeo.scale(1.35,1.0,0.34);bladeGemGeo.translate(0,0.24,0);
+    // (5) 截顶不规则斜棱晶柱
+    const prismGemGeo=new THREE.CylinderGeometry(0.08,0.16,0.56,4,1);
+    prismGemGeo.scale(1.18,1.0,0.72);prismGemGeo.translate(0,0.26,0);
+    const crystalGeos=[hexQuartzGeo,octaGeo,dodecaGemGeo,bladeGemGeo,prismGemGeo];
+
+    const glintPos=[],glintSeed=[];
+    const crystalSpots=[
+      [-10.8,-9.2],[10.6,-8.4],[-12.4,-2.6],[11.9,-1.8],[-11.5,4.8],[12.2,5.6],
+      [-9.8,13.5],[10.4,14.2],[-5.8,-14.2],[6.4,-13.6],[-16.2,-12.5],[15.8,-11.8],
+      [-15.4,2.4],[16.0,3.2]
+    ];
+    crystalSpots.forEach(([cx,cz],idx)=>{
+      const cy=terrainY(cx,cz);
+      const cl=new THREE.Group();cl.position.set(cx,cy,cz);
+      // 粗糙玄武岩母岩基座
+      const rock=new THREE.Mesh(new THREE.DodecahedronGeometry(0.36+s.r()*0.30,0),crystalBaseMat);
+      rock.scale.set(1.0+s.r()*0.5,0.46+s.r()*0.32,0.95+s.r()*0.45);
+      rock.rotation.set(s.r()*2,s.r()*3,s.r()*2);rock.position.y=0.14;cl.add(rock);
+      const mat=crystalMats[idx%crystalMats.length];
+      const nPieces=3+((idx*5+2)%4);
+      for(let k=0;k<nPieces;k++){
+        const geo=crystalGeos[(idx*3+k*2)%crystalGeos.length];
+        const sh=new THREE.Mesh(geo,k===0?mat:crystalMats[(idx+k)%crystalMats.length]);
+        const a=(k/nPieces)*Math.PI*2+s.r()*0.9;
+        const sx=0.55+s.r()*1.05,sy=0.52+s.r()*1.25,sz=0.55+s.r()*1.05;
+        sh.scale.set(sx,sy,sz);
+        const isChunk=(geo===octaGeo||geo===dodecaGemGeo);
+        sh.position.set(Math.cos(a)*(0.12+s.r()*0.18),isChunk?(0.24+s.r()*0.18):0.12,Math.sin(a)*(0.12+s.r()*0.18));
+        sh.rotation.set((s.r()-0.5)*0.85,s.r()*Math.PI*2,(s.r()-0.5)*0.85);
+        cl.add(sh);
+        glintPos.push(cx+sh.position.x,cy+sh.position.y+(isChunk?0.12:sy*0.42),cz+sh.position.z);
+        glintSeed.push(s.r()*6.283,0.6+s.r()*1.2,(idx+k)%3);
+      }
+      crystalGrp.add(cl);
+    });
+    s.root.add(crystalGrp);
+    const glintGeo=new THREE.BufferGeometry();
+    glintGeo.setAttribute("position",new THREE.Float32BufferAttribute(glintPos,3));
+    glintGeo.setAttribute("aSeed",new THREE.Float32BufferAttribute(glintSeed,3));
+    const glintMat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,
+      uniforms:{uTime:{value:0},uPower:{value:0.35}},
+      vertexShader:`attribute vec3 aSeed;uniform float uTime,uPower;varying float vTw,vKind;
+        void main(){
+          float tw=pow(max(0.0,sin(uTime*(2.0+aSeed.y*1.6)+aSeed.x*9.0)),4.0);
+          vTw=(0.16+0.84*tw)*(0.32+0.82*uPower);
+          vKind=aSeed.z;
+          vec4 mv=modelViewMatrix*vec4(position,1.0);
+          float dist=max(1.2,-mv.z);
+          gl_Position=projectionMatrix*mv;
+          gl_PointSize=clamp((36.0+52.0*tw)*(0.52+0.62*uPower)/dist,1.8,19.0);
+        }`,
+      fragmentShader:`varying float vTw,vKind;
+        void main(){
+          vec2 p=gl_PointCoord*2.0-1.0;
+          float r=length(p);if(r>1.0)discard;
+          float star=exp(-abs(p.x)*14.0)*exp(-abs(p.y)*3.2)+exp(-abs(p.y)*14.0)*exp(-abs(p.x)*3.2);
+          float core=exp(-r*r*18.0);
+          vec3 c=vKind<0.5?vec3(0.65,0.96,1.0):(vKind<1.5?vec3(1.0,0.88,0.55):vec3(0.86,0.78,1.0));
+          float a=clamp((core+star*0.85)*vTw,0.0,1.0);
+          gl_FragColor=vec4(mix(c,vec3(1.0),core*0.6)*a*1.25,a);
+        }`
+    });
+    const crystalGlints=new THREE.Points(glintGeo,glintMat);
+    crystalGlints.name="lunarCrystalGlints";crystalGlints.frustumCulled=false;crystalGlints.renderOrder=7;
+    s.root.add(crystalGlints);
+
+    // 11. 1/6G 失重悬浮玄武岩碎石与嵌晶原石 (1/6G Levitating Floating Rocks)
+    const floatGrp=new THREE.Group();floatGrp.name="lunarFloatingRocks";
+    const floatingRocks=[];
+    const floatGeo=new THREE.DodecahedronGeometry(1,0);
+    const floatBasaltMat=new THREE.MeshStandardMaterial({color:0x60646c,roughness:0.88,metalness:0.08,flatShading:true});
+    const nFloat=s.mobile?12:20;
+    for(let i=0;i<nFloat;i++){
+      const ang=(i/nFloat)*Math.PI*2+(s.r()-0.5)*0.26;
+      const rad=10.6+s.r()*9.2;
+      const fx=Math.sin(ang)*rad,fz=-2.5+Math.cos(ang)*rad*1.12;
+      const fy0=terrainY(fx,fz);
+      const rg=new THREE.Group();
+      const sc=0.16+s.r()*0.30;
+      const rock=new THREE.Mesh(floatGeo,floatBasaltMat);
+      rock.scale.set(sc*(0.8+s.r()*0.5),sc*(0.6+s.r()*0.45),sc*(0.8+s.r()*0.5));
+      rock.castShadow=true;rg.add(rock);
+      if(i%3===0){
+        const gem=new THREE.Mesh(crystalGeos[(i*2)%crystalGeos.length],crystalMats[i%crystalMats.length]);
+        gem.scale.setScalar(sc*0.85);gem.position.set(0,sc*0.28,0);gem.rotation.set(0.4,i,0.35);
+        rg.add(gem);
+      }
+      rg.position.set(fx,fy0+sc*0.35,fz);
+      floatGrp.add(rg);
+      floatingRocks.push({
+        mesh:rg,fx,fy0:fy0+sc*0.35,fz,
+        liftH:0.8+s.r()*3.8,
+        wake:0.15+s.r()*0.50,
+        phase:s.r()*Math.PI*2,
+        rx:(s.r()-0.5)*0.55,ry:(s.r()-0.5)*0.65,rz:(s.r()-0.5)*0.45
+      });
+    }
+    s.root.add(floatGrp);
+
+    // 11B. 远处微微发光的月宫玉兔（坐卧在远方环形山坡上，散发出柔和温润的白玉微光，长耳轻动，偶尔 1/6G 轻盈一跃！）
+    const rabbit=new THREE.Group();rabbit.name="lunarJadeRabbit";
+    const rx0=15.8,rz0=-25.5,ry0=terrainY(rx0,rz0);
+    const jadeMat=new THREE.MeshPhysicalMaterial({
+      color:0xf4fffc,emissive:0xb8f4e8,emissiveIntensity:0.55,
+      roughness:0.24,metalness:0.05,clearcoat:0.65,clearcoatRoughness:0.22
+    });
+    const jadeInnerEarMat=new THREE.MeshBasicMaterial({color:0xffe4ec});
+    const jadeEyeMat=new THREE.MeshBasicMaterial({color:0xff7b88});
+    const rabBody=new THREE.Group();rabbit.add(rabBody);
+    // 圆润坐姿玉兔身躯 + 蓬松圆尾 + 仰望星空的头部
+    const rTorso=new THREE.Mesh(new THREE.SphereGeometry(0.42,14,12),jadeMat);
+    rTorso.scale.set(0.86,0.92,1.16);rTorso.position.set(0,0.40,0);rabBody.add(rTorso);
+    const rHaunch=new THREE.Mesh(new THREE.SphereGeometry(0.32,12,10),jadeMat);
+    rHaunch.scale.set(1.05,0.88,1.02);rHaunch.position.set(0,0.30,-0.24);rabBody.add(rHaunch);
+    const rTail=new THREE.Mesh(new THREE.SphereGeometry(0.14,10,8),jadeMat);
+    rTail.position.set(0,0.28,-0.56);rabBody.add(rTail);
+    for(const sx of [-0.16,0.16]){
+      const paw=new THREE.Mesh(new THREE.SphereGeometry(0.10,8,8),jadeMat);
+      paw.scale.set(0.85,0.65,1.45);paw.position.set(sx,0.09,0.28);rabBody.add(paw);
+    }
+    const rabHead=new THREE.Group();rabHead.position.set(0,0.78,0.28);rabBody.add(rabHead);
+    const rHeadMesh=new THREE.Mesh(new THREE.SphereGeometry(0.26,12,10),jadeMat);
+    rHeadMesh.scale.set(0.92,0.88,1.08);rabHead.add(rHeadMesh);
+    for(const sx of [-0.11,0.11]){
+      const eye=new THREE.Mesh(new THREE.SphereGeometry(0.032,8,6),jadeEyeMat);
+      eye.position.set(sx,0.04,0.24);rabHead.add(eye);
+    }
+    // 一对灵动可摆动的长兔耳
+    const earGeo=new THREE.CylinderGeometry(0.038,0.062,0.56,8);earGeo.scale(1.0,1.0,0.48);earGeo.translate(0,0.28,0);
+    const earL=new THREE.Group();earL.position.set(-0.09,0.18,-0.02);rabHead.add(earL);
+    const earR=new THREE.Group();earR.position.set(0.09,0.18,-0.02);rabHead.add(earR);
+    for(const [ear,sd] of [[earL,-1],[earR,1]]){
+      ear.add(new THREE.Mesh(earGeo,jadeMat));
+      const inner=new THREE.Mesh(earGeo,jadeInnerEarMat);
+      inner.scale.set(0.55,0.78,0.55);inner.position.z=0.022;ear.add(inner);
+      ear.rotation.set(-0.18,0,sd*0.16);
+    }
+    // 玉兔周身柔和白玉微光光晕（不刺眼、如月华轻笼）
+    const rabHaloMat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,
+      uniforms:{uGlow:{value:0.45}},
+      vertexShader:`varying vec2 vUv;void main(){vUv=uv;vec4 mv=viewMatrix*modelMatrix*vec4(0.,0.,0.,1.);mv.xy+=position.xy;gl_Position=projectionMatrix*mv;}`,
+      fragmentShader:`uniform float uGlow;varying vec2 vUv;void main(){vec2 p=vUv*2.-1.;float r=length(p);if(r>1.)discard;float g=exp(-r*r*4.2)*(1.-smoothstep(.6,1.,r));gl_FragColor=vec4(.82,1.,.95,g*uGlow);}`
+    });
+    const rabHalo=new THREE.Mesh(new THREE.PlaneGeometry(3.2,3.2),rabHaloMat);
+    rabHalo.position.set(0,0.65,0);rabBody.add(rabHalo);
+    rabbit.position.set(rx0,ry0,rz0);
+    rabbit.rotation.y=-0.62; // 面向球场方向静静观望
+    s.root.add(rabbit);
+    const jadeRabbit={group:rabbit,body:rabBody,head:rabHead,earL,earR,jadeMat,haloMat:rabHaloMat,x:rx0,y0:ry0,z:rz0,hopT:0};
+
+    // 12. 篮筐周围 1/6G 黏滞阻尼月尘与晶尘微粒群（砸石板或空心进球时震起慢动作低重力尘粒，缓缓回落）
+    const swarmN=s.mobile?70:150;
+    const swPos=new Float32Array(swarmN*3),swSize=new Float32Array(swarmN),swGlow=new Float32Array(swarmN),swKind=new Float32Array(swarmN);
+    const swItems=[];
+    for(let i=0;i<swarmN;i++){
+      const near=i<swarmN*0.6;
+      const rad=near?(0.40+Math.pow(s.r(),1.2)*1.95):(1.8+s.r()*3.1);
+      const th=s.r()*Math.PI*2,el=(s.r()-0.42)*(near?1.5:2.3);
+      const hx=HOOP.x+Math.cos(th)*rad,hy=Math.max(0.65,HOOP.y+0.15+el),hz=HOOP.z+Math.sin(th)*rad*0.85;
+      const sa=s.r()*Math.PI*2,sb=(s.r()-0.5)*1.4;
+      const sz=0.65+s.r()*1.15,kd=i%2;
+      swItems.push({
+        hx,hy,hz,dx:0,dy:0,dz:0,vx:0,vy:0,vz:0,
+        sx:Math.cos(sa)*Math.cos(sb),sy:Math.sin(sb),sz:Math.sin(sa)*Math.cos(sb),
+        phase:s.r()*Math.PI*2,rate:0.30+s.r()*0.40,size:sz,kind:kd,excited:0
+      });
+      swPos[i*3]=hx;swPos[i*3+1]=hy;swPos[i*3+2]=hz;
+      swSize[i]=sz;swGlow[i]=0;swKind[i]=kd;
+    }
+    const swGeo=new THREE.BufferGeometry();
+    swGeo.setAttribute("position",new THREE.BufferAttribute(swPos,3));
+    swGeo.setAttribute("aSize",new THREE.BufferAttribute(swSize,1));
+    swGeo.setAttribute("aGlow",new THREE.BufferAttribute(swGlow,1));
+    swGeo.setAttribute("aKind",new THREE.BufferAttribute(swKind,1));
+    const swMat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,
+      vertexShader:`attribute float aSize,aGlow,aKind;varying float vGlow,vKind;
+        void main(){
+          vGlow=aGlow;vKind=aKind;
+          vec4 mv=modelViewMatrix*vec4(position,1.0);
+          float dist=max(1.0,-mv.z);
+          gl_Position=projectionMatrix*mv;
+          gl_PointSize=clamp(aSize*(36.0+22.0*min(1.2,aGlow))/max(1.2,dist),1.6,12.0)*step(0.01,aGlow);
+        }`,
+      fragmentShader:`varying float vGlow,vKind;
+        void main(){
+          if(vGlow<0.01)discard;
+          vec2 p=gl_PointCoord*2.0-1.0;
+          float r=length(p);if(r>1.0)discard;
+          float soft=exp(-r*r*4.8)*(1.0-smoothstep(0.65,1.0,r));
+          vec3 col=mix(vec3(0.82,0.85,0.90),vec3(1.0,0.94,0.84),vKind);
+          gl_FragColor=vec4(col,soft*min(0.85,vGlow*0.62));
+        }`
+    });
+    const hoopSwarmMesh=new THREE.Points(swGeo,swMat);
+    hoopSwarmMesh.name="lunarHoopRegolithDust";hoopSwarmMesh.frustumCulled=false;hoopSwarmMesh.renderOrder=7;
+    s.root.add(hoopSwarmMesh);
+    const hoopSwarm={mesh:hoopSwarmMesh,geo:swGeo,pos:swPos,glow:swGlow,items:swItems};
+
+    // 13. 3 名笨拙 1/6G 慢动作蹦跳围观的阿波罗宇航员 (Clumsy 1/6G Hopping Astronauts)
+    const astroGrp=new THREE.Group();astroGrp.name="lunarHoppingAstronauts";
+    const suitWhite=new THREE.MeshStandardMaterial({color:0xe8ebf0,roughness:0.55,metalness:0.12});
+    const suitJoint=new THREE.MeshStandardMaterial({color:0x4a4f59,roughness:0.62,metalness:0.35});
+    const visorGold=new THREE.MeshPhysicalMaterial({color:0xf2b84b,roughness:0.12,metalness:0.95,clearcoat:0.8,envMap:lEnv,envMapIntensity:1.4});
+    const packMat=new THREE.MeshStandardMaterial({color:0xc8cdd6,roughness:0.45,metalness:0.42});
+    const astronauts=[];
+    const astroDefs=[
+      {homeX:-10.4,homeZ:-3.6,farX:-18.0,farZ:-9.0,yaw:1.18,phase:0.3,hopRate:1.05},
+      {homeX:10.6,homeZ:-2.2,farX:18.5,farZ:-7.5,yaw:-1.24,phase:2.4,hopRate:0.92},
+      {homeX:-9.6,homeZ:7.6,farX:-17.2,farZ:11.5,yaw:2.25,phase:4.1,hopRate:1.14}
+    ];
+    for(const def of astroDefs){
+      const ag=new THREE.Group();
+      // 笨重宇航躯干 + 生命维持背包
+      const body=new THREE.Group();body.position.y=0.92;ag.add(body);
+      const torso=new THREE.Mesh(new THREE.BoxGeometry(0.56,0.68,0.38),suitWhite);body.add(torso);
+      const chest=new THREE.Mesh(new THREE.BoxGeometry(0.32,0.22,0.12),packMat);chest.position.set(0,0.06,0.22);body.add(chest);
+      const pack=new THREE.Mesh(new THREE.BoxGeometry(0.46,0.62,0.26),packMat);pack.position.set(0,0.05,-0.28);body.add(pack);
+      // 圆球头盔 + 镀金反光面罩
+      const helm=new THREE.Mesh(new THREE.SphereGeometry(0.26,12,10),suitWhite);helm.position.set(0,0.54,0);body.add(helm);
+      const visor=new THREE.Mesh(new THREE.SphereGeometry(0.22,12,10,0,Math.PI,0.2,Math.PI*0.62),visorGold);
+      visor.position.set(0,0.54,0.08);body.add(visor);
+      // 可动双臂与双腿（用于 1/6G 笨拙保持平衡摆手与起跳收腿）
+      const armL=new THREE.Group();armL.position.set(-0.34,0.24,0);body.add(armL);
+      const armR=new THREE.Group();armR.position.set(0.34,0.24,0);body.add(armR);
+      for(const [arm,sd] of [[armL,-1],[armR,1]]){
+        const m=new THREE.Mesh(new THREE.CylinderGeometry(0.085,0.075,0.54,8),suitWhite);
+        m.position.set(sd*0.04,-0.22,0);arm.add(m);
+        const glove=new THREE.Mesh(new THREE.SphereGeometry(0.08,8,6),suitJoint);
+        glove.position.set(sd*0.05,-0.50,0);arm.add(glove);
+      }
+      const legL=new THREE.Group();legL.position.set(-0.15,-0.34,0);body.add(legL);
+      const legR=new THREE.Group();legR.position.set(0.15,-0.34,0);body.add(legR);
+      for(const leg of [legL,legR]){
+        const lm=new THREE.Mesh(new THREE.CylinderGeometry(0.105,0.095,0.52,8),suitWhite);
+        lm.position.y=-0.26;leg.add(lm);
+        const boot=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.12,0.28),suitJoint);
+        boot.position.set(0,-0.54,0.05);leg.add(boot);
+      }
+      ag.position.set(def.farX,terrainY(def.farX,def.farZ),def.farZ);
+      ag.rotation.y=def.yaw;
+      astroGrp.add(ag);
+      astronauts.push({...def,group:ag,body,armL,armR,legL,legR,celebrateT:0});
+    }
+    s.root.add(astroGrp);
+
+    // 14. 仅保留 1 台精致点缀的工业巡检无人机（放在外围偏高处安静跟球，绝不遮挡篮筐与视线！）
+    const droneGrp=new THREE.Group();droneGrp.name="lunarReconDrones";
+    const drones=[];
+    const droneEyeMat=new THREE.MeshBasicMaterial({color:0x66e8ff});
+    const droneHotMat=new THREE.MeshBasicMaterial({color:0xffc444});
+    const droneHomes=[[5.2,4.3,-9.6]];
+    for(let i=0;i<droneHomes.length;i++){
+      const [hx,hy,hz]=droneHomes[i];
+      const dg=new THREE.Group();
+      const shell=new THREE.Mesh(new THREE.SphereGeometry(0.18,12,10),outGun);dg.add(shell);
+      const ring=new THREE.Mesh(new THREE.TorusGeometry(0.23,0.022,6,16),outSil);
+      ring.rotation.x=Math.PI/2;dg.add(ring);
+      const eye=new THREE.Mesh(new THREE.SphereGeometry(0.075,8,6),droneEyeMat.clone());
+      eye.position.set(0,0,0.15);dg.add(eye);
+      dg.position.set(hx,hy+12,hz);dg.visible=false;
+      droneGrp.add(dg);
+      drones.push({group:dg,eyeMat:eye.material,hx,hy,hz,dx:0,dy:0,dz:0,vx:0,vy:0,vz:0,phase:i*1.37,flashT:0});
+    }
+    s.root.add(droneGrp);
+
+    // 15. 轨道补给着陆器垂直反推降落 + 采矿塔 1/6G 尘柱 + 日全食篮筐工业补光灯
+    const lander=new THREE.Group();lander.name="lunarSupplyLander";
+    const lx=22.5,lz=-34.0,ly0=terrainY(lx,lz);
+    addPart(new THREE.CylinderGeometry(1.1,1.45,1.4,8),outGold,0,1.45,0,0,0,0,lander);
+    addPart(new THREE.CylinderGeometry(0.95,1.15,1.1,8),outTi,0,2.55,0,0,0,0,lander);
+    for(const a of [0.78,2.35,3.92,5.50]){
+      const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,1.8,8),outSil);
+      leg.position.set(Math.cos(a)*1.45,0.75,Math.sin(a)*1.45);
+      leg.rotation.set(Math.sin(a)*0.45,0,-Math.cos(a)*0.45);
+      lander.add(leg);
+      addPart(new THREE.CylinderGeometry(0.22,0.28,0.08,10),outGun,Math.cos(a)*1.95,0.04,Math.sin(a)*1.95,0,0,0,lander);
+    }
+    const flameMat=new THREE.MeshBasicMaterial({color:0x7ad8ff,transparent:true,opacity:0,blending:THREE.AdditiveBlending,depthWrite:false});
+    const flameCone=new THREE.Mesh(new THREE.ConeGeometry(0.65,3.8,12,1,true),flameMat);
+    flameCone.position.set(0,-1.1,0);flameCone.rotation.x=Math.PI;lander.add(flameCone);
+    const dustRingMat=new THREE.MeshBasicMaterial({color:0xd8ccb8,transparent:true,opacity:0,side:THREE.DoubleSide,depthWrite:false});
+    const dustRing=new THREE.Mesh(new THREE.RingGeometry(1.2,2.8,24),dustRingMat);
+    dustRing.rotation.x=-Math.PI/2;dustRing.position.set(lx,ly0+0.12,lz);
+    s.root.add(dustRing);
+    lander.position.set(lx,ly0+36,lz);lander.visible=false;
+    s.root.add(lander);
+
+    // 采矿塔 1/6G 钻探尘柱
+    const plumeMat=new THREE.MeshBasicMaterial({color:0xbec4ce,transparent:true,opacity:0,depthWrite:false,side:THREE.DoubleSide});
+    const derrickPlume=new THREE.Mesh(new THREE.ConeGeometry(2.6,12.5,12,1,true),plumeMat);
+    derrickPlume.position.set(-25,terrainY(-25,-44)+6.8,-44);
+    s.root.add(derrickPlume);
+
+    // 日全食红月阶段自动点亮的工业篮筐泛光补光灯
+    const lunarHoopLight=new THREE.PointLight(0xfff0d4,0,15,1.7);
+    lunarHoopLight.name="lunarHoopEclipseLight";
+    lunarHoopLight.position.set(HOOP.x,HOOP.y+0.85,HOOP.z+1.1);
+    s.root.add(lunarHoopLight);
+
     s.wonder={
-      kind:"lunar",earth,suit1,suit2,
+      kind:"lunar",earth,starMat,suit1,suit2,
       solarCorona,shaftMat,horizonGlow,lunarDust,
       dishPivot,solarPivot,cornerBeacons,derrickBeaconMat,
       rover,roverWheels,roverDish,roverBeaconMat,terrainY,
       gateway,gwBeaconMat,gwAmberMat,drawOrbitalBoard,orbitalBoardKey:"",
-      meteor,meteorMat
+      meteor,meteorMat,
+      // Lunar Living World state (Crimson-Ring Eclipse + Varied Crystals + Floating Rocks + Jade Rabbit + Hopping Astronauts + 1 Drone + Lander)
+      progress:0,progressVel:0,targetProgress:0,eclipseAmount:0,stage:"apolloDay",
+      crystalMats,glintMat,floatingRocks,jadeRabbit,
+      hoopSwarm,astronauts,drones,droneHotMat,
+      lander,landerHome:{x:lx,y:ly0,z:lz},flameMat,dustRing,dustRingMat,
+      derrickPlume,plumeMat,lunarHoopLight
     };
   }
   function tokyo(s,b,{batch}){
@@ -2497,7 +2863,97 @@
     return {build:buildMeadow,update:updateMeadow};
   })();
   function build(s,b,helpers){if(s.name==="flowerCourt")meadow.build(s);else if(s.name==="arcticSnow")arctic(s,b,helpers);else if(s.name==="spanishQuarter")spanish(s,b,helpers);else if(s.name==="lunarCrater")lunar(s,b,helpers);else if(s.name==="tokyoRooftop")tokyo(s,b,helpers);}
-  function update(s,dt=0){
+  const LUNAR_DAY_SUN=new THREE.Color(0xfff8ee),LUNAR_ECL_SUN=new THREE.Color(0xd84624);
+  const LUNAR_DAY_AMB=new THREE.Color(0x8a909a),LUNAR_ECL_AMB=new THREE.Color(0x421614);
+  const LUNAR_DAY_HEMI=new THREE.Color(0x9ca4b2),LUNAR_ECL_HEMI=new THREE.Color(0x521c18);
+  const LUNAR_DAY_FOG=new THREE.Color(0x030408),LUNAR_ECL_FOG=new THREE.Color(0x160506);
+
+  function smoothDampLunar(cur,target,obj,velKey,smoothTime,maxSpeed,dt){
+    if(dt<=0)return cur;
+    const st=Math.max(0.0001,smoothTime),omega=2/st,x=omega*dt;
+    const exp=1/(1+x+0.48*x*x+0.235*x*x*x);
+    const maxCh=maxSpeed*st;
+    const ch=Math.max(-maxCh,Math.min(maxCh,cur-target));
+    const ct=cur-ch;
+    const temp=(obj[velKey]+omega*ch)*dt;
+    obj[velKey]=(obj[velKey]-omega*temp)*exp;
+    let out=ct+(ch+temp)*exp;
+    if((target-cur>0)===(out>target)){out=target;obj[velKey]=0;}
+    return out;
+  }
+
+  function applyLunarHoopImpulse(w,ox,oy,oz,strength,radius){
+    if(!w)return;
+    const rad=radius||3.8,str=Math.max(0.4,strength||3.2);
+    if(w.hoopSwarm&&w.hoopSwarm.items){
+      for(const f of w.hoopSwarm.items){
+        const px=f.hx+f.dx,py=f.hy+f.dy,pz=f.hz+f.dz;
+        const rx=px-ox,ry=py-oy,rz=pz-oz;
+        const d=Math.hypot(rx,ry,rz);
+        if(d>rad)continue;
+        const inv=d>0.04?1/d:0;
+        const nx=d>0.04?rx*inv:f.sx,ny=d>0.04?ry*inv:f.sy,nz=d>0.04?rz*inv:f.sz;
+        const fall=Math.exp(-d/(rad*0.46)),kick=str*fall;
+        const cx=ny*f.sz-nz*f.sy,cy=nz*f.sx-nx*f.sz,cz=nx*f.sy-ny*f.sx;
+        f.vx+=(nx*0.74+cx*0.54)*kick;
+        f.vy+=(ny*0.70+cy*0.50+0.12)*kick;
+        f.vz+=(nz*0.74+cz*0.54)*kick;
+        f.excited=Math.min(1.25,f.excited+fall*0.95);
+      }
+    }
+    if(w.drones){
+      for(const dr of w.drones){
+        const rx=(dr.hx+dr.dx)-ox,ry=(dr.hy+dr.dy)-oy,rz=(dr.hz+dr.dz)-oz;
+        const d=Math.hypot(rx,ry,rz);
+        if(d<5.2&&d>0.05){
+          const kick=str*0.42*Math.exp(-d*0.35);
+          dr.vx+=(rx/d)*kick;dr.vy+=(ry/d+0.25)*kick;dr.vz+=(rz/d)*kick;
+          dr.flashT=1.4;
+        }
+      }
+    }
+  }
+
+  function activeLunarWonder(){
+    const env=(typeof environmentRoot!=="undefined"&&environmentRoot)||window.environmentRoot;
+    const w=env?.userData?.placeState?.wonder;
+    return (w&&w.kind==="lunar")?w:null;
+  }
+
+  function lunarImpulse(x,y,z,strength,kind){
+    if(typeof currentScenePreset!=="undefined"&&currentScenePreset!=="lunarCrater")return;
+    const w=activeLunarWonder();
+    if(!w)return;
+    const mult=kind==="made"?1.35:kind==="rim"?1.15:0.88;
+    applyLunarHoopImpulse(w,x,y,z,(strength||3.0)*mult,kind==="made"?4.4:3.6);
+  }
+
+  function lunarCelebrate(){
+    if(typeof currentScenePreset!=="undefined"&&currentScenePreset!=="lunarCrater")return;
+    const w=activeLunarWonder();
+    if(!w||!w.astronauts)return;
+    for(const a of w.astronauts)a.celebrateT=2.6;
+    if(w.jadeRabbit)w.jadeRabbit.hopT=1.8;
+    if(w.drones)for(const dr of w.drones)dr.flashT=1.8;
+  }
+
+  function lunarCrystalMix(){
+    if(typeof currentScenePreset!=="undefined"&&currentScenePreset!=="lunarCrater")return 0;
+    const w=activeLunarWonder();
+    return w?(w.eclipseAmount||0):0;
+  }
+
+  function resetLunar(place){
+    const w=place?.wonder;
+    if(!w||w.kind!=="lunar")return;
+    w.progress=0;w.progressVel=0;w.targetProgress=0;w.eclipseAmount=0;w.stage="apolloDay";
+    if(w.hoopSwarm)for(const f of w.hoopSwarm.items){f.dx=f.dy=f.dz=f.vx=f.vy=f.vz=f.excited=0;}
+    if(w.astronauts)for(const a of w.astronauts)a.celebrateT=0;
+    if(w.drones)for(const dr of w.drones){dr.dx=dr.dy=dr.dz=dr.vx=dr.vy=dr.vz=dr.flashT=0;}
+    update(place,0,0);
+  }
+
+  function update(s,dt=0,progress){
     if(s.meadow)meadow.update(s,dt);
     const w=s.wonder;if(!w)return;
     if(w.kind==="tokyo"){
@@ -2521,20 +2977,235 @@
       return;
     }
     if(w.kind==="lunar"){
-      const t=s.time;
+      const t=s.time,step=Math.min(0.05,Math.max(0,dt||0));
+      const isBattle=typeof G!=="undefined"&&!!G&&G.mode==="battle";
+      const tgt=Math.max(0,Math.min(1,typeof progress==="number"?progress:w.targetProgress));
+      w.targetProgress=tgt;
+      w.progress=step>0?smoothDampLunar(w.progress,tgt,w,"progressVel",isBattle?3.2:2.0,isBattle?0.08:0.15,step):tgt;
+      const p=w.progress;
+
+      // D. 科学真实的「月面日全食 · 地球红环」演进 (p: 0.42 -> 0.74)
+      const eclipse=THREE.MathUtils.smoothstep(p,0.42,0.74);
+      w.eclipseAmount=eclipse;
       w.earth.material.uniforms.uTime.value=t;
-      if(w.solarCorona)w.solarCorona.material.uniforms.uTime.value=t;
+      w.earth.material.uniforms.uEclipse.value=eclipse;
+      // 地球缓缓滑向高空中心偏右，在第三人称与第一人称机位都能与轨道空间站遥相呼应，呈现炽热红环地球！
+      w.earth.position.set(THREE.MathUtils.lerp(16.5,24.5,THREE.MathUtils.smoothstep(p,0.28,0.76)),THREE.MathUtils.lerp(18.5,19.2,eclipse),-74);
+      if(w.starMat)w.starMat.uniforms.uEclipse.value=eclipse;
+      if(w.solarCorona){
+        w.solarCorona.material.uniforms.uTime.value=t;
+        w.solarCorona.material.uniforms.uEclipse.value=eclipse;
+      }
       if(w.shaftMat)w.shaftMat.uniforms.uTime.value=t;
-      if(w.horizonGlow)w.horizonGlow.material.uniforms.uTime.value=t;
+      if(w.horizonGlow){
+        w.horizonGlow.material.uniforms.uTime.value=t;
+        w.horizonGlow.material.uniforms.uEclipse.value=eclipse;
+      }
       if(w.lunarDust)w.lunarDust.material.uniforms.uTime.value=t;
       if(w.suit2)w.suit2.visible=(typeof G!=="undefined"&&!!G&&G.mode==="battle");
+      // 月面光照随「地球红环日全食」转为神秘暗血铜红月光，同时篮筐工业泛光灯自动点亮
+      if(typeof sun!=="undefined"&&sun){
+        sun.color.copy(LUNAR_DAY_SUN).lerp(LUNAR_ECL_SUN,eclipse);
+        sun.intensity=THREE.MathUtils.lerp(1.52,0.56,eclipse);
+      }
+      if(typeof ambient!=="undefined"&&ambient){
+        ambient.color.copy(LUNAR_DAY_AMB).lerp(LUNAR_ECL_AMB,eclipse);
+        ambient.intensity=THREE.MathUtils.lerp(0.28,0.22,eclipse);
+      }
+      if(typeof hemi!=="undefined"&&hemi){
+        hemi.color.copy(LUNAR_DAY_HEMI).lerp(LUNAR_ECL_HEMI,eclipse);
+        hemi.intensity=THREE.MathUtils.lerp(0.32,0.24,eclipse);
+      }
+      if(typeof scene!=="undefined"&&scene?.fog){
+        scene.fog.color.copy(LUNAR_DAY_FOG).lerp(LUNAR_ECL_FOG,eclipse);
+      }
+      if(w.lunarHoopLight)w.lunarHoopLight.intensity=0.25+eclipse*1.55;
+
+      // B1. 多形态自然矿石晶簇（六方水晶柱/八面体/晶洞/板晶）+ 切面星芒闪光
+      const crystalPower=0.18+THREE.MathUtils.smoothstep(p,0.12,0.82)*0.90;
+      if(w.crystalMats){
+        w.crystalMats.forEach((m,idx)=>{
+          m.emissiveIntensity=crystalPower*(0.76+0.28*Math.sin(t*(1.4+idx*0.35)+idx*1.9));
+        });
+      }
+      if(w.glintMat){
+        w.glintMat.uniforms.uTime.value=t;
+        w.glintMat.uniforms.uPower.value=crystalPower;
+      }
+
+      // B2. 1/6G 失重悬浮玄武岩与嵌晶原石（随进度缓缓离地升空、失重自转）
+      if(w.floatingRocks){
+        for(const r of w.floatingRocks){
+          const lift=THREE.MathUtils.smoothstep(p,r.wake,Math.min(1,r.wake+0.34));
+          const bob=lift>0.01?(Math.sin(t*0.58+r.phase)*0.24+Math.cos(t*0.37-r.phase)*0.12)*lift:0;
+          r.mesh.position.set(r.fx,r.fy0+lift*r.liftH+bob,r.fz);
+          if(lift>0.01){
+            r.mesh.rotation.set(t*r.rx*lift+r.phase,t*r.ry*lift,t*r.rz*lift);
+          }
+        }
+      }
+
+      // B3. 远处微微发光的月宫玉兔（温润白玉微光、长耳轻颤、偶尔 1/6G 轻盈一跃，进球时抬头竖耳！）
+      if(w.jadeRabbit){
+        const jr=w.jadeRabbit;
+        if(jr.hopT>0)jr.hopT=Math.max(0,jr.hopT-step);
+        const celHop=jr.hopT>0?Math.sin(Math.min(1,(1.8-jr.hopT)/1.1)*Math.PI)*0.85:0;
+        const idleCycle=t%7.5;
+        const idleHop=idleCycle<1.15?Math.sin((idleCycle/1.15)*Math.PI)*0.34:0;
+        const hopY=Math.max(celHop,idleHop);
+        jr.group.position.set(jr.x,jr.y0+hopY,jr.z);
+        jr.body.rotation.x=-hopY*0.24;
+        jr.head.rotation.y=Math.sin(t*0.72)*0.22;
+        jr.head.rotation.x=-0.06-hopY*0.18;
+        const twitch=Math.pow(Math.max(0,Math.sin(t*2.9)),6)*0.22;
+        jr.earL.rotation.z=-0.16-twitch-hopY*0.15;
+        jr.earR.rotation.z=0.16+twitch*0.8+hopY*0.15;
+        const glowAmt=0.45+0.45*eclipse+0.15*Math.sin(t*1.6);
+        jr.jadeMat.emissiveIntensity=0.48+eclipse*0.72+0.12*Math.sin(t*1.6);
+        jr.haloMat.uniforms.uGlow.value=glowAmt*0.52;
+      }
+
+      // B4. 篮筐周围 1/6G 黏滞阻尼月尘微粒群（球飞近/砸石板/进球时阻尼震散，缓缓回聚）
+      if(w.hoopSwarm){
+        const hs=w.hoopSwarm,dtSim=Math.min(0.05,Math.max(0.001,step||1/60));
+        const visAmt=0.28+THREE.MathUtils.smoothstep(p,0.10,0.78)*0.72;
+        const activeBalls=(typeof balls!=="undefined"&&Array.isArray(balls))?balls:null;
+        const bPts=[];
+        if(activeBalls){
+          for(let bi=0;bi<activeBalls.length;bi++){
+            const b=activeBalls[bi],mp=b?.mesh?.position;
+            if(mp&&b.mesh.visible&&Math.hypot(mp.x-HOOP.x,mp.y-HOOP.y,mp.z-HOOP.z)<5.2)bPts.push(mp);
+          }
+        }
+        const drag=Math.exp(-3.1*dtSim),springK=0.52;
+        for(let i=0;i<hs.items.length;i++){
+          const f=hs.items[i],tt=t*f.rate+f.phase;
+          const ix=Math.sin(tt*0.76)*0.28,iy=Math.sin(tt*0.98+f.phase)*0.20,iz=Math.cos(tt*0.68-f.phase)*0.26;
+          for(let bi=0;bi<bPts.length;bi++){
+            const bp=bPts[bi];
+            const rx=(f.hx+ix+f.dx)-bp.x,ry=(f.hy+iy+f.dy)-bp.y,rz=(f.hz+iz+f.dz)-bp.z;
+            const d=Math.hypot(rx,ry,rz);
+            if(d<2.2&&d>0.02){
+              const fall=Math.exp(-d*0.9),nx=rx/d,ny=ry/d,nz=rz/d;
+              const cx=ny*f.sz-nz*f.sy,cy=nz*f.sx-nx*f.sz,cz=nx*f.sy-ny*f.sx;
+              const wake=13.5*fall*dtSim;
+              f.vx+=(nx*0.68+cx*0.56)*wake;f.vy+=(ny*0.65+cy*0.50)*wake;f.vz+=(nz*0.68+cz*0.56)*wake;
+              f.excited=Math.min(1.2,f.excited+fall*dtSim*3.0);
+            }
+          }
+          f.vx=(f.vx-f.dx*springK*dtSim)*drag;
+          f.vy=(f.vy-f.dy*springK*dtSim)*drag;
+          f.vz=(f.vz-f.dz*springK*dtSim)*drag;
+          f.dx+=f.vx*dtSim;f.dy+=f.vy*dtSim;f.dz+=f.vz*dtSim;
+          f.excited=Math.max(0,f.excited-dtSim*0.45);
+          hs.pos[i*3]=f.hx+ix+f.dx;hs.pos[i*3+1]=Math.max(0.3,f.hy+iy+f.dy);hs.pos[i*3+2]=f.hz+iz+f.dz;
+          const tw=0.30+0.70*Math.pow(Math.max(0,Math.sin(t*(1.4+f.rate)+f.phase*7)*0.5+0.5),1.8);
+          hs.glow[i]=visAmt*(tw+f.excited*0.88);
+        }
+        hs.geo.attributes.position.needsUpdate=true;
+        hs.geo.attributes.aGlow.needsUpdate=true;
+      }
+
+      // C1. 3 名笨拙 1/6G 慢动作蹦跳围观宇航员（平时慢动作袋鼠跳，进球时高高跃起挥手欢呼！）
+      if(w.astronauts&&w.terrainY){
+        const approach=THREE.MathUtils.smoothstep(p,0.12,0.52);
+        for(const a of w.astronauts){
+          const ax=THREE.MathUtils.lerp(a.farX,a.homeX,approach);
+          const az=THREE.MathUtils.lerp(a.farZ,a.homeZ,approach);
+          const groundY=w.terrainY(ax,az);
+          if(a.celebrateT>0)a.celebrateT=Math.max(0,a.celebrateT-step);
+          const cel=a.celebrateT>0?Math.min(1,a.celebrateT/0.6):0;
+          // 1/6G 笨拙慢动作抛物线蹦跳周期（起跳蓄力下蹲 -> 滞空飘浮 -> 落地缓冲）
+          const cyc=(t*a.hopRate+a.phase)%2.6;
+          let hopH=0,crouch=0,airPhase=0;
+          if(cyc<1.55){
+            const u=cyc/1.55;
+            airPhase=Math.sin(u*Math.PI);
+            hopH=airPhase*(0.52+cel*1.15);
+          }else{
+            crouch=Math.sin(((cyc-1.55)/1.05)*Math.PI)*0.10;
+          }
+          a.group.position.set(ax,groundY+hopH-crouch,az);
+          // 宇航服滞空时笨拙前后微倾 + 双臂张开划水找平衡（进球时高举双臂挥舞）
+          a.body.rotation.x=airPhase*0.18-crouch*1.4;
+          a.body.rotation.z=Math.sin(t*2.1+a.phase)*0.11*airPhase;
+          const wave=Math.sin(t*6.5+a.phase);
+          a.armL.rotation.z=-0.28-airPhase*0.85-cel*(1.35+wave*0.35);
+          a.armR.rotation.z=0.28+airPhase*0.85+cel*(1.35-wave*0.35);
+          a.armL.rotation.x=-airPhase*0.45-cel*0.5;
+          a.armR.rotation.x=-airPhase*0.45-cel*0.5;
+          a.legL.rotation.x=-airPhase*0.48+crouch*2.2;
+          a.legR.rotation.x=airPhase*0.26+crouch*2.2;
+        }
+      }
+
+      // C2. 6 台好奇跟球并带阻尼闪避的工业巡检无人机
+      if(w.drones){
+        const droneIn=THREE.MathUtils.smoothstep(p,0.18,0.44);
+        const dtSim=Math.min(0.05,Math.max(0.001,step||1/60));
+        const drag=Math.exp(-3.2*dtSim);
+        let focusBall=null;
+        if(typeof balls!=="undefined"&&Array.isArray(balls)){
+          for(let bi=balls.length-1;bi>=0;bi--){
+            if(balls[bi]?.mesh?.visible){focusBall=balls[bi].mesh.position;break;}
+          }
+        }
+        for(const dr of w.drones){
+          dr.group.visible=droneIn>0.02;
+          if(!dr.group.visible)continue;
+          dr.vx=(dr.vx-dr.dx*0.95*dtSim)*drag;
+          dr.vy=(dr.vy-dr.dy*0.95*dtSim)*drag;
+          dr.vz=(dr.vz-dr.dz*0.95*dtSim)*drag;
+          dr.dx+=dr.vx*dtSim;dr.dy+=dr.vy*dtSim;dr.dz+=dr.vz*dtSim;
+          const dropY=(1-droneIn)*14.0;
+          const px=dr.hx+Math.sin(t*0.75+dr.phase)*0.32+dr.dx;
+          const py=dr.hy+dropY+Math.sin(t*1.15+dr.phase)*0.22+dr.dy;
+          const pz=dr.hz+Math.cos(t*0.65-dr.phase)*0.28+dr.dz;
+          dr.group.position.set(px,py,pz);
+          if(focusBall)dr.group.lookAt(focusBall.x,focusBall.y,focusBall.z);
+          else dr.group.lookAt(HOOP.x,HOOP.y,HOOP.z);
+          if(dr.flashT>0){
+            dr.flashT=Math.max(0,dr.flashT-dtSim);
+            dr.eyeMat.color.setHex(dr.flashT>0.1?0xffc844:0x66e8ff);
+          }
+        }
+      }
+
+      // A. 轨道补给着陆器垂直反推降落 + 采矿塔 1/6G 尘柱
+      if(w.lander&&w.landerHome){
+        const landT=THREE.MathUtils.smoothstep(p,0.38,0.72);
+        w.lander.visible=p>0.34;
+        if(w.lander.visible){
+          const alt=Math.pow(1-landT,1.8)*36;
+          w.lander.position.set(w.landerHome.x,w.landerHome.y+alt,w.landerHome.z);
+          const firing=landT>0.02&&landT<0.97;
+          w.flameMat.opacity=firing?(0.55+0.35*Math.sin(t*32)):0;
+          const touch=THREE.MathUtils.smoothstep(landT,0.72,1.0)*(1-THREE.MathUtils.smoothstep(p,0.78,0.92));
+          w.dustRingMat.opacity=touch*0.42;
+          const rs=1+touch*3.6;
+          w.dustRing.scale.set(rs,rs,1);
+        }
+      }
+      if(w.derrickPlume&&w.plumeMat){
+        const plumeOn=THREE.MathUtils.smoothstep(p,0.22,0.45);
+        w.plumeMat.opacity=plumeOn*(0.11+0.05*Math.sin(t*1.9));
+        w.derrickPlume.scale.set(1+0.12*Math.sin(t*1.2),0.85+0.25*plumeOn,1+0.12*Math.cos(t*1.1));
+      }
+
+      // 阶段标记
+      const stage=eclipse>0.65?"redEclipse":p>0.38?"landerDescent":p>0.18?"baseAwakening":"apolloDay";
+      if(w.stage!==stage){
+        w.stage=stage;
+        document.documentElement.dataset.environmentPhase=stage;
+      }
+
       // 科考站深空雷达与太阳翼微幅追踪摆动
       if(w.dishPivot)w.dishPivot.rotation.y=Math.sin(t*0.24)*0.65;
       if(w.solarPivot)w.solarPivot.rotation.y=Math.sin(t*0.09)*0.18;
       if(w.cornerBeacons){
         w.cornerBeacons.forEach((m,idx)=>{
-          const p=0.45+0.55*(0.5+0.5*Math.sin(t*2.4+idx*1.57));
-          m.color.setRGB(0.32*p,0.82*p,1.0*p);
+          const bp=0.45+0.55*(0.5+0.5*Math.sin(t*2.4+idx*1.57));
+          m.color.setRGB((0.32+eclipse*0.58)*bp,(0.82-eclipse*0.44)*bp,(1.0-eclipse*0.65)*bp);
         });
       }
       // 自主巡视六轮月球车沿外围环形山坡道巡航
@@ -2592,7 +3263,7 @@
           const key=modeTitle+"|"+leftVal+"|"+rightVal+"|"+clk;
           if(key!==w.orbitalBoardKey){
             w.orbitalBoardKey=key;
-            w.drawOrbitalBoard(modeTitle,leftLbl,leftVal,rightLbl,rightVal,clk,isBattle?"#ffbd44":"#5ec8ff");
+            w.drawOrbitalBoard(modeTitle,leftLbl,leftVal,rightLbl,rightVal,clk,eclipse>0.5?"#ff5e36":(isBattle?"#ffbd44":"#5ec8ff"));
           }
         }
       }
@@ -2624,5 +3295,5 @@
     }
     w.snow.geometry.attributes.position.needsUpdate=true;
   }
-  window.AIBAWorldWonders={palettes,build,update};
+  window.AIBAWorldWonders={palettes,build,update,lunarImpulse,lunarCelebrate,lunarCrystalMix,resetLunar};
 })();

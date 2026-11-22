@@ -783,13 +783,23 @@ function applyScenePreset(name,opts){
 }function resetProgressiveSceneForRun(){if(window.AIBASceneLifecycle)return AIBASceneLifecycle.resetForRun();const preset=SCENE_PRESETS[currentScenePreset];if(preset&&preset.progression!=="none")applyScenePreset(currentScenePreset,{persist:false});}
 function getEnvironmentProgress(){
   if(G.state==="boot"||G.state==="menu"||G.state==="diff"||G.state==="intro")return 0;
+  const timedVenue=currentScenePreset==="rainforest"||currentScenePreset==="lunarCrater";
   if(G.mode==="battle")return clamp(Math.max(G.score||0,G.battleOppScore||0)/BATTLE_TARGET,0,1);
   if(G.mode==="rackrush"&&G.rush){
-    if(currentScenePreset==="flowerCourt"&&isRackRushSpeed(G.rush))return clamp((G.rush.total||0)/RACK_RUSH_SPEED_TARGET,0,1);
+    if((currentScenePreset==="flowerCourt"||timedVenue)&&isRackRushSpeed(G.rush))return clamp((G.rush.total||0)/RACK_RUSH_SPEED_TARGET,0,1);
     return clamp((G.rush.level+(G.timer<=0?1:1-G.timer/Math.max(1,(RACK_RUSH_LEVELS[G.rush.level]||RACK_RUSH_LEVELS[0]).time)))/RACK_RUSH_LEVELS.length,0,1);
   }
-  if(G.mode==="contest")return clamp((G.score||0)/40,0,1);
-  return 0;
+  if(G.mode==="contest"){
+    const scoreP=clamp((G.score||0)/(timedVenue?24:40),0,1);
+    if(timedVenue){
+      const shotP=(G.seq&&G.seq.length)?clamp((G.shotIdx||0)/G.seq.length,0,1):0;
+      const roundDur=Math.max(1,(typeof ROUND_TIME!=="undefined"&&ROUND_TIME)||70);
+      const timeP=(typeof G.timer==="number"&&isFinite(G.timer))?clamp(1-G.timer/roundDur,0,1):0;
+      return Math.max(scoreP,shotP,timeP);
+    }
+    return scoreP;
+  }
+  return timedVenue?clamp((G.score||0)/24,0,1):0;
 }
 function updateEnvironment(dt){
   const progress=getEnvironmentProgress();

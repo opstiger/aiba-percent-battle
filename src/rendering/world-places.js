@@ -1572,7 +1572,7 @@
   }
   function update(dt,progress){
     const s=environmentRoot.userData.placeState;if(!s)return;s.time+=dt;
-    AIBAWorldWonders.update(s,dt);
+    AIBAWorldWonders.update(s,dt,progress);
     if(s.rainforest)AIBARainforest.update(s,dt,progress);
     s.plants.forEach(p=>{const t=s.time,phase=p.phase;p.pivot.rotation.z=(Math.sin(t*.8+phase)+.32*Math.sin(t*1.73+phase*2))*p.amp;p.pivot.rotation.x=Math.sin(t*.61+phase)*p.amp*.55;});
     if(s.meadowWind)s.meadowWind.value=s.time;
