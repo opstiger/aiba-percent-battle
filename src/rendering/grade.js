@@ -304,22 +304,62 @@
         }
 
         // Screen-Space Micro-SSAO (Depth Cavity & Contact Shadow): grounds shoes on turf/hardwood/regolith, balls on rack & metal struts.
-        if((hasSceneDepth>0.5||useDepth>0.5||useVenueAir>0.5)&&lin>0.3&&lin<32.0){
+        if((hasSceneDepth>0.5||useDepth>0.5||useVenueAir>0.5)&&lin>0.3&&lin<36.0){
           vec2 step1=texelSize*2.4,step2=texelSize*5.8;
           float dL=linearDepthAt(vUv-vec2(step1.x,0.0)),dR=linearDepthAt(vUv+vec2(step1.x,0.0));
           float dU=linearDepthAt(vUv-vec2(0.0,step1.y)),dD=linearDepthAt(vUv+vec2(0.0,step1.y));
           float dU2=linearDepthAt(vUv-vec2(0.0,step2.y)),dD2=linearDepthAt(vUv+vec2(0.0,step2.y));
           float occ=0.0;
-          float tol=.008+lin*.012,cap=.32+lin*.04;
+          float tol=.008+lin*.012,cap=.34+lin*.042;
           occ+=smoothstep(tol,tol+.08,lin-dL)*(1.0-smoothstep(cap,cap*1.8,lin-dL));
           occ+=smoothstep(tol,tol+.08,lin-dR)*(1.0-smoothstep(cap,cap*1.8,lin-dR));
           occ+=smoothstep(tol,tol+.08,lin-dU)*(1.0-smoothstep(cap,cap*1.8,lin-dU));
           occ+=smoothstep(tol,tol+.08,lin-dD)*(1.0-smoothstep(cap,cap*1.8,lin-dD));
-          occ+=.65*smoothstep(tol*1.4,tol+.14,lin-dD2)*(1.0-smoothstep(cap*1.2,cap*2.2,lin-dD2));
-          occ+=.45*smoothstep(tol*1.4,tol+.14,lin-dU2)*(1.0-smoothstep(cap*1.2,cap*2.2,lin-dU2));
-          float aoFade=1.0-smoothstep(18.0,32.0,lin);
-          float ao=clamp(occ*.095*aoFade,0.0,.32);
+          occ+=.68*smoothstep(tol*1.4,tol+.14,lin-dD2)*(1.0-smoothstep(cap*1.2,cap*2.2,lin-dD2));
+          occ+=.48*smoothstep(tol*1.4,tol+.14,lin-dU2)*(1.0-smoothstep(cap*1.2,cap*2.2,lin-dU2));
+          float aoFade=1.0-smoothstep(20.0,36.0,lin);
+          float aoMult=meadowGrade>.5?.125:(forestGrade>.5?.115:.095);
+          float ao=clamp(occ*aoMult*aoFade,0.0,.36);
           col*=1.0-ao;
+        }
+
+        // Systemic 3A Multi-Zone Optical Depth-of-Field (Near Edge Macro Blur + Focal Plane Clarity + Far Bokeh & Specular Discs)
+        // Works across ALL venues and ALL camera modes while preserving tack-sharp player, hands, ball & hoop!
+        if(hasSceneDepth>0.5&&lin>0.2){
+          // 1) Focal Plane Micro-Clarity (1.8m..17.5m): subtle local contrast pop on the active court & player/hoop plane.
+          float inFocusPlane=smoothstep(1.4,2.8,lin)*(1.0-smoothstep(15.5,21.5,lin));
+          vec3 detailDiff=col-blur;
+          col+=detailDiff*inFocusPlane*0.14;
+
+          // 2) Near-Lens Peripheral Macro Defocus (< 1.28m near outer frame edges, protecting FP hands at center).
+          float nearPeripheral=smoothstep(0.24,0.58,edgeDist)*(1.0-smoothstep(0.45,1.28,lin));
+          // 3) Far-Field Optical Bokeh (> 20.5m): progressive depth-guarded Golden-Angle disc blur + specular bokeh highlight boost.
+          float farStart=meadowGrade>.5?23.0:(forestGrade>.5?18.5:(lunarGrade>.5?22.0:20.0));
+          float farSpan=meadowGrade>.5?52.0:(forestGrade>.5?34.0:(lunarGrade>.5?54.0:44.0));
+          float farCoC=smoothstep(farStart,farStart+farSpan,lin)*(1.0-coc*0.75);
+          float sysCoC=clamp(max(nearPeripheral*0.48,farCoC*(meadowGrade>.5?0.52:(forestGrade>.5?0.56:0.44))),0.0,0.75);
+          if(sysCoC>0.015){
+            vec2 bRad=texelSize*mix(2.2,9.5,sysCoC);
+            vec3 bSum=col*0.45;
+            float bW=0.45;
+            for(int k=0;k<8;k++){
+              float a=float(k)*2.399963;
+              float r=sqrt((float(k)+0.5)/8.0);
+              vec2 suv=vUv+vec2(cos(a),sin(a))*bRad*r;
+              float sLin=linearDepthAt(suv);
+              // Depth guard: never bleed a sharp foreground player/hoop (< farStart-3m) into the far bokeh!
+              float dGuard=nearPeripheral>0.05?1.0:smoothstep(farStart-4.0,farStart+1.0,sLin);
+              vec3 sCol=texture2D(tScene,suv).rgb;
+              float sLum=luma(sCol);
+              // Specular bokeh boost: bright highlights (fireflies, stars, glints, arena lights) bloom into creamy discs.
+              float hiWeight=1.0+1.65*pow(max(0.0,sLum-0.45),1.8);
+              float w=dGuard*hiWeight;
+              bSum+=sCol*w;
+              bW+=w;
+            }
+            vec3 discBokeh=mix(bSum/max(0.001,bW),blur,sysCoC*0.32);
+            col=mix(col,discBokeh,sysCoC);
+          }
         }
 
         col+=max(blur-bloomThreshold,0.0)*bloomStrength;
@@ -553,7 +593,7 @@
     const preset=(typeof currentScenePreset==="string"&&currentScenePreset)||document.documentElement.dataset.scenePreset||"indoor";
     const lunar=preset==="lunarCrater"&&!lookLocked;
     const isFP=camera.userData.firstPerson===true;
-    focus.foreground=!isFP&&foreground>.001;
+    focus.foreground=(!isFP||!!forest)&&foreground>.001;
     if(focus.foreground){
       focus.near=forest ? .34 : foregroundRange.x;
       focus.far=forest ? 4.15 : foregroundRange.y;

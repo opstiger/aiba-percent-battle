@@ -541,14 +541,160 @@
     return pts;
   }
 
+  function buildPetals(s){
+    // 3D curved wildflower petal geometry for both backboard impact petal bursts & wind-blown hillside petal waves.
+    const limit=s.mobile?160:360;
+    const shape=new THREE.Shape();
+    shape.moveTo(0,-.068);
+    shape.quadraticCurveTo(.064,-.014,.052,.064);
+    shape.quadraticCurveTo(0,.088,-.052,.064);
+    shape.quadraticCurveTo(-.064,-.014,0,-.068);
+    const geo=new THREE.ShapeGeometry(shape,4);
+    const pos=geo.attributes.position;
+    for(let i=0;i<pos.count;i++){
+      const px=pos.getX(i),py=pos.getY(i);
+      pos.setZ(i,(px*px*4.2+py*.28)*.22);
+    }
+    geo.computeVertexNormals();
+    const mat=new THREE.MeshStandardMaterial({
+      color:0xffffff,roughness:.46,side:THREE.DoubleSide,emissive:0xffecc8,emissiveIntensity:.32
+    });
+    const mesh=new THREE.InstancedMesh(geo,mat,limit);
+    mesh.name="meadowWindPetals";mesh.count=0;mesh.frustumCulled=false;
+    mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    const palette=[0xfff8e4,0xffcb3b,0xff8da8,0xc49eff,0xffa65c,0xffe4ec];
+    const col=new THREE.Color();
+    for(let i=0;i<limit;i++){
+      col.set(palette[i%palette.length]).convertSRGBToLinear();
+      mesh.setColorAt(i,col);
+    }
+    mesh.instanceColor.needsUpdate=true;
+    s.root.add(mesh);
+    return {mesh,limit,items:[],palette,col,spawnAcc:0,gustAcc:0,nextIdx:0};
+  }
+
+  function spawnPetal(petals,p){
+    if(!petals)return;
+    if(petals.items.length>=petals.limit){
+      petals.items[petals.nextIdx%petals.limit]=p;
+      petals.nextIdx++;
+    }else{
+      petals.items.push(p);
+    }
+  }
+
+  function hoopPetalImpact(c,kind,force){
+    if(!c||!c.petals)return;
+    const flState=(typeof environmentRoot!=="undefined"&&environmentRoot?.userData?.flowerState)||null;
+    const bloomAmt=flState?Math.max(.55,flState.visualProgress||0):.85;
+    const str=clamp((force||2.8)/3.2,.65,1.65);
+    const count=Math.round((kind==="made"?48:kind==="board"?44:36)*bloomAmt*str);
+    const r=c.random;
+    for(let i=0;i<count;i++){
+      // Spawn right along the flower-crowned top & side edges of the near wooden backboard
+      const onTop=i%3!==0;
+      const sx=onTop?(r()-.5)*1.96:(i%2?1:-1)*(.88+r()*.18);
+      const sy=onTop?(3.86+r()*.32):(3.02+r()*1.02);
+      const sz=HOOP.z-.28+(r()-.5)*.16;
+      const outX=sx*.92+(r()-.5)*1.65;
+      const outY=.65+r()*1.85;
+      const outZ=.55+r()*1.95;
+      spawnPetal(c.petals,{
+        x:sx,y:sy,z:sz,
+        vx:outX*str,vy:outY*str,vz:outZ*str,
+        age:0,life:3.8+r()*2.6,
+        size:1.05+r()*.78,
+        phase:r()*tau,spin:(2.4+r()*3.8)*(r()<.5?1:-1),flutter:3.6+r()*3.2
+      });
+    }
+  }
+
+  function updatePetals(c,time,dt,rain,clear){
+    const pt=c.petals;if(!pt)return;
+    const r=c.random,m=c.transform;
+    const flState=(typeof environmentRoot!=="undefined"&&environmentRoot?.userData?.flowerState)||null;
+    const bloom=flState?Math.max(.35,flState.visualProgress||0):.75;
+    const windVal=c.windUniform?c.windUniform.value:.35;
+    // Periodic sweeping alpine wind-gust waves ("既有零散飘起，也有批量大风刮起"):
+    const gustWave=Math.pow(Math.max(0,Math.sin(time*.37)*Math.cos(time*.23+.9)),2.6);
+    const fair=1-smoothstep(rain,.08,.45);
+    // 1) Continuous scattered ambient petals lifting off the meadow & court edges
+    pt.spawnAcc+=dt*(3.4+clear*3.6)*bloom*fair;
+    while(pt.spawnAcc>=1){
+      pt.spawnAcc--;
+      const nearCourt=r()<.62;
+      const x=nearCourt?(r()-.5)*20:(r()-.5)*48;
+      const z=COURT.midZ+(nearCourt?(r()-.5)*24:(r()-.5)*50);
+      const y=c.heightAt(x,z)+.22+r()*.85;
+      spawnPetal(pt,{
+        x,y,z,
+        vx:.65+windVal*1.55+(r()-.5)*.65,
+        vy:.34+r()*.65,
+        vz:.28+(r()-.5)*.75,
+        age:0,life:4.4+r()*3.0,
+        size:.92+r()*.75,
+        phase:r()*tau,spin:(1.8+r()*3.0)*(r()<.5?1:-1),flutter:2.8+r()*2.6
+      });
+    }
+    // 2) Batch alpine wind-gust waves sweeping a dense flurry of petals across the hillside & court
+    if(gustWave>.14){
+      pt.gustAcc+=dt*gustWave*42.0*bloom*fair;
+      const gustOriginX=-16+Math.sin(time*.19)*9,gustOriginZ=COURT.midZ-12+Math.cos(time*.17)*9;
+      while(pt.gustAcc>=1){
+        pt.gustAcc--;
+        const x=gustOriginX+(r()-.5)*22,z=gustOriginZ+(r()-.5)*22;
+        const y=c.heightAt(x,z)+.18+r()*1.55;
+        spawnPetal(pt,{
+          x,y,z,
+          vx:2.5+windVal*3.4+r()*1.5,
+          vy:.72+r()*1.35,
+          vz:.92+(r()-.3)*1.05,
+          age:0,life:4.0+r()*2.5,
+          size:.96+r()*.82,
+          phase:r()*tau,spin:(3.0+r()*4.2)*(r()<.5?1:-1),flutter:4.0+r()*3.5
+        });
+      }
+    }
+    let count=0;
+    const windBreeze=.65+windVal*1.85+gustWave*2.4;
+    for(let i=pt.items.length-1;i>=0;i--){
+      const p=pt.items[i];p.age+=dt;
+      if(p.age>=p.life){pt.items.splice(i,1);continue;}
+      const u=p.age/p.life;
+      const fl=p.age*p.flutter+p.phase;
+      // Aerodynamic petal flutter: gentle terminal fall + lateral gliding sway + wind gust carry
+      p.vx+=(windBreeze*.85+Math.sin(fl)*1.15-p.vx*.92)*dt;
+      p.vz+=(windBreeze*.28+Math.cos(fl*.83)*1.05-p.vz*.92)*dt;
+      p.vy+=(-0.48+.36*Math.sin(fl*1.35)+gustWave*.55-p.vy*1.25)*dt;
+      p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;
+      const groundY=c.heightAt(p.x,p.z)+.03;
+      if(p.y<groundY){p.y=groundY;p.vx*=.85;p.vz*=.85;}
+      const fade=smoothstep(u,0,.08)*(1-smoothstep(u,.78,1));
+      const sc=p.size*(.35+.65*fade);
+      m.position.set(p.x,p.y,p.z);
+      m.rotation.set(
+        .65*Math.sin(fl)+p.age*p.spin*.45,
+        p.age*p.spin+p.phase,
+        .78*Math.cos(fl*.92)
+      );
+      m.scale.setScalar(sc);
+      m.updateMatrix();
+      pt.mesh.setMatrixAt(count++,m.matrix);
+    }
+    pt.mesh.count=count;
+    if(count||pt.mesh.visible)pt.mesh.instanceMatrix.needsUpdate=true;
+  }
+
   function build(s,supports,batch){
     const {boards,drips,motions}=buildHoops(s,supports,batch);
     buildPastureProps(s,batch);
     const ripple=new THREE.RingGeometry(.88,1,24);ripple.rotateX(-Math.PI/2);
     return {boards,drips,motions,random:s.r,transform:new THREE.Object3D(),heightAt:s.heightAt,wet:0,rain:0,dripClock:0,poolClock:0,
+      windUniform:s.meadow.wind,
       drops:instances(s,"meadowHoopDrips",new THREE.SphereGeometry(1,5,4),0xb7cdd1,.73,s.mobile?24:48),
       splash:instances(s,"meadowBallSplash",new THREE.SphereGeometry(1,5,4),0xd5e6e5,.73,s.mobile?68:138),
       rings:instances(s,"meadowWaterRipples",ripple,0xb8c8c6,.43,s.mobile?20:40),
+      petals:buildPetals(s),
       insects:buildInsects(s),butterflies:buildButterflies(s),pollen:buildPollen(s)};
   }
 
@@ -557,6 +703,7 @@
     for(const pool of [court.drops,court.splash,court.rings]){
       pool.items.length=0;pool.mesh.count=0;
     }
+    if(court.petals){court.petals.items.length=0;court.petals.mesh.count=0;court.petals.spawnAcc=court.petals.gustAcc=0;}
   }
 
   function ring(c,x,z,radius,life){
@@ -695,6 +842,7 @@
       }
     }
     updateWater(c,dt);
+    updatePetals(c,time,dt,rain,clear);
     const fair=smoothstep(clear,.13,.67)*(1-smoothstep(rain,.008,.18));
     updateInsects(c,time,fair);
     updateButterflies(c,time,fair);
@@ -705,5 +853,12 @@
     return smoothstep(wet,.045,.77)*(.27+.73*(1-smoothstep(poolShape(x,z),.38,1.44)));
   }
 
-  global.AIBAMeadowCourt=Object.freeze({build,update,reset,ballImpact,poolLiquidAt,waterGLSL});
+  function triggerHoopPetals(kind,force){
+    if(typeof currentScenePreset!=="undefined"&&currentScenePreset!=="flowerCourt")return;
+    const env=(typeof environmentRoot!=="undefined"&&environmentRoot)||global.environmentRoot;
+    const court=env?.userData?.placeState?.meadow?.court;
+    if(court)hoopPetalImpact(court,kind,force);
+  }
+
+  global.AIBAMeadowCourt=Object.freeze({build,update,reset,ballImpact,hoopPetalImpact,triggerHoopPetals,poolLiquidAt,waterGLSL});
 })(window);

@@ -1208,73 +1208,241 @@
     }
     s.root.add(floatGrp);
 
-    // 11B. 远处微微发光的月宫玉兔（坐卧在远方环形山坡上，散发出柔和温润的白玉微光，长耳轻动，偶尔 1/6G 轻盈一跃！）
+    // 11B. 塞尔达「卢比兔 / 金币精灵 (Blupee)」神性发光月宫灵兔：
+    // 通体冰青与淡金半透明菲涅尔神性流光、5簇飘逸灵毛颈环、猫头鹰式灵纹面盘与双分叉神鹿灵角、修长发光耳与灵火尾，在远处山脊自主漫游、留下发光灵粒拖尾并周期施展「闪现魔法」！
     const rabbit=new THREE.Group();rabbit.name="lunarJadeRabbit";
-    const rx0=15.8,rz0=-25.5,ry0=terrainY(rx0,rz0);
-    const jadeMat=new THREE.MeshPhysicalMaterial({
-      color:0xf4fffc,emissive:0xb8f4e8,emissiveIntensity:0.55,
-      roughness:0.24,metalness:0.05,clearcoat:0.65,clearcoatRoughness:0.22
+    const blupeeWaypoints=[
+      {x:14.8,z:-23.8,yaw:-0.58},
+      {x:8.4,z:-25.4,yaw:-0.25},
+      {x:19.6,z:-21.2,yaw:-0.88},
+      {x:-14.6,z:-24.2,yaw:0.55},
+      {x:-19.4,z:-20.6,yaw:0.86},
+      {x:16.8,z:-18.4,yaw:-1.02}
+    ];
+    const rx0=blupeeWaypoints[0].x,rz0=blupeeWaypoints[0].z,ry0=terrainY(rx0,rz0);
+    const blupeeMat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:true,blending:THREE.NormalBlending,fog:false,
+      uniforms:{uTime:{value:0},uEclipse:{value:0},uBlinkFlash:{value:0}},
+      vertexShader:`varying vec3 vN,vV,vLocal;
+        void main(){
+          vLocal=position;
+          vec4 wp=modelMatrix*vec4(position,1.0);
+          vN=normalize(mat3(modelMatrix)*normal);
+          vV=normalize(cameraPosition-wp.xyz);
+          gl_Position=projectionMatrix*viewMatrix*wp;
+        }`,
+      fragmentShader:`uniform float uTime,uEclipse,uBlinkFlash;
+        varying vec3 vN,vV,vLocal;
+        void main(){
+          float ndv=clamp(abs(dot(normalize(vN),normalize(vV))),0.0,1.0);
+          float fres=pow(1.0-ndv,2.15);
+          float pulse=0.5+0.5*sin(uTime*3.2-vLocal.y*5.5+vLocal.z*3.0);
+          // 塞尔达卢比兔幽蓝半透明灵核 + 边缘璀璨冰青/流金菲涅尔神光（层次分明绝不过曝发白！）
+          vec3 coreCol=mix(vec3(0.04,0.22,0.48),vec3(0.09,0.42,0.72),pulse);
+          vec3 rimCol=mix(vec3(0.32,0.94,1.0),vec3(1.0,0.88,0.46),0.32+0.35*pulse+0.25*uEclipse);
+          vec3 flashCol=vec3(0.75,0.98,1.0);
+          vec3 col=mix(coreCol,rimCol,clamp(fres*1.32,0.0,1.0));
+          col*=(0.95+0.35*uEclipse+0.15*pulse);
+          col=mix(col,flashCol*1.65,clamp(uBlinkFlash,0.0,1.0));
+          float alpha=clamp(0.54+0.44*fres+uBlinkFlash*0.35,0.0,1.0);
+          gl_FragColor=vec4(col,alpha);
+        }`
     });
-    const jadeInnerEarMat=new THREE.MeshBasicMaterial({color:0xffe4ec});
-    const jadeEyeMat=new THREE.MeshBasicMaterial({color:0xff7b88});
-    const rabBody=new THREE.Group();rabbit.add(rabBody);
-    // 圆润坐姿玉兔身躯 + 蓬松圆尾 + 仰望星空的头部
-    const rTorso=new THREE.Mesh(new THREE.SphereGeometry(0.42,14,12),jadeMat);
-    rTorso.scale.set(0.86,0.92,1.16);rTorso.position.set(0,0.40,0);rabBody.add(rTorso);
-    const rHaunch=new THREE.Mesh(new THREE.SphereGeometry(0.32,12,10),jadeMat);
-    rHaunch.scale.set(1.05,0.88,1.02);rHaunch.position.set(0,0.30,-0.24);rabBody.add(rHaunch);
-    const rTail=new THREE.Mesh(new THREE.SphereGeometry(0.14,10,8),jadeMat);
-    rTail.position.set(0,0.28,-0.56);rabBody.add(rTail);
-    for(const sx of [-0.16,0.16]){
-      const paw=new THREE.Mesh(new THREE.SphereGeometry(0.10,8,8),jadeMat);
-      paw.scale.set(0.85,0.65,1.45);paw.position.set(sx,0.09,0.28);rabBody.add(paw);
+    const blupeeGoldMat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:true,blending:THREE.NormalBlending,fog:false,
+      uniforms:{uTime:blupeeMat.uniforms.uTime,uBlinkFlash:blupeeMat.uniforms.uBlinkFlash},
+      vertexShader:`varying vec3 vN,vV;
+        void main(){
+          vec4 wp=modelMatrix*vec4(position,1.0);
+          vN=normalize(mat3(modelMatrix)*normal);
+          vV=normalize(cameraPosition-wp.xyz);
+          gl_Position=projectionMatrix*viewMatrix*wp;
+        }`,
+      fragmentShader:`uniform float uTime,uBlinkFlash;varying vec3 vN,vV;
+        void main(){
+          float ndv=clamp(abs(dot(normalize(vN),normalize(vV))),0.0,1.0);
+          float fres=pow(1.0-ndv,1.65);
+          vec3 baseCol=mix(vec3(0.14,0.58,0.86),vec3(0.45,0.88,1.0),0.5+0.5*sin(uTime*3.5));
+          vec3 tipGold=vec3(1.0,0.86,0.38);
+          vec3 col=mix(baseCol,tipGold,clamp(fres*1.25+0.18,0.0,1.0))+vec3(uBlinkFlash*0.8);
+          gl_FragColor=vec4(col,clamp(0.68+0.30*fres,0.0,1.0));
+        }`
+    });
+    const blupeeEyeMat=new THREE.MeshBasicMaterial({color:0xffbe2e});
+    const rabBody=new THREE.Group();rabbit.scale.setScalar(1.28);rabbit.add(rabBody);
+    // 1. 灵兔流线弓背胸腔与修长腰腹（塞尔达卢比兔神骏体态）
+    const rChest=new THREE.Mesh(new THREE.SphereGeometry(0.32,16,14),blupeeMat);
+    rChest.scale.set(0.84,0.96,1.24);rChest.position.set(0,0.48,0.16);rChest.rotation.x=-0.18;rabBody.add(rChest);
+    const rSpine=new THREE.Mesh(new THREE.SphereGeometry(0.30,16,12),blupeeMat);
+    rSpine.scale.set(0.82,0.88,1.35);rSpine.position.set(0,0.46,-0.12);rSpine.rotation.x=0.14;rabBody.add(rSpine);
+    const rHaunch=new THREE.Mesh(new THREE.SphereGeometry(0.34,16,12),blupeeMat);
+    rHaunch.scale.set(0.96,1.02,1.12);rHaunch.position.set(0,0.38,-0.36);rabBody.add(rHaunch);
+    // 2. 卢比兔标志性「五簇神性灵毛颈环 (5-Plume Spirit Ruff)」
+    const plumeGeo=new THREE.ConeGeometry(0.13,0.44,8);plumeGeo.scale(1.0,1.0,0.46);plumeGeo.translate(0,0.18,0);
+    for(const [px,py,pz,rx,ry,rz,sc] of [
+      [0,0.52,0.34,0.85,0,0,1.12],
+      [-0.20,0.56,0.24,0.45,-0.52,0.65,0.98],
+      [0.20,0.56,0.24,0.45,0.52,-0.65,0.98],
+      [-0.24,0.66,0.10,-0.25,-0.45,0.95,0.88],
+      [0.24,0.66,0.10,-0.25,0.45,-0.95,0.88]
+    ]){
+      const pl=new THREE.Mesh(plumeGeo,blupeeGoldMat);
+      pl.position.set(px,py,pz);pl.rotation.set(rx,ry,rz);pl.scale.setScalar(sc);
+      rabBody.add(pl);
     }
-    const rabHead=new THREE.Group();rabHead.position.set(0,0.78,0.28);rabBody.add(rabHead);
-    const rHeadMesh=new THREE.Mesh(new THREE.SphereGeometry(0.26,12,10),jadeMat);
-    rHeadMesh.scale.set(0.92,0.88,1.08);rabHead.add(rHeadMesh);
-    for(const sx of [-0.11,0.11]){
-      const eye=new THREE.Mesh(new THREE.SphereGeometry(0.032,8,6),jadeEyeMat);
-      eye.position.set(sx,0.04,0.24);rabHead.add(eye);
+    // 3. 上扬多层灵火神尾 (Upturned Multi-Plume Spirit Tail)
+    const rTailGrp=new THREE.Group();rTailGrp.position.set(0,0.42,-0.62);rabBody.add(rTailGrp);
+    for(const [tx,ty,tz,rx,rz,sc] of [[0,0,0,-0.68,0,1.15],[-0.08,-0.02,-0.04,-0.58,0.35,0.82],[0.08,-0.02,-0.04,-0.58,-0.35,0.82]]){
+      const tm=new THREE.Mesh(plumeGeo,blupeeGoldMat);
+      tm.position.set(tx,ty,tz);tm.rotation.set(rx,0,rz);tm.scale.setScalar(sc);
+      rTailGrp.add(tm);
     }
-    // 一对灵动可摆动的长兔耳
-    const earGeo=new THREE.CylinderGeometry(0.038,0.062,0.56,8);earGeo.scale(1.0,1.0,0.48);earGeo.translate(0,0.28,0);
-    const earL=new THREE.Group();earL.position.set(-0.09,0.18,-0.02);rabHead.add(earL);
-    const earR=new THREE.Group();earR.position.set(0.09,0.18,-0.02);rabHead.add(earR);
+    // 4. 四条可动修长灵足（前肢轻盈支撑 + 后肢蓄力飞跃）
+    const fLegGeo=new THREE.CylinderGeometry(0.046,0.032,0.42,8);fLegGeo.translate(0,-0.20,0);
+    const hLegGeo=new THREE.CylinderGeometry(0.068,0.038,0.46,8);hLegGeo.translate(0,-0.22,0);
+    const pawGeo=new THREE.SphereGeometry(0.056,8,6);pawGeo.scale(0.85,0.55,1.45);
+    const rForeL=new THREE.Group();rForeL.position.set(-0.14,0.38,0.26);rabBody.add(rForeL);
+    const rForeR=new THREE.Group();rForeR.position.set(0.14,0.38,0.26);rabBody.add(rForeR);
+    for(const fl of [rForeL,rForeR]){
+      fl.add(new THREE.Mesh(fLegGeo,blupeeMat));
+      const pw=new THREE.Mesh(pawGeo,blupeeGoldMat);pw.position.set(0,-0.40,0.04);fl.add(pw);
+    }
+    const rHindL=new THREE.Group();rHindL.position.set(-0.18,0.36,-0.36);rabBody.add(rHindL);
+    const rHindR=new THREE.Group();rHindR.position.set(0.18,0.36,-0.36);rabBody.add(rHindR);
+    for(const hl of [rHindL,rHindR]){
+      hl.add(new THREE.Mesh(hLegGeo,blupeeMat));
+      const pw=new THREE.Mesh(pawGeo,blupeeGoldMat);pw.position.set(0,-0.42,0.08);hl.add(pw);
+    }
+    // 5. 卢比兔神性面盘 + 鎏金灵眸 + 双分叉神鹿灵角眉羽 (Owl Facial Disc & Twin Branched Spirit Antler Crests)
+    const rabHead=new THREE.Group();rabHead.position.set(0,0.82,0.34);rabBody.add(rabHead);
+    const rHeadMesh=new THREE.Mesh(new THREE.SphereGeometry(0.23,14,12),blupeeMat);
+    rHeadMesh.scale.set(0.92,0.94,1.12);rabHead.add(rHeadMesh);
+    const faceDisc=new THREE.Mesh(new THREE.CylinderGeometry(0.20,0.18,0.06,12),blupeeGoldMat);
+    faceDisc.rotation.x=Math.PI*0.5;faceDisc.scale.set(1.08,1.0,0.88);faceDisc.position.set(0,0.02,0.19);rabHead.add(faceDisc);
+    for(const sx of [-0.095,0.095]){
+      const eye=new THREE.Mesh(new THREE.SphereGeometry(0.038,8,8),blupeeEyeMat);
+      eye.position.set(sx,0.04,0.22);rabHead.add(eye);
+      // 分叉神鹿灵角眉羽
+      const crest=new THREE.Group();crest.position.set(sx*0.85,0.11,0.19);rabHead.add(crest);
+      const mainPlume=new THREE.Mesh(plumeGeo,blupeeGoldMat);
+      mainPlume.scale.set(0.52,0.95,0.45);mainPlume.rotation.set(-0.48,0,sx<0?0.42:-0.42);crest.add(mainPlume);
+      const subPlume=new THREE.Mesh(plumeGeo,blupeeGoldMat);
+      subPlume.scale.set(0.38,0.68,0.38);subPlume.position.set(sx*0.45,0.12,-0.04);subPlume.rotation.set(-0.62,0,sx<0?0.78:-0.78);crest.add(subPlume);
+    }
+    // 6. 一对超长半透明神性兔耳
+    const earGeo=new THREE.ConeGeometry(0.072,0.78,10);earGeo.scale(1.0,1.0,0.38);earGeo.translate(0,0.39,0);
+    const earL=new THREE.Group();earL.position.set(-0.09,0.18,-0.04);rabHead.add(earL);
+    const earR=new THREE.Group();earR.position.set(0.09,0.18,-0.04);rabHead.add(earR);
     for(const [ear,sd] of [[earL,-1],[earR,1]]){
-      ear.add(new THREE.Mesh(earGeo,jadeMat));
-      const inner=new THREE.Mesh(earGeo,jadeInnerEarMat);
-      inner.scale.set(0.55,0.78,0.55);inner.position.z=0.022;ear.add(inner);
-      ear.rotation.set(-0.18,0,sd*0.16);
+      ear.add(new THREE.Mesh(earGeo,blupeeMat));
+      const inner=new THREE.Mesh(earGeo,blupeeGoldMat);
+      inner.scale.set(0.56,0.86,0.55);inner.position.z=0.018;ear.add(inner);
+      ear.rotation.set(-0.32,0,sd*0.24);
     }
-    // 玉兔周身柔和白玉微光光晕（不刺眼、如月华轻笼）
+    // 7. 卢比兔神性双层灵光光环（冰青外晕 + 暖金内魄）
     const rabHaloMat=new THREE.ShaderMaterial({
       transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,
-      uniforms:{uGlow:{value:0.45}},
+      uniforms:{uGlow:{value:0.42},uTime:blupeeMat.uniforms.uTime},
       vertexShader:`varying vec2 vUv;void main(){vUv=uv;vec4 mv=viewMatrix*modelMatrix*vec4(0.,0.,0.,1.);mv.xy+=position.xy;gl_Position=projectionMatrix*mv;}`,
-      fragmentShader:`uniform float uGlow;varying vec2 vUv;void main(){vec2 p=vUv*2.-1.;float r=length(p);if(r>1.)discard;float g=exp(-r*r*4.2)*(1.-smoothstep(.6,1.,r));gl_FragColor=vec4(.82,1.,.95,g*uGlow);}`
+      fragmentShader:`uniform float uGlow,uTime;varying vec2 vUv;void main(){
+        vec2 p=vUv*2.-1.;float r=length(p);if(r>1.)discard;
+        float core=exp(-r*r*7.5);
+        float ring=exp(-pow((r-0.46)*6.0,2.0))*(0.6+0.4*sin(atan(p.y,p.x)*6.0+uTime*2.5));
+        float g=(core*0.55+ring*0.32)*(1.-smoothstep(.55,1.,r));
+        vec3 col=mix(vec3(0.22,0.84,1.0),vec3(1.0,0.88,0.48),core*0.45);
+        gl_FragColor=vec4(col,g*uGlow*0.72);
+      }`
     });
-    const rabHalo=new THREE.Mesh(new THREE.PlaneGeometry(3.2,3.2),rabHaloMat);
-    rabHalo.position.set(0,0.65,0);rabBody.add(rabHalo);
+    const rabHalo=new THREE.Mesh(new THREE.PlaneGeometry(3.4,3.4),rabHaloMat);
+    rabHalo.position.set(0,0.58,0);rabBody.add(rabHalo);
     rabbit.position.set(rx0,ry0,rz0);
-    rabbit.rotation.y=-0.62; // 面向球场方向静静观望
+    rabbit.rotation.y=blupeeWaypoints[0].yaw;
     s.root.add(rabbit);
-    const jadeRabbit={group:rabbit,body:rabBody,head:rabHead,earL,earR,jadeMat,haloMat:rabHaloMat,x:rx0,y0:ry0,z:rz0,hopT:0};
 
-    // 12. 篮筐周围 1/6G 黏滞阻尼月尘与晶尘微粒群（砸石板或空心进球时震起慢动作低重力尘粒，缓缓回落）
-    const swarmN=s.mobile?70:150;
+    // 8. 卢比兔移动与闪现魔法的 140 颗发光灵粒拖尾 (Blupee Magic Spirit Motes & Blink Burst)
+    const bpCount=s.mobile?80:140;
+    const bpPos=new Float32Array(bpCount*3),bpData=new Float32Array(bpCount*3);
+    const bpItems=[];
+    for(let i=0;i<bpCount;i++){
+      bpItems.push({x:rx0,y:ry0+0.6,z:rz0,vx:0,vy:0,vz:0,life:0,maxLife:1.3,size:0.85+s.r()*1.35,kind:i%3});
+      bpPos[i*3]=rx0;bpPos[i*3+1]=ry0+0.6;bpPos[i*3+2]=rz0;
+      bpData[i*3]=0;bpData[i*3+1]=1.0;bpData[i*3+2]=i%3;
+    }
+    const bpGeo=new THREE.BufferGeometry();
+    bpGeo.setAttribute("position",new THREE.BufferAttribute(bpPos,3));
+    bpGeo.setAttribute("aData",new THREE.BufferAttribute(bpData,3));
+    const bpMat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,
+      vertexShader:`attribute vec3 aData;varying float vLife,vKind;
+        void main(){
+          vLife=aData.x;vKind=aData.z;
+          vec4 mv=modelViewMatrix*vec4(position,1.0);
+          gl_Position=projectionMatrix*mv;
+          gl_PointSize=clamp(aData.y*105.0/max(1.2,-mv.z),3.2,24.0)*step(0.01,vLife);
+        }`,
+      fragmentShader:`varying float vLife,vKind;
+        void main(){
+          if(vLife<0.01)discard;
+          vec2 p=gl_PointCoord*2.0-1.0;
+          float r=length(p);if(r>1.0)discard;
+          // 塞尔达卢比钻石星芒与柔和灵珠结合
+          float diamond=exp(-(abs(p.x)*1.3+abs(p.y))*3.6);
+          float orb=exp(-r*r*5.5);
+          float shape=mix(orb,diamond,step(1.5,vKind));
+          vec3 col=vKind<0.5?vec3(0.38,0.95,1.0):(vKind<1.5?vec3(1.0,0.88,0.42):vec3(0.72,0.98,1.0));
+          float a=clamp(shape*sin(vLife*3.14159)*1.35,0.0,1.0);
+          gl_FragColor=vec4(mix(col,vec3(1.0),orb*0.55)*a,a);
+        }`
+    });
+    const blupeeTrailMesh=new THREE.Points(bpGeo,bpMat);
+    blupeeTrailMesh.name="lunarBlupeeSpiritTrail";blupeeTrailMesh.frustumCulled=false;blupeeTrailMesh.renderOrder=8;
+    s.root.add(blupeeTrailMesh);
+    const jadeRabbit={
+      group:rabbit,body:rabBody,head:rabHead,earL,earR,
+      foreL:rForeL,foreR:rForeR,hindL:rHindL,hindR:rHindR,tail:rTailGrp,
+      blupeeMat,blupeeGoldMat,haloMat:rabHaloMat,
+      waypoints:blupeeWaypoints,wpIdx:0,targetWpIdx:1,
+      x:rx0,y0:ry0,z:rz0,yaw:blupeeWaypoints[0].yaw,
+      state:"roam",stateT:1.2,roamU:0,hopPhase:0,hopT:0,
+      blinkPhase:0,blinkFlash:0,emitAcc:0,
+      trail:{mesh:blupeeTrailMesh,geo:bpGeo,pos:bpPos,data:bpData,items:bpItems,cursor:0}
+    };
+
+    // 12. 大规模 1/6G 悬空发光晶石微粒与微碎石场（覆盖篮筐光晕 + 篮球飞行轨迹走廊，像水墨萤火虫一样随篮球划过空气与砸框产生黏滞阻尼冲击波！）
+    const swarmN=s.mobile?380:920;
     const swPos=new Float32Array(swarmN*3),swSize=new Float32Array(swarmN),swGlow=new Float32Array(swarmN),swKind=new Float32Array(swarmN);
     const swItems=[];
     for(let i=0;i<swarmN;i++){
-      const near=i<swarmN*0.6;
-      const rad=near?(0.40+Math.pow(s.r(),1.2)*1.95):(1.8+s.r()*3.1);
-      const th=s.r()*Math.PI*2,el=(s.r()-0.42)*(near?1.5:2.3);
-      const hx=HOOP.x+Math.cos(th)*rad,hy=Math.max(0.65,HOOP.y+0.15+el),hz=HOOP.z+Math.sin(th)*rad*0.85;
+      let hx,hy,hz;
+      const u=i/swarmN;
+      if(u<0.52){
+        // 52% 环绕玄武岩石板篮筐的 3.8m 发光晶尘云
+        const near=u<0.30;
+        const rad=near?(0.36+Math.pow(s.r(),1.15)*2.15):(1.85+s.r()*3.4);
+        const th=s.r()*Math.PI*2,el=(s.r()-0.44)*(near?1.65:2.5);
+        hx=HOOP.x+Math.cos(th)*rad;
+        hy=Math.max(0.55,HOOP.y+0.15+el);
+        hz=HOOP.z+Math.sin(th)*rad*0.88;
+      }else if(u<0.85){
+        // 33% 分布在篮球投篮飞行抛物线轨迹走廊 (z ∈ [-9.6, +3.8], x ∈ [-5.8, +5.8], y ∈ [1.15, 5.45])，让篮球划过时劈开一条晶尘尾流！
+        const tz=s.r();
+        hz=HOOP.z-0.6+tz*13.4;
+        const arcPeak=Math.sin(tz*Math.PI);
+        hx=(s.r()-0.5)*(4.4+tz*7.2);
+        hy=1.15+arcPeak*2.45+(s.r()-0.38)*2.15;
+      }else{
+        // 15% 环绕半场外缘的悬浮晶石微粒带
+        const ang=s.r()*Math.PI*2,rad=5.5+s.r()*7.5;
+        hx=Math.cos(ang)*rad;
+        hz=-2.5+Math.sin(ang)*rad*0.92;
+        hy=0.75+s.r()*3.8;
+      }
       const sa=s.r()*Math.PI*2,sb=(s.r()-0.5)*1.4;
-      const sz=0.65+s.r()*1.15,kd=i%2;
+      const sz=0.72+s.r()*1.35,kd=i%3;
       swItems.push({
         hx,hy,hz,dx:0,dy:0,dz:0,vx:0,vy:0,vz:0,
         sx:Math.cos(sa)*Math.cos(sb),sy:Math.sin(sb),sz:Math.sin(sa)*Math.cos(sb),
-        phase:s.r()*Math.PI*2,rate:0.30+s.r()*0.40,size:sz,kind:kd,excited:0
+        phase:s.r()*Math.PI*2,rate:0.32+s.r()*0.48,size:sz,kind:kd,excited:0
       });
       swPos[i*3]=hx;swPos[i*3+1]=hy;swPos[i*3+2]=hz;
       swSize[i]=sz;swGlow[i]=0;swKind[i]=kd;
@@ -1292,67 +1460,204 @@
           vec4 mv=modelViewMatrix*vec4(position,1.0);
           float dist=max(1.0,-mv.z);
           gl_Position=projectionMatrix*mv;
-          gl_PointSize=clamp(aSize*(36.0+22.0*min(1.2,aGlow))/max(1.2,dist),1.6,12.0)*step(0.01,aGlow);
+          gl_PointSize=clamp(aSize*(42.0+28.0*min(1.5,aGlow))/max(1.2,dist),1.8,14.5)*step(0.01,aGlow);
         }`,
       fragmentShader:`varying float vGlow,vKind;
         void main(){
           if(vGlow<0.01)discard;
           vec2 p=gl_PointCoord*2.0-1.0;
           float r=length(p);if(r>1.0)discard;
-          float soft=exp(-r*r*4.8)*(1.0-smoothstep(0.65,1.0,r));
-          vec3 col=mix(vec3(0.82,0.85,0.90),vec3(1.0,0.94,0.84),vKind);
-          gl_FragColor=vec4(col,soft*min(0.85,vGlow*0.62));
+          // 晶石切面菱形微光 + 柔和星尘核
+          float facet=exp(-(abs(p.x)*1.25+abs(p.y)*1.25)*3.6);
+          float soft=exp(-r*r*4.5)*(1.0-smoothstep(0.65,1.0,r));
+          float shape=mix(soft,facet,0.45);
+          vec3 c0=vec3(0.52,0.94,1.0);   // 冰青晶尘
+          vec3 c1=vec3(1.0,0.90,0.58);   // 琥珀金晶粒
+          vec3 c2=vec3(0.84,0.76,1.0);   // 紫晶微粒
+          vec3 col=vKind<0.5?c0:(vKind<1.5?c1:c2);
+          float a=shape*min(0.95,vGlow*0.76);
+          gl_FragColor=vec4(mix(col,vec3(1.0),soft*0.45),a);
         }`
     });
     const hoopSwarmMesh=new THREE.Points(swGeo,swMat);
     hoopSwarmMesh.name="lunarHoopRegolithDust";hoopSwarmMesh.frustumCulled=false;hoopSwarmMesh.renderOrder=7;
     s.root.add(hoopSwarmMesh);
-    const hoopSwarm={mesh:hoopSwarmMesh,geo:swGeo,pos:swPos,glow:swGlow,items:swItems};
 
-    // 13. 3 名笨拙 1/6G 慢动作蹦跳围观的阿波罗宇航员 (Clumsy 1/6G Hopping Astronauts)
+    // 12B. 36 颗 3D 实体悬空多面晶石碎片与微碎石 (3D Faceted Mini-Crystals & Micro-Pebbles)，同样受篮球轨迹尾流与砸框冲击波驱动翻滚！
+    const shardCount=s.mobile?18:36;
+    const shardGeo=new THREE.OctahedronGeometry(0.048,0);
+    const shardMat=new THREE.MeshStandardMaterial({
+      color:0xaeeeff,emissive:0x38b6ff,emissiveIntensity:0.65,
+      roughness:0.22,metalness:0.18,flatShading:true
+    });
+    const shardInst=new THREE.InstancedMesh(shardGeo,shardMat,shardCount);
+    shardInst.name="lunarFloatingCrystalShards";shardInst.frustumCulled=false;
+    const shardDummy=new THREE.Object3D(),shardCol=new THREE.Color();
+    const shardPalette=[0x7ceeff,0xffd678,0xc4a8ff,0x98b4c8];
+    for(let i=0;i<shardCount;i++){
+      shardCol.setHex(shardPalette[i%shardPalette.length]);
+      shardInst.setColorAt(i,shardCol);
+    }
+    s.root.add(shardInst);
+    const hoopSwarm={mesh:hoopSwarmMesh,geo:swGeo,pos:swPos,glow:swGlow,items:swItems,shardInst,shardMat,shardDummy,shardCount};
+
+    // 13. 3A 级高精度阿波罗/阿尔忒弥斯舱外宇航员 (3A Articulated EVA Astronauts)
+    // 分段式硬壳胸甲、波纹腰环、双氧气瓶 PLSS 背包+通讯鞭状天线、胸前遥测控制盒 (DCM)、双层镀金遮阳头盔+两侧探照灯、折叠肘/膝关节，以及「巡线漫步/驻足勘探/抬头看球/偶发失重高跳」非重复 AI！
     const astroGrp=new THREE.Group();astroGrp.name="lunarHoppingAstronauts";
-    const suitWhite=new THREE.MeshStandardMaterial({color:0xe8ebf0,roughness:0.55,metalness:0.12});
-    const suitJoint=new THREE.MeshStandardMaterial({color:0x4a4f59,roughness:0.62,metalness:0.35});
-    const visorGold=new THREE.MeshPhysicalMaterial({color:0xf2b84b,roughness:0.12,metalness:0.95,clearcoat:0.8,envMap:lEnv,envMapIntensity:1.4});
-    const packMat=new THREE.MeshStandardMaterial({color:0xc8cdd6,roughness:0.45,metalness:0.42});
+    const suitWhite=new THREE.MeshStandardMaterial({color:0xf0f3f7,roughness:0.46,metalness:0.10});
+    const suitFabric=new THREE.MeshStandardMaterial({color:0xd8dde6,roughness:0.68,metalness:0.08});
+    const suitJoint=new THREE.MeshStandardMaterial({color:0x3e444f,roughness:0.55,metalness:0.38});
+    const suitRed=new THREE.MeshStandardMaterial({color:0xd93829,roughness:0.42,metalness:0.15});
+    const suitBlue=new THREE.MeshStandardMaterial({color:0x2563eb,roughness:0.42,metalness:0.20});
+    const visorGold=new THREE.MeshPhysicalMaterial({color:0xf6be4f,roughness:0.09,metalness:0.96,clearcoat:0.9,envMap:lEnv,envMapIntensity:1.55});
+    const visorInner=new THREE.MeshStandardMaterial({color:0x151922,roughness:0.25,metalness:0.6});
+    const packMat=new THREE.MeshStandardMaterial({color:0xcad0da,roughness:0.38,metalness:0.48});
+    const ledCyanMat=new THREE.MeshBasicMaterial({color:0x5ce8ff});
+    const ledAmberMat=new THREE.MeshBasicMaterial({color:0xffb838});
     const astronauts=[];
     const astroDefs=[
-      {homeX:-10.4,homeZ:-3.6,farX:-18.0,farZ:-9.0,yaw:1.18,phase:0.3,hopRate:1.05},
-      {homeX:10.6,homeZ:-2.2,farX:18.5,farZ:-7.5,yaw:-1.24,phase:2.4,hopRate:0.92},
-      {homeX:-9.6,homeZ:7.6,farX:-17.2,farZ:11.5,yaw:2.25,phase:4.1,hopRate:1.14}
+      {
+        homeX:-10.4,homeZ:-3.6,farX:-17.5,farZ:-8.5,yaw:1.18,seed:1.3,stripeMat:suitRed,
+        waypoints:[[-10.4,-3.6],[-11.6,-0.8],[-9.8,1.8],[-12.0,-5.4]]
+      },
+      {
+        homeX:10.6,homeZ:-2.2,farX:18.0,farZ:-7.2,yaw:-1.24,seed:3.7,stripeMat:suitBlue,
+        waypoints:[[10.6,-2.2],[11.8,1.2],[9.9,-5.2],[12.2,-1.0]]
+      },
+      {
+        homeX:-9.6,homeZ:7.6,farX:-16.8,farZ:11.2,yaw:2.25,seed:6.1,stripeMat:suitRed,
+        waypoints:[[-9.6,7.6],[-11.2,5.0],[-8.5,9.6],[-11.8,8.4]]
+      }
     ];
     for(const def of astroDefs){
       const ag=new THREE.Group();
-      // 笨重宇航躯干 + 生命维持背包
-      const body=new THREE.Group();body.position.y=0.92;ag.add(body);
-      const torso=new THREE.Mesh(new THREE.BoxGeometry(0.56,0.68,0.38),suitWhite);body.add(torso);
-      const chest=new THREE.Mesh(new THREE.BoxGeometry(0.32,0.22,0.12),packMat);chest.position.set(0,0.06,0.22);body.add(chest);
-      const pack=new THREE.Mesh(new THREE.BoxGeometry(0.46,0.62,0.26),packMat);pack.position.set(0,0.05,-0.28);body.add(pack);
-      // 圆球头盔 + 镀金反光面罩
-      const helm=new THREE.Mesh(new THREE.SphereGeometry(0.26,12,10),suitWhite);helm.position.set(0,0.54,0);body.add(helm);
-      const visor=new THREE.Mesh(new THREE.SphereGeometry(0.22,12,10,0,Math.PI,0.2,Math.PI*0.62),visorGold);
-      visor.position.set(0,0.54,0.08);body.add(visor);
-      // 可动双臂与双腿（用于 1/6G 笨拙保持平衡摆手与起跳收腿）
-      const armL=new THREE.Group();armL.position.set(-0.34,0.24,0);body.add(armL);
-      const armR=new THREE.Group();armR.position.set(0.34,0.24,0);body.add(armR);
-      for(const [arm,sd] of [[armL,-1],[armR,1]]){
-        const m=new THREE.Mesh(new THREE.CylinderGeometry(0.085,0.075,0.54,8),suitWhite);
-        m.position.set(sd*0.04,-0.22,0);arm.add(m);
-        const glove=new THREE.Mesh(new THREE.SphereGeometry(0.08,8,6),suitJoint);
-        glove.position.set(sd*0.05,-0.50,0);arm.add(glove);
+      const body=new THREE.Group();body.position.y=0.94;ag.add(body);
+      // 1. 分段式硬壳胸甲 (HUT) + 指挥官红/蓝肩带 + 波纹腰环 + 髋部裤甲
+      const upperTorso=new THREE.Mesh(new THREE.CylinderGeometry(0.27,0.24,0.44,14),suitWhite);
+      upperTorso.scale.set(1.12,1.0,0.82);upperTorso.position.y=0.14;body.add(upperTorso);
+      const shoulderBar=new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.11,0.68,12),suitWhite);
+      shoulderBar.rotation.z=Math.PI*0.5;shoulderBar.position.set(0,0.29,0);body.add(shoulderBar);
+      for(const sd of [-1,1]){
+        const stripe=new THREE.Mesh(new THREE.CylinderGeometry(0.114,0.114,0.08,12),def.stripeMat);
+        stripe.rotation.z=Math.PI*0.5;stripe.position.set(sd*0.24,0.29,0);body.add(stripe);
       }
+      const waistBellows=new THREE.Mesh(new THREE.CylinderGeometry(0.23,0.23,0.14,14),suitJoint);
+      waistBellows.scale.set(1.06,1.0,0.80);waistBellows.position.y=-0.12;body.add(waistBellows);
+      const pelvis=new THREE.Mesh(new THREE.CylinderGeometry(0.24,0.22,0.20,12),suitFabric);
+      pelvis.scale.set(1.08,1.0,0.82);pelvis.position.y=-0.27;body.add(pelvis);
+
+      // 2. 胸前遥测控制盒 (DCM) + 发光仪表镜片与调压旋钮
+      const dcm=new THREE.Group();dcm.position.set(0,0.12,0.21);body.add(dcm);
+      dcm.add(new THREE.Mesh(new THREE.BoxGeometry(0.28,0.21,0.11),packMat));
+      const dcmScreen=new THREE.Mesh(new THREE.BoxGeometry(0.14,0.08,0.02),visorInner);
+      dcmScreen.position.set(-0.04,0.03,0.055);dcm.add(dcmScreen);
+      const dcmLed1=new THREE.Mesh(new THREE.SphereGeometry(0.018,6,6),ledCyanMat);
+      dcmLed1.position.set(0.08,0.05,0.056);dcm.add(dcmLed1);
+      const dcmLed2=new THREE.Mesh(new THREE.SphereGeometry(0.018,6,6),ledAmberMat);
+      dcmLed2.position.set(0.08,-0.01,0.056);dcm.add(dcmLed2);
+      const patch=new THREE.Mesh(new THREE.CylinderGeometry(0.038,0.038,0.015,10),suitBlue);
+      patch.rotation.x=Math.PI*0.5;patch.position.set(-0.14,0.24,0.19);body.add(patch);
+
+      // 3. PLSS 生命维持大背包 + 双圆柱高压氧气罐 + 顶部散热格栅 + UHF 鞭状天线
+      const plss=new THREE.Group();plss.position.set(0,0.12,-0.25);body.add(plss);
+      plss.add(new THREE.Mesh(new THREE.BoxGeometry(0.46,0.62,0.22),packMat));
+      const plssTop=new THREE.Mesh(new THREE.BoxGeometry(0.48,0.12,0.25),suitWhite);
+      plssTop.position.set(0,0.28,0.01);plss.add(plssTop);
+      for(const sx of [-0.13,0.13]){
+        const tank=new THREE.Mesh(new THREE.CylinderGeometry(0.082,0.082,0.50,12),suitWhite);
+        tank.position.set(sx,-0.02,-0.08);plss.add(tank);
+        const cap=new THREE.Mesh(new THREE.SphereGeometry(0.082,10,8),packMat);
+        cap.position.set(sx,0.23,-0.08);plss.add(cap);
+      }
+      const antMast=new THREE.Mesh(new THREE.CylinderGeometry(0.008,0.014,0.42,6),packMat);
+      antMast.position.set(0.18,0.52,-0.04);plss.add(antMast);
+      const antTip=new THREE.Mesh(new THREE.SphereGeometry(0.024,6,6),ledAmberMat);
+      antTip.position.set(0.18,0.74,-0.04);plss.add(antTip);
+
+      // 4. 独立可转动颈环与双层面罩头盔 (LEVA Helmet: 白外罩 + 内层黑压差面罩 + 外层曲面真金遮阳罩 + 两侧探照灯)
+      const neckRing=new THREE.Mesh(new THREE.TorusGeometry(0.16,0.026,8,16),suitJoint);
+      neckRing.rotation.x=Math.PI*0.5;neckRing.position.set(0,0.37,0);body.add(neckRing);
+      const head=new THREE.Group();head.position.set(0,0.54,0);body.add(head);
+      const outerHood=new THREE.Mesh(new THREE.SphereGeometry(0.245,16,14),suitWhite);
+      outerHood.scale.set(0.96,1.02,1.04);head.add(outerHood);
+      const innerBubble=new THREE.Mesh(new THREE.SphereGeometry(0.215,14,12),visorInner);
+      innerBubble.position.set(0,-0.01,0.035);head.add(innerBubble);
+      const goldShield=new THREE.Mesh(new THREE.SphereGeometry(0.232,16,14,0,Math.PI,0.22,Math.PI*0.58),visorGold);
+      goldShield.rotation.y=-Math.PI*0.5;goldShield.position.set(0,0.01,0.035);head.add(goldShield);
+      const visorBrow=new THREE.Mesh(new THREE.BoxGeometry(0.32,0.045,0.18),suitWhite);
+      visorBrow.position.set(0,0.19,0.08);head.add(visorBrow);
+      for(const sd of [-1,1]){
+        const earPod=new THREE.Mesh(new THREE.CylinderGeometry(0.042,0.042,0.08,10),packMat);
+        earPod.rotation.z=Math.PI*0.5;earPod.position.set(sd*0.24,0.02,0.02);head.add(earPod);
+        const lamp=new THREE.Mesh(new THREE.SphereGeometry(0.024,6,6),ledCyanMat);
+        lamp.position.set(sd*0.24,0.02,0.065);head.add(lamp);
+      }
+
+      // 5. 二段关节可动双臂 (上臂 + 波纹肘关节 + 前臂 + 手腕轴承 + 灰色宇航手套)
+      const armL=new THREE.Group();armL.position.set(-0.34,0.27,0);body.add(armL);
+      const armR=new THREE.Group();armR.position.set(0.34,0.27,0);body.add(armR);
+      let foreArmL=null,foreArmR=null;
+      for(const [arm,sd] of [[armL,-1],[armR,1]]){
+        const shoulderJoint=new THREE.Mesh(new THREE.SphereGeometry(0.105,10,8),suitJoint);
+        arm.add(shoulderJoint);
+        const upperArm=new THREE.Mesh(new THREE.CylinderGeometry(0.092,0.082,0.28,10),suitWhite);
+        upperArm.position.set(sd*0.02,-0.15,0);arm.add(upperArm);
+        const foreArm=new THREE.Group();foreArm.position.set(sd*0.03,-0.29,0);arm.add(foreArm);
+        if(sd<0)foreArmL=foreArm;else foreArmR=foreArm;
+        const elbowJoint=new THREE.Mesh(new THREE.SphereGeometry(0.082,10,8),suitJoint);
+        foreArm.add(elbowJoint);
+        const lowerArm=new THREE.Mesh(new THREE.CylinderGeometry(0.080,0.072,0.26,10),suitWhite);
+        lowerArm.position.set(0,-0.13,0);foreArm.add(lowerArm);
+        const wristRing=new THREE.Mesh(new THREE.TorusGeometry(0.068,0.015,6,12),def.stripeMat);
+        wristRing.rotation.x=Math.PI*0.5;wristRing.position.set(0,-0.25,0);foreArm.add(wristRing);
+        const glove=new THREE.Mesh(new THREE.SphereGeometry(0.078,10,8),suitJoint);
+        glove.scale.set(0.88,1.18,1.02);glove.position.set(0,-0.32,0.02);foreArm.add(glove);
+      }
+
+      // 6. 二段关节可动双腿 (大腿 + 指挥官色环 + 波纹膝关节 + 小腿 + 螺纹厚底登月靴)
       const legL=new THREE.Group();legL.position.set(-0.15,-0.34,0);body.add(legL);
       const legR=new THREE.Group();legR.position.set(0.15,-0.34,0);body.add(legR);
-      for(const leg of [legL,legR]){
-        const lm=new THREE.Mesh(new THREE.CylinderGeometry(0.105,0.095,0.52,8),suitWhite);
-        lm.position.y=-0.26;leg.add(lm);
-        const boot=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.12,0.28),suitJoint);
-        boot.position.set(0,-0.54,0.05);leg.add(boot);
+      let shinL=null,shinR=null;
+      for(const [leg,sd] of [[legL,-1],[legR,1]]){
+        const thigh=new THREE.Mesh(new THREE.CylinderGeometry(0.112,0.098,0.30,10),suitWhite);
+        thigh.position.y=-0.15;leg.add(thigh);
+        const thighStripe=new THREE.Mesh(new THREE.CylinderGeometry(0.108,0.105,0.055,10),def.stripeMat);
+        thighStripe.position.y=-0.20;leg.add(thighStripe);
+        const shin=new THREE.Group();shin.position.set(0,-0.30,0);leg.add(shin);
+        if(sd<0)shinL=shin;else shinR=shin;
+        const kneeJoint=new THREE.Mesh(new THREE.SphereGeometry(0.095,10,8),suitJoint);
+        shin.add(kneeJoint);
+        const calf=new THREE.Mesh(new THREE.CylinderGeometry(0.096,0.088,0.28,10),suitFabric);
+        calf.position.y=-0.14;shin.add(calf);
+        const bootUpper=new THREE.Mesh(new THREE.BoxGeometry(0.18,0.11,0.29),suitWhite);
+        bootUpper.position.set(0,-0.29,0.045);shin.add(bootUpper);
+        const bootSole=new THREE.Mesh(new THREE.BoxGeometry(0.195,0.045,0.31),suitJoint);
+        bootSole.position.set(0,-0.345,0.048);shin.add(bootSole);
       }
+
+      // 7. 宇航员高空失重跳跃落地时的 1/6G 环形月尘圈
+      const jumpRingMat=new THREE.MeshBasicMaterial({color:0xc8ccd4,transparent:true,opacity:0,side:THREE.DoubleSide,depthWrite:false});
+      const jumpRing=new THREE.Mesh(new THREE.RingGeometry(0.28,0.68,18),jumpRingMat);
+      jumpRing.rotation.x=-Math.PI*0.5;jumpRing.position.set(def.farX,terrainY(def.farX,def.farZ)+0.05,def.farZ);
+      astroGrp.add(jumpRing);
+
       ag.position.set(def.farX,terrainY(def.farX,def.farZ),def.farZ);
       ag.rotation.y=def.yaw;
       astroGrp.add(ag);
-      astronauts.push({...def,group:ag,body,armL,armR,legL,legR,celebrateT:0});
+      astronauts.push({
+        ...def,group:ag,body,head,
+        armL,armR,foreArmL,foreArmR,
+        legL,legR,shinL,shinR,
+        jumpRing,jumpRingMat,ringLife:0,
+        // 非重复生命感 AI 状态机 ("idleWatch" | "stroll" | "inspect" | "highBound")
+        mode:"idleWatch",modeT:1.8+def.seed*0.7,modeDur:3.5,
+        wpIdx:0,nextWpIdx:1,
+        curX:def.homeX,curZ:def.homeZ,
+        fromX:def.homeX,fromZ:def.homeZ,
+        toX:def.homeX,toZ:def.homeZ,
+        curYaw:def.yaw,jumpPeak:2.65,
+        celebrateT:0
+      });
     }
     s.root.add(astroGrp);
 
@@ -1854,6 +2159,41 @@
       return map;
     }
 
+    // 新疆喀拉峻/那拉提雪岭云杉林带 614 棵实树烘焙阴影贴图 (meadowTreeMap: R=方向性锥形投射长树影, G=林下松针腐殖质与树根接触暗部 AO) + 4 棵近景主云杉精确解析阴影
+    const spruceShadowGLSL=`
+      uniform sampler2D meadowTreeMap;
+      vec2 sampleSpruceForest(vec3 worldPos, vec3 sunDir){
+        vec2 p = worldPos.xz;
+        vec2 uv = (p - vec2(0.0, 4.745)) / 280.0 + 0.5;
+        vec4 baked = texture2D(meadowTreeMap, clamp(uv, 0.002, 0.998));
+        vec2 sDir = sunDir.xz / max(0.24, sunDir.y + 0.14);
+        float heroCast = 0.0;
+        float heroAO = 0.0;
+        vec3 h0 = vec3(-22.5, -24.5, 11.6);
+        vec3 h1 = vec3(25.5, -19.5, 10.4);
+        vec3 h2 = vec3(-26.5, 22.5, 12.2);
+        vec3 h3 = vec3(27.0, 26.0, 9.8);
+        for(int i=0;i<4;i++){
+          vec3 h = i==0?h0:(i==1?h1:(i==2?h2:h3));
+          vec2 d = p - h.xy;
+          heroAO = max(heroAO, exp(-dot(d,d)/(h.z*1.35))*0.82);
+          float proj = clamp(dot(d, -sDir)/max(1.0, dot(sDir,sDir)), 0.0, h.z*1.25);
+          vec2 closest = h.xy - sDir*proj;
+          float coneR = mix(h.z*0.36, 0.45, proj/max(1.0, h.z*1.25));
+          float rayDist = length(p - closest);
+          float cSh = (1.0 - smoothstep(coneR*0.38, coneR*1.22, rayDist)) * (1.0 - 0.32*(proj/max(1.0, h.z*1.25)));
+          heroCast = max(heroCast, cSh*0.80);
+        }
+        float castShadow = clamp(max(baked.r, heroCast), 0.0, 0.86);
+        float forestFloorAO = clamp(max(baked.g, heroAO), 0.0, 0.88);
+        return vec2(castShadow, forestFloorAO);
+      }
+      float spruceCanopyShadow(vec3 worldPos, vec3 sunDir){
+        vec2 sf = sampleSpruceForest(worldPos, sunDir);
+        return clamp(max(sf.x, sf.y * 0.85), 0.0, 0.86);
+      }
+    `;
+
     function ground(s){
       const geo=new THREE.PlaneGeometry(560,560,s.mobile?100:152,s.mobile?100:152);
       geo.rotateX(-Math.PI/2);
@@ -1891,7 +2231,7 @@
         shader.vertexShader="attribute float terrainHorizon;\n"+varyings+shader.vertexShader.replace(
           "#include <begin_vertex>","#include <begin_vertex>\nvMeadowPos=position;vMeadowNormal=normal;vTerrainHorizon=terrainHorizon;"
         );
-        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+AIBAMeadowCourt.waterGLSL+varyings+"uniform sampler2D grassDetail;\nuniform sampler2D flowerCover;\nuniform float fieldProgress;\n"+shader.fragmentShader.replace("#include <map_fragment>",`
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+AIBAMeadowCourt.waterGLSL+spruceShadowGLSL+varyings+"uniform sampler2D grassDetail;\nuniform sampler2D flowerCover;\nuniform float fieldProgress;\n"+shader.fragmentShader.replace("#include <map_fragment>",`
           vec2 m = vMeadowPos.xz;
           vec2 uvMarks = vec2(m.x/32.0+0.5, 1.0-(m.y+13.0)/36.0);
           vec4 chalk = mapTexelToLinear(texture2D(map, uvMarks));
@@ -1908,17 +2248,32 @@
           float meadowCapillary = 0.0;
         `).replace("#include <color_fragment>",`
           #include <color_fragment>
-          // Seamless alpine meadow turf across both court and hillsides (warm olive-clover & golden thatch, never cold dark bottle-green!).
+          // 真实新疆喀拉峻/那拉提立体高山草甸生态：消除塑料人工草坪感，构建「深润冷翠凹谷 + 暖金羊茅阳坡 + 枯草腐殖质层 + 林下深色松针苔藓床」多重自然生态层次！
           float camDist=length(cameraPosition.xz-m);
-          float closeGrain=1.0-smoothstep(22.0,95.0,camDist);
-          // Multi-octave grass blade luminance contrast around 1.0 preserves warm olive chlorophyll tones.
-          float bladeDetail=0.82+coarse*1.58+(fine-.13)*1.45*closeGrain+(micro-.13)*1.18*closeGrain;
-          diffuseColor.rgb*=bladeDetail*mix(1.28,1.0,meadowSky.x);
-          // Natural alpine meadow color variation: warm sun-cured straw thatch & rich olive-clover patches
-          float thatchMask=smoothstep(.10,.24,coarse*.58+macro*.42+(micro-.12)*.35);
-          vec3 cloverTone=diffuseColor.rgb*vec3(.94,1.02,.84);
-          vec3 strawTone=diffuseColor.rgb*vec3(1.24,1.14,.82);
-          diffuseColor.rgb=mix(cloverTone,strawTone,thatchMask*.65);
+          float closeGrain=1.0-smoothstep(28.0,115.0,camDist);
+          // 远中景山坡防平涂：即使在 30m~100m 远坡也保留风吹羊茅草浪与草甸团块肌理，绝不退化成光滑塑料绿坡！
+          float midSlopeWave=sin(m.x*0.62+m.y*0.48)*cos(m.y*0.78-m.x*0.36);
+          float tussockHeight=coarse*0.50+fine*0.34+micro*0.16;
+          float tussockAO=mix(0.72,1.22,smoothstep(0.08,0.28,tussockHeight));
+          float bladeDetail=(0.80+coarse*1.62+(fine-.13)*(1.15+0.55*closeGrain)+(micro-.13)*1.18*closeGrain+midSlopeWave*0.08)*tussockAO;
+          diffuseColor.rgb*=bladeDetail*mix(1.24,1.0,meadowSky.x);
+
+          // 四区新疆天然牧场色彩分带：凹处湿润翠绿冷草、凸坡阳光金橄榄羊茅、以及天然微枯草甸斑块
+          float swaleZone=smoothstep(0.22,-0.32,sin(m.x*0.055+m.y*0.048)+0.65*cos(m.y*0.082-m.x*0.039));
+          float thatchMask=smoothstep(.10,.23,coarse*.56+macro*.44+(micro-.12)*.38);
+          vec3 emeraldSwale=diffuseColor.rgb*vec3(.78,.98,.72);
+          vec3 goldenFescue=diffuseColor.rgb*vec3(1.06,1.04,.82);
+          vec3 strawTone=diffuseColor.rgb*vec3(1.28,1.14,.78);
+          diffuseColor.rgb=mix(goldenFescue,emeraldSwale,swaleZone*.58);
+          diffuseColor.rgb=mix(diffuseColor.rgb,strawTone,thatchMask*(.72-swaleZone*.28));
+
+          // 614 棵雪岭云杉林下深色松针腐殖质苔藓床 (Forest-Floor Pine Humus & Root Skirt)：让每一棵树和树林带稳稳扎根在深色林地上，彻底消除“树贴在亮绿塑料坡上”的假感！
+          vec2 spruceData=sampleSpruceForest(vMeadowPos,meadowSun);
+          float treeCastShadow=spruceData.x;
+          float forestFloorAO=spruceData.y;
+          vec3 forestHumus=mix(vec3(.13,.18,.11),vec3(.20,.17,.12),coarse*2.2);
+          diffuseColor.rgb=mix(diffuseColor.rgb,forestHumus,forestFloorAO*0.72);
+          diffuseColor.rgb*=1.0-forestFloorAO*0.38;
 
           // Organic, localized trampled earth & grit ONLY in real footwork pivots (under hoop, 3pt spots) and winding hill trails.
           vec2 w=m+vec2(.42*sin(m.y*.73)-.28*cos(m.x*.91),.38*cos(m.x*.67)+.25*sin(m.y*1.12));
@@ -1937,10 +2292,17 @@
           vec3 loamSoil=mix(vec3(.21,.18,.115),vec3(.29,.25,.165),clamp((micro-.06)*4.5,0.0,1.0));
           diffuseColor.rgb=mix(diffuseColor.rgb,loamSoil,worn);
 
+          // 程序化草墩微法线凹凸 (Procedural Turf Tussock Normal Relief)：打破大网格平面感，让斜射阳光照出草甸每一处微起伏！
+          vec2 bumpGrad=vec2(
+            sin(m.x*1.8+m.y*1.1)*0.45+cos(m.x*7.2-m.y*5.4)*0.35+(fine-coarse)*2.6,
+            cos(m.y*1.7-m.x*1.2)*0.45+sin(m.y*6.8+m.x*5.8)*0.35+(micro-fine)*2.6
+          )*(1.0-worn*0.7);
+          vec3 turfNormal=normalize(vMeadowNormal+vec3(bumpGrad.x*0.28,0.0,bumpGrad.y*0.28));
+
           // Grazing-angle anisotropic velvet turf backscatter eliminates flat plastic sheen.
           vec3 viewDir=normalize(cameraPosition-vMeadowPos);
-          float velvet=pow(1.0-max(0.0,dot(viewDir,normalize(vMeadowNormal))),2.2)*(.38+.62*clamp(micro*4.5,0.0,1.0))*(1.0-worn*.75);
-          diffuseColor.rgb+=vec3(.072,.098,.038)*velvet;
+          float velvet=pow(1.0-max(0.0,dot(viewDir,turfNormal)),2.1)*(.42+.64*clamp(micro*4.5,0.0,1.0))*(1.0-worn*.75)*(1.0-forestFloorAO*.7);
+          diffuseColor.rgb+=vec3(.078,.105,.040)*velvet;
 
           vec2 fromCenter=m-vec2(0.0,4.745);
           vec2 flowersUV=vec2(fromCenter.x,-fromCenter.y)/232.0+0.5;
@@ -1950,20 +2312,24 @@
           float farCover=smoothstep(6.0,24.0,camDist);
           diffuseColor.rgb=mix(diffuseColor.rgb,drift.rgb*.83,drift.a*flowering*farCover*.68);
 
-          // Unified cloud-gap dappling & 3D slope relief across both court and hillsides.
+          // 云隙丁达尔光斑 + 雪岭云杉林带投射长阴影 + 3D 坡面微法线明暗对比（新疆草原大片级立体光影）
           float movingLight=sunWindow(vMeadowPos,1.0);
-          float overcastDapple=mix(.74,1.24,movingLight);
-          float sunnyDapple=1.0-.34*(1.0-meadowSky.y)*(1.0-movingLight);
-          float cloudShade=mix(overcastDapple,sunnyDapple,meadowSky.x)+movingLight*meadowAir.y*.52;
+          float treeShadow=max(treeCastShadow,forestFloorAO*0.78);
+          float overcastDapple=mix(.64,1.32,movingLight);
+          float sunnyDapple=1.0-.40*(1.0-meadowSky.y)*(1.0-movingLight);
+          float cloudShade=mix(overcastDapple,sunnyDapple,meadowSky.x)+movingLight*meadowAir.y*.56;
           float horizonSun=smoothstep(vTerrainHorizon-.018,vTerrainHorizon+.026,
             meadowSun.y/max(.1,length(meadowSun.xz)));
-          float facing=dot(normalize(vMeadowNormal),meadowSun);
-          float slopeRelief=mix(.78,1.22,smoothstep(-.22,.32,facing));
+          float facing=dot(turfNormal,meadowSun);
+          float slopeRelief=mix(.66,1.32,smoothstep(-.26,.34,facing));
           cloudShade*=slopeRelief;
-          float sideLight=horizonSun*smoothstep(-.023,.185,facing);
-          vec3 dusk=mix(vec3(.43,.55,.47),vec3(1.44,1.40,.81),sideLight);
-          vec3 overcastTint=mix(vec3(.82,.90,.98),vec3(1.08,1.06,.98),movingLight*smoothstep(-.15,.28,facing));
-          diffuseColor.rgb*=cloudShade*mix(overcastTint,mix(vec3(1.0),dusk,meadowSky.y),meadowSky.x);
+          // 云杉林投射在草坡上的深邃冷蓝绿树影（阴天与晴天均清晰立体）
+          vec3 treeShadowTint=mix(vec3(1.0),vec3(.42,.56,.68),treeShadow*(.62+.38*meadowSky.x*horizonSun));
+          cloudShade*=1.0-treeShadow*.48;
+          float sideLight=horizonSun*smoothstep(-.023,.185,facing)*(1.0-treeShadow*.88);
+          vec3 dusk=mix(vec3(.40,.53,.48),vec3(1.46,1.40,.80),sideLight);
+          vec3 overcastTint=mix(vec3(.76,.87,.98),vec3(1.12,1.09,.97),movingLight*smoothstep(-.15,.28,facing)*(1.0-treeShadow*.65));
+          diffuseColor.rgb*=cloudShade*treeShadowTint*mix(overcastTint,mix(vec3(1.0),dusk,meadowSky.y),meadowSky.x);
 
           float hillHaze=smoothstep(24.0,105.0,camDist)*mix(.38,.22,meadowSky.x);
           vec3 hillHazeCol=mix(vec3(.44,.53,.60),vec3(.68,.64,.54),meadowSky.y);
@@ -2155,16 +2521,16 @@
           `);
         shader.fragmentShader="uniform vec3 meadowSun;\nuniform vec4 meadowSky;\nvarying float vSpruceH;\nvarying vec3 vSpruceWorld,vSpruceCrownN;\n"+
           shader.fragmentShader.replace("#include <dithering_fragment>",`
-            float crownAO=mix(.48,1.16,smoothstep(.04,.88,vSpruceH));
-            // 3D cylindrical crown lighting separates sunlit vs shaded sides of every tree even in overcast weather.
-            float sunSide=smoothstep(-.38,.52,dot(normalize(vSpruceCrownN),meadowSun));
-            vec3 shadeTint=vec3(.70,.82,.94);
-            vec3 litTint=mix(vec3(1.18,1.22,1.12),vec3(1.36,1.18,.88),meadowSky.y);
+            // 新疆雪岭云杉深邃立体树冠光影：底部与内层枝叶深暗遮蔽 (crownAO: 0.30 -> 1.24)，向阳侧暖金翠绿与背阴侧深冷松青强烈反差
+            float crownAO=mix(.30,1.24,smoothstep(.03,.88,vSpruceH));
+            float sunSide=smoothstep(-.42,.48,dot(normalize(vSpruceCrownN),meadowSun));
+            vec3 shadeTint=vec3(.52,.66,.82);
+            vec3 litTint=mix(vec3(1.26,1.28,1.12),vec3(1.44,1.22,.86),meadowSky.y);
             vec3 crownLight=mix(shadeTint,litTint,sunSide);
             vec3 viewDir=normalize(cameraPosition-vSpruceWorld);
-            float rim=pow(clamp(dot(-viewDir,meadowSun),0.0,1.0),3.0)*vSpruceH*(.35+.65*meadowSky.x);
-            vec3 rimCol=mix(vec3(.42,.56,.34),vec3(.94,.60,.26),meadowSky.y);
-            vec3 col=gl_FragColor.rgb*crownAO*crownLight*(1.0-meadowSky.w*.14)+rimCol*rim*.32;
+            float rim=pow(clamp(dot(-viewDir,meadowSun),0.0,1.0),2.6)*vSpruceH*(.38+.62*meadowSky.x);
+            vec3 rimCol=mix(vec3(.46,.62,.36),vec3(.96,.64,.28),meadowSky.y);
+            vec3 col=gl_FragColor.rgb*crownAO*crownLight*(1.0-meadowSky.w*.14)+rimCol*rim*.38;
             // Distance-based alpine aerial perspective separates near hero spruces (22m) from mid (60m) and far (95m) tree belts.
             float treeDist=length(vSpruceWorld-cameraPosition);
             float treeHaze=smoothstep(24.0,112.0,treeDist)*mix(.54,.30,meadowSky.x);
@@ -2180,6 +2546,41 @@
       // Cohesive, natural Tian Shan evergreen conifer palette (mature spruce, olive pine, glaucous blue-green fir, fresh-shoot spruce).
       const sprucePalette=[0x4d6e4e,0x5f7d4c,0x45665c,0x6b8550,0x3f5e46,0x738252,0x537349,0x486b55];
       const ridges=[[-1.04,61,17],[-.68,82,23],[.35,67,14],[.71,86,23],[1.59,82,31],[-1.81,78,23],[2.7,88,30],[-2.66,97,32]];
+      // 烘焙 614 棵雪岭云杉的精确地面阴影与林下松针苔藓腐殖质图 (512x512, 覆盖 [-140m, +140m]):
+      // R 通道 = 顺阳光反方向投射的锥形长树影; G 通道 = 树根底部的松针腐殖质与林冠接触暗部 AO
+      const treeCv=document.createElement("canvas");treeCv.width=512;treeCv.height=512;
+      const tg=treeCv.getContext("2d");
+      tg.fillStyle="#000000";tg.fillRect(0,0,512,512);
+      tg.globalCompositeOperation="lighter";
+      const toMapX=wx=>((wx/280)+0.5)*512;
+      const toMapY=wz=>(((wz-COURT.midZ)/280)+0.5)*512;
+      const scalePx=512/280;
+      const paintTreeShadow=(tx,tz,th)=>{
+        const cx=toMapX(tx),cy=toMapY(tz);
+        const aoR=Math.max(3.5,th*0.64*scalePx);
+        // 1. G 通道：树底圆形林下松针腐殖质与接触 AO
+        const gGrad=tg.createRadialGradient(cx,cy,aoR*0.1,cx,cy,aoR);
+        gGrad.addColorStop(0,"rgba(0,185,0,1)");
+        gGrad.addColorStop(0.55,"rgba(0,110,0,1)");
+        gGrad.addColorStop(1,"rgba(0,0,0,0)");
+        tg.fillStyle=gGrad;
+        tg.beginPath();tg.arc(cx,cy,aoR,0,tau);tg.fill();
+        // 2. R 通道：沿阳光投射方向 (-sunX, -sunZ ≈ (-0.51, +0.86)) 的长锥形树冠阴影
+        const shLen=th*1.55*scalePx;
+        const ex=cx-0.51*shLen,ey=cy+0.86*shLen;
+        const rGrad=tg.createLinearGradient(cx,cy,ex,ey);
+        rGrad.addColorStop(0,"rgba(195,0,0,1)");
+        rGrad.addColorStop(0.6,"rgba(130,0,0,1)");
+        rGrad.addColorStop(1,"rgba(0,0,0,0)");
+        tg.fillStyle=rGrad;
+        const perpX=0.86*aoR*0.72,perpY=0.51*aoR*0.72;
+        tg.beginPath();
+        tg.moveTo(cx-perpX,cy-perpY);
+        tg.lineTo(cx+perpX,cy+perpY);
+        tg.lineTo(ex+perpX*0.18,ey+perpY*0.18);
+        tg.lineTo(ex-perpX*0.18,ey-perpY*0.18);
+        tg.closePath();tg.fill();
+      };
       let idx=0;
       for(const [hx,hz,hh] of heroSpruces){
         tree.position.set(hx,elevation(hx,hz)-.08*hh,hz);
@@ -2188,6 +2589,7 @@
         forest.setMatrixAt(idx,tree.matrix);
         tone.set(sprucePalette[idx%sprucePalette.length]).convertSRGBToLinear().multiplyScalar(.92+.20*s.r());
         forest.setColorAt(idx,tone);
+        paintTreeShadow(hx,hz,hh);
         idx++;
       }
       for(;idx<forest.count;idx++){
@@ -2200,7 +2602,11 @@
         forest.setMatrixAt(idx,tree.matrix);
         tone.set(sprucePalette[(idx*3+Math.floor(s.r()*7))%sprucePalette.length]).convertSRGBToLinear().multiplyScalar(.78+.36*s.r());
         forest.setColorAt(idx,tone);
+        paintTreeShadow(x,z,h);
       }
+      const treeMap=new THREE.CanvasTexture(treeCv);
+      treeMap.wrapS=treeMap.wrapT=THREE.ClampToEdgeWrapping;
+      s.meadow.uniforms.meadowTreeMap.value=treeMap;
       forest.name="alpineSpruceBelts";forest.frustumCulled=false;s.root.add(forest);
     }
 
@@ -2209,14 +2615,13 @@
         const positions=[],normals=[],bladeH=[],indices=[];
         for(let blade=0;blade<blades;blade++){
           const a=blade*(tau/blades)+blade*.61,dx=Math.sin(a),dz=Math.cos(a),start=positions.length/3;
-          // Spread blades across a natural 32cm turf patch rather than a single V-point so tufts never look like spiky ticks!
-          const ox=Math.sin(blade*2.399)*.15*(1+(blade%2)*.4),oz=Math.cos(blade*2.399)*.15*(1+((blade+1)%2)*.4);
-          const heightScale=.74+(blade%3)*.16;
+          // 44cm 自然蓬松羊茅草丛，多叶片柔和舒展覆盖地面，绝不形成孤立黑刺点！
+          const ox=Math.sin(blade*2.399)*.21*(1+(blade%2)*.42),oz=Math.cos(blade*2.399)*.21*(1+((blade+1)%2)*.42);
+          const heightScale=.76+(blade%3)*.18;
           for(let row=0;row<=segs;row++){
-            const t=row/segs,h=heightScale*t,lean=(.14+.08*(blade%2))*t*t,w=.064*widthScale*Math.pow(1-t,.62);
+            const t=row/segs,h=heightScale*t,lean=(.18+.10*(blade%2))*t*t,w=.074*widthScale*Math.pow(1-t,.58);
             for(const side of [-1,1]){
               positions.push(ox+dx*lean+dz*w*side,h,oz+dz*lean-dx*w*side);
-              // Blend blade normals strongly upward so grass blades share the exact same sky/sun luminance as the turf below.
               normals.push(dx*.14,1.0,dz*.14);
               bladeH.push(t);
             }
@@ -2262,28 +2667,31 @@
             transformed.y*=1.0-pushDown*.55*bladeH;
             vGrassWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
           `);
-        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+"varying float vBladeH;\nvarying vec3 vGrassWorld;\n"+
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+spruceShadowGLSL+"varying float vBladeH;\nvarying vec3 vGrassWorld;\n"+
           shader.fragmentShader.replace("#include <color_fragment>",`
             #include <color_fragment>
-            // Soft root-to-tip gradient so 3D grass blades merge seamlessly with the photographic grass ground plane (never dark V-ticks!).
-            float rootAO=mix(.88,1.18,smoothstep(0.0,.72,vBladeH));
-            vec3 tipTint=mix(vec3(.92,.98,.84),vec3(1.16,1.14,.88),vBladeH);
-            float cloudLight=.78+.22*sunWindow(vGrassWorld,1.0);
-            diffuseColor.rgb*=rootAO*tipTint*cloudLight*(1.0-meadowSky.w*.18);
+            // 3D 草丛根部与地面草皮亮度无缝衔接 (rootAO: 0.84 -> 1.22，消除孤立深色小黑刺感)，同时同步采样 614 棵雪岭云杉的烘焙树影与云隙光斑！
+            float rootAO=mix(.84,1.22,smoothstep(0.0,.72,vBladeH));
+            vec3 tipTint=mix(vec3(.90,.98,.82),vec3(1.22,1.18,.84),vBladeH);
+            float cloudLight=.68+.34*sunWindow(vGrassWorld,1.0);
+            vec2 spData=sampleSpruceForest(vGrassWorld,meadowSun);
+            float spSh=max(spData.x,spData.y*0.85);
+            vec3 shCol=mix(vec3(1.0),vec3(.42,.56,.68),spSh*(.62+.38*meadowSky.x));
+            diffuseColor.rgb*=rootAO*tipTint*cloudLight*shCol*(1.0-spData.y*0.36)*(1.0-meadowSky.w*.18);
           `).replace("#include <dithering_fragment>",`
             // Backlit subsurface scattering (SSS): sunlit blades glow warm chartreuse/gold.
             vec3 gView=normalize(cameraPosition-vGrassWorld);
-            float sss=pow(clamp(dot(-gView,meadowSun),0.0,1.0),3.0)*vBladeH*(.22+.78*meadowSky.x);
-            vec3 sssCol=mix(vec3(.68,.84,.28),vec3(1.0,.76,.32),meadowSky.y);
-            gl_FragColor.rgb+=sssCol*sss*.38;
+            float spSh2=spruceCanopyShadow(vGrassWorld,meadowSun);
+            float sss=pow(clamp(dot(-gView,meadowSun),0.0,1.0),2.6)*vBladeH*(.25+.75*meadowSky.x)*(1.0-spSh2*.82);
+            vec3 sssCol=mix(vec3(.72,.88,.30),vec3(1.0,.78,.34),meadowSky.y);
+            gl_FragColor.rgb+=sssCol*sss*.44;
             #include <dithering_fragment>
           `);
       };
       const dummy=new THREE.Object3D(),color=new THREE.Color();
-      const green=[0x5c7c3d,0x6b8a47,0x78924d,0x4d7038,0x8c9b56,0x648042];
-      // Near/mid dense grass sea (up to 9,400 5-blade tufts = 47,000 blades on desktop),
-      // including real 3D pasture grass tufts growing across the court itself & over the chalk lines so the court merges seamlessly with the meadow!
-      const nearGeo=buildTuftGeo(5,4,1.32);
+      const green=[0x688844,0x74924c,0x829c52,0x5a7c3c,0x8fa058,0x6e8a48];
+      // Near/mid dense grass sea (7-blade fuller fescue tufts = 65,800 blades on desktop)
+      const nearGeo=buildTuftGeo(7,4,1.52);
       const nearMesh=new THREE.InstancedMesh(nearGeo,mat,s.mobile?3200:9400);
       for(let i=0;i<nearMesh.count;i++){
         let x,z,h;
@@ -2518,19 +2926,18 @@
 
     function dandelionSeeds(s,weather,dandelions,bloom){
       const p=[],phase=[],starts=[],close=dandelions.filter(d=>d.near);
-      const total=s.mobile?210:520;
+      const total=s.mobile?280:680;
       for(let i=0;i<total;i++){
-        // 48% concentrated right around the active court & near pasture so dandelion fluff is clearly visible in flight.
+        // 50% 分布在球场与近景草坡，50% 从远近蒲公英花丛随风升腾（既有零散漫飞，也有批量大风刮起的气浪！）
         const inNear=i%2===0&&close.length;
         if(inNear&&i%4===0){
-          // Direct court & sideline buoyant seeds
-          const sx=(s.r()-.5)*19,sz=COURT.midZ+(s.r()-.5)*24;
-          p.push(sx,elevation(sx,sz)+.22+s.r()*.65,sz);
-          phase.push(s.r(),.85+1.15*s.r());starts.push(s.r()*.18);
+          const sx=(s.r()-.5)*21,sz=COURT.midZ+(s.r()-.5)*26;
+          p.push(sx,elevation(sx,sz)+.20+s.r()*.68,sz);
+          phase.push(s.r(),.82+1.22*s.r());starts.push(s.r()*.16);
         }else{
           const d=inNear?close[(i*23)%close.length]:dandelions[(i*97)%dandelions.length];
           p.push(d.x,elevation(d.x,d.z)+d.size*.37,d.z);
-          phase.push(s.r(),.80+1.15*s.r());starts.push(d.when*.45);
+          phase.push(s.r(),.78+1.25*s.r());starts.push(d.when*.42);
         }
       }
       const geo=new THREE.BufferGeometry();
@@ -2544,20 +2951,27 @@
           varying float alpha;
           uniform float clock,wind,bloom;
           void main(){
-            // Independent 360-degree 3D thermal float per seed (never multiplying by oscillating wind uniform).
-            float life=fract(travel.x+clock*(.020+.010*travel.y));
+            // 1. 平时零散蒲公英绒毛 360 度轻盈热气流漫飞
+            // 2. 周期性高山大风阵风浪潮 (gustWave) 席卷山坡，成批蒲公英迎风横向加速掠过球场与草坡！
+            float gustEnv=pow(max(0.0,sin(clock*0.37-position.x*0.025)*cos(clock*0.23+0.9)),3.0);
+            float isGustBatch=step(0.42,fract(travel.x*7.3));
+            float life=fract(travel.x+clock*(.022+.012*travel.y));
             float az=travel.x*62.8318+travel.y*19.0;
             vec2 dir=vec2(cos(az),sin(az));
             vec2 perp=vec2(-dir.y,dir.x);
-            float driftDist=life*(2.6+1.6*travel.y);
-            float swirl=sin(life*6.283+travel.x*41.0)*(.34+.22*travel.y);
-            vec2 horiz=dir*driftDist+perp*swirl;
-            vec3 p=position+vec3(horiz.x,.16+life*travel.y*2.8+.22*sin(life*9.4+travel.x*27.0),horiz.y);
+            float driftDist=life*(2.8+1.8*travel.y);
+            float swirl=sin(life*6.283+travel.x*41.0)*(.36+.24*travel.y);
+            // 大风刮起时成批绒毛顺着高山主风向 vec2(0.88, 0.46) 翻涌飞掠
+            vec2 gustSweep=vec2(0.88,0.46)*(life*(5.5+4.2*travel.y)*gustEnv*isGustBatch);
+            float gustLift=life*(1.45*gustEnv*isGustBatch);
+            vec2 horiz=dir*driftDist+perp*swirl+gustSweep;
+            vec3 p=position+vec3(horiz.x,.16+life*travel.y*2.8+gustLift+.24*sin(life*9.4+travel.x*27.0),horiz.y);
             vec4 mv=modelViewMatrix*vec4(p,1.0);
             gl_Position=projectionMatrix*mv;
-            gl_PointSize=clamp(128.0*travel.y/max(7.2,-mv.z),1.8,9.4);
-            float emergeFade=.34+.66*smoothstep(emerges,emerges+.22,bloom);
-            alpha=smoothstep(.0,.16,life)*(1.0-smoothstep(.70,1.0,life))*emergeFade;
+            gl_PointSize=clamp(134.0*travel.y/max(7.0,-mv.z),1.9,10.2);
+            float emergeFade=.36+.64*smoothstep(emerges,emerges+.22,bloom);
+            float gustBoost=mix(1.0,1.25,gustEnv*isGustBatch);
+            alpha=clamp(smoothstep(.0,.14,life)*(1.0-smoothstep(.72,1.0,life))*emergeFade*gustBoost,0.0,1.0);
           }
         `,
         fragmentShader:`
@@ -2569,7 +2983,7 @@
             float crown=exp(-pow(length(p-vec2(0.0,.24))*2.3,2.0));
             float stem=1.0-smoothstep(.04,.17,abs(p.x+.12*p.y));
             float plume=clamp(.48*puff+.42*crown+.26*stem*smoothstep(-.78,.28,p.y)*(1.0-smoothstep(.68,1.0,p.y)),0.0,1.0);
-            gl_FragColor=vec4(.99,.975,.90,plume*alpha*.88);
+            gl_FragColor=vec4(.99,.975,.90,plume*alpha*.90);
           }
         `});
       const seeds=new THREE.Points(geo,mat);
@@ -2633,17 +3047,21 @@
             transformed*=max(.001,smoothstep(bloomStart,bloomStart+.145,meadowBloom));
             vPetalWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
           `);
-        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+"varying float vPetalH;\nvarying vec3 vPetalWorld;\n"+
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+spruceShadowGLSL+"varying float vPetalH;\nvarying vec3 vPetalWorld;\n"+
           shader.fragmentShader.replace("#include <color_fragment>",`
             #include <color_fragment>
-            float baseAO=mix(.46,1.04,smoothstep(0.0,.55,vPetalH));
-            float cloudLit=.76+.24*sunWindow(vPetalWorld,1.0);
-            diffuseColor.rgb*=baseAO*cloudLit*(1.0-meadowSky.w*.18);
+            // 3D 花丛根部接触遮蔽 (baseAO: 0.34 -> 1.12) + 云隙光斑 + 雪岭云杉林冠投射树影，让野花真正扎根在草甸光影中！
+            float baseAO=mix(.34,1.12,smoothstep(0.0,.62,vPetalH));
+            float cloudLit=.68+.34*sunWindow(vPetalWorld,1.0);
+            float spSh=spruceCanopyShadow(vPetalWorld,meadowSun);
+            vec3 shCol=mix(vec3(1.0),vec3(.50,.64,.74),spSh*(.45+.55*meadowSky.x));
+            diffuseColor.rgb*=baseAO*cloudLit*shCol*(1.0-meadowSky.w*.18);
           `).replace("#include <dithering_fragment>",`
             vec3 pView=normalize(cameraPosition-vPetalWorld);
-            float pBack=pow(clamp(dot(-pView,meadowSun),0.0,1.0),3.0)*vPetalH*(.22+.78*meadowSky.x);
+            float spSh2=spruceCanopyShadow(vPetalWorld,meadowSun);
+            float pBack=pow(clamp(dot(-pView,meadowSun),0.0,1.0),2.6)*vPetalH*(.25+.75*meadowSky.x)*(1.0-spSh2*.75);
             vec3 pGlow=mix(vec3(1.0,.96,.82),vec3(1.0,.74,.40),meadowSky.y);
-            gl_FragColor.rgb+=diffuseColor.rgb*pGlow*pBack*.48;
+            gl_FragColor.rgb+=diffuseColor.rgb*pGlow*pBack*.55;
             #include <dithering_fragment>
           `);
       };
@@ -2798,6 +3216,7 @@
       s.heightAt=elevation;
       s.meadow=AIBAMeadowWeather.build(s);
       s.meadow.uniforms.meadowPressure={value:new THREE.Vector4()};
+      s.meadow.uniforms.meadowTreeMap={value:null};
       ground(s);
       const rock=terrainTexture("alpine-rock.jpg");
       const mountain=new THREE.MeshBasicMaterial({map:rock,side:THREE.DoubleSide,fog:false});
@@ -2912,7 +3331,7 @@
 
   function applyLunarHoopImpulse(w,ox,oy,oz,strength,radius){
     if(!w)return;
-    const rad=radius||3.8,str=Math.max(0.4,strength||3.2);
+    const rad=radius||5.2,str=Math.max(0.5,strength||3.6);
     if(w.hoopSwarm&&w.hoopSwarm.items){
       for(const f of w.hoopSwarm.items){
         const px=f.hx+f.dx,py=f.hy+f.dy,pz=f.hz+f.dz;
@@ -2921,12 +3340,12 @@
         if(d>rad)continue;
         const inv=d>0.04?1/d:0;
         const nx=d>0.04?rx*inv:f.sx,ny=d>0.04?ry*inv:f.sy,nz=d>0.04?rz*inv:f.sz;
-        const fall=Math.exp(-d/(rad*0.46)),kick=str*fall;
+        const fall=Math.exp(-d/(rad*0.48)),kick=str*fall;
         const cx=ny*f.sz-nz*f.sy,cy=nz*f.sx-nx*f.sz,cz=nx*f.sy-ny*f.sx;
-        f.vx+=(nx*0.74+cx*0.54)*kick;
-        f.vy+=(ny*0.70+cy*0.50+0.12)*kick;
-        f.vz+=(nz*0.74+cz*0.54)*kick;
-        f.excited=Math.min(1.25,f.excited+fall*0.95);
+        f.vx+=(nx*0.76+cx*0.58)*kick;
+        f.vy+=(ny*0.72+cy*0.52+0.15)*kick;
+        f.vz+=(nz*0.76+cz*0.58)*kick;
+        f.excited=Math.min(1.45,f.excited+fall*1.12);
       }
     }
     if(w.drones){
@@ -2942,6 +3361,27 @@
     }
   }
 
+  function emitBlupeeParticles(jr,x,y,z,count,burstSpeed){
+    const tr=jr?.trail;
+    if(!tr)return;
+    const n=tr.items.length;
+    for(let k=0;k<count;k++){
+      const idx=tr.cursor%n;tr.cursor=(tr.cursor+1)%n;
+      const it=tr.items[idx];
+      const ang=(k/Math.max(1,count))*Math.PI*2+Math.sin(k*4.7)*0.5;
+      const elev=( (k%5)/4 - 0.3 )*1.2;
+      const spd=burstSpeed*(0.55+0.75*((k*7)%11)/10);
+      it.x=x+(Math.cos(ang)*0.22);
+      it.y=y+0.35+((k%4)*0.12);
+      it.z=z+(Math.sin(ang)*0.22);
+      it.vx=Math.cos(ang)*spd;
+      it.vy=0.45+Math.abs(elev)*spd*0.85;
+      it.vz=Math.sin(ang)*spd;
+      it.maxLife=0.95+((k*3)%7)*0.16;
+      it.life=it.maxLife;
+    }
+  }
+
   function activeLunarWonder(){
     const env=(typeof environmentRoot!=="undefined"&&environmentRoot)||window.environmentRoot;
     const w=env?.userData?.placeState?.wonder;
@@ -2952,16 +3392,38 @@
     if(typeof currentScenePreset!=="undefined"&&currentScenePreset!=="lunarCrater")return;
     const w=activeLunarWonder();
     if(!w)return;
-    const mult=kind==="made"?1.35:kind==="rim"?1.15:0.88;
-    applyLunarHoopImpulse(w,x,y,z,(strength||3.0)*mult,kind==="made"?4.4:3.6);
+    const mult=kind==="made"?1.45:kind==="rim"?1.25:0.98;
+    applyLunarHoopImpulse(w,x,y,z,(strength||3.4)*mult,kind==="made"?5.6:4.6);
   }
 
   function lunarCelebrate(){
     if(typeof currentScenePreset!=="undefined"&&currentScenePreset!=="lunarCrater")return;
     const w=activeLunarWonder();
     if(!w||!w.astronauts)return;
-    for(const a of w.astronauts)a.celebrateT=2.6;
-    if(w.jadeRabbit)w.jadeRabbit.hopT=1.8;
+    w.astronauts.forEach((a,idx)=>{
+      a.celebrateT=3.2;
+      // 进球时随机触发 1~2 名宇航员直接进入 2.7m~3.1m 超高失重飞跃！
+      if(idx!==1&&a.mode!=="highBound"){
+        a.mode="highBound";
+        a.modeT=0;
+        a.modeDur=3.15;
+        a.fromX=a.curX;a.fromZ=a.curZ;
+        a.nextWpIdx=(a.wpIdx+1)%a.waypoints.length;
+        a.toX=a.waypoints[a.nextWpIdx][0];
+        a.toZ=a.waypoints[a.nextWpIdx][1];
+        a.jumpPeak=2.65+(idx%2)*0.42;
+      }
+    });
+    if(w.jadeRabbit){
+      const jr=w.jadeRabbit;
+      jr.hopT=1.8;
+      if(jr.state!=="blink"){
+        jr.state="blink";
+        jr.stateT=0;
+        jr.targetWpIdx=(jr.wpIdx+2)%jr.waypoints.length;
+        emitBlupeeParticles(jr,jr.x,jr.y0,jr.z,28,2.2);
+      }
+    }
     if(w.drones)for(const dr of w.drones)dr.flashT=1.8;
   }
 
@@ -2976,7 +3438,18 @@
     if(!w||w.kind!=="lunar")return;
     w.progress=0;w.progressVel=0;w.targetProgress=0;w.eclipseAmount=0;w.stage="apolloDay";
     if(w.hoopSwarm)for(const f of w.hoopSwarm.items){f.dx=f.dy=f.dz=f.vx=f.vy=f.vz=f.excited=0;}
-    if(w.astronauts)for(const a of w.astronauts)a.celebrateT=0;
+    if(w.astronauts){
+      for(const a of w.astronauts){
+        a.celebrateT=0;a.mode="idleWatch";a.modeT=1.5+a.seed*0.5;a.modeDur=3.5;
+        a.wpIdx=0;a.curX=a.homeX;a.curZ=a.homeZ;a.fromX=a.homeX;a.fromZ=a.homeZ;a.toX=a.homeX;a.toZ=a.homeZ;
+      }
+    }
+    if(w.jadeRabbit){
+      const jr=w.jadeRabbit;
+      jr.wpIdx=0;jr.targetWpIdx=1;
+      jr.x=jr.waypoints[0].x;jr.z=jr.waypoints[0].z;jr.y0=w.terrainY?w.terrainY(jr.x,jr.z):jr.y0;
+      jr.state="roam";jr.stateT=0;jr.blinkFlash=0;
+    }
     if(w.drones)for(const dr of w.drones){dr.dx=dr.dy=dr.dz=dr.vx=dr.vy=dr.vz=dr.flashT=0;}
     update(place,0,0);
   }
@@ -3073,99 +3546,403 @@
         }
       }
 
-      // B3. 远处微微发光的月宫玉兔（温润白玉微光、长耳轻颤、偶尔 1/6G 轻盈一跃，进球时抬头竖耳！）
-      if(w.jadeRabbit){
-        const jr=w.jadeRabbit;
-        if(jr.hopT>0)jr.hopT=Math.max(0,jr.hopT-step);
-        const celHop=jr.hopT>0?Math.sin(Math.min(1,(1.8-jr.hopT)/1.1)*Math.PI)*0.85:0;
-        const idleCycle=t%7.5;
-        const idleHop=idleCycle<1.15?Math.sin((idleCycle/1.15)*Math.PI)*0.34:0;
+      // B3. 塞尔达「卢比兔 / 金币精灵 (Blupee)」神性灵兔：远山脊自主漫游、灵粒拖尾与周期「闪现魔法」！
+      if(w.jadeRabbit&&w.terrainY){
+        const jr=w.jadeRabbit,dtSim=Math.min(0.05,Math.max(0.001,step||1/60));
+        if(jr.hopT>0)jr.hopT=Math.max(0,jr.hopT-dtSim);
+        jr.stateT+=dtSim;
+        let hopY=0,stride=0,visibleScale=1.28;
+
+        if(jr.state==="lookout"){
+          // 警觉驻足眺望：轻盈呼吸、转头观察球场、不对称灵耳微颤
+          jr.blinkFlash=Math.max(0,jr.blinkFlash-dtSim*2.8);
+          if(jr.stateT>3.2){
+            jr.stateT=0;
+            // 每隔一次驻足切换为「山脊轻跃漫游」或「闪现魔法 (Blink Teleport)」
+            const doBlink=((jr.wpIdx+Math.floor(t))%2===0);
+            if(doBlink){
+              jr.state="blink";
+              jr.targetWpIdx=(jr.wpIdx+2)%jr.waypoints.length;
+              emitBlupeeParticles(jr,jr.x,jr.y0,jr.z,32,2.4);
+            }else{
+              jr.state="roam";
+              jr.targetWpIdx=(jr.wpIdx+1)%jr.waypoints.length;
+            }
+          }
+        }else if(jr.state==="roam"){
+          // 沿环形山脊 1/6G 灵动跳跃漫游，一路洒落冰青与流金灵粒
+          const wp0=jr.waypoints[jr.wpIdx],wp1=jr.waypoints[jr.targetWpIdx];
+          const dur=3.8;
+          const u=Math.min(1,jr.stateT/dur);
+          jr.x=THREE.MathUtils.lerp(wp0.x,wp1.x,u);
+          jr.z=THREE.MathUtils.lerp(wp0.z,wp1.z,u);
+          jr.y0=w.terrainY(jr.x,jr.z);
+          const moveYaw=Math.atan2(wp1.x-wp0.x,wp1.z-wp0.z);
+          jr.yaw=THREE.MathUtils.lerp(jr.yaw,moveYaw,0.15);
+          const hopWave=Math.abs(Math.sin(u*Math.PI*3.0));
+          hopY=hopWave*0.64;
+          stride=Math.sin(u*Math.PI*6.0);
+          jr.emitAcc+=dtSim*26.0;
+          if(jr.emitAcc>=1){
+            const nEmit=Math.min(4,jr.emitAcc|0);
+            jr.emitAcc-=nEmit;
+            emitBlupeeParticles(jr,jr.x,jr.y0+hopY*0.6,jr.z,nEmit,0.75);
+          }
+          if(u>=1){
+            jr.wpIdx=jr.targetWpIdx;
+            jr.yaw=jr.waypoints[jr.wpIdx].yaw;
+            jr.state="lookout";
+            jr.stateT=0;
+          }
+        }else if(jr.state==="blink"){
+          // 塞尔达卢比兔「闪现魔法」：0..0.38s 聚光化作灵光消散 -> 0.38..0.78s 远方山脊闪现凝形并爆开灵环！
+          if(jr.stateT<0.38){
+            const u=jr.stateT/0.38;
+            jr.blinkFlash=u*1.65;
+            hopY=u*0.75;
+            visibleScale=1.28*(1.0-u*0.86);
+          }else if(jr.stateT<0.82){
+            if(jr.wpIdx!==jr.targetWpIdx){
+              jr.wpIdx=jr.targetWpIdx;
+              const wp=jr.waypoints[jr.wpIdx];
+              jr.x=wp.x;jr.z=wp.z;jr.y0=w.terrainY(jr.x,jr.z);jr.yaw=wp.yaw;
+              emitBlupeeParticles(jr,jr.x,jr.y0+0.4,jr.z,36,2.6);
+            }
+            const u=(jr.stateT-0.38)/0.44;
+            jr.blinkFlash=(1.0-u)*1.55;
+            hopY=(1.0-u)*0.45;
+            visibleScale=1.28*(0.2+0.8*THREE.MathUtils.smoothstep(u,0,1));
+          }else{
+            jr.blinkFlash=0;
+            jr.state="lookout";
+            jr.stateT=0;
+          }
+        }
+
         const startled=cosmicGroundFX.response(jr.x,jr.z);
-        const hopY=Math.max(celHop,idleHop)+startled*.70;
-        jr.group.position.set(jr.x+Math.sign(jr.x)*startled*.52,jr.y0+hopY,jr.z);
-        jr.body.rotation.x=-hopY*0.24;
-        jr.head.rotation.y=Math.sin(t*0.72)*0.22;
-        jr.head.rotation.x=-0.06-hopY*0.18;
-        const twitch=Math.pow(Math.max(0,Math.sin(t*2.9)),6)*0.22;
-        jr.earL.rotation.z=-0.16-twitch-hopY*0.15;
-        jr.earR.rotation.z=0.16+twitch*0.8+hopY*0.15;
-        const glowAmt=0.45+0.45*eclipse+0.15*Math.sin(t*1.6);
-        jr.jadeMat.emissiveIntensity=0.48+eclipse*0.72+0.12*Math.sin(t*1.6);
-        jr.haloMat.uniforms.uGlow.value=glowAmt*0.52;
+        const totalHop=hopY+startled*0.75;
+        jr.group.scale.setScalar(visibleScale);
+        jr.group.position.set(jr.x+Math.sign(jr.x)*startled*0.52,jr.y0+totalHop,jr.z);
+        jr.group.rotation.y=jr.yaw;
+        jr.body.rotation.x=-totalHop*0.28+stride*0.12;
+        jr.head.rotation.y=Math.sin(t*0.85)*0.28;
+        jr.head.rotation.x=-0.06-totalHop*0.16+Math.cos(t*1.3)*0.08;
+        if(jr.foreL&&jr.foreR&&jr.hindL&&jr.hindR){
+          jr.foreL.rotation.x=-totalHop*0.65+stride*0.48;
+          jr.foreR.rotation.x=-totalHop*0.55-stride*0.48;
+          jr.hindL.rotation.x=totalHop*0.82-stride*0.52;
+          jr.hindR.rotation.x=totalHop*0.74+stride*0.52;
+        }
+        if(jr.tail)jr.tail.rotation.y=Math.sin(t*3.8)*0.22;
+        const twitchL=Math.pow(Math.max(0,Math.sin(t*2.9)),6)*0.26;
+        const twitchR=Math.pow(Math.max(0,Math.sin(t*2.3+1.4)),6)*0.24;
+        jr.earL.rotation.z=-0.24-twitchL-totalHop*0.16;
+        jr.earR.rotation.z=0.24+twitchR+totalHop*0.16;
+
+        jr.blupeeMat.uniforms.uTime.value=t;
+        jr.blupeeMat.uniforms.uEclipse.value=eclipse;
+        jr.blupeeMat.uniforms.uBlinkFlash.value=jr.blinkFlash;
+        const glowAmt=0.58+0.42*eclipse+0.14*Math.sin(t*2.2)+jr.blinkFlash*0.65;
+        jr.haloMat.uniforms.uGlow.value=glowAmt*0.62;
+
+        // 持续喷洒少量环境灵火微粒 + 更新 140 颗灵粒轨迹
+        if(jr.state==="lookout"&&Math.sin(t*17.3)>0.92){
+          emitBlupeeParticles(jr,jr.x,jr.y0+0.25,jr.z,1,0.38);
+        }
+        const tr=jr.trail;
+        if(tr){
+          for(let i=0;i<tr.items.length;i++){
+            const it=tr.items[i];
+            if(it.life>0){
+              it.life=Math.max(0,it.life-dtSim);
+              it.vx*=Math.exp(-1.4*dtSim);
+              it.vz*=Math.exp(-1.4*dtSim);
+              it.vy+=0.18*dtSim; // 神性灵粒在 1/6G 下缓缓轻盈升腾
+              it.x+=it.vx*dtSim+Math.sin(t*2.8+i)*0.12*dtSim;
+              it.y+=it.vy*dtSim;
+              it.z+=it.vz*dtSim+Math.cos(t*2.5+i)*0.12*dtSim;
+              tr.pos[i*3]=it.x;tr.pos[i*3+1]=it.y;tr.pos[i*3+2]=it.z;
+              tr.data[i*3]=it.life/Math.max(0.1,it.maxLife);
+              tr.data[i*3+1]=it.size;
+              tr.data[i*3+2]=it.kind;
+            }else{
+              tr.data[i*3]=0;
+            }
+          }
+          tr.geo.attributes.position.needsUpdate=true;
+          tr.geo.attributes.aData.needsUpdate=true;
+        }
       }
 
-      // B4. 篮筐周围 1/6G 黏滞阻尼月尘微粒群（球飞近/砸石板/进球时阻尼震散，缓缓回聚）
+      // B4. 大规模 920 颗悬空发光晶尘 + 36 颗 3D 切面微晶石（篮球飞行轨迹尾流 & 砸框冲击波双重驱动！）
       if(w.hoopSwarm){
         const hs=w.hoopSwarm,dtSim=Math.min(0.05,Math.max(0.001,step||1/60));
-        const visAmt=0.28+THREE.MathUtils.smoothstep(p,0.10,0.78)*0.72;
+        const visAmt=0.36+THREE.MathUtils.smoothstep(p,0.08,0.75)*0.68;
         const activeBalls=(typeof balls!=="undefined"&&Array.isArray(balls))?balls:null;
         const bPts=[];
         if(activeBalls){
           for(let bi=0;bi<activeBalls.length;bi++){
             const b=activeBalls[bi],mp=b?.mesh?.position;
-            if(mp&&b.mesh.visible&&Math.hypot(mp.x-HOOP.x,mp.y-HOOP.y,mp.z-HOOP.z)<5.2)bPts.push(mp);
+            if(mp&&b.mesh.visible&&Math.hypot(mp.x-HOOP.x,mp.y-HOOP.y,mp.z-HOOP.z)<14.8){
+              const prevX=typeof b._lunarPrevX==="number"?b._lunarPrevX:mp.x;
+              const prevY=typeof b._lunarPrevY==="number"?b._lunarPrevY:mp.y;
+              const prevZ=typeof b._lunarPrevZ==="number"?b._lunarPrevZ:mp.z;
+              const bvx=THREE.MathUtils.clamp((mp.x-prevX)/dtSim,-24,24);
+              const bvy=THREE.MathUtils.clamp((mp.y-prevY)/dtSim,-24,24);
+              const bvz=THREE.MathUtils.clamp((mp.z-prevZ)/dtSim,-24,24);
+              b._lunarPrevX=mp.x;b._lunarPrevY=mp.y;b._lunarPrevZ=mp.z;
+              bPts.push({x:mp.x,y:mp.y,z:mp.z,vx:bvx,vy:bvy,vz:bvz});
+            }
           }
         }
-        const drag=Math.exp(-3.1*dtSim),springK=0.52;
+        const drag=Math.exp(-2.65*dtSim),springK=0.46;
+        const sd=hs.shardDummy;
         for(let i=0;i<hs.items.length;i++){
           const f=hs.items[i],tt=t*f.rate+f.phase;
-          const ix=Math.sin(tt*0.76)*0.28,iy=Math.sin(tt*0.98+f.phase)*0.20,iz=Math.cos(tt*0.68-f.phase)*0.26;
+          const ix=Math.sin(tt*0.76)*0.32,iy=Math.sin(tt*0.98+f.phase)*0.24,iz=Math.cos(tt*0.68-f.phase)*0.30;
           for(let bi=0;bi<bPts.length;bi++){
             const bp=bPts[bi];
             const rx=(f.hx+ix+f.dx)-bp.x,ry=(f.hy+iy+f.dy)-bp.y,rz=(f.hz+iz+f.dz)-bp.z;
             const d=Math.hypot(rx,ry,rz);
-            if(d<2.2&&d>0.02){
-              const fall=Math.exp(-d*0.9),nx=rx/d,ny=ry/d,nz=rz/d;
+            if(d<2.85&&d>0.02){
+              const fall=Math.exp(-d*0.76),nx=rx/d,ny=ry/d,nz=rz/d;
               const cx=ny*f.sz-nz*f.sy,cy=nz*f.sx-nx*f.sz,cz=nx*f.sy-ny*f.sx;
-              const wake=13.5*fall*dtSim;
-              f.vx+=(nx*0.68+cx*0.56)*wake;f.vy+=(ny*0.65+cy*0.50)*wake;f.vz+=(nz*0.68+cz*0.56)*wake;
-              f.excited=Math.min(1.2,f.excited+fall*dtSim*3.0);
+              const wake=16.5*fall*dtSim;
+              // 篮球划过轨迹时既有向外推开的气浪，又有沿篮球飞行方向卷起的 1/6G 涡流尾迹！
+              f.vx+=(nx*0.64+cx*0.58+bp.vx*0.045)*wake;
+              f.vy+=(ny*0.62+cy*0.52+bp.vy*0.035+0.12)*wake;
+              f.vz+=(nz*0.64+cz*0.58+bp.vz*0.045)*wake;
+              f.excited=Math.min(1.45,f.excited+fall*dtSim*3.8);
             }
           }
           f.vx=(f.vx-f.dx*springK*dtSim)*drag;
           f.vy=(f.vy-f.dy*springK*dtSim)*drag;
           f.vz=(f.vz-f.dz*springK*dtSim)*drag;
           f.dx+=f.vx*dtSim;f.dy+=f.vy*dtSim;f.dz+=f.vz*dtSim;
-          f.excited=Math.max(0,f.excited-dtSim*0.45);
-          hs.pos[i*3]=f.hx+ix+f.dx;hs.pos[i*3+1]=Math.max(0.3,f.hy+iy+f.dy);hs.pos[i*3+2]=f.hz+iz+f.dz;
-          const tw=0.30+0.70*Math.pow(Math.max(0,Math.sin(t*(1.4+f.rate)+f.phase*7)*0.5+0.5),1.8);
-          hs.glow[i]=visAmt*(tw+f.excited*0.88);
+          f.excited=Math.max(0,f.excited-dtSim*0.38);
+          const px=f.hx+ix+f.dx,py=Math.max(0.28,f.hy+iy+f.dy),pz=f.hz+iz+f.dz;
+          hs.pos[i*3]=px;hs.pos[i*3+1]=py;hs.pos[i*3+2]=pz;
+          const tw=0.34+0.66*Math.pow(Math.max(0,Math.sin(t*(1.4+f.rate)+f.phase*7)*0.5+0.5),1.7);
+          hs.glow[i]=visAmt*(tw+f.excited*0.96);
+
+          // 前 shardCount 个粒子同步驱动 3D 切面悬空晶石碎片的位移与失重翻滚
+          if(sd&&i<hs.shardCount){
+            sd.position.set(px,py,pz);
+            const spinRate=1.0+f.excited*3.5;
+            sd.rotation.set(t*0.8*spinRate+f.phase,t*1.1*spinRate+i,t*0.65*spinRate);
+            const sc=f.size*(0.75+0.35*visAmt+f.excited*0.32);
+            sd.scale.set(sc,sc*1.35,sc*0.85);
+            sd.updateMatrix();
+            hs.shardInst.setMatrixAt(i,sd.matrix);
+          }
         }
         hs.geo.attributes.position.needsUpdate=true;
         hs.geo.attributes.aGlow.needsUpdate=true;
+        if(hs.shardInst){
+          hs.shardInst.instanceMatrix.needsUpdate=true;
+          hs.shardMat.emissiveIntensity=0.45+0.65*eclipse;
+        }
       }
 
-      // C1. 3 名笨拙 1/6G 慢动作蹦跳围观宇航员（平时慢动作袋鼠跳，进球时高高跃起挥手欢呼！）
+      // C1. 3A 级阿波罗宇航员非重复生命感 AI（驻足看球/低重力巡线漫步/蹲身勘察矿石/偶发 2.5m~3.1m 超高失重飞跃！）
       if(w.astronauts&&w.terrainY){
-        const approach=THREE.MathUtils.smoothstep(p,0.12,0.52);
-        for(const a of w.astronauts){
-          const ax=THREE.MathUtils.lerp(a.farX,a.homeX,approach);
-          const az=THREE.MathUtils.lerp(a.farZ,a.homeZ,approach);
-          const groundY=w.terrainY(ax,az);
-          if(a.celebrateT>0)a.celebrateT=Math.max(0,a.celebrateT-step);
-          const cel=a.celebrateT>0?Math.min(1,a.celebrateT/0.6):0;
-          // 1/6G 笨拙慢动作抛物线蹦跳周期（起跳蓄力下蹲 -> 滞空飘浮 -> 落地缓冲）
-          const cyc=(t*a.hopRate+a.phase)%2.6;
-          let hopH=0,crouch=0,airPhase=0;
-          if(cyc<1.55){
-            const u=cyc/1.55;
-            airPhase=Math.sin(u*Math.PI);
-            hopH=airPhase*(0.52+cel*1.15);
-          }else{
-            crouch=Math.sin(((cyc-1.55)/1.05)*Math.PI)*0.10;
+        const approach=THREE.MathUtils.smoothstep(p,0.10,0.48);
+        const dtSim=Math.min(0.05,Math.max(0.001,step||1/60));
+        let focusBall=null;
+        if(typeof balls!=="undefined"&&Array.isArray(balls)){
+          for(let bi=balls.length-1;bi>=0;bi--){
+            if(balls[bi]?.mesh?.visible){focusBall=balls[bi].mesh.position;break;}
           }
+        }
+        for(let idx=0;idx<w.astronauts.length;idx++){
+          const a=w.astronauts[idx];
+          if(a.celebrateT>0)a.celebrateT=Math.max(0,a.celebrateT-dtSim);
+          const cel=a.celebrateT>0?Math.min(1,a.celebrateT/0.6):0;
+
+          a.modeT+=dtSim;
+          if(a.modeT>=a.modeDur){
+            a.modeT=0;
+            // 用哈希伪随机挑选下一个动作：绝不原地机械重复跳！大部分时间驻足观赛、巡线漫步或勘探，偶尔才来一次超高失重飞跃
+            const h=Math.abs(Math.sin(t*1.37+a.seed*17.3+idx*5.1));
+            if(a.mode==="highBound"||a.mode==="stroll"){
+              a.wpIdx=a.nextWpIdx;
+              a.curX=a.toX;a.curZ=a.toZ;
+              a.mode=h<0.65?"idleWatch":"inspect";
+              a.modeDur=3.4+h*3.2;
+            }else if(h<0.44){
+              // 低重力慢步巡线移动至下一个场边观察点
+              a.mode="stroll";
+              a.fromX=a.curX;a.fromZ=a.curZ;
+              a.nextWpIdx=(a.wpIdx+1)%a.waypoints.length;
+              a.toX=a.waypoints[a.nextWpIdx][0];
+              a.toZ=a.waypoints[a.nextWpIdx][1];
+              a.modeDur=3.8+h*1.8;
+            }else if(h<0.74){
+              // 驻足观察球场/抬头看红环地球/挥手致意
+              a.mode="idleWatch";
+              a.modeDur=3.6+h*2.8;
+            }else if(h<0.86){
+              // 屈膝俯身检查胸前 DCM 仪表或月面晶石
+              a.mode="inspect";
+              a.modeDur=2.9+h*1.5;
+            }else{
+              // 偶发 1/6G 失重高空大跳（跃起 2.4m~3.1m 高，在空中慢动作太空漫步蹬腿并跨越到新位置！）
+              a.mode="highBound";
+              a.fromX=a.curX;a.fromZ=a.curZ;
+              a.nextWpIdx=(a.wpIdx+1)%a.waypoints.length;
+              a.toX=a.waypoints[a.nextWpIdx][0];
+              a.toZ=a.waypoints[a.nextWpIdx][1];
+              a.jumpPeak=2.35+(h-0.86)*5.2;
+              a.modeDur=3.2;
+            }
+          }
+
+          let hopH=0,crouch=0,airPhase=0;
+          let thighL=0,thighR=0,kneeL=0.08,kneeR=0.08;
+          let shPitchL=0,shPitchR=0,shRollL=-0.22,shRollR=0.22,elbL=-0.38,elbR=-0.38;
+          let torsoPitch=0,torsoRoll=0;
+          let targetYaw=Math.atan2(-a.curX,(HOOP.z+3.5)-a.curZ);
+
+          if(a.mode==="idleWatch"){
+            // 自然站立呼吸 + 重心微移 + 偶尔单手调试胸前 DCM 仪表或挥手
+            const br=Math.sin(t*1.6+a.seed);
+            crouch=0.015*(0.5+0.5*br);
+            torsoRoll=Math.sin(t*0.75+a.seed)*0.035;
+            thighL=-0.04;thighR=0.04;kneeL=0.10;kneeR=0.10;
+            const checkInstrument=Math.sin(t*0.48+a.seed*3.1)>0.35;
+            if(checkInstrument&&cel<0.05){
+              shPitchR=-0.62;shRollR=-0.18;elbR=-1.12+Math.sin(t*3.2)*0.08;
+            }
+          }else if(a.mode==="inspect"){
+            // 屈膝下蹲勘察月面发光晶石或调校设备
+            const u=a.modeT/Math.max(0.1,a.modeDur);
+            const env=Math.sin(Math.min(1,u*3.2)*Math.PI*0.5)*Math.sin(Math.min(1,(1-u)*3.2)*Math.PI*0.5);
+            crouch=0.24*env;
+            torsoPitch=0.38*env;
+            thighL=-0.62*env;thighR=-0.48*env;
+            kneeL=1.18*env;kneeR=0.98*env;
+            shPitchL=-0.55*env;shPitchR=-0.72*env;
+            elbL=-0.65*env;elbR=-0.85*env;
+          }else if(a.mode==="stroll"){
+            // 1/6G 低重力轻盈跨步漫游（微幅离地 0.14m，自然交替摆臂与屈膝迈步）
+            const u=THREE.MathUtils.clamp(a.modeT/Math.max(0.1,a.modeDur),0,1);
+            const sm=u*u*(3-2*u);
+            a.curX=THREE.MathUtils.lerp(a.fromX,a.toX,sm);
+            a.curZ=THREE.MathUtils.lerp(a.fromZ,a.toZ,sm);
+            if(Math.hypot(a.toX-a.fromX,a.toZ-a.fromZ)>0.2){
+              targetYaw=Math.atan2(a.toX-a.fromX,a.toZ-a.fromZ);
+            }
+            const gPhase=u*Math.PI*4.0;
+            const sWave=Math.sin(gPhase);
+            hopH=Math.abs(sWave)*0.15;
+            torsoPitch=0.08;
+            torsoRoll=sWave*0.05;
+            thighL=sWave*0.46;thighR=-sWave*0.46;
+            kneeL=0.15+Math.max(0,-sWave)*0.55;
+            kneeR=0.15+Math.max(0,sWave)*0.55;
+            shPitchL=-sWave*0.34;shPitchR=sWave*0.34;
+            elbL=-0.45-Math.max(0,sWave)*0.25;
+            elbR=-0.45-Math.max(0,-sWave)*0.25;
+          }else if(a.mode==="highBound"){
+            // 1/6G 超高失重飞跃：0..0.14 蓄力深蹲 -> 0.14..0.88 跃起 2.4m~3.1m 高空慢动作滞空太空步 -> 0.88..1.0 缓冲落地激起月尘圈！
+            const u=THREE.MathUtils.clamp(a.modeT/Math.max(0.1,a.modeDur),0,1);
+            if(u<0.14){
+              const cu=Math.sin((u/0.14)*Math.PI);
+              crouch=0.25*cu;
+              torsoPitch=0.35*cu;
+              thighL=-0.68*cu;thighR=-0.68*cu;
+              kneeL=1.28*cu;kneeR=1.28*cu;
+              shPitchL=0.42*cu;shPitchR=0.42*cu;
+            }else if(u<0.88){
+              const au=(u-0.14)/0.74;
+              airPhase=Math.sin(au*Math.PI);
+              hopH=airPhase*a.jumpPeak;
+              a.curX=THREE.MathUtils.lerp(a.fromX,a.toX,au);
+              a.curZ=THREE.MathUtils.lerp(a.fromZ,a.toZ,au);
+              // 滞空失重慢动作交替蹬腿 + 双臂张开维持角动量平衡
+              const pedal=Math.sin(au*Math.PI*2.4+a.seed);
+              torsoPitch=-0.12*airPhase+Math.cos(au*Math.PI)*0.14;
+              torsoRoll=Math.sin(au*Math.PI*1.5)*0.09*airPhase;
+              thighL=(-0.38+pedal*0.36)*airPhase;
+              thighR=(-0.38-pedal*0.36)*airPhase;
+              kneeL=0.55+(0.5-0.5*pedal)*0.58;
+              kneeR=0.55+(0.5+0.5*pedal)*0.58;
+              shRollL=-0.28-0.78*airPhase;
+              shRollR=0.28+0.78*airPhase;
+              shPitchL=(-0.42-pedal*0.25)*airPhase;
+              shPitchR=(-0.42+pedal*0.25)*airPhase;
+              elbL=-0.52-0.25*airPhase;
+              elbR=-0.52-0.25*airPhase;
+            }else{
+              if(a.ringLife<=0.01){
+                a.ringLife=1.0;
+                const gy=w.terrainY(a.toX,a.toZ);
+                a.jumpRing.position.set(a.toX,gy+0.05,a.toZ);
+              }
+              const lu=Math.sin(((u-0.88)/0.12)*Math.PI);
+              crouch=0.22*lu;
+              torsoPitch=0.28*lu;
+              thighL=-0.58*lu;thighR=-0.58*lu;
+              kneeL=1.15*lu;kneeR=1.15*lu;
+            }
+          }
+
+          // 进球欢呼叠加：高举双手挥舞
+          if(cel>0.01){
+            const wave=Math.sin(t*7.2+a.seed);
+            shRollL=-1.45-wave*0.32;
+            shRollR=1.45-wave*0.32;
+            shPitchL=-0.55;shPitchR=-0.55;
+            elbL=-0.45+wave*0.25;elbR=-0.45-wave*0.25;
+          }
+
+          const ax=THREE.MathUtils.lerp(a.farX,a.curX,approach);
+          const az=THREE.MathUtils.lerp(a.farZ,a.curZ,approach);
+          const groundY=w.terrainY(ax,az);
           const brace=cosmicGroundFX.response(ax,az);
           a.group.position.set(ax+Math.sign(ax)*.38*brace,groundY+hopH-crouch,az);
-          // 宇航服滞空时笨拙前后微倾 + 双臂张开划水找平衡（进球时高举双臂挥舞）
-          a.body.rotation.x=airPhase*0.18-crouch*1.4-.48*brace;
-          a.body.rotation.z=Math.sin(t*2.1+a.phase)*0.11*airPhase;
-          const wave=Math.sin(t*6.5+a.phase);
-          a.armL.rotation.z=-0.28-airPhase*0.85-cel*(1.35+wave*0.35);
-          a.armR.rotation.z=0.28+airPhase*0.85+cel*(1.35-wave*0.35);
-          a.armL.rotation.x=-airPhase*0.45-cel*0.5-1.55*brace;
-          a.armR.rotation.x=-airPhase*0.45-cel*0.5;
-          a.legL.rotation.x=-airPhase*0.48+crouch*2.2;
-          a.legR.rotation.x=airPhase*0.26+crouch*2.2;
+
+          // 平滑转向目标朝向
+          let dYaw=((targetYaw-a.curYaw+Math.PI*3)%(Math.PI*2))-Math.PI;
+          a.curYaw+=dYaw*Math.min(1,dtSim*4.2);
+          a.group.rotation.y=a.curYaw;
+
+          // 头部自然追踪飞行中的篮球或仰望地球红环/空间站
+          let headYaw=Math.sin(t*0.65+a.seed)*0.22;
+          let headPitch=Math.sin(t*0.45+a.seed*1.7)*0.10-0.06;
+          if(focusBall){
+            const bYaw=Math.atan2(focusBall.x-ax,focusBall.z-az);
+            let relYaw=((bYaw-a.curYaw+Math.PI*3)%(Math.PI*2))-Math.PI;
+            headYaw=THREE.MathUtils.clamp(relYaw,-0.58,0.58);
+            const bDist=Math.hypot(focusBall.x-ax,focusBall.z-az);
+            headPitch=THREE.MathUtils.clamp(-Math.atan2(focusBall.y-(groundY+1.5),Math.max(1,bDist)),-0.48,0.25);
+          }else if(a.mode==="inspect"){
+            headPitch=0.36;
+          }
+          a.head.rotation.y=headYaw;
+          a.head.rotation.x=headPitch;
+
+          a.body.rotation.x=torsoPitch-.48*brace;
+          a.body.rotation.z=torsoRoll;
+          a.armL.rotation.set(shPitchL-1.55*brace,0,shRollL);
+          a.armR.rotation.set(shPitchR,0,shRollR);
+          if(a.foreArmL)a.foreArmL.rotation.x=elbL;
+          if(a.foreArmR)a.foreArmR.rotation.x=elbR;
+          a.legL.rotation.x=thighL;
+          a.legR.rotation.x=thighR;
+          if(a.shinL)a.shinL.rotation.x=kneeL;
+          if(a.shinR)a.shinR.rotation.x=kneeR;
+
+          // 更新高跳落地的月尘冲击环
+          if(a.ringLife>0){
+            a.ringLife=Math.max(0,a.ringLife-dtSim*0.95);
+            const rProg=1.0-a.ringLife;
+            a.jumpRingMat.opacity=Math.sin(a.ringLife*Math.PI)*0.38;
+            const rs=0.75+rProg*2.4;
+            a.jumpRing.scale.set(rs,rs,1);
+          }else{
+            a.jumpRingMat.opacity=0;
+          }
         }
       }
 
