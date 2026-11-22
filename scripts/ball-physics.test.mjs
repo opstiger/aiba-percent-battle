@@ -162,7 +162,14 @@ for (const [name, p0] of SPOTS) {
   const apex=P.COSMIC_APEX_T;
   const height=t=>P.sampleAt(special.path,t).y;
   check(height(apex-.45)<height(apex-.2)&&height(apex+.2)>height(apex+.45),"长镜头应经过可读的上升和下落");
-  check(special.madeT-apex>4&&height(4.7)>30&&height(5.35)<20,"俯拍应有时间跟随飞向篮筐的球");
+  check(special.madeT-apex>4&&height(4.7)>30&&height(5.35)<65,"俯拍应有时间跟随飞向篮筐的球");
+  const contact=special.events.find(e=>e.type==="floor");
+  const speed=t=>(height(t-.05)-height(t))/.05;
+  check([2.5,3.5,4.5,5.4,5.74].every((t,i,times)=>!i||speed(t)>speed(times[i-1])),"宇宙球应从顶点持续加速到篮圈前");
+  const made=special.events.find(e=>e.type==="made");
+  check(made&&made.speed>=speed(5.74),"宇宙球应持续加速穿网");
+  check(contact&&contact.t>special.madeT&&contact.impulse>100,"宇宙球应先穿网再高速触地");
+  check(contact&&Array.from({length:60},(_,i)=>height(contact.t+P.SAMPLE_DT+i/60)).every(y=>Math.abs(y-contact.y)<.001),"宇宙球触地后应留在落点");
   check(special.kind==="swish","落地后回弹擦筐不能改写已经落袋的空心球");
   check(Math.abs(height(apex)-300)<2&&special.events.filter(e=>e.type==="made").length===1,"宇宙弧线应升到百层楼并只结算一次");
 }

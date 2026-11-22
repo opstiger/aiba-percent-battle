@@ -127,7 +127,7 @@
       const fade=nearLeaves?"varying float vLeafOpacity;\n":"";
       const barkVarying=bark?"varying float vBarkForm;\nvarying vec2 vBarkUV;\n":"";
       const shared="varying vec3 vForestWorld;\n"+fade+barkVarying;
-      shader.vertexShader=shared+(plant?"uniform float forestTime;\nattribute float leafSway;\n":"")+
+      shader.vertexShader=shared+(plant||bark?"uniform vec4 forestPressure;\n":"")+(plant?"uniform float forestTime;\nattribute float leafSway;\n":"")+
         (nearLeaves?"attribute vec4 leafBounds;\n":"")+(bark?"attribute float barkForm;\n":"")+shader.vertexShader.replace(
         "#include <begin_vertex>",`#include <begin_vertex>
           ${bark?"vBarkForm=barkForm;vBarkUV=uv;":""}
@@ -144,12 +144,22 @@
             forestVertex=instanceMatrix*forestVertex;
           #endif
           vForestWorld=(modelMatrix*forestVertex).xyz;
+          ${plant||bark?`
+            if(forestPressure.w>0.0){
+              vec2 delta=vForestWorld.xz-forestPressure.xy;
+              float dist=length(delta);
+              float crest=(1.0-smoothstep(.6,3.9,abs(dist-forestPressure.z)))*forestPressure.w;
+              vec2 dir=delta/max(.05,dist);
+              float flex=${plant?"clamp(leafSway+.11,.08,1.0)":"smoothstep(2.8,14.0,vForestWorld.y)*.30"};
+              transformed.xz+=vec2(dot(modelMatrix[0].xz,dir),dot(modelMatrix[2].xz,dir))*crest*flex*1.45;
+              transformed.y-=crest*flex*.36;
+            }`:""}
           ${nearLeaves?`
             vec3 leafCenter=(modelMatrix*vec4(leafBounds.xyz,1.0)).xyz;
             float space=length(cameraPosition-leafCenter)-leafBounds.w;
             vLeafOpacity=smoothstep(.075,.33,space);
           `:""}`);
-      const revealUniform=plant||bark?"uniform float forestCourtReveal;\n":"";
+      const revealUniform=plant||bark||marks?"uniform float forestCourtReveal;\n":"";
       shader.fragmentShader=forestLight+(marks||moss?mossTexture:"")+marksUniform+shared+revealUniform+
         shader.fragmentShader.replace("#include <color_fragment>",`#include <color_fragment>
           ${plant||bark?`
@@ -157,7 +167,7 @@
             if(forestCourtReveal>0.0 && vForestWorld.y>3.5 && cameraPosition.y>vForestWorld.y+.2){
               float rayScale=cameraPosition.y/(cameraPosition.y-vForestWorld.y);
               vec2 target=cameraPosition.xz+(vForestWorld.xz-cameraPosition.xz)*rayScale;
-              vec2 margin=abs(target-vec2(0.0,4.745))/vec2(10.0,17.5);
+              vec2 margin=abs(target-vec2(0.0,4.745))/vec2(11.5,19.8);
               float edge=max(margin.x,margin.y);
               vec2 dither=mod(floor(gl_FragCoord.xy),4.0);
               float noise=fract(dot(dither,vec2(.5,.75))+.124*floor(dither.x*.5)+.063*floor(dither.y*.5));
@@ -238,6 +248,19 @@
           float daylight=mix(leafLight(vForestWorld),1.0,forestCycle.y*.85);
           reflectedLight.directDiffuse*=daylight;
           reflectedLight.directSpecular*=daylight;
+          ${marks?`
+            // Lift the clearing through the canopy shadow in the aerial shot.
+            vec2 foot=abs(vForestWorld.xz-vec2(0.0,4.745))-vec2(7.62,14.32);
+            float clearingLight=(1.0-smoothstep(-.20,1.4,max(foot.x,foot.y)))*forestCourtReveal;
+            if(clearingLight>0.0){
+              // Thin pigment vanishes in mipmaps at 300 m. Resolve the baselines and centre circle here.
+              float boundary=abs(max(foot.x,foot.y));
+              float circle=abs(length(vForestWorld.xz-vec2(0.0,4.745))-1.8);
+              float paint=1.0-smoothstep(.07,.24,min(boundary,circle));
+              vec3 skyFill=vec3(.030,.033,.018)+paint*vec3(.18,.16,.095);
+              totalEmissiveRadiance+=skyFill*clearingLight*(1.0-.78*forestCycle.y);
+            }
+          `:""}
           ${plant?`
             float beam=lightShaft(vForestWorld)*(1.0-forestCycle.y);
             vec3 lightView=normalize((viewMatrix*vec4(forestSun,0.0)).xyz);
@@ -1471,6 +1494,11 @@
         const flick=Math.sin(time*1.35+phase*2.1);
         if(flick>.92)flutter=Math.max(flutter,((flick-.92)/.08)*(.45+.45*Math.abs(Math.sin(time*38))));
       }
+      const perchBase=branch.parent.position;
+      const startle=cosmicGroundFX.response(perchBase.x,perchBase.z);
+      lift+=startle*1.38;bird.position.x+=startle*.72;
+      flutter+=startle*(1.15+.48*Math.sin(time*41+phase));
+      shake+=startle*.10;
       bird.position.y+=lift+.056+.006*Math.sin(time*3.9+phase);
       bird.rotation.y=turn+.12*Math.sin(time*1.7+phase);
       bird.rotation.z=lean+.042*Math.sin(time*4.5+phase);
@@ -2277,7 +2305,7 @@
     const uniforms={
       forestSun:{value:light.clone()},
       forestTime:{value:0},
-      forestCourtReveal:{value:0},
+      forestCourtReveal:{value:0},forestPressure:{value:new THREE.Vector4()},
       forestCycle:{value:new THREE.Vector4(0,0,0,0)}
     };
     const state={uniforms,foregroundLayer,progress:0,progressVel:0,targetProgress:0,stage:"afternoon",...air(s,uniforms)};

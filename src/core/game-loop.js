@@ -9,13 +9,17 @@ function setPauseAudio(on){
   try{if(window.AIBAAudio&&AIBAAudio.setPauseAudioDuck)AIBAAudio.setPauseAudioDuck(on);}catch(e){}
 }
 function renderGameScene(){
+  if(!cosmicView&&!cosmicGroundFX.reacting())return renderer.render(scene,camera);
   const fog=scene.fog;
-  if(!cosmicView||!fog?.isFog)return renderer.render(scene,camera);
   // Preserve the venue's atmospheric falloff relative to the court when looking down from orbit.
-  const near=fog.near,far=fog.far,altitude=Math.max(0,camera.position.y-14);
-  fog.near+=altitude;fog.far+=altitude;
-  try{renderer.render(scene,camera);}
-  finally{fog.near=near;fog.far=far;}
+  const linear=cosmicView&&fog?.isFog,near=fog?.near,far=fog?.far;
+  if(linear){const altitude=Math.max(0,camera.position.y-14);fog.near+=altitude;fog.far+=altitude;}
+  const reacting=cosmicGroundFX.reacting();
+  try{if(reacting)cosmicGroundFX.braceCrowd();return renderer.render(scene,camera);}
+  finally{
+    if(reacting)cosmicGroundFX.releaseCrowd();
+    if(linear){fog.near=near;fog.far=far;}
+  }
 }
 function updatePausePresentation(dt){
   if(!pauseWasOn){pauseWasOn=true;pausePresentationT=0;pauseAmbienceAcc=0;setPauseAudio(true);}
@@ -68,6 +72,7 @@ function animate(){
     lastI18nState=G.state;
     if(window.AIBAI18N&&AIBAI18N.refresh)AIBAI18N.refresh();
   }
+  cosmicGroundFX.tick(dt);
   updateEnvironment(realDt);
   updateSceneAudio(realDt);
   if(typeof syncArenaAmbience==="function")syncArenaAmbience(realDt);

@@ -472,21 +472,20 @@ function updPlayCam(dt){
     window.AIBAVisionAim.updateArc();
   }
 }
-// A small star dome follows only the secret ball. It is shared across runs and
-// detached as the camera pitches down, where each venue renders normally.
-let cosmicTrail=null,cosmicView=null;
-const cosmicRimAim=V3();
+// The flight camera owns its visual effects while live play or replay is active.
+let cosmicView=null;
 function beginCosmicView(){
   const roof=currentScenePreset==="indoor"?["arenaCeiling","arenaCeilingLamps","centerHungScoreboard"]
     .map(name=>indoorRoot.getObjectByName(name)).filter(Boolean):[];
   const forestReveal=environmentRoot.userData.placeState?.rainforest?.uniforms.forestCourtReveal;
   cosmicView={preset:currentScenePreset,far:camera.far,roof:roof.map(mesh=>[mesh,mesh.visible]),forestReveal,yaw:0};
+  cosmicGroundFX.prepare(currentScenePreset);
   if(camera.far<520){camera.far=520;camera.updateProjectionMatrix();}
   window.AIBAVisionAim?.updateArc();
 }
 function endCosmicView(){
   if(!cosmicView)return;
-  if(cosmicTrail?.parent)cosmicTrail.parent.remove(cosmicTrail);
+  cosmicGroundFX.endView();
   releaseCameraFov("cosmic");
   for(const [mesh,visible] of cosmicView.roof)mesh.visible=visible;
   if(cosmicView.forestReveal)cosmicView.forestReveal.value=0;
@@ -496,76 +495,47 @@ function endCosmicView(){
   cosmicView=null;
   if(!rep.on)applyCamMode();
 }
-// One camera-facing plume shared by every secret shot. Keeping the head at the
-// ball centre makes the same highlight visible through the turn and descent.
-function updateCosmicTrail(ball){
-  if(!cosmicTrail){
-    const canvas=document.createElement("canvas");canvas.width=96;canvas.height=192;
-    const g=canvas.getContext("2d");
-    for(let i=15;i>=0;i--){
-      const k=i/15,y=31+145*k,r=3+28*(1-k);
-      const glow=g.createRadialGradient(48,y,0,48,y,r);
-      glow.addColorStop(0,i<3?"rgba(255,246,200,.95)":"rgba(255,174,78,.80)");
-      glow.addColorStop(.4,"rgba(255,160,62,.48)");glow.addColorStop(1,"rgba(255,110,36,0)");
-      g.fillStyle=glow;g.fillRect(48-r,y-r,2*r,2*r);
-    }
-    const texture=new THREE.CanvasTexture(canvas);texture.encoding=THREE.sRGBEncoding;
-    cosmicTrail=new THREE.Sprite(new THREE.SpriteMaterial({map:texture,depthWrite:false,toneMapped:false,fog:false}));
-    cosmicTrail.center.set(.5,1-31/192);cosmicTrail.renderOrder=2;
-  }
-  if(cosmicTrail.parent!==ball.mesh)ball.mesh.add(cosmicTrail);
-  const y=ball.mesh.position.y;
-  const fade=clamp((y-HOOP.y-.2)/1.8,0,1);
-  // At the apex the plume contracts before it reverses on the way down.
-  const apex=AIBABallPhysics.COSMIC_APEX_T;
-  const motion=THREE.MathUtils.smoothstep(Math.abs(ball.t-apex),.12,.95);
-  cosmicTrail.material.opacity=fade*motion*.72;
-  cosmicTrail.material.rotation=ball.t<apex?0:Math.PI;
-  const width=.46;
-  cosmicTrail.scale.set(width,width*(.55+1.95*motion),1);
-}
 function updateCosmicCamera(ball,dt,interactive=true){
   if(!cosmicView)beginCosmicView();
   const p=ball.mesh.position,t=ball.t;
   const apex=AIBABallPhysics.COSMIC_APEX_T,drop=AIBABallPhysics.COSMIC_DROP_T;
   const smooth=THREE.MathUtils.smoothstep,mix=THREE.MathUtils.lerp;
   const down=smooth(t,.36,apex-.10),high=smooth(p.y,14,110);
-  const nearRim=smooth(t,drop-.70,drop+.05);
+  const approach=smooth(t,apex+.15,drop+.26);
   hands.visible=false;player.g.visible=true;
-
-  // Arc around the ball, keeping it in the foreground as the venue rolls into view.
   const faceYaw=interactive?(window.AIBAVisionAim?.cinematicYawRad()||0):0;
   cosmicView.yaw+=(faceYaw-cosmicView.yaw)*(1-Math.exp(-dt*6));
   const pan=cosmicView.yaw*high*down;
-  const bearing=.50-.28*down+pan*.8;
-  const pitch=mix(-.13,mix(.93,1.465,high),down);
-  const fallBehind=smooth(t,apex,apex+1.05)*high;
-  const distance=mix(3.8,5.8,down)+4.4*fallBehind;
-  const horizontal=distance*Math.cos(pitch);
-  rig.pos.set(p.x+Math.sin(bearing)*horizontal+pan*distance*.24,
-    p.y+Math.sin(pitch)*distance,p.z+Math.cos(bearing)*horizontal);
-  rig.pos.x=mix(rig.pos.x,2.1,nearRim);
-  rig.pos.y=mix(rig.pos.y,4.2,nearRim);
-  rig.pos.z=mix(rig.pos.z,HOOP.z+3.4,nearRim);
+  const bearing=.50-.28*down+.32*approach+pan*.8;
+  const pitch=mix(-.13,1.465,down);
+  const distance=mix(3.8,5.8,down)+4.4*smooth(t,apex,apex+1.05);
+  const back=distance*Math.cos(pitch)+12.5*approach**3;
+  const impact=ball.groundImpact,age=impact?t-impact.t:-Infinity;
+  const x=age>=0?impact.x:p.x,z=age>=0?impact.z:p.z;
+  const height=age>=0?AIBABallPhysics.GEOM.ballR:p.y;
+  // Level out above the landing site. Only the ball closes the last few metres.
+  const eyeY=Math.hypot(height,13.5*approach)+distance*Math.sin(pitch)+7*Math.sin(Math.PI*approach);
+  rig.pos.set(x+Math.sin(bearing)*back+pan*distance*.24,eyeY,z+Math.cos(bearing)*back);
 
-  // Let the player see past the ball. Keep a little pitch away from vertical so
-  // the horizon axis stays stable even when looking around with face tracking.
-  const viewPitch=pitch+.065*down*high;
-  rig.look.set(-Math.sin(bearing)*Math.cos(viewPitch),
-    -Math.sin(viewPitch),-Math.cos(bearing)*Math.cos(viewPitch)).normalize();
-  cosmicRimAim.copy(p).sub(rig.pos).normalize();
-  rig.look.lerp(cosmicRimAim,smooth(t,drop-.85,drop-.70));
-  cosmicRimAim.set(HOOP.x,Math.max(HOOP.y-.12,(p.y+HOOP.y)*.5),HOOP.z).sub(rig.pos).normalize();
-  rig.look.lerp(cosmicRimAim,nearRim).normalize().multiplyScalar(100).add(rig.pos);
-  const baseFov=fovForAspect(camera.aspect);
   const summitFov=Math.max(25,2*Math.atan(.115/camera.aspect)*180/Math.PI);
-  requestCameraFov("cosmic",mix(baseFov,summitFov,down*high),80);
-  for(const [mesh,visible] of cosmicView.roof)mesh.visible=visible&&rig.pos.y<20;
+  const fov=mix(mix(fovForAspect(camera.aspect),summitFov,down),Math.min(67,fovForAspect(camera.aspect)),approach);
+  requestCameraFov("cosmic",fov,80);
+  // Compose in screen space throughout the dive. The ball moves from the upper
+  // third toward the landing mark without a late look-at or side-camera blend.
+  const frameY=down*mix(.28,-.16,approach);
+  const aimHeight=Math.hypot(height,17*approach)-17*approach;
+  const viewPitch=Math.atan2(eyeY-aimHeight,back)+Math.atan(frameY*Math.tan(fov*Math.PI/360));
+  rig.look.set(-Math.sin(bearing)*Math.cos(viewPitch),-Math.sin(viewPitch),
+    -Math.cos(bearing)*Math.cos(viewPitch)).multiplyScalar(100).add(rig.pos);
+  for(const [mesh,visible] of cosmicView.roof){
+    const below=mesh.name==="centerHungScoreboard"?9:20;
+    mesh.visible=visible&&rig.pos.y<below;
+  }
   if(cosmicView.forestReveal){
-    cosmicView.forestReveal.value=down*THREE.MathUtils.smoothstep(rig.pos.y,11,22)*(1-nearRim);
+    cosmicView.forestReveal.value=down*THREE.MathUtils.smoothstep(rig.pos.y,10,17);
   }
 
-  updateCosmicTrail(ball);
+  cosmicGroundFX.sample(age,impact,currentScenePreset,ball.mesh);
 }
 /* CameraDirector：所有镜头的唯一调度入口。镜头优先级固定为
    调试编辑器 > 回放/胜利/英雄演出 > 过场接管 > 模式专属镜头 > 常规跟随。

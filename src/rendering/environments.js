@@ -573,6 +573,7 @@ function weatherAdjustedIdeal(shot,withNoise){
 function applyScenePreset(name,opts){
   opts=opts||{};
   if(!SCENE_PRESETS[name])name="indoor";
+  cosmicGroundFX.reset();
   currentScenePreset=name;
   if(typeof camera!=="undefined"&&camera){
     const wantFar=name==="tokyoRooftop"?920:name==="flowerCourt"?630:name==="rainforest"?290:160;
@@ -780,7 +781,7 @@ function applyScenePreset(name,opts){
     }else toast("赛场 · "+preset.name,beach?"#ffc078":(outdoor?"#8fdfff":"#ffd23f"));
   }
   syncSceneAmbience();
-}function resetProgressiveSceneForRun(){if(window.AIBASceneLifecycle)return AIBASceneLifecycle.resetForRun();const preset=SCENE_PRESETS[currentScenePreset];if(preset&&preset.progression!=="none")applyScenePreset(currentScenePreset,{persist:false});}
+}function resetProgressiveSceneForRun(){cosmicGroundFX.reset();if(window.AIBASceneLifecycle)return AIBASceneLifecycle.resetForRun();const preset=SCENE_PRESETS[currentScenePreset];if(preset&&preset.progression!=="none")applyScenePreset(currentScenePreset,{persist:false});}
 function getEnvironmentProgress(){
   if(G.state==="boot"||G.state==="menu"||G.state==="diff"||G.state==="intro")return 0;
   const timedVenue=currentScenePreset==="rainforest"||currentScenePreset==="lunarCrater";

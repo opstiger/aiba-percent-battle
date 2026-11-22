@@ -183,8 +183,11 @@ function updDotsUI(){
 }
 // G.seq is replaced at the start of every run, including battle and rack rush.
 let overchargeRun=null,overchargeCount=0,cosmicBall=null;
+function cosmicViewEnd(b){
+  return b.groundImpact?b.groundImpact.t+.92:b.scoreT+.18;
+}
 function cosmicShotInFlight(){
-  return cosmicBall&&cosmicBall.t<cosmicBall.scoreT+.18&&balls.includes(cosmicBall);
+  return cosmicBall&&cosmicBall.t<cosmicViewEnd(cosmicBall)&&balls.includes(cosmicBall);
 }
 function startCharge(){
   if(cosmicShotInFlight())return false;
@@ -277,6 +280,11 @@ function applyPhysicsResult(b,res,t0){
   b.willMake=res.made;b.physicsKind=res.kind;b.outcome=PHYS.legacyOutcome(res);
   b.tf=start+(arrive?arrive.t:res.decidedT);
   b.scoreT=start+(res.made?res.madeT:(arrive?arrive.t:res.decidedT));
+  if(b.cosmic){
+    const floor=res.events.find(e=>e.type==="floor"&&start+e.t>=b.scoreT);
+    b.groundImpact=floor?{x:floor.x,z:floor.z,t:start+floor.t}:null;
+    if(floor)b.endT=Math.max(b.endT,cosmicViewEnd(b)+.08);
+  }
   b.decidedAt=start+res.decidedT;
   return b;
 }
@@ -686,10 +694,15 @@ function physicsBallEvent(b,e){
       sfx("board",sBoard);haptic(b,e.impulse);break;
     case "support":case "scenery":sfx("floor",sBounce);break;
     case "floor":
+      if(b.cosmic&&b.groundImpact&&!b.bounces){
+        cosmicGroundFX.land(b.groundImpact,b.mesh);
+        b.mesh.visible=false;b.blob.visible=false;
+      }
       b.bounces++;splashMeadowBall(e.x,e.z,e.impulse);sfx("floor",sBounce);break;
     case "made":
       if(b.made)break;
       b._madeEvent=e;
+      if(b.cosmic)fx?.impact("cosmic",e);
       if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(HOOP.x,HOOP.y,HOOP.z,4.2,"made");
       if(globalThis.AIBAWorldWonders?.lunarImpulse)globalThis.AIBAWorldWonders.lunarImpulse(HOOP.x,HOOP.y,HOOP.z,4.2,"made");
       if(globalThis.AIBAWorldWonders?.lunarCelebrate)globalThis.AIBAWorldWonders.lunarCelebrate();
@@ -718,7 +731,7 @@ function updPhysicsBall(b,dt,index){
   const omega=b._pathOmega||(b._pathOmega=new THREE.Vector3());
   omega.set(s.wx,s.wy,s.wz);rotateBallWorld(b,omega,dt,1);
   while(b.evi<b.events.length&&b.events[b.evi].t<=lt)physicsBallEvent(b,b.events[b.evi++]);
-  if(b===cosmicBall&&b.t>=b.scoreT+.18)cosmicBall=null;
+  if(b===cosmicBall&&b.t>=cosmicViewEnd(b))cosmicBall=null;
   if(b.t>=b.endT){
     if(b.rushRunId)window.queueRackRushReturn?.(b);
     scene.remove(b.mesh);scene.remove(b.blob);
@@ -835,7 +848,8 @@ function updBalls(dt){
         balls.splice(i,1);continue;
       }
     }
-    if(b.perfect&&(b.phase==="fly"||(b.phase==="path"&&b.t<b.tf)))emitFire(b.mesh.position);
+    if(b.cosmic&&b.t<b.tf)AIBACometTrail.emitFire(b.mesh.position,b);
+    else if(b.perfect&&(b.phase==="fly"||(b.phase==="path"&&b.t<b.tf)))emitFire(b.mesh.position);
     else if((globalThis.AIBARainforest?.fireflyTrailMix?.()||0)>.25&&(b.phase==="fly"||(b.phase==="path"&&b.t<b.tf)))emitFire(b.mesh.position);
     b.blob.position.set(b.mesh.position.x,0.02,b.mesh.position.z);
     const s=clamp(1.4-b.mesh.position.y*0.12,0.3,1.4);

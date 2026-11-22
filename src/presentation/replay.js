@@ -38,7 +38,7 @@ function startClip(){
   /* 真实物理球带 scoreT（进球时刻）：转筐一秒多才进的球，按"第一次碰筐"的 tf 截会把
      最精彩的那段剪掉。旧球没有 scoreT，行为不变。 */
   rep.scoreT=h.scoreT!=null?h.scoreT:h.tf;
-  rep.end=Math.min(h.rec[h.rec.length-1][0],rep.scoreT+0.4);
+  rep.end=Math.min(h.rec[h.rec.length-1][0],h.cosmic&&h.groundImpact?cosmicViewEnd(h):rep.scoreT+0.4);
   // random broadcast cameras — all positioned in front of the backboard (z > -8) so nothing blocks the view
   const s=h.shooterPos||V3(h.startPos.x,0,h.startPos.z);
   const release=h.p0||h.startPos;
@@ -111,7 +111,10 @@ function updReplay(dt){
     rig.look.copy(rep.photoCam.look);
     window.AIBASetIcon("repCam","video","机位 0 · "+rep.photoCam.n);
   }else if(h.cosmic){
-    rep.spin.t=t;
+    rep.spin.t=t;rep.spin.groundImpact=h.groundImpact;
+    const landed=h.groundImpact&&t>=h.groundImpact.t;
+    rep.ghost.visible=!landed;rep.gBlob.visible=!landed;
+    if(t<h.tf)AIBACometTrail.emitFire(rep.ghost.position,rep.spin);
     updateCosmicCamera(rep.spin,dt,false);
     window.AIBASetIcon("repCam","video","宇宙弧线 · 长镜头");
   }else if(t<cut){
@@ -123,7 +126,7 @@ function updReplay(dt){
   }
   if(!photo&&!h.cosmic)rig.look.copy(rep.ghost.position);
   if(!rep.scoredFx&&t>=(h.scoreT!=null?h.scoreT:h.tf*0.98)){
-    rep.scoredFx=true;pulseNet(1,rep.ball&&rep.ball.netDir);sSwish();cheerSound(true);G.cheer=1;
+    rep.scoredFx=true;if(h.cosmic)window.AIBAHoopDynamics?.impact("cosmic",{});pulseNet(1,rep.ball&&rep.ball.netDir);sSwish();cheerSound(true);G.cheer=1;
   }
   if(rep.t>REPLAY_PHOTO_DUR+rep.end+0.35){
     rep.idx++;

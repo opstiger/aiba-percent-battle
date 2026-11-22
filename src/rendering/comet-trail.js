@@ -147,20 +147,33 @@
 
   /* ---------- 对外接口：沿用 emitFire / updFire ---------- */
   const _v=new T.Vector3();
-  function emitFire(p){
+  function emitFire(p,owner=null){
     if(!p)return;
     const t=now();
     // 接到最近的一条还在更新的尾迹上（同时有两颗完美球时各走各的）
     let tr=null,best=.9;
-    for(const x of trails){if(x.ended)continue;const h=x.pts[x.pts.length-1];if(!h)continue;
+    for(const x of trails){if(x.ended)continue;
+      if(owner&&x.owner===owner){tr=x;break;}
+      if(owner||x.owner)continue;const h=x.pts[x.pts.length-1];if(!h)continue;
       const d=Math.hypot(h.x-p.x,h.y-p.y,h.z-p.z);if(d<best){best=d;tr=x;}}
-    if(!tr)tr=makeTrail(p);
+    if(!tr){tr=makeTrail(p);tr.owner=owner;}
     const last=tr.pts[tr.pts.length-1];
-    tr.pts.push({x:p.x,y:p.y,z:p.z,t});if(tr.pts.length>MAX_PTS)tr.pts.shift();
+    if(owner&&last){
+      const dx=p.x-last.x,dy=p.y-last.y,dz=p.z-last.z,dist=Math.hypot(dx,dy,dz);
+      // Keep the same sweet-spot ribbon at rocket speeds, with a readable length.
+      const steps=Math.min(12,Math.ceil(Math.min(dist,4.5)/.45));
+      for(let j=steps-1;j>0;j--){
+        const u=1-j/steps*Math.min(1,4.5/dist);
+        tr.pts.push({x:last.x+dx*u,y:last.y+dy*u,z:last.z+dz*u,t:last.t+(t-last.t)*u});
+      }
+      while(tr.pts.length&&Math.hypot(p.x-tr.pts[0].x,p.y-tr.pts[0].y,p.z-tr.pts[0].z)>4.5)tr.pts.shift();
+    }
+    tr.pts.push({x:p.x,y:p.y,z:p.z,t});if(tr.pts.length>MAX_PTS)tr.pts.splice(0,tr.pts.length-MAX_PTS);
     tr.last=t;tr.level=Math.max(tr.level,hotLevel());
     // 分散五角星：按节奏稀疏洒出，不密集堆叠
     if(last){
       _v.set(p.x-last.x,p.y-last.y,p.z-last.z).multiplyScalar(60);
+      if(owner)_v.clampLength(0,18);
       tr.starAcc+=(.42+.14*tr.level);
       if(tr.starAcc>=1){tr.starAcc-=1;emitStar(p,_v,tr.level);}
     }

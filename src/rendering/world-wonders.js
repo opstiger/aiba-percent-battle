@@ -1813,6 +1813,11 @@
       const {nearBaseline:near,farBaseline:far,halfWidth,midZ}=COURT;
       const line=(x,z,x2,z2)=>{g.beginPath();g.moveTo(x,z);g.lineTo(x2,z2);g.stroke();};
       const circle=(z,r,a=0,b=tau)=>{g.beginPath();g.arc(0,z,r,a,b);g.stroke();};
+      // Bake a mown playing surface into the existing chalk map so its silhouette survives minification.
+      g.fillStyle="rgba(172,157,89,.27)";
+      g.fillRect(-halfWidth,near,COURT.width,far-near);
+      g.strokeStyle="rgba(94,101,54,.44)";g.lineWidth=.55;
+      g.strokeRect(-halfWidth-.28,near-.28,COURT.width+.56,far-near+.56);
       g.strokeStyle="#f2e9cc";g.lineCap="round";
       g.globalAlpha=.73;g.lineWidth=.061;g.setLineDash([2.1,.024,1.03,.068,.84,.042]);
       g.strokeRect(-halfWidth,near,COURT.width,far-near);
@@ -2135,7 +2140,8 @@
         shader.uniforms.meadowWind=s.meadow.wind;
         shader.uniforms.meadowSun=s.meadow.uniforms.meadowSun;
         shader.uniforms.meadowSky=s.meadow.uniforms.meadowSky;
-        shader.vertexShader="uniform float meadowTime,meadowWind;\nvarying float vSpruceH;\nvarying vec3 vSpruceWorld,vSpruceCrownN;\n"+
+        shader.uniforms.meadowPressure=s.meadow.uniforms.meadowPressure;
+        shader.vertexShader="uniform vec4 meadowPressure;\nuniform float meadowTime,meadowWind;\nvarying float vSpruceH;\nvarying vec3 vSpruceWorld,vSpruceCrownN;\n"+
           shader.vertexShader.replace("#include <begin_vertex>",`
             #include <begin_vertex>
             vSpruceH=clamp(position.y,0.0,1.0);
@@ -2143,6 +2149,7 @@
             float sway=(sin(meadowTime*1.15+root.x*.09+root.y*.07)*.024+meadowWind*.028)*vSpruceH*vSpruceH;
             transformed.x+=sway;
             transformed.z+=sway*.45;
+            ${pressureBend("vSpruceH*vSpruceH*.38")}
             vSpruceWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
             vSpruceCrownN=normalize(mat3(instanceMatrix)*vec3(position.x,.36,position.z));
           `);
@@ -2227,7 +2234,7 @@
         Object.assign(shader.uniforms,s.meadow.uniforms);
         shader.uniforms.meadowTime=time;
         shader.uniforms.meadowWind=s.meadow.wind;
-        shader.vertexShader="attribute float bladeH;\nuniform float meadowTime,meadowWind;\nuniform sampler2D meadowClouds;\nuniform vec4 meadowActors,meadowBall;\nvarying float vBladeH;\nvarying vec3 vGrassWorld;\n"+
+        shader.vertexShader="attribute float bladeH;\nuniform float meadowTime,meadowWind;\nuniform sampler2D meadowClouds;\nuniform vec4 meadowActors,meadowBall,meadowPressure;\nvarying float vBladeH;\nvarying vec3 vGrassWorld;\n"+
           shader.vertexShader.replace("#include <begin_vertex>",`
             #include <begin_vertex>
             vBladeH=bladeH;
@@ -2250,6 +2257,7 @@
             if(lB<.88){float wB=pow(1.0-lB/.88,1.6);pushVec+=dB/max(.04,lB)*wB*.46;pushDown=max(pushDown,wB*.48);}
             vec2 dC=root-meadowBall.xy;float lC=length(dC);
             if(lC<.58){float wC=pow(1.0-lC/.58,1.6);pushVec+=dC/max(.04,lC)*wC*.38;pushDown=max(pushDown,wC*.42);}
+            ${pressureBend("bladeH")}
             transformed.xz+=pushVec*bladeH;
             transformed.y*=1.0-pushDown*.55*bladeH;
             vGrassWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
@@ -2607,7 +2615,7 @@
       mat.onBeforeCompile=shader=>{
         Object.assign(shader.uniforms,weather.uniforms);
         shader.uniforms.meadowTime=weather.time;shader.uniforms.meadowBloom=bloom;shader.uniforms.meadowWind=weather.wind;
-        shader.vertexShader="uniform float meadowTime,meadowBloom,meadowWind;\nuniform vec4 meadowActors,meadowBall;\nattribute float bloomStart;\nvarying float vPetalH;\nvarying vec3 vPetalWorld;\n"+
+        shader.vertexShader="uniform float meadowTime,meadowBloom,meadowWind;\nuniform vec4 meadowActors,meadowBall,meadowPressure;\nattribute float bloomStart;\nvarying float vPetalH;\nvarying vec3 vPetalWorld;\n"+
           shader.vertexShader.replace("#include <begin_vertex>",`
             #include <begin_vertex>
             vPetalH=clamp(position.y*1.8,0.0,1.0);
@@ -2621,6 +2629,7 @@
             if(lB<.85){float wB=pow(1.0-lB/.85,1.5);transformed.xz+=dB/max(.04,lB)*wB*.38*vPetalH;transformed.y*=1.0-wB*.40*vPetalH;}
             vec2 dC=root-meadowBall.xy;float lC=length(dC);
             if(lC<.55){float wC=pow(1.0-lC/.55,1.5);transformed.xz+=dC/max(.04,lC)*wC*.32*vPetalH;transformed.y*=1.0-wC*.35*vPetalH;}
+            ${pressureBend("vPetalH")}
             transformed*=max(.001,smoothstep(bloomStart,bloomStart+.145,meadowBloom));
             vPetalWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
           `);
@@ -2706,7 +2715,12 @@
         const t=s.time;
         for(const a of weather.livestock){
           // Gentle independent grazing head-nodding
-          a.headPivot.rotation.x=0.35+0.32*Math.sin(t*a.rate+a.phase);
+          const q=cosmicGroundFX.response(a.x,a.z);
+          a.headPivot.rotation.x=.35+.32*Math.sin(t*a.rate+a.phase)-q*.94;
+          a.headPivot.rotation.y=q*Math.sign(-a.x)*.52;
+          a.root.position.x=a.x+Math.sign(a.x)*q*.49;
+          a.root.position.y=a.y+q*(a.cow?.10:.38);
+          a.root.rotation.z=-Math.sign(a.x)*q*.12;
         }
       }
       ambient.color.copy(weather.skyColor);
@@ -2761,15 +2775,29 @@
         head.position.set(0,-0.04,isCow?0.20:0.12);
         headPivot.add(head);root.add(headPivot);
         grp.add(root);
-        animals.push({headPivot,phase:i*1.93,rate:0.38+(i%4)*0.11});
+        animals.push({headPivot,root,x:a.x,y:py,z:a.z,cow:isCow,phase:i*1.93,rate:0.38+(i%4)*0.11});
       }
       s.root.add(grp);
       return animals;
     }
 
+    // Instance-local bend follows the passing world-space crest, even on rotated foliage.
+    function pressureBend(flex){
+      return `if(meadowPressure.w>0.0){
+        vec2 delta=root-meadowPressure.xy;
+        float d=length(delta);
+        float crest=meadowPressure.w*(1.0-smoothstep(.55,3.8,abs(d-meadowPressure.z)));
+        vec2 outward=delta/max(d,.05);
+        vec2 local=vec2(dot(outward,normalize(instanceMatrix[0].xz)),dot(outward,normalize(instanceMatrix[2].xz)));
+        transformed.xz+=local*crest*.58*${flex};
+        transformed.y*=1.0-crest*.48*${flex};
+      }`;
+    }
+
     function buildMeadow(s){
       s.heightAt=elevation;
       s.meadow=AIBAMeadowWeather.build(s);
+      s.meadow.uniforms.meadowPressure={value:new THREE.Vector4()};
       ground(s);
       const rock=terrainTexture("alpine-rock.jpg");
       const mountain=new THREE.MeshBasicMaterial({map:rock,side:THREE.DoubleSide,fog:false});
@@ -3052,8 +3080,9 @@
         const celHop=jr.hopT>0?Math.sin(Math.min(1,(1.8-jr.hopT)/1.1)*Math.PI)*0.85:0;
         const idleCycle=t%7.5;
         const idleHop=idleCycle<1.15?Math.sin((idleCycle/1.15)*Math.PI)*0.34:0;
-        const hopY=Math.max(celHop,idleHop);
-        jr.group.position.set(jr.x,jr.y0+hopY,jr.z);
+        const startled=cosmicGroundFX.response(jr.x,jr.z);
+        const hopY=Math.max(celHop,idleHop)+startled*.70;
+        jr.group.position.set(jr.x+Math.sign(jr.x)*startled*.52,jr.y0+hopY,jr.z);
         jr.body.rotation.x=-hopY*0.24;
         jr.head.rotation.y=Math.sin(t*0.72)*0.22;
         jr.head.rotation.x=-0.06-hopY*0.18;
@@ -3125,14 +3154,15 @@
           }else{
             crouch=Math.sin(((cyc-1.55)/1.05)*Math.PI)*0.10;
           }
-          a.group.position.set(ax,groundY+hopH-crouch,az);
+          const brace=cosmicGroundFX.response(ax,az);
+          a.group.position.set(ax+Math.sign(ax)*.38*brace,groundY+hopH-crouch,az);
           // 宇航服滞空时笨拙前后微倾 + 双臂张开划水找平衡（进球时高举双臂挥舞）
-          a.body.rotation.x=airPhase*0.18-crouch*1.4;
+          a.body.rotation.x=airPhase*0.18-crouch*1.4-.48*brace;
           a.body.rotation.z=Math.sin(t*2.1+a.phase)*0.11*airPhase;
           const wave=Math.sin(t*6.5+a.phase);
           a.armL.rotation.z=-0.28-airPhase*0.85-cel*(1.35+wave*0.35);
           a.armR.rotation.z=0.28+airPhase*0.85+cel*(1.35-wave*0.35);
-          a.armL.rotation.x=-airPhase*0.45-cel*0.5;
+          a.armL.rotation.x=-airPhase*0.45-cel*0.5-1.55*brace;
           a.armR.rotation.x=-airPhase*0.45-cel*0.5;
           a.legL.rotation.x=-airPhase*0.48+crouch*2.2;
           a.legR.rotation.x=airPhase*0.26+crouch*2.2;

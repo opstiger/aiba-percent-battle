@@ -203,7 +203,7 @@
 
   /* 篮网：只约束"从上方穿过圈口"的球。锥形——圈口 R，往下 depth 收到 bottomR。
      进网的球被兜住、减速、回中，像真网那样把横向速度吃掉。 */
-  function applyNet(s,state){
+  function applyNet(s,state,preserveFallSpeed){
     const rim=GEOM.rim,net=GEOM.net,r=GEOM.ballR;
     if(!state.entered||state.netDone||s.y>=rim.y)return 0;
     if(s.y<rim.y-net.depth-.08){if(state.made)state.netDone=true;return 0;}   // 出了网底就不再受网约束
@@ -217,7 +217,8 @@
       const vr=s.vx*ox+s.vz*oz;
       if(vr>0){s.vx-=1.25*vr*ox;s.vz-=1.25*vr*oz;push=vr;}
     }
-    const k=Math.exp(-3*DT);s.vx*=k;s.vz*=k;s.vy*=Math.exp(-1.6*DT);
+    const k=Math.exp(-3*DT);s.vx*=k;s.vz*=k;
+    if(!preserveFallSpeed)s.vy*=Math.exp(-1.6*DT);
     s.wx*=Math.exp(-4*DT);s.wy*=Math.exp(-4*DT);s.wz*=Math.exp(-4*DT);
     return push;
   }
@@ -297,7 +298,7 @@
         if(prevY>=rim.y&&s.y<rim.y&&h<rim.R-rim.tube)state.entered=true;
         else if(state.entered&&s.y>=rim.y)state.entered=false;
       }
-      const netPush=applyNet(s,state);
+      const netPush=applyNet(s,state,opts.preserveFallSpeed);
       if(netPush>.05)note("net",t,netPush);
       if(!state.made&&state.entered&&s.y<rim.y-.42){
         state.made=true;state.madeT=t;
@@ -567,18 +568,27 @@
   }
   const COSMIC_APEX_T=1.65,COSMIC_DROP_T=5.75;
   function cosmicFlight(p0,opts){
-    const rim=GEOM.rim,peak=300,dropY=rim.y+1,vy=-9.4;
+    const rim=GEOM.rim,peak=300,dropY=rim.y+1;
     const descent=COSMIC_DROP_T-COSMIC_APEX_T;
-    const endSlope=-vy*descent/(peak-dropY);
-    const landing=simulate({p:[rim.x,dropY,rim.z],v:[0,vy,0],w:[-9,1,0]},opts);
+    const vy=-2*(peak-dropY)/descent;
+    const landing=simulate({p:[rim.x,dropY,rim.z],v:[0,vy,0],w:[-9,1,0]},
+      {...opts,preserveFallSpeed:true,tuning:{...opts?.tuning,eFloor:0}});
+    const contact=landing.events.find(event=>event.type==="floor");
+    if(contact){
+      // The surface absorbs the shot. Fix all later samples at the point of impact.
+      for(let i=0;i<landing.path.length;i+=STRIDE){
+        if(landing.path[i]<contact.t-1e-6)continue;
+        landing.path.set([contact.x,contact.y,contact.z,0,0,0],i+1);
+      }
+      landing.events=landing.events.filter(event=>event.t<=contact.t);
+    }
     const frames=Math.round(COSMIC_DROP_T/SAMPLE_DT),prefix=frames*STRIDE;
     const path=new Float32Array(prefix+landing.path.length);
     for(let i=0;i<frames;i++){
       const t=i*SAMPLE_DT;
       const rise=Math.sin(Math.min(1,t/COSMIC_APEX_T)*Math.PI/2);
       const fall=clamp((t-COSMIC_APEX_T)/descent,0,1);
-      // Slow time approaching the rim so the high dive can join the actual net simulation.
-      const drop=fall*fall*((3-endSlope)-(2-endSlope)*fall);
+      const drop=fall*fall;
       const y=p0[1]+9*rise+(peak-p0[1]-9)*rise**3-(peak-dropY)*drop;
       const u=Math.min(1,t/(COSMIC_DROP_T-.65)),travel=u*u*(3-2*u);
       path.set([t,p0[0]+(rim.x-p0[0])*travel,y,p0[2]+(rim.z-p0[2])*travel,-9,1,0],i*STRIDE);

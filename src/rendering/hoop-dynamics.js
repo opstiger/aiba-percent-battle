@@ -389,7 +389,13 @@
   function impact(type,e){
     if(!state.built||!e)return;
     const J=clamp(Number(e.impulse)||2.5,0,12),h=state.hoop;
-    if(type==="rim"){
+    if(type==="cosmic"){
+      state.rimPitch.v+=5.0;
+      state.rimRoll.v+=1.1;
+      state.boardPitch.v+=1.42;
+      nudgeNet(.078);
+      spawnFoleyBurst(h.x,h.y,h.z-.42,14,1.3,.012,.24,3.4);
+    }else if(type==="rim"){
       // 前沿（离铰链远）砸得越靠前，下压越多；侧面砸带一点侧倾
       const lever=clamp((e.z-BOARD_FACE_Z)/(h.z-BOARD_FACE_Z+RIM.R),0,1);
       const side=clamp((e.x-h.x)/RIM.R,-1,1);
