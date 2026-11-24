@@ -747,20 +747,31 @@ function foeKit(allyJersey){
   function updateOnBall(actor,dt,playerPos,st){
     if(!playerPos)return actor.speed||0;
     const gapNow=Math.hypot(actor.pos.x-playerPos.x,actor.pos.z-playerPos.z);
+    const diff=(typeof G!=="undefined"&&G&&G.diff)||"normal";
+    const isEasy=diff==="easy",isHard=diff==="hard";
     if(st.offball&&!st.passing&&!st.inHand){
       const play=st.offball,screen=play.screen,mate=squad.actors.ally2.pos;
+      // During 3-2-1 countdown, hold set defensive position cleanly without chasing
+      if(play.countdown>0){
+        const hold=markTarget(playerPos,1.32);
+        actor.onBallPhase="track";
+        return steerTo(actor,hold.x,hold.z,dt,1.8,5);
+      }
       const screenPlanted=!!(screen&&st.t<screen.until&&Math.hypot(mate.x-screen.x,mate.z-screen.z)<.72);
       if(screen)screen.planted=screenPlanted;
-      const hitScreen=screenPlanted&&Math.hypot(mate.x-actor.pos.x,mate.z-actor.pos.z)<1.32;
-      if(hitScreen&&st.t>=(play.screenSnagUntil||0)-.15)play.screenSnagUntil=st.t+.85;
+      const hitScreen=screenPlanted&&Math.hypot(mate.x-actor.pos.x,mate.z-actor.pos.z)<1.35;
+      const snagDur=isEasy?1.25:(isHard?.72:.90);
+      if(hitScreen&&st.t>=(play.screenSnagUntil||0)-.15)play.screenSnagUntil=st.t+snagDur;
       const snagged=st.t<(play.screenSnagUntil||0);
-      // Realistic human reaction delay: 0.24s normal, 0.44s when glancing away at another player -> rapid cuts shake him!
-      const lag=play.glancing?.44:.24;
+      // Realistic human reaction delay (longer on easy so rapid cuts & screens feel super rewarding!)
+      const baseLag=isEasy?.34:(isHard?.20:.25);
+      const lag=play.glancing?(baseLag+.22):baseLag;
       const seen=(global.AIBAOffball&&global.AIBAOffball.playerTrailAt(play,(st.t||0)-lag))||playerPos;
-      const target=markTarget(seen,1.22);
+      const target=markTarget(seen,isEasy?1.35:1.22);
       actor.onBallPhase=snagged?"screen":(play.glancing?"glance":"track");
-      const spd=snagged?.45:(play.glancing?.78:2.85);
-      const acc=snagged?3.2:(play.glancing?4.8:6.8);
+      const trackSpd=isEasy?2.15:(isHard?3.15:2.70);
+      const spd=snagged?.38:(play.glancing?.68:trackSpd);
+      const acc=snagged?3.0:(play.glancing?4.2:(isEasy?5.2:6.6));
       return steerTo(actor,target.x,target.z,dt,spd,acc);
     }
     if(!st.passing&&!st.inHand){
@@ -770,21 +781,26 @@ function foeKit(allyJersey){
       if(p)return steerTo(actor,p.x,p.z,dt,2.6,10);
       return 0;
     }
-    // 球传出的一刻起才开始反应，仍然带 0.22s 的启动延迟
+    // 球传出的一刻起才开始反应；简单模式在无球实战里给更充裕的回防反应与更慢扑防速度！
+    const reactDelay=(st.offball&&isEasy)?.46:(st.offball&&!isHard?.30:DEF_REACTION);
     actor.closeoutT=(actor.closeoutT||0)+dt;
-    if(actor.closeoutT<DEF_REACTION){actor.onBallPhase="react";return steerTo(actor,actor.pos.x,actor.pos.z,dt,0,DEF_ACCEL);}
+    if(actor.closeoutT<reactDelay){actor.onBallPhase="react";return steerTo(actor,actor.pos.x,actor.pos.z,dt,0,DEF_ACCEL);}
     /* 持球拖得越久压迫越强：贴得更近、手举得更高。你不投他不会跳(真实防守也这样)，
        但绝不能干站着——错过出手时机就该被越贴越死。 */
-    const pressure=clamp(((st.chargeT||0)-.9)/1.1,0,1);
+    const pressure=clamp(((st.chargeT||0)-(isEasy?1.4:.9))/1.1,0,1);
     actor.pressure=st.inHand?pressure:0;
-    const gap=st.inHand?CONTEST_GAP-.28*pressure:CLOSEOUT_GAP;
+    const baseContestGap=(st.offball&&isEasy)?1.62:CONTEST_GAP;
+    const gap=st.inHand?baseContestGap-.24*pressure:CLOSEOUT_GAP;
     /* 必须堵在你与篮筐之间，也就是你的投篮路线上。
        原来用"保持防守人当前方位角"靠近，结果他从哪边来就停在哪边——一直在侧面。 */
     const spot=markTarget(playerPos,gap);
     const tx=spot.x,tz=spot.z;
     const closing=gapNow>gap+.25;
     actor.onBallPhase=closing?"closeout":"contest";
-    const speed=steerTo(actor,tx,tz,dt,closing?DEF_CLOSEOUT_SPEED:DEF_MARK_SPEED,closing?DEF_ACCEL*1.35:DEF_ACCEL);
+    const closeSpd=st.offball?(isEasy?2.25:(isHard?4.35:3.35)):DEF_CLOSEOUT_SPEED;
+    const markSpd=st.offball?(isEasy?2.05:(isHard?3.85:3.10)):DEF_MARK_SPEED;
+    const closeAcc=st.offball&&isEasy?DEF_ACCEL*.75:DEF_ACCEL*1.35;
+    const speed=steerTo(actor,tx,tz,dt,closing?closeSpd:markSpd,closing?closeAcc:DEF_ACCEL);
     /* 起跳不是按秒表触发的——玩家 0.59s 起跳、0.78s 就出手，中间只有 0.19s，
        任何"持球满 X 秒才跳"的阈值都永远等不到，结果就是从不封盖。
        改成跟随：sequence 看到你起跳就调 triggerContest()，防守人隔 0.08–0.28s

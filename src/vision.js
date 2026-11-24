@@ -126,8 +126,15 @@ function visionUpdateChargePower(sm,sample,now){
   sm.lastPowerAt=now;
   return sm.power||0;
 }
+function visionOffballState(){
+  if(typeof G==="undefined"||!G||G.state!=="lastshot")return null;
+  const st=window.AIBALastShotSequence?.state?.();
+  return st&&st.on&&st.offball?st:null;
+}
 function visionGestureStep(sm,sample,now){
   const event={type:"none",phase:sm.phase,progress:0,power:sm.power||0};
+  const offSt=visionOffballState();
+  const readyHoldMs=(offSt&&G.canShoot)?30:VISION_READY_HOLD_MS;
   if(sample.hasHands)sm.lastSeen=now;
   if(sm.phase==="cooldown"){
     if(now<sm.releaseFlashUntil){event.phase="release";event.progress=1;return event;}
@@ -147,13 +154,21 @@ function visionGestureStep(sm,sample,now){
     event.phase=sm.phase;return event;
   }
   if(sm.phase==="idle"){
-    if(sample.readyEnter){sm.phase="armed";sm.holdStart=now;}
+    if(sample.readyEnter){
+      sm.phase="armed";sm.holdStart=now;
+      if(readyHoldMs<=35){
+        // Catch-and-shoot instant charge in 5v5 off-ball mode!
+        sm.phase="charging";sm.chargeStart=now;sm.lastPowerAt=now;sm.power=0;
+        sm.chargeBaseY=sample.readyY||sample.liftY||VISION.body.hipY;sm.releaseLineY=sample.releaseLineY||VISION.releaseLineY;
+        event.type="charge";event.progress=0;event.power=0;
+      }
+    }
     event.phase=sm.phase;return event;
   }
   if(sm.phase==="armed"){
     if(!sample.readyHold){sm.phase="idle";sm.holdStart=0;event.phase=sm.phase;return event;}
-    event.progress=clamp((now-sm.holdStart)/VISION_READY_HOLD_MS,0,1);
-    if(now-sm.holdStart>=VISION_READY_HOLD_MS){
+    event.progress=clamp((now-sm.holdStart)/readyHoldMs,0,1);
+    if(now-sm.holdStart>=readyHoldMs){
       sm.phase="charging";sm.chargeStart=now;sm.lastPowerAt=now;sm.power=0;
       sm.chargeBaseY=sample.readyY||sample.liftY||VISION.body.hipY;sm.releaseLineY=sample.releaseLineY||VISION.releaseLineY;
       event.type="charge";event.progress=0;event.power=0;
@@ -250,6 +265,12 @@ function visionDynamicReadyArea(body){
 }
 function visionInBodyReady(p,body,armed){
   if(!p)return false;
+  // In 5v5 off-ball mode the player sidesteps across the full camera frame — never lock ready box to old centerX,
+  // and accept chest/waist shooting pocket immediately on catch so you can charge right away!
+  if(visionOffballState()){
+    const pocketTop=clamp((body.shoulderY||.40)+(body.bodyH||.26)*(armed?.10:.18),.44,.76);
+    return p.x>=.02&&p.x<=.98&&p.y>=pocketTop&&p.y<=1;
+  }
   const boost=armed?.055:.025;
   if(visionPointInReadyArea(p,VISION.readyArea,boost))return true;
   const top=body.hipVisible?(armed?body.hipY-body.bodyH*.08:body.hipY-body.bodyH*.03):(armed?Math.max(.54,body.shoulderY+body.bodyH*.36):Math.max(.6,body.shoulderY+body.bodyH*.45));
@@ -257,7 +278,7 @@ function visionInBodyReady(p,body,armed){
   return p.x>=b.left&&p.x<=b.right&&p.y>=top&&p.y<=b.bottom;
 }
 function visionTrackWrists(lm,now){
-  const tr=VISION.tracking,alpha=.4,raw={left:visionGoodPoint(lm,15,.32),right:visionGoodPoint(lm,16,.32)};
+  const tr=VISION.tracking,alpha=.45,raw={left:visionGoodPoint(lm,15,.32),right:visionGoodPoint(lm,16,.32)};
   let count=0;
   for(const side of ["left","right"]){
     const p=raw[side];
@@ -268,9 +289,10 @@ function visionTrackWrists(lm,now){
     tr[side]=prev?{x:prev.x*(1-alpha)+p.x*alpha,y:prev.y*(1-alpha)+p.y*alpha,t:now,raw:p}:{x:p.x,y:p.y,t:now,raw:p};
   }
   if(count){tr.lastValidAt=now;tr.lastAnyAt=now;}
+  const freshMs=visionOffballState()?190:130;
   const fresh=side=>{
     const p=tr[side];if(!p||now-p.t>=330)return null;
-    return {...p,current:now-p.t<85,age:now-p.t};
+    return {...p,current:now-p.t<freshMs,age:now-p.t};
   };
   return {left:fresh("left"),right:fresh("right"),count};
 }
@@ -519,6 +541,32 @@ function drawVisionReleaseLine(g,lineY,w,h,active){
   g.strokeStyle="#ffffff";g.globalAlpha=active?.96:.62;g.lineWidth=Math.max(2,w/260);g.setLineDash(active?[]:[10,8]);
   g.beginPath();g.moveTo(0,y);g.lineTo(w,y);g.stroke();g.restore();
 }
+function drawVisionOffballCallZone(g,w,h,play){
+  const lineY=clamp((play&&play.callLineY)||.34,.14,.48);
+  const y=lineY*h;
+  const open=!!(play&&play.openNow&&play.countdown<=0);
+  const raised=!!(play&&play.raisedAt!==null);
+  const pulse=.5+.5*Math.sin(performance.now()*.009);
+  g.save();
+  // Translucent overhead reach zone ("透明伸手触达的画面区域")
+  g.fillStyle=raised?"#ffd23f":(open?"#4dff9e":"#70e8ff");
+  g.globalAlpha=raised?.32:(open?(.16+.10*pulse):.06);
+  g.fillRect(0,0,w,y);
+  g.strokeStyle=raised?"#ffe77a":(open?"#6dffb0":"#70e8ff");
+  g.globalAlpha=raised?.98:(open?.92:.38);
+  g.lineWidth=Math.max(2,w/210);
+  g.setLineDash(raised?[]:[8,6]);
+  g.beginPath();g.moveTo(0,y);g.lineTo(w,y);g.stroke();
+  if(open||raised){
+    g.setLineDash([]);
+    g.fillStyle=raised?"#fff5b8":"#d8ffea";
+    g.globalAlpha=.96;
+    g.font=`bold ${Math.max(12,Math.round(w*.052))}px system-ui,sans-serif`;
+    g.textAlign="center";
+    g.fillText(raised?"传球来了!":"▲ 双手伸入此区要球 ▲",w*.5,Math.max(18,y*.56));
+  }
+  g.restore();
+}
 function drawVisionPose(lm,handLandmarks,sample,phase){
   const cv=$("visionCanvas"),video=$("visionVideo");if(!cv||!video)return;
   /* 折叠时预览里看不到这张 canvas,但录像的 PIP 还要用它画骨架(方案 C),
@@ -526,8 +574,13 @@ function drawVisionPose(lm,handLandmarks,sample,phase){
   if(visionFoldActive()&&!(window.AIBARecorder&&window.AIBARecorder.capturing&&window.AIBARecorder.capturing()))return;
   const frame=visionSyncFrameGeometry(video),w=frame.inferWidth||288,h=frame.inferHeight||512;if(cv.width!==w||cv.height!==h){cv.width=w;cv.height=h;}
   const g=cv.getContext("2d");g.clearRect(0,0,w,h);
-  drawVisionReleaseLine(g,(sample&&sample.releaseLineY)||VISION.releaseLineY,w,h,phase==="charging"||phase==="release");
-  drawVisionReadyArea(g,(sample&&sample.readyArea)||VISION.readyArea,w,h,"#70e8ff",phase==="armed");
+  const offSt=visionOffballState();
+  if(offSt&&window.AIBALastShotSequence?.waitingForCall?.()){
+    drawVisionOffballCallZone(g,w,h,offSt.offball);
+  }else{
+    drawVisionReleaseLine(g,(sample&&sample.releaseLineY)||VISION.releaseLineY,w,h,phase==="charging"||phase==="release");
+    drawVisionReadyArea(g,(sample&&sample.readyArea)||VISION.readyArea,w,h,"#70e8ff",phase==="armed");
+  }
   const color=phase==="charging"?"#7CFC6B":(phase==="armed"?"#ffd23f":"#70e8ff");
   g.lineWidth=Math.max(2,w/260);g.strokeStyle=color;g.fillStyle=color;g.globalAlpha=.92;
   if(lm){
@@ -592,25 +645,28 @@ function syncVisionOwnedPower(step){
 // Read only fresh measurements from the existing front-camera inference.
 function visionOffballSample(){
   if(!VISION.enabled||!VISION.aimMode||VISION.orientationBlocked||
-     performance.now()-VISION.lastPoseAt>360)return null;
-  const lm=VISION.lastPose,l=visionGoodPoint(lm,11,.55),r=visionGoodPoint(lm,12,.55);
-  if(!l||!r||Math.abs(l.x-r.x)<.075)return null;
-  const a=visionGoodPoint(lm,15,.5),b=visionGoodPoint(lm,16,.5);
-  const width=Math.abs(l.x-r.x),line=(l.y+r.y)*.5;
-  return {at:VISION.lastPoseAt,x:(l.x+r.x)*.5,width,
-    raised:!!(a&&b&&Math.max(a.y,b.y)<line-width*.22),
-    lowered:!!(a&&b&&Math.min(a.y,b.y)>line+width*.15)};
+     performance.now()-VISION.lastPoseAt>380)return null;
+  const lm=VISION.lastPose,l=visionGoodPoint(lm,11,.50),r=visionGoodPoint(lm,12,.50);
+  if(!l||!r||Math.abs(l.x-r.x)<.07)return null;
+  const a=visionGoodPoint(lm,15,.45),b=visionGoodPoint(lm,16,.45);
+  const width=Math.abs(l.x-r.x),line=(l.y+r.y)*.5,callLineY=line-width*.20;
+  return {at:VISION.lastPoseAt,x:(l.x+r.x)*.5,width,line,callLineY,
+    raised:!!(a&&b&&Math.max(a.y,b.y)<callLineY),
+    lowered:!!(a&&b&&Math.min(a.y,b.y)>line+width*.12)};
 }
 function visionCadence(){
   const phase=VISION.machine.phase,setup=G.state==="menu"||G.state==="diff",active=visionGameActive();
-  const penalty=VISION.inferAvg>34?1.5:(VISION.inferAvg>23?1.25:1);
+  const offSt=visionOffballState();
+  const rawPenalty=VISION.inferAvg>34?1.5:(VISION.inferAvg>23?1.25:1);
+  const penalty=offSt?Math.min(1.18,rawPenalty):rawPenalty;
   let drawMs,poseMs,mode;
-  if(active&&phase==="charging"){
+  if(offSt){
+    // High-responsiveness cadence across off-ball run, pass flight, AND instant post-catch charge!
+    drawMs=62;poseMs=36;mode=window.AIBALastShotSequence?.waitingForCall?.()?"offball":"gesture";
+  }else if(active&&phase==="charging"){
     drawMs=82;poseMs=46;mode="gesture";
   }else if(active&&phase==="armed"){
     drawMs=88;poseMs=54;mode="gesture";
-  }else if(G.state==="lastshot"&&window.AIBALastShotSequence?.waitingForCall()){
-    drawMs=132;poseMs=80;mode="offball";
   }else if(active){
     drawMs=132;poseMs=118;mode="ready";
   }else if(setup){
@@ -618,7 +674,7 @@ function visionCadence(){
   }else{
     drawMs=220;poseMs=420;mode="idle";
   }
-  return {drawMs:drawMs*(penalty>1?1.15:1),poseMs:poseMs*penalty,mode};
+  return {drawMs:drawMs*(penalty>1?1.12:1),poseMs:poseMs*penalty,mode};
 }
 function visionDetectTask(now,c){
   return now-(VISION.lastPoseAt||0)>=c.poseMs?"pose":null;
@@ -630,7 +686,9 @@ function noteVisionInference(start){
 }
 function visionCanTurnAim(){
   if(typeof G==="undefined"||!G)return false;
-  return !!G.canShoot&&!G.charging&&!G.moving&&!cosmicShotInFlight();
+  const offSt=visionOffballState();
+  const offPass=!!(offSt&&offSt.pass&&!offSt.pass.intercepted);
+  return (!!G.canShoot||offPass)&&!G.charging&&!G.moving&&!cosmicShotInFlight();
 }
 function visionReadFaceAim(lm){
   const nose=visionGoodPoint(lm,0,.28),eyeL=visionGoodPoint(lm,2,.25),eyeR=visionGoodPoint(lm,5,.25),
@@ -792,7 +850,7 @@ function disableVisionControl(event){
   refreshControlPanel();
 }
 function suspendVisionControl(){
-  VISION.desired=false;VISION.enabled=false;VISION.loading=false;VISION.faceAim=0;if(aimArcLine)aimArcLine.visible=false;cancelAnimationFrame(VISION.raf);cancelVisionOwnedCharge();
+  VISION.desired=false;VISION.enabled=false;VISION.loading=false;VISION.faceAim=0;if(aimArcLine)aimArcLine.visible=false;if(aimArcDots)aimArcDots.visible=false;if(aimTargetRing)aimTargetRing.visible=false;cancelAnimationFrame(VISION.raf);cancelVisionOwnedCharge();
   if(VISION.stream)VISION.stream.getTracks().forEach(t=>t.stop());VISION.stream=null;const video=$("visionVideo");if(video)video.srcObject=null;
   visionResetTracking(true);resetVisionGesture(VISION.machine);VISION.lastSample=null;VISION.lastPose=null;VISION.lastHands=[];VISION.lastPoseAt=0;VISION.lastHandAt=0;VISION.lastDraw=0;VISION.lastVideoTime=-1;VISION.inferAvg=0;$("visionPreview").style.display="none";
   VISION.orientationBlocked=false;document.documentElement.dataset.visionControl="off";delete document.documentElement.dataset.visionPhase;delete document.documentElement.dataset.visionReady;delete document.documentElement.dataset.visionHands;delete document.documentElement.dataset.visionFrame;
@@ -809,22 +867,51 @@ function visionModeMarkup(){
 }
 VISION.fold.on=visionFoldLoad();
 Object.assign(window,{toggleVisionFold,setVisionFold});
-const AIM_ARC_SEGS=16;
-let aimArcLine=null,_aimP0=null;
+const AIM_ARC_SEGS=20;
+let aimArcLine=null,aimArcDots=null,aimTargetRing=null,_aimP0=null;
 function updateAimArc(){
   if(typeof THREE==="undefined"||typeof scene==="undefined"||typeof HOOP==="undefined"||typeof P==="undefined")return;
-  const show=!!(VISION.enabled&&VISION.aimMode&&typeof G!=="undefined"&&G&&(G.canShoot||G.charging)&&!G.moving&&!cosmicShotInFlight());
-  if(!show){if(aimArcLine)aimArcLine.visible=false;return;}
+  const offSt=visionOffballState();
+  const offIncoming=!!(offSt&&offSt.pass&&!offSt.pass.intercepted);
+  const show=!!(VISION.enabled&&VISION.aimMode&&typeof G!=="undefined"&&G&&(G.canShoot||G.charging||offIncoming)&&!G.moving&&!cosmicShotInFlight());
+  if(!show){
+    if(aimArcLine)aimArcLine.visible=false;
+    if(aimArcDots)aimArcDots.visible=false;
+    if(aimTargetRing)aimTargetRing.visible=false;
+    return;
+  }
   if(!aimArcLine){
     const g=new THREE.BufferGeometry();
     g.setAttribute("position",new THREE.BufferAttribute(new Float32Array(AIM_ARC_SEGS*2*3),3));
-    const m=new THREE.LineBasicMaterial({color:0x9be7ff,transparent:true,opacity:.32,depthWrite:false});
+    const m=new THREE.LineBasicMaterial({color:0x9be7ff,transparent:true,opacity:.38,depthWrite:false});
     aimArcLine=new THREE.LineSegments(g,m);
     aimArcLine.name="visionAimArc";aimArcLine.frustumCulled=false;aimArcLine.renderOrder=18;
     scene.add(aimArcLine);
+
+    // Glowing luminous beads along the parabola (especially clear in 5v5 off-ball fast-aim mode!)
+    const dg=new THREE.BufferGeometry();
+    dg.setAttribute("position",new THREE.BufferAttribute(new Float32Array(AIM_ARC_SEGS*3),3));
+    const dm=new THREE.ShaderMaterial({
+      uniforms:{uColor:{value:new THREE.Color(0x52f2ff)},uAlpha:{value:0.9}},
+      transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,
+      vertexShader:`void main(){vec4 mv=modelViewMatrix*vec4(position,1.0);gl_Position=projectionMatrix*mv;gl_PointSize=clamp(165.0/max(1.5,-mv.z),5.0,18.0);}`,
+      fragmentShader:`uniform vec3 uColor;uniform float uAlpha;void main(){vec2 p=gl_PointCoord*2.0-1.0;float r2=dot(p,p);if(r2>1.0)discard;float g=exp(-r2*4.5);gl_FragColor=vec4(uColor*g*1.3,g*uAlpha);}`
+    });
+    aimArcDots=new THREE.Points(dg,dm);
+    aimArcDots.name="visionAimDots";aimArcDots.frustumCulled=false;aimArcDots.renderOrder=19;
+    scene.add(aimArcDots);
+
+    // Crisp rim-height aim ring so player instantly sees where head-aim lands relative to the basket!
+    const rg=new THREE.RingGeometry(0.18,0.29,28);
+    rg.rotateX(-Math.PI/2);
+    const rm=new THREE.MeshBasicMaterial({color:0x52f2ff,transparent:true,opacity:.85,side:THREE.DoubleSide,depthWrite:false});
+    aimTargetRing=new THREE.Mesh(rg,rm);
+    aimTargetRing.name="visionAimRing";aimTargetRing.frustumCulled=false;aimTargetRing.renderOrder=19;
+    scene.add(aimTargetRing);
+
     _aimP0=new THREE.Vector3();
   }
-  if(typeof ballWorldPos==="function")ballWorldPos(_aimP0);
+  if(!offIncoming&&typeof ballWorldPos==="function")ballWorldPos(_aimP0);
   else _aimP0.set(P.pos.x,2.05,P.pos.z);
   const dx=HOOP.x-_aimP0.x,dz=HOOP.z-_aimP0.z,dist=Math.max(.5,Math.hypot(dx,dz));
   const dirX=dx/dist,dirZ=dz/dist,perpX=dirZ,perpZ=-dirX;
@@ -835,15 +922,31 @@ function updateAimArc(){
   const tf=typeof shotFlightTime==="function"?shotFlightTime(0.78+dist*0.062,typeof G!=="undefined"?G.myStar:null,shot):0.95;
   const vx=(tx-_aimP0.x)/tf,vy=(ty-_aimP0.y)/tf+4.9*tf,vz=(tz-_aimP0.z)/tf;
   const arr=aimArcLine.geometry.attributes.position.array;
+  const dArr=aimArcDots.geometry.attributes.position.array;
+  const bold=!!offSt;
+  const lockedOn=Math.abs(lat)<0.34;
+  const arcColor=bold?(lockedOn?0x58ff9a:0x4ceaff):0x9be7ff;
+  aimArcLine.material.color.setHex(arcColor);
+  aimArcLine.material.opacity=bold?.92:.36;
   for(let i=0;i<AIM_ARC_SEGS;i++){
-    const t0=tf*(0.06+(i/AIM_ARC_SEGS)*0.88);
-    const t1=t0+tf*0.026;
+    const t0=tf*(0.05+(i/AIM_ARC_SEGS)*0.90);
+    const t1=t0+tf*(bold?.034:.026);
+    const x0=_aimP0.x+vx*t0,y0=_aimP0.y+vy*t0-4.9*t0*t0,z0=_aimP0.z+vz*t0;
     const j=i*6;
-    arr[j]=_aimP0.x+vx*t0;arr[j+1]=_aimP0.y+vy*t0-4.9*t0*t0;arr[j+2]=_aimP0.z+vz*t0;
+    arr[j]=x0;arr[j+1]=y0;arr[j+2]=z0;
     arr[j+3]=_aimP0.x+vx*t1;arr[j+4]=_aimP0.y+vy*t1-4.9*t1*t1;arr[j+5]=_aimP0.z+vz*t1;
+    dArr[i*3]=x0;dArr[i*3+1]=y0;dArr[i*3+2]=z0;
   }
   aimArcLine.geometry.attributes.position.needsUpdate=true;
   aimArcLine.visible=true;
+  aimArcDots.geometry.attributes.position.needsUpdate=true;
+  aimArcDots.material.uniforms.uColor.value.setHex(arcColor);
+  aimArcDots.material.uniforms.uAlpha.value=bold?.95:.0;
+  aimArcDots.visible=bold;
+  aimTargetRing.position.set(tx,ty+.03,tz);
+  aimTargetRing.material.color.setHex(arcColor);
+  aimTargetRing.material.opacity=bold?(lockedOn?.92:.78):0;
+  aimTargetRing.visible=bold;
 }
 window.AIBAVisionAim=Object.freeze({
   active:()=>!!(VISION.enabled&&VISION.aimMode),

@@ -96,12 +96,25 @@
       }).join("")}</div></div>`;
   }
 
+  function pickOffballDiff(d){
+    if(d==="easy"||d==="normal"||d==="hard")G.diff=d;
+    openLastShot();
+  }
+  function offballDiffPicker(cfg){
+    if(!cfg||!cfg.offball)return "";
+    const cur=G.diff||"easy";
+    const opts=[["easy","简单 · 回防慢"],["normal","普通 · 实战"],["hard","困难 · 紧逼"]];
+    return `<div class="card" style="text-align:left">
+      <div style="font-size:11px;color:#9ab;margin-bottom:6px">防守强度（简单模式下防守人回防更慢、接球空间更宽裕）</div>
+      <div style="display:flex;gap:6px">${opts.map(([k,lbl])=>`<button class="btn sm" style="flex:1;${cur===k?"border-color:#7CFC6B;color:#7CFC6B":""}" onclick="AIBALastShot.pickOffballDiff('${k}')">${lbl}</button>`).join("")}</div></div>`;
+  }
   function openLastShot(){
     settlePending();
     const cfg=(cfgApi.pickedChallenge?cfgApi.pickedChallenge():cfgApi.dailyChallenge()),s=store(),used=usedToday();
     const today=cfgApi.dailyChallenge();
     const isToday=cfg.challengeId===today.challengeId;
     G.mode="lastshot";G.state="diff";
+    if(cfg.offball&&!G._offballDiffPicked){G.diff="easy";G._offballDiffPicked=true;}
     const needsAim=cfg.offball&&!global.AIBAVisionAim?.active();
     const story=cfg.introText.map(t=>`<div>${t}</div>`).join("");
     showPanel(`<h1 class="title" style="font-size:24px">${cfg.title}</h1>
@@ -114,6 +127,7 @@
       <div class="card">连续绝杀 <b class="flame">${s.streak}</b> 天 · 最佳 <b>${s.bestStreak}</b> 天
         <br><span style="color:#9ab;font-size:11px">${used?`今日机会已用完 · ${resetLabel()}后刷新`:"今日还有 1 次正式机会"}</span></div>
       ${storyPicker(cfg)}
+      ${offballDiffPicker(cfg)}
       ${typeof global.visionModeMarkup==="function"?global.visionModeMarkup():""}
       ${used||!isToday?"":`<button class="btn red" onclick="hidePanel();beginLastShot(false)">开始今日挑战 · 仅此一次</button>`}
       ${!used&&!isToday?`<div class="card" style="font-size:11px;color:#9ab">这不是今日剧情 —— 正式挑战只能打 <b>${today.title}</b>，这一关可以随便练。</div>`:""}
@@ -242,7 +256,7 @@
     });
   }
   global.AIBALastShotResult=Object.freeze({show:showResult});
-  const api=Object.freeze({openLastShot,showResult,onBegin,store,usedToday,resetLabel,settlePending,pickStory});
+  const api=Object.freeze({openLastShot,showResult,onBegin,store,usedToday,resetLabel,settlePending,pickStory,pickOffballDiff});
   // 包装 sequence 导出的 beginLastShot,把每日闸门挂在开赛之前(项目既定的 wrap 全局函数模式)
   const rawBegin=global.beginLastShot;
   global.beginLastShot=function(practice){

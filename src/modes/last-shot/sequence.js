@@ -1133,6 +1133,74 @@
     LS.offball.hint=text;
     $("hudTarget").textContent=text;
   }
+  // Translucent overhead reach-zone overlay ("透明伸手触达的画面区域") + crisp 3-2-1-GO countdown badge
+  function ensureOffballOverlay(){
+    let zone=document.getElementById("offballCallZone");
+    if(!zone){
+      zone=document.createElement("div");
+      zone.id="offballCallZone";
+      zone.style.cssText="position:fixed;top:0;left:0;right:0;height:19vh;max-height:150px;pointer-events:none;z-index:26;display:none;flex-direction:column;align-items:center;justify-content:flex-end;padding-bottom:12px;border-bottom:2px dashed rgba(92,255,168,.88);background:linear-gradient(180deg,rgba(48,245,148,.24) 0%,rgba(48,245,148,.07) 100%);backdrop-filter:blur(2px);transition:opacity .15s,background .15s,border-color .15s;";
+      zone.innerHTML=`<div id="offballCallLabel" style="font:700 15px/1.2 system-ui,sans-serif;color:#d8ffea;text-shadow:0 2px 10px rgba(0,0,0,.75);letter-spacing:.5px">▲ 已摆脱空位 · 双手举过肩伸入上方区域要球 ▲</div>`;
+      document.body.appendChild(zone);
+    }
+    let cd=document.getElementById("offballCountdown");
+    if(!cd){
+      cd=document.createElement("div");
+      cd.id="offballCountdown";
+      cd.style.cssText="position:fixed;top:36%;left:50%;transform:translate(-50%,-50%);pointer-events:none;z-index:28;display:none;padding:12px 28px;border-radius:18px;background:rgba(10,16,28,.62);border:1.5px solid rgba(255,210,63,.78);color:#ffd23f;font:900 44px/1.1 Orbitron,system-ui,sans-serif;text-shadow:0 4px 18px rgba(0,0,0,.8);letter-spacing:2px;text-align:center;";
+      document.body.appendChild(cd);
+    }
+    return {zone,cd};
+  }
+  function hideOffballOverlays(){
+    const z=document.getElementById("offballCallZone");if(z)z.style.display="none";
+    const c=document.getElementById("offballCountdown");if(c)c.style.display="none";
+  }
+  function syncOffballOverlays(play){
+    if(!LS.on||!play||LS.passed||LS.phase!=="live"){hideOffballOverlays();return;}
+    const {zone,cd}=ensureOffballOverlay();
+    if(play.neutralFrames<2){
+      zone.style.display="none";
+      cd.style.display="block";
+      cd.style.fontSize="18px";cd.style.color="#70e8ff";cd.style.borderColor="rgba(112,232,255,.72)";
+      cd.textContent="正对镜头 · 放低双手站稳";
+      return;
+    }
+    if(play.countdown>0){
+      zone.style.display="none";
+      const n=Math.ceil(play.countdown/0.8);
+      cd.style.display="block";
+      cd.style.fontSize="52px";cd.style.color="#ffd23f";cd.style.borderColor="rgba(255,210,63,.85)";
+      cd.innerHTML=`${n}<div style="font:600 13px/1.3 system-ui,sans-serif;color:#dce8ff;margin-top:4px;letter-spacing:0">准备左右横移摆脱</div>`;
+      return;
+    }
+    if(play.goFlash>0){
+      cd.style.display="block";
+      cd.style.fontSize="36px";cd.style.color="#7CFC6B";cd.style.borderColor="rgba(124,252,107,.85)";
+      cd.textContent="GO! 开始跑位!";
+    }else{
+      cd.style.display="none";
+    }
+    if(play.openNow){
+      const raised=play.raisedAt!==null;
+      const wide=play.openQuality==="wide";
+      zone.style.display="flex";
+      zone.style.background=raised
+        ?"linear-gradient(180deg,rgba(255,214,64,.36) 0%,rgba(255,214,64,.10) 100%)"
+        :(wide?"linear-gradient(180deg,rgba(62,255,156,.26) 0%,rgba(62,255,156,.07) 100%)"
+          :"linear-gradient(180deg,rgba(104,232,255,.20) 0%,rgba(104,232,255,.05) 100%)");
+      zone.style.borderBottomColor=raised?"rgba(255,224,96,.95)":(wide?"rgba(92,255,168,.92)":"rgba(112,232,255,.82)");
+      const lbl=document.getElementById("offballCallLabel");
+      if(lbl){
+        lbl.style.color=raised?"#fff5b8":(wide?"#d8ffea":"#dcf7ff");
+        lbl.textContent=raised?"✋ 要球中 · 传球即将发出!"
+          :(wide?`▲ 大空位 ${play.openGap.toFixed(1)}m · 双手伸入上方透明区要球 ▲`
+            :`▲ 拉开空当 ${play.openGap.toFixed(1)}m · 举手伸入此区要球 ▲`);
+      }
+    }else{
+      zone.style.display="none";
+    }
+  }
   function updateLastShot(dt){
     if(!LS.on)return;
     if(G.state!=="lastshot"){
@@ -1171,9 +1239,35 @@
         P.walking=false;
         updateBodyState(dt);
         passer.g.visible=false;oppPasser.g.visible=false;
-        offballHint(play.neutralFrames<3?"正对镜头，放低双手站稳":"回到镜头内 · 比赛钟暂停");
+        offballHint(play.neutralFrames<2?"正对镜头，放低双手站稳":"回到镜头内 · 比赛钟暂停");
+        syncOffballOverlays(play);
         return;
       }
+      // Crisp 3-2-1-GO opening countdown before the 12s clock & 5v5 motion start!
+      if(play.countdown>0){
+        const prevTick=Math.ceil(play.countdown/0.8);
+        play.countdown=Math.max(0,play.countdown-dt);
+        const curTick=Math.ceil(play.countdown/0.8);
+        if(curTick!==play.countdownTick&&curTick>0){
+          play.countdownTick=curTick;
+          if(typeof sTick==="function")sTick();
+        }
+        if(play.countdown<=0){
+          play.started=true;play.goFlash=.68;
+          if(typeof whistle==="function")whistle();
+          if(typeof sGo==="function")sGo();
+          toast("🏀 开始跑位 · 横移摆脱防守!","#7CFC6B");
+        }
+        P.walking=false;
+        updateBodyState(dt);
+        squadApi.update(0,dt,P.pos,{passing:false,inHand:false,chargeT:0,offball:play});
+        passer.g.visible=false;oppPasser.g.visible=false;
+        updClock(cfg.gameClock);
+        offballHint(play.countdown>0?`准备 · ${Math.max(1,curTick)} 秒后开球`:"GO! 开始跑位!");
+        syncOffballOverlays(play);
+        return;
+      }
+      if(play.goFlash>0)play.goFlash=Math.max(0,play.goFlash-dt);
       global.AIBAOffball.move(play,P.pos,LS.spot,HOOP,dt,LS.t);
       G.seq[0].p.copy(P.pos);
       global.AIBAOffball.readDefense(play,LS.t,actors.foe0.pos,actors.ally2.pos,P.pos);
@@ -1287,6 +1381,9 @@
       const guard=squadApi.squad.actors.foe0;
       const play=LS.offball;
       const read=global.AIBAOffball.passRead(squadApi.handler().pos,P.pos,guard.pos);
+      play.openNow=!read.cut;
+      play.openQuality=read.quality;
+      play.openGap=read.gap;
       if(play.screen?.planted&&!play.screenToasted){
         play.screenToasted=true;
         toast("🧱 队友无球掩护到位 · 贴着绕出去!","#70e8ff");
@@ -1302,10 +1399,16 @@
         play.passQuality=read.quality;
         play.passGap=read.gap;
         startHandlerPass(read.cut);
-        offballHint(read.cut?"传球路线被封 · 危险!":"球传过来了");
+        offballHint(read.cut?"传球路线被封 · 危险!":"球传过来了 · 立刻转头瞄准!");
+        hideOffballOverlays();
+      }else{
+        syncOffballOverlays(play);
       }
     }else if(!LS.offball&&!LS.passed&&LS.t>=cfg.passAt)startHandlerPass();
+    else if(LS.offball)hideOffballOverlays();
     if(LS.pass)updHandlerPass(dt);
+    // Keep the bright high-clarity aim arc updating immediately during pass flight & catch!
+    if(LS.offball&&global.AIBAVisionAim?.updateArc)global.AIBAVisionAim.updateArc();
     if(LS.phase==="reaction"&&!LS.released)return;
 
     if(!LS.released&&G.shotIdx>0){
@@ -1679,11 +1782,11 @@
     if(LS.on&&LS.celeb&&updateCelebrateCam())return true;
     if(!LS.on||LS.phase==="shoot"||LS.phase==="flight"||LS.released)return false;
     if(LS.offball&&LS.phase==="live"&&CAM.mode===1){
-      // Leave room at both shoulders for a screen and for a cutter moving across the arc.
+      // Snappy agile camera tracking so fast cuts feel crisp without sluggish swimming.
       const guard=squadApi.squad.actors.foe0.pos;
-      const x=P.pos.x*.78+guard.x*.22;
-      rig.pos.lerp(camTarget.pos.set(x+.6,2.85,P.pos.z+4.45),1-Math.exp(-9*dt));
-      rig.look.lerp(camTarget.look.set(x*.64,1.62,HOOP.z+2.5),1-Math.exp(-10*dt));
+      const x=P.pos.x*.82+guard.x*.18;
+      rig.pos.lerp(camTarget.pos.set(x+.55,2.85,P.pos.z+4.40),1-Math.exp(-15*dt));
+      rig.look.lerp(camTarget.look.set(x*.66,1.62,HOOP.z+2.5),1-Math.exp(-16*dt));
       return true;
     }
     if(CAM.mode!==0)return false;   // 玩家手动切了机位就别抢镜头
@@ -1819,6 +1922,7 @@
   function isOvertime(){const p=possessionPoints();return p>0&&p===pointsToWin()-1;}
   function finish(made,reason){
     if(LS.resolved)return;
+    hideOffballOverlays();
     if(LS.offball)squadApi.setActorBall("foe0",false);
     setCelebrateView(false);
     hideLastShotHud();
@@ -1846,6 +1950,7 @@
   }
 
   function exitLastShot(){
+    hideOffballOverlays();
     if(LS.offball){squadApi.setActorBall("foe0",false);P.walking=false;}
     leaveArenaAudio();
     setCelebrateView(false);   // 还原第一人称，否则手没了、身体一直显着
