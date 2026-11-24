@@ -1,31 +1,123 @@
 /* ---------------- hero ball camera (最后一球英雄时刻) ---------------- */
-const hero={on:false,b:null,t:0,lin:0,perp:null};
-function startHero(B){
-  hero.on=true;hero.b=B;hero.t=0;hero.lin=0;if(window.AIBARecorder)AIBARecorder.mark("最后一球出手",{postMs:5200});
-  const v=V3(B.v0.x,0,B.v0.z).normalize();
-  hero.perp=V3(v.z,0,-v.x);
-  if(hero.perp.x*B.p0.x>0)hero.perp.negate();
-  rig.pos.copy(eyePos());
-  $("lbT").style.height="9vh";$("lbB").style.height="9vh";
+const hero={on:false,b:null,mode:null,post:0,perp:null,forward:null,stage:null};
+function heroPredictedMake(b){
+  if(!b)return false;
+  return b.physics ? b.willMake===true : ["swish","rattle","bank"].includes(b.outcome);
+}
+function startHero(B,mode="terminal"){
+  if(!B||hero.on||(mode!=="boot"&&!heroPredictedMake(B)))return;
+  hero.on=true;hero.b=B;hero.mode=mode;hero.post=0;hero.stage=null;
+  hero.run=G.rush;hero.sequence=G.seq;hero.preset=currentScenePreset;
+  const origin=B.shooterPos||B.p0;
+  hero.forward=(mode==="boot"?B.v0.clone():HOOP.clone().sub(origin)).setY(0).normalize();
+  if(!hero.forward.lengthSq())hero.forward.set(0,0,-1);
+  hero.perp=V3(hero.forward.z,0,-hero.forward.x);
+  if(hero.perp.x*origin.x>0)hero.perp.negate();
+  if(mode==="boot")rig.pos.copy(eyePos());
+  if(window.AIBARecorder)AIBARecorder.mark(B.made?"冲线入网":"最后一球出手",{postMs:5200});
+  const bars=mode==="boot"?"9vh":mode==="speed"&&!B.made?"0":"7vh";
+  $("lbT").style.height=bars;$("lbB").style.height=bars;
   window.AIBASetIcon("heroTag","clapperboard","英雄时刻 HERO BALL");
-  $("heroTag").style.display="block";
+  $("heroTag").style.display=mode==="boot"?"block":"none";
 }
 function endHero(){
   if(!hero.on)return;
-  hero.on=false;hero.b=null;
+  const restore=hero.mode!=="boot";
+  hero.on=false;hero.b=null;hero.stage=null;hero.mode=null;
+  camera.userData.heroFocus=null;
+  releaseCameraFov("hero");
   $("lbT").style.height="0";$("lbB").style.height="0";
   $("heroTag").style.display="none";
+  if(restore)applyCamMode();
+}
+function heroRoundActive(){
+  return hero.preset===currentScenePreset&&hero.run===G.rush&&hero.sequence===G.seq&&
+    ["round","tiebreak","rackrush","rushbetween"].includes(G.state);
+}
+function heroFlightCut(b){
+  const arrival=Math.max(.30,b.tf||1),releaseEnd=Math.min(.32,arrival*.32);
+  if(b.made)return "net";
+  if(b.t<releaseEnd)return "release";
+  return b.t<Math.max(releaseEnd,arrival-.27)?"flight":"rim";
+}
+function heroBallRate(b){
+  if(!hero.on||hero.b!==b||hero.mode==="boot"||!heroRoundActive()||!heroPredictedMake(b))return 1;
+  if(b.made)return .34;
+  if(hero.mode==="speed")return 1; // Speed 100's finish clock measures the unretimed make.
+  const cut=heroFlightCut(b);
+  return cut==="release"?.46:cut==="flight"?.87:.44;
+}
+function heroFrame(look,offset,points,fov,minimum,pad){
+  // Fit the action against the current aspect ratio, including the letterbox.
+  const forward=offset.clone().normalize().negate();
+  const right=V3().crossVectors(forward,V3(0,1,0)).normalize();
+  const up=V3().crossVectors(right,forward).normalize();
+  const tanV=Math.tan(fov*Math.PI/360)*.79,tanH=tanV*Math.max(.25,camera.aspect);
+  let distance=minimum;
+  for(const point of points){
+    const delta=point.clone().sub(look);
+    const depth=delta.dot(forward);
+    distance=Math.max(distance,Math.abs(delta.dot(right))/tanH-depth,Math.abs(delta.dot(up))/tanV-depth);
+  }
+  rig.pos.copy(look).addScaledVector(forward,-distance-pad);
+  rig.look.copy(look);
+  requestCameraFov("hero",fov,40);
 }
 function updHero(dt){
   const b=hero.b;
-  if(b&&balls.includes(b)){
-    const p=b.mesh.position;
-    rig.pos.lerp(V3(p.x+hero.perp.x*3.6,p.y*0.55+1.7,p.z+hero.perp.z*3.6-1.0),Math.min(1,dt*5));
-    rig.look.lerp(p,Math.min(1,dt*10));
+  if(!b){endHero();return;}
+  if(hero.mode==="boot"){
+    if(balls.includes(b)){
+      const p=b.mesh.position;
+      rig.pos.lerp(V3(p.x+hero.perp.x*3.6,p.y*.55+1.7,p.z+hero.perp.z*3.6-1),Math.min(1,dt*5));
+      rig.look.lerp(p,Math.min(1,dt*10));
+    }else{
+      hero.post+=dt;
+      rig.look.lerp(HOOP,Math.min(1,dt*6));
+      if(hero.post>.8)endHero();
+    }
+    return;
+  }
+  if(!heroRoundActive()||!heroPredictedMake(b)||(!b.made&&!balls.includes(b))){endHero();return;}
+  if(hero.mode==="speed"&&!b.made&&G.canShoot){endHero();return;}
+  if(b.made){
+    hero.post+=dt;
+    if(hero.post>.54){endHero();return;}
+  }
+  hands.visible=false;player.g.visible=true;
+  const cut=heroFlightCut(b),p=b.mesh.position,forward=hero.forward,side=hero.perp;
+  const actor=player.g.position,head=actor.clone().add(V3(0,1.8,0));
+  const close=actor.clone().add(V3(0,1.01,0));
+  const board=HOOP.clone().add(V3(0,.75,-.44));
+  const sm=THREE.MathUtils.smoothstep,portrait=camera.aspect<.9;
+  if(cut!==hero.stage){
+    hero.stage=cut;
+    $("heroTag").style.display=cut==="net"?"block":"none";
+    if(cut==="net"){$("lbT").style.height="7vh";$("lbB").style.height="7vh";}
+  }
+  if(cut==="release"){
+    // From in front of the shooting shoulder, hold on the face and follow-through.
+    const amount=sm(b.t,0,.34);
+    const look=head.clone().lerp(close,.29).lerp(p,.22+.13*amount);
+    const offset=side.clone().multiplyScalar(1.25).addScaledVector(forward,1.03+.27*amount).setY(-.09+.10*amount);
+    heroFrame(look,offset,[close,head,head.clone().add(V3(0,.18,0)),p],portrait?48:41,2.45,.32);
+    camera.userData.heroFocus={points:[close,head,p],padding:.48,falloff:5.4,strength:.92,pixels:22};
+  }else if(cut==="flight"){
+    // Cut behind the same shoulder, so the viewer sees the ball cross the space to the hoop.
+    const look=head.clone().lerp(board,portrait ? .49 : .45);
+    look.y=Math.max(look.y,p.y*.56+.48);
+    const offset=side.clone().multiplyScalar(portrait ? .27 : .48).addScaledVector(forward,-1.15).setY(.14);
+    heroFrame(look,offset,[close,head,p,board,board.clone().add(V3(-1.05,0,0)),board.clone().add(V3(1.05,0,0))],portrait?57:48,4.2,.60);
+    camera.userData.heroFocus={points:[head,p,board],padding:.7,falloff:10,strength:.78,pixels:17};
   }else{
-    hero.lin+=dt;
-    rig.look.lerp(HOOP,Math.min(1,dt*6));
-    if(hero.lin>0.8)endHero();
+    // Face the net from the court, keeping the face of the board and the ball in focus.
+    const amount=b.made?sm(hero.post,0,.54):0;
+    const aimBall=p.clone();
+    aimBall.y=Math.max(HOOP.y-.7,aimBall.y);
+    const look=HOOP.clone().lerp(aimBall,.36).add(V3(0,.06-.16*amount,0));
+    const offset=side.clone().multiplyScalar(.65-.08*amount).addScaledVector(forward,-1.2).setY(-.11-.13*amount);
+    heroFrame(look,offset,[aimBall,board,HOOP.clone().add(V3(0,-.55,0))],portrait?43:36,2.64,.33);
+    camera.userData.heroFocus={points:[aimBall,HOOP,board],padding:.35,falloff:3.6,strength:.98,pixels:24};
   }
 }
 

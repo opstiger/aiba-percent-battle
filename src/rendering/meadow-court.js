@@ -394,17 +394,20 @@
         const col=new THREE.Color(ribbonColors[(pi*2+ri)%ribbonColors.length]);
         const mat=new THREE.ShaderMaterial({
           side:THREE.DoubleSide,transparent:false,
-          uniforms:{...ribbonUniforms,ribbonColor:{value:col},phase:{value:pi*2.1+ri*1.3}},
-          vertexShader:`
+          uniforms:{...ribbonUniforms,ribbonColor:{value:col},phase:{value:pi*2.1+ri*1.3},poleXZ:{value:new THREE.Vector2(px,pz)}},
+          vertexShader:AIBAMeadowWeather.windGLSL+`
             uniform float meadowClock,meadowWind,phase;
+            uniform vec2 poleXZ;
             varying vec2 vUv;
             void main(){
               vUv=uv;
               vec3 p=position;
               float flex=uv.x*uv.x;
-              float spd=4.2+meadowWind*6.5;
-              p.z+=(sin(meadowClock*spd-uv.x*7.5+phase)*.11+cos(meadowClock*spd*1.7-uv.x*12.0+phase)*.04)*flex*(.55+meadowWind*.9);
-              p.y-=(1.0-min(1.0,.35+meadowWind*.85))*.18*flex;
+              vec3 w=sampleMeadowWind(poleXZ,meadowClock,meadowWind);
+              float gust=w.z;
+              float spd=4.4+meadowWind*6.2+gust*3.8;
+              p.z+=(sin(meadowClock*spd-uv.x*7.5+phase)*.11+cos(meadowClock*spd*1.7-uv.x*12.0+phase)*.04)*flex*(.52+meadowWind*.85+gust*.45);
+              p.y-=(1.0-min(1.0,.32+meadowWind*.80+gust*.55))*.18*flex;
               gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
             }`,
           fragmentShader:`
@@ -418,7 +421,7 @@
         });
         const rMesh=new THREE.Mesh(ribbonGeo,mat);
         rMesh.position.set(px,py+2.82-ri*.22,pz);
-        rMesh.rotation.y=-.45+ri*.12;
+        rMesh.rotation.y=-.49+ri*.08;
         ribbonGroup.add(rMesh);
       }
     });
@@ -610,13 +613,14 @@
   }
 
   function updatePetals(c,time,dt,rain,clear){
-    const pt=c.petals;if(!pt)return;
+    const pt=c.petals;if(!pt||!pt.mesh.visible)return;
     const r=c.random,m=c.transform;
     const flState=(typeof environmentRoot!=="undefined"&&environmentRoot?.userData?.flowerState)||null;
     const bloom=flState?Math.max(.35,flState.visualProgress||0):.75;
     const windVal=c.windUniform?c.windUniform.value:.35;
-    // Periodic sweeping alpine wind-gust waves ("既有零散飘起，也有批量大风刮起"):
-    const gustWave=Math.pow(Math.max(0,Math.sin(time*.37)*Math.cos(time*.23+.9)),2.6);
+    // Sync airborne petals to the unified directional alpine wind & gust front (Tiny Planet principle, MIT).
+    const centerW=AIBAMeadowWeather.sampleWind(0,COURT.midZ,time,windVal);
+    const gustWave=centerW.gustEnv;
     const fair=1-smoothstep(rain,.08,.45);
     // 1) Continuous scattered ambient petals lifting off the meadow & court edges
     pt.spawnAcc+=dt*(3.4+clear*3.6)*bloom*fair;
@@ -626,29 +630,31 @@
       const x=nearCourt?(r()-.5)*20:(r()-.5)*48;
       const z=COURT.midZ+(nearCourt?(r()-.5)*24:(r()-.5)*50);
       const y=c.heightAt(x,z)+.22+r()*.85;
+      const w=AIBAMeadowWeather.sampleWind(x,z,time,windVal);
       spawnPetal(pt,{
         x,y,z,
-        vx:.65+windVal*1.55+(r()-.5)*.65,
+        vx:w.dirX*(.75+windVal*1.75)+(r()-.5)*.6,
         vy:.34+r()*.65,
-        vz:.28+(r()-.5)*.75,
+        vz:w.dirZ*(.75+windVal*1.75)+(r()-.5)*.6,
         age:0,life:4.4+r()*3.0,
         size:.92+r()*.75,
         phase:r()*tau,spin:(1.8+r()*3.0)*(r()<.5?1:-1),flutter:2.8+r()*2.6
       });
     }
-    // 2) Batch alpine wind-gust waves sweeping a dense flurry of petals across the hillside & court
-    if(gustWave>.14){
+    // 2) Batch alpine wind-gust waves sweeping a dense flurry of petals along the unified gust front
+    if(gustWave>.18){
       pt.gustAcc+=dt*gustWave*42.0*bloom*fair;
       const gustOriginX=-16+Math.sin(time*.19)*9,gustOriginZ=COURT.midZ-12+Math.cos(time*.17)*9;
       while(pt.gustAcc>=1){
         pt.gustAcc--;
         const x=gustOriginX+(r()-.5)*22,z=gustOriginZ+(r()-.5)*22;
         const y=c.heightAt(x,z)+.18+r()*1.55;
+        const w=AIBAMeadowWeather.sampleWind(x,z,time,windVal);
         spawnPetal(pt,{
           x,y,z,
-          vx:2.5+windVal*3.4+r()*1.5,
+          vx:w.dirX*(2.8+windVal*3.6)+(r()-.4)*.9,
           vy:.72+r()*1.35,
-          vz:.92+(r()-.3)*1.05,
+          vz:w.dirZ*(2.8+windVal*3.6)+(r()-.4)*.9,
           age:0,life:4.0+r()*2.5,
           size:.96+r()*.82,
           phase:r()*tau,spin:(3.0+r()*4.2)*(r()<.5?1:-1),flutter:4.0+r()*3.5
@@ -656,16 +662,17 @@
       }
     }
     let count=0;
-    const windBreeze=.65+windVal*1.85+gustWave*2.4;
     for(let i=pt.items.length-1;i>=0;i--){
       const p=pt.items[i];p.age+=dt;
       if(p.age>=p.life){pt.items.splice(i,1);continue;}
       const u=p.age/p.life;
       const fl=p.age*p.flutter+p.phase;
-      // Aerodynamic petal flutter: gentle terminal fall + lateral gliding sway + wind gust carry
-      p.vx+=(windBreeze*.85+Math.sin(fl)*1.15-p.vx*.92)*dt;
-      p.vz+=(windBreeze*.28+Math.cos(fl*.83)*1.05-p.vz*.92)*dt;
-      p.vy+=(-0.48+.36*Math.sin(fl*1.35)+gustWave*.55-p.vy*1.25)*dt;
+      const pw=AIBAMeadowWeather.sampleWind(p.x,p.z,time,windVal);
+      const windBreeze=0.65+pw.push*5.2+pw.gustEnv*2.2;
+      // Aerodynamic petal flutter: gentle terminal fall + lateral gliding sway + unified wind carry
+      p.vx+=(pw.dirX*windBreeze+pw.perpX*Math.sin(fl)*1.25-p.vx*.92)*dt;
+      p.vz+=(pw.dirZ*windBreeze+pw.perpZ*Math.cos(fl*.83)*1.15-p.vz*.92)*dt;
+      p.vy+=(-0.48+.36*Math.sin(fl*1.35)+pw.gustEnv*.55-p.vy*1.25)*dt;
       p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;
       const groundY=c.heightAt(p.x,p.z)+.03;
       if(p.y<groundY){p.y=groundY;p.vx*=.85;p.vz*=.85;}

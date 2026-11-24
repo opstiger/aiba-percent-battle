@@ -3,7 +3,7 @@
 (()=>{
   const enabled=new URLSearchParams(location.search).get("places")!=="classic";
   const palettes={
-    outdoorSunny:{ground:"#626369",field:"#343e47",key:"#b95543",line:"#e2d5b4",shirts:[0xe3d4b9,0x344760,0xb95142,0x323239,0x769793,0xe0ab47,0xe5e1d4,0x657293]},
+    outdoorSunny:{ground:"#2b5864",field:"#252938",key:"#d43b73",line:"#f7efdc",shirts:[0xf472b6,0x38bdf8,0xfacc15,0xfb7185,0x2dd4bf,0xffffff,0xa855f7,0x1e293b]},
     rainyCourt:{ground:"#545d60",field:"#35565b",key:"#263f48",line:"#bcb99e",shirts:[0xc9ac65,0x384c52,0x9a6857,0x5e6b64,0xb6b9a4,0x313d50,0x826882,0x687b80]},
     flowerCourt:{ground:"#718b49",field:"#757950",key:"#7c7d50",line:"#eee3bf",shirts:[0xe5c79a,0x3b6472,0xa04f36,0x7a7c47,0xc59356,0xeee2c1,0x514b70,0xc26f58]},
     /* 旧但干净的学校水泥外场:灰蓝 + 海盐绿,低饱和(文档 §4 球场设计)。
@@ -11,7 +11,7 @@
     /* 浅灰蓝 / 海盐蓝 + 米白线(文档 §球场设计),不做荧光街头配色 */
     medCliff:{ground:"#cdc3a8",field:"#7d9aa8",key:"#6b8a99",line:"#f4efe2",shirts:[0xf2ece0,0x2c6ba4,0xd9cdb4,0xb05f3d,0xe8e0cf,0x3f7f9e,0xc63a7a,0xcfc3a8]},
     shonanCoast:{ground:"#9a9e97",field:"#6d8686",key:"#5b7676",line:"#eef0e8",shirts:[0xe8e4d8,0x2f4f6b,0x8fa8b4,0xd9d2bd,0x44606d,0xf0ece0,0x7d9aa2,0xc3ccc4]},
-    beachSunset:{ground:"#4d5157",field:"#45494f",key:"#3e4248",line:"#e8e3d5",shirts:[0xdcc6a4,0x7caaaa,0xc07765,0xead7a6,0x4c7583,0xb39a85,0xd6c7c3,0x577368]},
+    beachSunset:{ground:"#454c59",field:"#294152",key:"#db5478",line:"#faf0dc",shirts:[0xf9a8d4,0x5eead4,0xfdba74,0xfef08a,0x38bdf8,0xf43f5e,0xe2e8f0,0xc084fc]},
     ...AIBAWorldWonders.palettes,
     rainforest:{ground:"#3a4837",field:"#374a38",key:"#324434",line:"#e4dcc0",shirts:[0xb79872,0x4a6152,0x8e7254]}
   };
@@ -158,11 +158,48 @@
     g.fillStyle=p.key;g.fillRect(-2.45,near,4.9,5.8);g.fillRect(-2.45,far-5.8,4.9,5.8);
     // Different apron materials: stone courses, city paving, or woven earthen border.
     if(name==="outdoorSunny"){
-      g.strokeStyle="#858480";g.lineWidth=.022;
-      for(let z=near-3;z<far+4;z+=1.4)for(let side of [-1,1]){
-        g.beginPath();g.moveTo(side*8.2,z);g.lineTo(side*16,z);g.stroke();
-        for(let x=8.3;x<16;x+=2){g.beginPath();g.moveTo(side*(x+(Math.floor(z*2)%2)*.3),z);g.lineTo(side*(x+(Math.floor(z*2)%2)*.3),z+.65);g.stroke();}
+      // Vice City Art Deco turquoise apron border & geometric terrazzo tiles outside sidelines
+      const Z0=COURT.floorMinZ,ZL=COURT.floorMaxZ-COURT.floorMinZ;
+      for(let side of [-1,1]){
+        g.fillStyle="#224c58";g.fillRect(Math.min(side*7.62,side*16),Z0,Math.abs(16-7.62),ZL);
+        g.fillStyle="rgba(39,184,207,.16)";g.fillRect(Math.min(side*7.85,side*8.35),near-1.2,.5,COURT.length+2.4);
       }
+      g.strokeStyle="rgba(182,238,245,.26)";g.lineWidth=.03;
+      for(let z=near-3;z<far+4;z+=1.4)for(let side of [-1,1]){
+        g.beginPath();g.moveTo(side*8.0,z);g.lineTo(side*16,z);g.stroke();
+        for(let x=8.2;x<16;x+=1.8){g.beginPath();g.moveTo(side*(x+(Math.floor(z*2)%2)*.45),z);g.lineTo(side*(x+(Math.floor(z*2)%2)*.45),z+1.4);g.stroke();}
+      }
+      // Subtle pastel court apron fill around baselines
+      g.fillStyle="rgba(240,78,140,.22)";g.fillRect(-7.62,near-1.6,15.24,1.6);g.fillRect(-7.62,far,15.24,1.6);
+      // Stylized Vice sunset-palm disc inside the center circle (clean background under linework)
+      const vg=g.createLinearGradient(0,COURT.midZ-1.7,0,COURT.midZ+1.7);
+      vg.addColorStop(0,"#ffb347");vg.addColorStop(.52,"#f04e8c");vg.addColorStop(1,"#27b8cf");
+      g.fillStyle=vg;g.beginPath();g.arc(0,COURT.midZ,1.72,0,Math.PI*2);g.fill();
+      g.fillStyle="#252938";
+      for(let s=0;s<4;s++)g.fillRect(-1.75,COURT.midZ+.28+s*.28,3.5,.07+s*.025);
+      // Palm silhouette over center sunset disc
+      g.fillStyle="#18202c";
+      g.beginPath();g.moveTo(-.12,COURT.midZ+1.5);g.lineTo(.08,COURT.midZ-.1);g.lineTo(.16,COURT.midZ-.1);g.lineTo(.02,COURT.midZ+1.5);g.fill();
+      for(let f=0;f<5;f++){
+        const a=-Math.PI*.85+f*Math.PI*.42;
+        g.beginPath();g.moveTo(.11,COURT.midZ-.1);g.lineTo(.11+Math.cos(a)*.85,COURT.midZ-.1+Math.sin(a)*.55);g.lineTo(.11+Math.cos(a+.22)*.55,COURT.midZ-.1+Math.sin(a+.22)*.35);g.closePath();g.fill();
+      }
+    }
+    if(name==="beachSunset"){
+      // Ocean Drive turquoise inner free-throw semicircles & pastel coral/aqua outer apron wave stripes
+      const Z0=COURT.floorMinZ,ZL=COURT.floorMaxZ-COURT.floorMinZ;
+      for(const side of [-1,1]){
+        g.fillStyle="rgba(54,194,206,.18)";g.fillRect(side>0?8.05:-11.2,Z0,.55,ZL);
+        g.fillStyle="rgba(219,84,120,.16)";g.fillRect(side>0?8.85:-10.4,Z0,.32,ZL);
+      }
+      g.fillStyle="rgba(54,194,206,.55)";
+      g.beginPath();g.arc(0,near+5.8,1.76,0,Math.PI);g.fill();
+      g.beginPath();g.arc(0,far-5.8,1.76,Math.PI,Math.PI*2);g.fill();
+      // Coastal sunset horizon ring at center court
+      const cg=g.createLinearGradient(0,COURT.midZ-1.7,0,COURT.midZ+1.7);
+      cg.addColorStop(0,"#36c2ce");cg.addColorStop(.5,"#db5478");cg.addColorStop(1,"#ffbc6e");
+      g.fillStyle=cg;g.beginPath();g.arc(0,COURT.midZ,1.74,0,Math.PI*2);g.fill();
+      g.fillStyle=p.field;g.beginPath();g.arc(0,COURT.midZ,1.28,0,Math.PI*2);g.fill();
     }
     if(name==="rainyCourt"){
       /* 场外按用途分带重画(计划 §2.2/§2.5):
@@ -196,6 +233,14 @@
     g.strokeRect(-COURT.halfWidth,near,COURT.width,COURT.length);g.beginPath();g.moveTo(-COURT.halfWidth,COURT.midZ);g.lineTo(COURT.halfWidth,COURT.midZ);g.stroke();
     const circle=(x,z,r,a=0,b=Math.PI*2)=>{g.beginPath();g.arc(x,z,r,a,b);g.stroke();};
     circle(0,COURT.midZ,1.8);
+    if(name==="outdoorSunny"){
+      // Art Deco pastel cyan & flamingo pink double trim around court perimeter and free-throw arcs
+      g.save();
+      g.strokeStyle="#27b8cf";g.lineWidth=.09;g.strokeRect(-COURT.halfWidth-.22,near-.22,COURT.width+.44,COURT.length+.44);
+      g.strokeStyle="#f04e8c";g.lineWidth=.06;g.strokeRect(-COURT.halfWidth-.42,near-.42,COURT.width+.84,COURT.length+.84);
+      g.strokeStyle="#27b8cf";g.lineWidth=.055;circle(0,COURT.midZ,2.02);
+      g.restore();
+    }
     [1,-1].forEach(dir=>{const base=dir===1?near:far,hz=dir===1?COURT.nearHoopZ:COURT.farHoopZ;
       g.strokeRect(-2.45,dir===1?base:base-5.8,4.9,5.8);circle(0,base+dir*5.8,1.8);circle(0,hz,1.25,dir===1?0:Math.PI,dir===1?Math.PI:Math.PI*2);
       circle(0,hz,6.75,dir===1?.12:Math.PI+.12,dir===1?Math.PI-.12:Math.PI*2-.12);
@@ -595,11 +640,11 @@
     setPlaceHoops(true,true);
   }
   function themeHoops(s,b,faceMarks=b){
-    const beach=s.name==="beachSunset",lunar=s.name==="lunarCrater",tokyo=s.name==="tokyoRooftop",rain=s.name==="rainyCourt",color=beach?0x8e969e:lunar?0xeef1f5:tokyo?0x1f2530:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
+    const beach=s.name==="beachSunset",vice=s.name==="outdoorSunny",lunar=s.name==="lunarCrater",tokyo=s.name==="tokyoRooftop",rain=s.name==="rainyCourt",color=beach?0x36c2ce:vice?0xe8edf2:lunar?0xeef1f5:tokyo?0x1f2530:s.name==="arcticSnow"?0x25343e:s.name==="spanishQuarter"?0x635344:rain?0x293a3d:0x526264;
     hoopSupports().forEach(([z,dir])=>{
       const base=z-dir*1.55;
       if(beach){
-        // 洛杉矶 Angels Gate 经典大弧度弯曲鹅颈镀锌钢篮架
+        // Vice Beach 大弧度鹅颈篮架 + 热带粉青霓虹包边
         const N=12;
         for(let i=0;i<N;i++){
           const t0=i/N,t1=(i+1)/N,tm=(t0+t1)*.5;
@@ -609,21 +654,25 @@
           const len=Math.hypot(z1-z0,y1-y0)+.04;
           const thick=.25-.07*tm;
           const ang=Math.atan2(z1-z0,y1-y0);
-          b.box(i%2?0x889098:0x969ea6,0,(y0+y1)*.5,(z0+z1)*.5,thick,len,thick,ang,0,0);
+          b.box(i%2?0x28bfd4:0xeaf4f6,0,(y0+y1)*.5,(z0+z1)*.5,thick,len,thick,ang,0,0);
         }
-        b.box(0x707880,0,.08,base,.52,.16,.52);
-        b.box(0xa6b0bc,0,3.5,z,1.9,1.1,.1);
-        const ink=0x262c34;
-        [-1,1].forEach(a=>{b.box(ink,0,3.5+a*.51,z+dir*.056,1.86,.035,.012);b.box(ink,a*.915,3.5,z+dir*.056,.035,1.05,.012);
-          b.box(ink,a*.3,3.25,z+dir*.059,.035,.36,.014);b.box(ink,0,3.25+a*.18,z+dir*.059,.63,.035,.014);});
-        b.box(0xc83e2b,0,3.04,z+dir*.09,.24,.09,.12);
+        b.box(0x28bfd4,0,.08,base,.56,.16,.56);
+        b.box(0xdaf0f5,0,3.5,z,1.9,1.1,.1);
+        const ink=0xe03e7a,cyanInk=0x28bfd4;
+        [-1,1].forEach(a=>{faceMarks.box(cyanInk,0,3.5+a*.51,z+dir*.056,1.86,.042,.014);faceMarks.box(cyanInk,a*.915,3.5,z+dir*.056,.042,1.05,.014);
+          faceMarks.box(ink,a*.3,3.25,z+dir*.059,.040,.36,.015);faceMarks.box(ink,0,3.25+a*.18,z+dir*.059,.63,.040,.015);});
+        b.box(0xe03e7a,0,3.04,z+dir*.09,.24,.09,.12);
         return;
       }
       b.box(color,0,1.75,base,.24,3.5,.24);b.box(color,0,3.46,z-dir*.76,.22,.22,1.55);
-      b.box(lunar?0xcfd5de:color,0,2.955,base+dir*.505,.13,1.48,.13,dir*Math.PI/4);b.box(lunar?0xa9a8a6:0x757b76,0,.1,base,.75,.2,.75);
-      b.box(lunar?0xdce2ea:tokyo?0x283242:rain?0xc5c1a9:s.name==="spanishQuarter"?0x91988c:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
-      const ink=lunar?0xc68059:tokyo?0xff4d32:rain?0x704f40:0x384f56;
-      const aimInk=lunar?0xf5d18d:ink,aimWidth=lunar?.042:.035;
+      b.box(lunar?0xcfd5de:vice?0xe03e7a:color,0,2.955,base+dir*.505,.13,1.48,.13,dir*Math.PI/4);b.box(lunar?0xa9a8a6:vice?0x28bfd4:0x757b76,0,.1,base,.75,.2,.75);
+      b.box(lunar?0xdce2ea:vice?0xf4f0ea:tokyo?0x283242:rain?0xc5c1a9:s.name==="spanishQuarter"?0x91988c:0xd6d1b9,0,3.5,z,1.9,1.1,.12);
+      const ink=lunar?0xc68059:vice?0x28bfd4:tokyo?0xff4d32:rain?0x704f40:0x384f56;
+      const aimInk=lunar?0xf5d18d:vice?0xe03e7a:ink,aimWidth=(lunar||vice)?.044:.035;
+      if(vice){
+        b.box(0xe03e7a,0,.65,base,.265,.18,.265);
+        b.box(0x28bfd4,0,2.25,base,.265,.18,.265);
+      }
       for(const a of [-1,1]){
         faceMarks.box(ink,0,3.5+a*.51,z+dir*.066,1.86,.035,.012);
         faceMarks.box(ink,a*.915,3.5,z+dir*.066,.035,1.05,.012);
@@ -677,9 +726,11 @@
     }
     leaf.finish(pivot,`windFoliage:${style}`);s.plants.push({pivot,phase:s.r()*6.28,amp:style==="palm"?.035:.023});
   }
-  function lamp(s,b,x,z,h=5){
-    b.box(0x3d4b4c,x,h/2,z,.11,h,.11);b.box(0x3d4b4c,x+.45,h,z,1,.09,.14);
-    const a=batch();a.box(0xffdaa0,x+.8,h-.08,z,.38,.08,.28);const m=a.finish(s.root,"streetLamp",true);m.material.color.setScalar(.16);s.lights.push({mesh:m,threshold:.48+s.r()*.13});
+  function lamp(s,b,x,z,h=5,glowHex=0xffdaa0,armDir=1){
+    b.box(0x3d4b4c,x,h/2,z,.11,h,.11);b.box(0x3d4b4c,x+armDir*.45,h,z,1,.09,.14);
+    const a=batch();a.box(0xffffff,x+armDir*.8,h-.08,z,.38,.08,.28);const m=a.finish(s.root,"streetLamp",true);
+    const c=new THREE.Color(glowHex);m.material.color.copy(c).multiplyScalar(.16);
+    s.lights.push({mesh:m,threshold:.38+s.r()*.22,baseColor:glowHex===0xffdaa0?null:c});
   }
   function clouds(s){
     const arctic=s.name==="arcticSnow";
@@ -691,116 +742,285 @@
     }
   }
   function city(s,b){
-    b.box(0x8f8e84,0,-.13,4,115,.12,115);
-    // Roads are beyond both floor aprons, x=19..27; pedestrians remain inside x=16.
+    b.box(0x636b70,0,-.13,4,118,.12,118);
+    // Neon strip batches by hue (only 4 extra draw calls for the entire Art Deco skyline)
+    const neonHexes=[0xff2e88,0x18f0ff,0xffc83b,0xb84dff];
+    const neonBatches=neonHexes.map(()=>batch());
+    const addNeon=(ci,x,y,z,w,h,d,rx=0,ry=0,rz=0)=>neonBatches[ci%4].box(0xffffff,x,y,z,w,h,d,rx,ry,rz);
+
+    // Roads at x=19..27; palm-lined terrazzo sidewalks at x=±17
     for(let side of [-1,1]){
-      b.box(0x353d43,side*23,-.045,4,9,.06,106);b.box(0x96928a,side*17,.02,4,1.5,.16,106);
-      for(let z=-47;z<56;z+=4)b.box(0xc4b883,side*23,.005,z,.07,.012,1.9);
-      /* 建筑不能一个模子。原来 7 栋全是同尺寸方盒 + 同一套窗格,
-         天际线读起来像复制粘贴。这里按**五种原型**轮换,各自有不同的
-         体量、收分、屋顶和立面语言 —— 剪影一变,城市才有城市的样子。 */
+      b.box(0x2d323a,side*23,-.045,4,9,.06,106);b.box(0xb5aa9c,side*17,.02,4,1.6,.16,106);
+      b.box(side<0?0x28bfd4:0xe03e7a,side*16.2,.04,4,.14,.18,106);
+      for(let z=-47;z<56;z+=4)b.box(0xe2c75a,side*23,.005,z,.09,.012,1.95);
+      // Vice City Art Deco & MiMo waterfront towers + retro boutique blocks
+      const facadePalette=[0xf48fb1,0x64d8cb,0xfbc093,0xf5eedc,0xb39ddb,0x456b7d];
       for(let j=0;j<8;j++){
         const z=-40+j*13.5,x=side*(34+s.r()*6),kind=(j+(side>0?2:0))%5;
-        const face=x-side*.03;                                   // 朝向球场那一面
-        if(kind===0){                                            // ① 玻璃塔:收分三段,顶部机房
-          const h=46+s.r()*22,w=8.5+s.r()*2;
+        const face=x-side*.03,wallCol=facadePalette[(j+((side>0)?3:0))%facadePalette.length];
+        if(kind===0){                                            // ① Art Deco 阶梯摩天塔:三段收分 + 霓虹垂直鳍片
+          const h=44+s.r()*20,w=8.8+s.r()*2;
           for(let t=0;t<3;t++){const th=h*(.42-t*.09),ty=h*(t*.33),tw=w*(1-t*.16);
-            b.box([0x51707e,0x5c7c88,0x466a78][t],x,ty+th/2,z,tw,th,tw*1.05);
-            for(let dx=-tw/2+.7;dx<tw/2;dx+=1.35)b.box(0x86b3c2,x+dx,ty+th/2,face-side*(tw*.52),.85,th-1.2,.06);}
-          b.box(0x39505a,x,h*.99+1.4,z,3.2,2.8,3.2);b.box(0x2c3d45,x,h*.99+4,z,.24,2.6,.24);
-        }else if(kind===1){                                      // ② 红砖老楼:防火梯 + 屋顶水塔
-          const h=20+s.r()*10,w=10+s.r()*2.5;
-          b.box(0x8a5646,x,h/2,z,w,h,10);
-          for(let y=2.6;y<h-1;y+=3.1){
-            b.box(0x6d4136,x,y+1.55,z,w+.06,.34,10.06);           // 砖檐
-            for(let dx=-w/2+1.2;dx<w/2;dx+=2.2)b.box(0x2f3f47,x+dx,y,face-side*5.03,1.05,1.55,.08);
+            b.box(wallCol,x,ty+th/2,z,tw,th,tw*1.05);
+            b.box(0xf5eedc,x,ty+th,.0+z,tw+.24,.35,tw*1.05+.24);
+            for(let dx=-tw/2+.8;dx<tw/2;dx+=1.45)b.box(0x2a4f60,x+dx,ty+th/2,face-side*(tw*.52),.78,th-1.4,.06);
           }
-          for(let y=3.4;y<h-2;y+=3.1){                            // 防火梯
-            b.box(0x3d3733,x,y,face-side*5.5,w*.42,.09,1.1);
-            b.box(0x3d3733,x-w*.2,y+.55,face-side*6.0,.06,1.1,1.1);
-            b.box(0x3d3733,x+w*.2,y+.55,face-side*6.0,.06,1.1,1.1);
+          addNeon(j,face-side*(w*.42),h*.52,z,.18,h*.82,.26);
+          addNeon(j+1,face-side*(w*.34),h*.99,.0+z,.22,.28,w*.72);
+          b.box(0xf5eedc,x,h*.99+1.5,z,3.0,3.0,3.0);b.box(0xd8e0e6,x,h*.99+4.5,z,.24,3.4,.24);
+          addNeon(j,x,h*.99+6.4,z,.32,.4,.32);
+        }else if(kind===1){                                      // ② Ocean Drive 复古酒店:眉毛窗檐 + 霓虹竖匾
+          const h=18+s.r()*9,w=10+s.r()*2.5;
+          b.box(wallCol,x,h/2,z,w,h,10);
+          b.box(0xffffff,x,h+.25,z,w+.45,.45,10.45);
+          for(let y=2.6;y<h-1.2;y+=3.0){
+            b.box(0xf5eedc,x-side*5.2,y+1.1,z,.45,.16,10.2);     // 迈阿密标志性混凝土"眉毛"遮阳板
+            for(let dz=-3.6;dz<=3.6;dz+=2.2)b.box(0x234252,face-side*5.04,y,z+dz,.08,1.45,1.25);
           }
-          b.add("blob",0x6b6255,x+w*.22,h+1.5,z,1.5,1.7,1.5);     // 木水塔
-          b.box(0x4a443b,x+w*.22,h+3.3,z,1.8,.5,1.8);
-        }else if(kind===2){                                      // ③ 矮宽商业楼:大招牌带 + 屋顶空调机组
-          const h=13+s.r()*5,w=14+s.r()*3;
-          b.box(0x9b9484,x,h/2,z,w,h,11);
-          for(let y=3.2;y<h-1;y+=3.4)for(let dx=-w/2+1.4;dx<w/2;dx+=2.6)
-            b.box(0x3a5460,x+dx,y,face-side*5.53,1.7,1.9,.08);
-          b.box(0x2f3a3f,x,h*.62,face-side*5.62,w*.86,1.5,.22);   // 招牌带(无字)
-          for(let dx=-w/3;dx<=w/3;dx+=w/3)b.box(0x707a78,x+dx,h+.7,z,2.1,1.4,2.1);
-        }else if(kind===3){                                      // ④ 高瘦板楼:阳台阵列
-          const h=34+s.r()*16,w=6.5+s.r()*1.6;
-          b.box(0x8d9186,x,h/2,z,w,h,9.5);
-          for(let y=3;y<h-1;y+=2.7){
-            b.box(0xb6bcae,x,y-1.05,face-side*4.9,w,.16,1.5);      // 阳台板
-            b.box(0x6a746f,x,y-.45,face-side*5.55,w,.08,.08);      // 栏杆
-            for(let dx=-w/2+.9;dx<w/2;dx+=1.8)b.box(0x35505c,x+dx,y,face-side*4.78,1.2,1.6,.07);
+          // 中轴凸出装饰艺术鳍片 + 霓虹包边
+          b.box(0xf5eedc,face-side*5.25,h*.55,z,.45,h*.86,1.1);
+          addNeon(j,face-side*5.52,h*.55,z,.14,h*.78,.36);
+          addNeon(j+1,face-side*5.15,h+.3,z,.24,.22,10.3);
+        }else if(kind===2){                                      // ③ 热带俱乐部 & 霓虹商铺:棕榈条纹招牌带
+          const h=12.5+s.r()*4.5,w=13.5+s.r()*3;
+          b.box(wallCol,x,h/2,z,w,h,11);
+          for(let y=3.2;y<h-1.2;y+=3.2)for(let dz=-4.0;dz<=4.0;dz+=2.5)
+            b.box(0x233b4a,face-side*5.54,y,z+dz,.08,1.8,1.65);
+          b.box(0x1b2130,face-side*5.65,h*.64,z,.28,1.6,9.4);
+          addNeon(j,face-side*5.82,h*.64+0.68,z,.12,.14,9.2);
+          addNeon(j+1,face-side*5.82,h*.64-0.68,z,.12,.14,9.2);
+          addNeon(j+2,face-side*5.75,h+.28,z,.18,.18,10.6);
+        }else if(kind===3){                                      // ④ 海滨海景公寓:流线弧角阳台阵列
+          const h=32+s.r()*14,w=7.2+s.r()*1.8;
+          b.box(wallCol,x,h/2,z,w,h,9.8);
+          for(let y=3;y<h-1.2;y+=2.8){
+            b.box(0xf7f2e8,face-side*(w*.5+0.4),y-1.05,z,1.2,.18,9.6);
+            b.box(side>0?0x64d8cb:0xf48fb1,face-side*(w*.5+0.95),y-.45,z,.12,.14,9.6);
+            for(let dz=-3.4;dz<=3.4;dz+=2.1)b.box(0x2a4e5e,face-side*(w*.5+0.04),y,z+dz,.08,1.55,1.25);
           }
-          b.box(0x5d6660,x,h+.6,z,w*.9,1.2,9);
-        }else{                                                   // ⑤ 带山墙的老公寓:坡屋顶
+          addNeon(j+1,face-side*(w*.5+0.98),h+.3,z,.16,.24,9.6);
+        }else{                                                   // ⑤ MiMo 错层精品楼:斜翼挑檐 + 霓虹冠
           const h=17+s.r()*7,w=11+s.r()*2;
-          b.box(0xa89a80,x,h/2,z,w,h,10);
-          for(let y=3;y<h-1;y+=3.2)for(let dx=-w/2+1.3;dx<w/2;dx+=2.4){
-            b.box(0x33454e,x+dx,y,face-side*5.03,1.25,1.7,.08);
-            b.box(0x7d6f5b,x+dx,y-1.05,face-side*5.16,1.45,.14,.35);
-          }
-          for(let t=0;t<4;t++)b.box(0x8a4f3d,x,h+.35+t*.62,z,w*(1-t*.2),.62,10*(1-t*.16));
+          b.box(wallCol,x,h/2,z,w,h,10);
+          for(let y=3;y<h-1.2;y+=3.2)for(let dz=-3.6;dz<=3.6;dz+=2.4)
+            b.box(0x294452,face-side*5.04,y,z+dz,.08,1.65,1.25);
+          for(let t=0;t<3;t++)b.box(t%2?0xf5eedc:wallCol,x,h+.4+t*.65,z,w*(1-t*.2),.58,10*(1-t*.18));
+          addNeon(j,face-side*5.12,h+.25,z,.16,.2,10.2);
         }
       }
-      for(let z=-16;z<30;z+=12){tree(s,b,side*17,z,"street",.78);lamp(s,b,side*17.3,z+5);}
+      // 佛罗里达皇家棕榈林立 + 粉青霓虹街灯
+      for(let z=-16;z<30;z+=12){
+        tree(s,b,side*17,z,"palm",.82);
+        lamp(s,b,side*17.3,z+5,5,side<0?0x18f0ff:0xff2e88,-side);
+      }
     }
-    /* 场地隔离(§"边界气质":城市 = 铁丝网 + 台阶)。
-       街头球场没有围栏很假 —— 球会滚到马路上。这里做经典的 cage court:
-       立柱 + 上下横杆走合批(不增 draw call),网面单独一张带透明贴图的 mesh
-       (整圈共 1 个 draw call,比用几千根细杆便宜得多,观感也更像网)。
-       高度 3.6m,离边线 2.9m —— 不进跑动区,也不会挡住篮筐读数。 */
+
+    // 场地铁丝网围栏 (cage court) + 粉青装饰顶杆
     const FX=10.5,FZ0=-15.5,FZ1=25.5,FH=3.6;
     for(const sx of [-1,1]){
-      for(let z=FZ0;z<=FZ1;z+=2.6)b.box(0x3b444a,sx*FX,FH/2,z,.10,FH,.10);   // 立柱
-      for(const y of [FH,FH*.5,.15])b.box(0x4a545a,sx*FX,y,(FZ0+FZ1)/2,.07,.07,FZ1-FZ0);
+      for(let z=FZ0;z<=FZ1;z+=2.6)b.box(0x3b4852,sx*FX,FH/2,z,.10,FH,.10);
+      b.box(sx<0?0x28bfd4:0xe03e7a,sx*FX,FH,(FZ0+FZ1)/2,.085,.085,FZ1-FZ0);
+      for(const y of [FH*.5,.15])b.box(0x4a5862,sx*FX,y,(FZ0+FZ1)/2,.07,.07,FZ1-FZ0);
     }
-    for(const [z,w] of [[FZ0,1],[FZ1,1]]){
-      for(let x=-FX;x<=FX;x+=2.6)b.box(0x3b444a,x,FH/2,z,.10,FH,.10);
-      for(const y of [FH,FH*.5,.15])b.box(0x4a545a,0,y,z,FX*2,.07,.07);
+    for(const [z] of [[FZ0],[FZ1]]){
+      for(let x=-FX;x<=FX;x+=2.6)b.box(0x3b4852,x,FH/2,z,.10,FH,.10);
+      b.box(0x28bfd4,0,FH,z,FX*2,.085,.085);
+      for(const y of [FH*.5,.15])b.box(0x4a5862,0,y,z,FX*2,.07,.07);
     }
-    /* 网面:一张 canvas 画的菱形网,重复平铺 */
     const meshCv=document.createElement("canvas");meshCv.width=meshCv.height=64;
-    const mg=meshCv.getContext("2d");mg.strokeStyle="rgba(196,208,214,.85)";mg.lineWidth=3;
+    const mg=meshCv.getContext("2d");mg.strokeStyle="rgba(196,216,228,.85)";mg.lineWidth=3;
     for(let i=-64;i<128;i+=16){mg.beginPath();mg.moveTo(i,0);mg.lineTo(i+64,64);mg.stroke();
       mg.beginPath();mg.moveTo(i,64);mg.lineTo(i+64,0);mg.stroke();}
     const meshTex=new THREE.CanvasTexture(meshCv);
     meshTex.wrapS=meshTex.wrapT=THREE.RepeatWrapping;meshTex.name="cageMesh";
-    const cageMat=new THREE.MeshBasicMaterial({map:meshTex,transparent:true,opacity:.5,side:THREE.DoubleSide,depthWrite:false});
+    const cageMat=new THREE.MeshBasicMaterial({map:meshTex,transparent:true,opacity:.48,side:THREE.DoubleSide,depthWrite:false});
     const cage=new THREE.Group();
     const panel=(w,h,x,y,z,ry)=>{
       const t=meshTex.clone();t.needsUpdate=true;t.wrapS=t.wrapT=THREE.RepeatWrapping;t.repeat.set(w/1.6,h/1.6);
-      const m=new THREE.Mesh(new THREE.PlaneGeometry(w,h),cageMat.clone());
-      m.material.map=t;m.position.set(x,y,z);m.rotation.y=ry;cage.add(m);
+      const m=cageMat.clone();m.map=t;
+      const mesh=new THREE.Mesh(new THREE.PlaneGeometry(w,h),m);
+      mesh.position.set(x,y,z);mesh.rotation.y=ry;cage.add(mesh);
     };
     panel(FZ1-FZ0,FH,-FX,FH/2,(FZ0+FZ1)/2,Math.PI/2);
     panel(FZ1-FZ0,FH, FX,FH/2,(FZ0+FZ1)/2,Math.PI/2);
     panel(FX*2,FH,0,FH/2,FZ0,0);panel(FX*2,FH,0,FH/2,FZ1,0);
+    meshTex.dispose();cageMat.dispose();
     cage.name="cityCageFence";s.root.add(cage);s.cage=cage;
-    // A distant cross-street closes the skyline in the shooting view without blocking the hoop.
-    for(let i=0;i<7;i++){const x=-29+i*10,h=26+s.r()*32;b.box(i%2?0x466578:0x738b94,x,h/2,-48,8,h,8);
-      b.box(0x89968f,x,h+.5,-48,6.5,1,6);b.box(0x35464d,x+.7,h+1.7,-48,2,1.5,2);
-      for(let y=3;y<h;y+=2.8){b.box(0xb3b9ab,x,y-.9,-43.94,8,.1,.09);for(let dx=-2.7;dx<=2.8;dx+=1.8)b.box((i+Math.round(y))%3?0x829b9e:0xc8c5ac,x+dx,y,-43.88,1.1,1.65,.06);}
-      b.box(i%2?0xaf6752:0x386f72,x,2.5,-43.3,7.8,.45,1.5);for(let dx of [-2.5,0,2.5])b.box(0x263d47,x+dx,1.2,-43.8,1.8,2,.12);
-    }
-    const types=["sedan","bus","sedan","schoolbus","sedan","bus"];
-    types.forEach((type,i)=>{
-      const g=new THREE.Group(),car=batch(),long=type!=="sedan",len=long?7.4:4.4,h=long?2.5:1.35,color=type==="schoolbus"?0xdfab28:type==="bus"?0xd6d8cc:[0x233540,0x973d36,0xe0d7c4][i%3];
-      car.box(color,0,.65,0,1.85,1.05,len);car.box(color,0,long?1.8:1.2,long?0:.1,1.76,long?1.4:.7,long?len-.15:2.4);
-      car.box(0x324c58,0,h*.8,long?-len/2-.005:-1.12,1.5,long?.85:.45,.06);
-      for(let side of [-1,1]){
-        for(let z=long?-2.7:-.6;z<=(long?2.8:.8);z+=long?1.1:1.1)car.box(0x344e58,side*.891,long?1.97:1.4,z,.035,long?.7:.4,long?.82:.9);
-        for(let z of [-len*.31,len*.31])car.add("sphere",0x242728,side*.92,.39,z,.15,.37,.37);
-        car.box(0xeee1ad,side*.6,.67,-len/2-.03,.32,.16,.04);car.box(0xac4638,side*.6,.68,len/2+.03,.25,.14,.04);
+
+    // 篮筐后方横跨街道的 Vice City Art Deco 天际线 + 霓虹楼冠
+    const backPal=[0xf48fb1,0x64d8cb,0xfbc093,0x34465e,0xb39ddb,0x456b7d,0xf5eedc];
+    for(let i=0;i<7;i++){
+      const x=(i===3)?0:(-29+i*10),h=(i===3)?28:(26+s.r()*30),col=backPal[i%backPal.length];
+      b.box(col,x,h/2,-48,8.4,h,8);
+      b.box(0xf5eedc,x,h+.55,-48,6.4,1.1,6.2);
+      b.box(col,x,h+1.5,-48,3.2,1.2,3.4);
+      addNeon(i,x,h+2.25,-48,.35,2.2,.35);
+      addNeon(i+1,x,h+.1,-43.8,8.4,.22,.22);
+      for(let y=3;y<h;y+=2.8){
+        b.box(0xf0e9da,x,y-.9,-43.94,8.2,.12,.1);
+        for(let dx=-2.7;dx<=2.8;dx+=1.8)b.box((i+Math.round(y))%3?0x274d60:0xe88cb5,x+dx,y,-43.88,1.1,1.65,.06);
       }
-      car.box(type==="schoolbus"?0x3c3830:0x7c8b8e,0,.8,-len/2-.04,1.5,.08,.05);car.finish(g,`vehicle:${type}`);
-      const dir=i%2?1:-1;g.position.set((i<3?-1:1)*(dir===1?21:25),0,-40+i*17);g.rotation.y=dir===1?Math.PI:0;s.root.add(g);s.vehicles.push({g,dir,speed:dir===1?4.8:5.6,type});
+      b.box(i%2?0xd43b73:0x27b8cf,x,2.5,-43.3,8.0,.45,1.5);
+      addNeon(i%2?0:1,x,2.76,-42.5,7.8,.16,.16);
+      for(let dx of [-2.5,0,2.5])b.box(0x1b2434,x+dx,1.2,-43.8,1.8,2,.12);
+    }
+
+    // 4 组颜色独立的霓虹批次提交进 s.lights
+    neonBatches.forEach((nb,idx)=>{
+      const m=nb.finish(s.root,`viceNeonTrim_${idx}`,true);
+      if(!m)return;
+      const c=new THREE.Color(neonHexes[idx]);
+      m.material.color.copy(c).multiplyScalar(.16);
+      s.lights.push({mesh:m,threshold:.18+idx*.17,baseColor:c,pulsePhase:idx*1.57});
     });
+
+    // 场边道具 ①：街头 Boombox 音响 + 涂鸦冰桶 (x=-11.6, z=0.4, 高度 <1.1m)
+    b.box(0x1f2430,-11.6,.48,0.4,.42,.36,.92);
+    b.box(0x28bfd4,-11.58,.30,0.4,.44,.06,.94);
+    b.box(0xe03e7a,-11.38,.48,0.16,.04,.24,.24);
+    b.box(0xe03e7a,-11.38,.48,0.64,.04,.24,.24);
+    b.box(0xd8e0ea,-11.6,.72,0.4,.08,.12,.58);
+    b.box(0xff528e,-11.7,.28,1.35,.48,.52,.66);
+    b.box(0xffffff,-11.7,.56,1.35,.52,.07,.70);
+
+    // 场边道具 ②：Wynwood 街头涂鸦墙画看板 (x=-15.2, z=-14.2, 顶高 <3.9m 远低于菜单环绕与视线)
+    for(const [px,pz] of [[-16.4,-15.4],[-14.0,-13.0]])b.box(0x2d3540,px,1.9,pz,.16,3.8,.16);
+    const mwCv=document.createElement("canvas");mwCv.width=512;mwCv.height=256;
+    const mwg=mwCv.getContext("2d");
+    const mwgGr=mwg.createLinearGradient(0,0,512,256);
+    mwgGr.addColorStop(0,"#201538");mwgGr.addColorStop(.5,"#d43b73");mwgGr.addColorStop(1,"#ffae42");
+    mwg.fillStyle=mwgGr;mwg.fillRect(0,0,512,256);
+    mwg.fillStyle="#18f0ff";for(let k=0;k<4;k++)mwg.fillRect(24,180+k*15,464,6);
+    mwg.fillStyle="#161b26";mwg.beginPath();mwg.arc(390,115,58,0,Math.PI*2);mwg.fillStyle="#ffcf56";mwg.fill();
+    mwg.fillStyle="#ffffff";mwg.font="900 50px sans-serif";mwg.textAlign="center";mwg.fillText("VICE CITY",240,104);
+    mwg.fillStyle="#28f0ff";mwg.font="bold 26px sans-serif";mwg.fillText("LEONIDA 86 // WYNWOOD",240,150);
+    const mwTex=new THREE.CanvasTexture(mwCv);if(THREE.sRGBEncoding)mwTex.encoding=THREE.sRGBEncoding;
+    const mwMesh=new THREE.Mesh(new THREE.BoxGeometry(3.8,2.1,.14),new THREE.MeshLambertMaterial({map:mwTex}));
+    mwMesh.position.set(-15.2,2.55,-14.2);mwMesh.rotation.y=Math.PI*.25;mwMesh.name="wynwoodMuralBoard";s.root.add(mwMesh);
+
+    // 彩蛋 ①：莱奥尼达沼泽鳄鱼 + "GATOR XING" 警示牌 (x=12.8, z=-10.5, 高<0.8m)
+    b.box(0xf4c542,13.6,.56,-11.4,.04,.38,.38,0,Math.PI*.1,Math.PI/4);
+    b.box(0x3b444a,13.6,.22,-11.4,.05,.46,.05);
+    const gatorG=new THREE.Group();gatorG.name="leonidaAlligator";gatorG.position.set(12.8,0,-10.5);gatorG.rotation.y=-Math.PI*.38;
+    const gb=batch();
+    gb.box(0x465d38,0,.19,0,.46,.22,1.15);
+    gb.box(0xc8be96,0,.09,0,.40,.06,1.10);
+    for(let r=-.45;r<=.45;r+=.18)gb.box(0x2f4124,0,.32,r,.18,.07,.10);
+    for(const lx of [-.28,.28])for(const lz of [-.35,.35])gb.box(0x3d5231,lx,.08,lz,.16,.14,.18);
+    gb.box(0x465d38,0,.15,-.76,.34,.08,.48); // 下颌
+    gb.finish(gatorG,"gatorBody");
+    const jawPivot=new THREE.Group();jawPivot.position.set(0,.20,-.52);
+    const jb=batch();jb.box(0x4d663e,0,.05,-.24,.32,.10,.48);
+    for(const sx of [-.12,.12])jb.box(0xf2cf46,sx,.12,-.10,.06,.06,.07);
+    for(let tx=-.12;tx<=.12;tx+=.08)jb.box(0xf4f0e4,tx,0,-.45,.035,.05,.035);
+    jb.finish(jawPivot,"gatorJaw");gatorG.add(jawPivot);
+    const tailPivot=new THREE.Group();tailPivot.position.set(0,.16,.56);
+    const tb=batch();tb.box(0x435935,0,.02,.28,.30,.16,.56);tb.box(0x364a2a,0,.0,-.68*.0+.68,.18,.11,.42);
+    tb.box(0x2f4124,0,.12,.25,.12,.06,.42);
+    tb.finish(tailPivot,"gatorTail");gatorG.add(tailPivot);
+    s.root.add(gatorG);s.gator={g:gatorG,jaw:jawPivot,tail:tailPivot};
+
+    // 彩蛋 ②：高层天际线「五星通缉」招牌 (x=0, y=12.5, z=-43.5)
+    const starFrame=new THREE.Group();starFrame.position.set(0,12.5,-43.5);starFrame.name="viceFiveStarWanted";
+    const rimCyan=new THREE.Mesh(new THREE.BoxGeometry(9.46,1.92,.14),new THREE.MeshBasicMaterial({color:0x18f0ff}));
+    rimCyan.position.z=-.05;starFrame.add(rimCyan);
+    const rimPink=new THREE.Mesh(new THREE.BoxGeometry(9.32,1.80,.18),new THREE.MeshBasicMaterial({color:0xff2e88}));
+    rimPink.position.z=-.02;starFrame.add(rimPink);
+    const sfMat=new THREE.MeshBasicMaterial({color:0x10141e});
+    const sfBack=new THREE.Mesh(new THREE.BoxGeometry(9.2,1.7,.24),sfMat);starFrame.add(sfBack);
+    const sVerts=[];const sr0=.58,sr1=.26;
+    for(let p=0;p<10;p++){const a=-Math.PI/2+p*Math.PI/5,r=p%2?sr1:sr0;sVerts.push(Math.cos(a)*r,Math.sin(a)*r);}
+    const starShape=new THREE.Shape();starShape.moveTo(sVerts[0],sVerts[1]);
+    for(let p=2;p<sVerts.length;p+=2)starShape.lineTo(sVerts[p],sVerts[p+1]);
+    starShape.closePath();
+    const starGeo=new THREE.ExtrudeGeometry(starShape,{depth:.12,bevelEnabled:false});
+    s.viceStars=[];
+    for(let i=0;i<5;i++){
+      const sm=new THREE.Mesh(starGeo,new THREE.MeshBasicMaterial({color:0x2b3240}));
+      sm.position.set(-3.2+i*1.6,0,.13);starFrame.add(sm);s.viceStars.push(sm);
+    }
+    s.root.add(starFrame);
+
+    // 彩蛋 ③：Vice 夜间警用直升机 + 探照灯束 (y=24, z=-52, 远超轨道与视距碰撞)
+    const chG=new THREE.Group();chG.name="vicePatrolChopper";chG.position.set(0,24,-52);
+    const cb=batch();
+    cb.box(0x1b2436,0,0,0,1.6,1.3,4.2);cb.box(0xeaf2f8,0,.05,0,1.66,.35,4.24);
+    cb.box(0x5ec8e8,0,.22,1.6,1.35,.75,1.25);cb.box(0x1b2436,0,.25,-3.6,.35,.42,3.4);
+    cb.box(0x28bfd4,0,.78,-5.1,.28,.95,.65);
+    for(const sx of [-.68,.68]){cb.box(0x768290,sx,-.88,0,.1,.1,3.0);cb.box(0x768290,sx,-.65,.6,.08,.48,.08);cb.box(0x768290,sx,-.65,-.6,.08,.48,.08);}
+    cb.finish(chG,"chopperHull");
+    const mainRotor=new THREE.Group();mainRotor.position.set(0,.88,0);
+    const rb=batch();rb.box(0x283240,0,0,0,7.2,.06,.24);rb.box(0x283240,0,0,0,.24,.06,7.2);rb.finish(mainRotor,"chopperMainRotor");
+    chG.add(mainRotor);
+    const tailRotor=new THREE.Group();tailRotor.position.set(.26,.78,-5.1);
+    const trb=batch();trb.box(0xd6dee8,0,0,0,.05,1.35,.14);trb.box(0xd6dee8,0,0,0,.05,.14,1.35);trb.finish(tailRotor,"chopperTailRotor");
+    chG.add(tailRotor);
+    const redStrobe=new THREE.Mesh(new THREE.BoxGeometry(.22,.22,.22),new THREE.MeshBasicMaterial({color:0xff2855}));
+    redStrobe.position.set(-.6,-.52,.8);chG.add(redStrobe);
+    const blueStrobe=new THREE.Mesh(new THREE.BoxGeometry(.22,.22,.22),new THREE.MeshBasicMaterial({color:0x20d8ff}));
+    blueStrobe.position.set(.6,-.52,.8);chG.add(blueStrobe);
+    const beamMat=new THREE.ShaderMaterial({
+      transparent:true,depthWrite:false,side:THREE.DoubleSide,blending:THREE.AdditiveBlending,fog:false,
+      uniforms:{uOpacity:{value:0}},
+      vertexShader:`varying vec2 vUv;varying vec3 vN,vV;
+        void main(){
+          vUv=uv;
+          vec4 mv=modelViewMatrix*vec4(position,1.0);
+          vN=normalize(normalMatrix*normal);vV=normalize(-mv.xyz);
+          gl_Position=projectionMatrix*mv;
+        }`,
+      fragmentShader:`varying vec2 vUv;varying vec3 vN,vV;uniform float uOpacity;
+        void main(){
+          float fr=pow(abs(dot(normalize(vN),normalize(vV))),1.8);
+          float vFade=smoothstep(0.0,0.55,vUv.y)*smoothstep(1.0,0.82,vUv.y);
+          gl_FragColor=vec4(0.84,0.96,1.0,fr*vFade*uOpacity);
+        }`
+    });
+    const beamCone=new THREE.Mesh(new THREE.CylinderGeometry(.18,3.8,22,16,1,true),beamMat);
+    beamCone.position.set(0,-11.5,1.2);chG.add(beamCone);
+    s.root.add(chG);
+    s.chopper={g:chG,mainRotor,tailRotor,redStrobe,blueStrobe,beamCone,beamMat};
+
+    // 车辆：保留 sedan/bus/schoolbus 与 |x|∈[19,27] 约束，升级为 Vice 低趴车与霓虹底盘+液压弹跳
+    const types=["sedan","bus","sedan","schoolbus","sedan","bus"];
+    const lowColors=[0xf43f7a,0x22d3ee,0xfacc15];
+    types.forEach((type,i)=>{
+      const g=new THREE.Group(),car=batch(),body=batch(),long=type!=="sedan",len=long?7.4:4.5,h=long?2.5:1.32;
+      const color=type==="schoolbus"?0xf0b429:type==="bus"?0xeef6f8:lowColors[i%3];
+      body.box(color,0,.62,0,1.88,1.02,len);
+      body.box(color,0,long?1.8:1.15,long?0:.1,1.76,long?1.4:.62,long?len-.15:2.35);
+      body.box(0x284b5c,0,h*.8,long?-len/2-.005:-1.12,1.5,long?.85:.42,.06);
+      if(type==="bus"){
+        body.box(0x18f0ff,0,.95,0,1.91,.16,len-.1);body.box(0xff2e88,0,.74,0,1.91,.14,len-.1);
+      }else if(type==="schoolbus"){
+        body.box(0xe03e7a,0,.92,0,1.91,.16,len-.1);
+      }else{
+        body.box(0xffffff,0,.64,0,1.90,.12,len-.2);
+      }
+      for(let side of [-1,1]){
+        for(let z=long?-2.7:-.6;z<=(long?2.8:.8);z+=1.1)body.box(0x2e4e5c,side*.891,long?1.97:1.34,z,.035,long?.7:.36,long?.82:.9);
+        for(let z of [-len*.31,len*.31])car.add("sphere",0x242728,side*.92,.38,z,.15,.37,.37);
+        body.box(0xfff2b0,side*.6,.64,-len/2-.03,.32,.16,.04);body.box(0xff2e55,side*.6,.65,len/2+.03,.28,.14,.04);
+      }
+      body.box(type==="schoolbus"?0x3c3830:0xdce4ea,0,.78,-len/2-.04,1.5,.10,.06);
+      car.finish(g,`vehicle:${type}:wheels`);
+      const bodyMesh=body.finish(g,`vehicle:${type}`);
+      if(type==="sedan"){
+        const glowMesh=new THREE.Mesh(new THREE.PlaneGeometry(2.1,len+.3),new THREE.MeshBasicMaterial({color:i%2?0x22d3ee:0xf43f7a,transparent:true,opacity:.22,depthWrite:false,side:THREE.DoubleSide}));
+        glowMesh.rotation.x=-Math.PI/2;glowMesh.position.y=.04;g.add(glowMesh);
+        s.lights.push({mesh:glowMesh,threshold:.32,baseColor:new THREE.Color(i%2?0x22d3ee:0xf43f7a)});
+      }
+      const dir=i%2?1:-1;g.position.set((i<3?-1:1)*(dir===1?21:25),0,-40+i*17);g.rotation.y=dir===1?Math.PI:0;
+      s.root.add(g);
+      s.vehicles.push({g,body:bodyMesh,dir,speed:dir===1?4.8:5.6,type,phase:i*1.35,hydraulics:type==="sedan"});
+    });
+
+    // 日落到霓虹夜景颜色表 & 球场点光源
+    s.viceColors=[0x2378b5,0xf28b50,0xb8337a,0x0b1026].map(c=>new THREE.Color(c));
+    s.viceFogTint=new THREE.Color(0x3a2048);s.viceSkyColor=new THREE.Color();
+    s.sky=s.root.getObjectByName("aibaSkyDome");if(s.sky){s.skyBase=s.sky.geometry.attributes.color.array.slice();s.skyVertex=new THREE.Color();}
+    const lMag=new THREE.PointLight(0xff3898,0,26,1.3);lMag.position.set(-11,5.2,-3);s.root.add(lMag);s.realLights.push(lMag);
+    const lCyn=new THREE.PointLight(0x28e8ff,0,26,1.3);lCyn.position.set(11,5.2,6);s.root.add(lCyn);s.realLights.push(lCyn);
   }
   /* ---------------- 雨天京都:嵌在町屋之间的社区球场 ----------------
      §2.1 先定空间再放物件。从中线往外分带(m):
@@ -1381,13 +1601,13 @@
     }
   }
   function coast(s,b){
-    // 1. 洛杉矶 Angels Gate 海岸悬崖球场：篮筐后方紧贴草坡悬崖，直面开阔太平洋
-    b.box(0x526932,0,-.06,-13.2,120,.14,5.4); // 球场后方海岸草坡
-    b.box(0x3f5425,0,-.32,-16.2,120,.45,2.2); // 草坡崖沿
-    b.box(0x8e8670,0,-.95,-18.0,130,1.0,2.8); // 崖壁岩石
-    b.box(0x54595e,0,-.12,21,120,.1,24); // 后场沥青外坪
+    // 1. Vice Beach (Ocean Drive) 热带棕榈海滩球场：篮筐后方低矮草坡悬崖，直面加勒比-太平洋晚霞海面
+    b.box(0x4f7442,0,-.06,-13.2,120,.14,5.4);
+    b.box(0x3a5a32,0,-.32,-16.2,120,.45,2.2);
+    b.box(0xd9c7a3,0,-.95,-18.0,130,1.0,2.8); // 热带浅金色沙滩岩壁
+    b.box(0x454c59,0,-.12,21,120,.1,24);
 
-    // 远处 Catalina 岛屿平滑山影（照片左前方海天线上）
+    // 远处岛屿薄暮剪影
     const islGeo=new THREE.BufferGeometry();
     const islPts=[[-72,0],[-58,1.8],[-44,4.2],[-32,4.9],[-20,3.8],[-8,2.6],[8,1.5],[24,.7],[38,0]];
     const iPos=[];
@@ -1396,10 +1616,10 @@
       iPos.push(x0,-1.4,-118, x1,-1.4,-118, x0,h0-1.4,-118, x1,-1.4,-118, x1,h1-1.4,-118, x0,h0-1.4,-118);
     }
     islGeo.setAttribute("position",new THREE.Float32BufferAttribute(iPos,3));
-    const islMesh=new THREE.Mesh(islGeo,new THREE.MeshBasicMaterial({color:0x6e6a7c,side:THREE.DoubleSide,fog:false}));
+    const islMesh=new THREE.Mesh(islGeo,new THREE.MeshBasicMaterial({color:0x5e4c72,side:THREE.DoubleSide,fog:false}));
     islMesh.name="catalinaIsland";s.root.add(islMesh);
 
-    // 2. 真实动态海浪着色器（深邃太平洋蓝 + 夕阳晚霞反射 + 金光带 + 岸边白浪泡沫）
+    // 2. 真实动态海浪着色器：落日金波随比分渐变为 GTA 6 粉紫+青蓝霓虹海平线辉光
     const oceanGeo=new THREE.PlaneGeometry(260,135,84,48);oceanGeo.rotateX(-Math.PI/2);
     const oceanMat=new THREE.ShaderMaterial({
       uniforms:{
@@ -1427,18 +1647,22 @@
           float gz=.28*cos(vWorld.z*.28+uTime*1.4+vWorld.x*.05)*.22-.19*cos(vWorld.x*.18-vWorld.z*.19+uTime*1.05)*.14+.65*cos(vWorld.z*.65+uTime*2.1)*.07;
           vec3 N=normalize(vec3(-gx,1.0,-gz));
           float fres=pow(1.0-max(dot(N,V),0.0),3.8);
-          vec3 deepCol=mix(vec3(.05,.15,.28),vec3(.02,.07,.15),uProgress);
-          vec3 skyRef=mix(vec3(.92,.44,.22),vec3(.14,.18,.32),uProgress);
-          vec3 col=mix(deepCol,skyRef,fres*.46);
+          vec3 deepCol=mix(vec3(.04,.16,.28),vec3(.02,.05,.16),uProgress);
+          vec3 skyRef=mix(vec3(.95,.42,.28),mix(vec3(.78,.18,.56),vec3(.08,.24,.44),smoothstep(.65,1.0,uProgress)),smoothstep(.25,.75,uProgress));
+          vec3 col=mix(deepCol,skyRef,fres*.52);
           vec3 L=normalize(uSunPos-vWorld);
           vec3 H=normalize(L+V);
           float glint=pow(max(dot(N,H),0.0),68.0)*(1.0-uProgress*.85);
           col+=vec3(1.0,.76,.40)*glint*1.45;
+          // 黄昏与夜晚开启海面粉紫/青蓝霓虹天光涟漪反射
+          float neonMask=smoothstep(.45,.95,uProgress);
+          float horBand=exp(-abs(vWorld.z+108.0)*.045)*neonMask;
+          col+=mix(vec3(.96,.20,.62),vec3(.10,.92,1.0),.5+.5*sin(vWorld.x*.07+uTime*.9))*horBand*(.24+.30*fres);
           // 岸边拍岸白浪泡沫 + 波峰白沫
           float shore=smoothstep(-25.0,-18.0,vWorld.z);
           float surfBand=smoothstep(.52,.96,sin(vWorld.z*.85+uTime*1.75+sin(vWorld.x*.14)));
           float foam=clamp(shore*surfBand*.85+pow(vCrest,3.8)*.28,0.0,1.0);
-          col=mix(col,mix(vec3(.94,.89,.84),vec3(.48,.55,.66),uProgress),foam*.75);
+          col=mix(col,mix(vec3(.96,.90,.86),vec3(.52,.64,.82),uProgress),foam*.75);
           gl_FragColor=vec4(col,1.0);
           #include <tonemapping_fragment>
           #include <encodings_fragment>
@@ -1448,14 +1672,14 @@
     ocean.position.set(0,-1.25,-84);ocean.name="pacificOcean";s.root.add(ocean);
     s.ocean=ocean;s.oceanShader=oceanMat;s.wave=null;
 
-    // 3. 晚霞火烧云（低空多层橙红/金粉辉光云带）
+    // 3. 晚霞火烧云 (热粉与落日珊瑚金)
     const sunsetClouds=new THREE.Group();sunsetClouds.name="sunsetAfterglowClouds";
     const cloudSpecs=[
-      [-28,15,-92,38,3.6,0xff8b42,.52],[12,18,-96,46,4.2,0xff6448,.46],
-      [-6,11.5,-88,34,2.8,0xffba66,.56],[34,13.5,-90,30,3.0,0xf06858,.44],
-      [-44,12,-85,28,2.6,0xffa255,.42],[2,23,-98,54,4.8,0xd95b66,.35]
+      [-28,15,-92,38,3.6,0xff6b6b,.52],[12,18,-96,46,4.2,0xf43f8e,.46],
+      [-6,11.5,-88,34,2.8,0xffb45c,.56],[34,13.5,-90,30,3.0,0xe04888,.44],
+      [-44,12,-85,28,2.6,0xff8e53,.42],[2,23,-98,54,4.8,0xb8489c,.36]
     ];
-    cloudSpecs.forEach(([cx,cy,cz,cw,ch,col,op],idx)=>{
+    cloudSpecs.forEach(([cx,cy,cz,cw,ch,col,op])=>{
       const cm=new THREE.ShaderMaterial({
         transparent:true,depthWrite:false,fog:false,
         uniforms:{uCol:{value:new THREE.Color(col)},uOp:{value:op}},
@@ -1472,20 +1696,68 @@
     });
     s.root.add(sunsetClouds);s.sunsetClouds=sunsetClouds;
 
-    // 4. 海面上冲浪的人（乘浪起伏左右滑行）
+    // 4. Ocean Drive 粉彩装饰艺术 (Art Deco) 海滨酒店排屋 (|x|>=20.9, z=-12,2,16, 留足菜单环绕净空并框住球场视野)
+    const hotelColors=[0xf48fb1,0x5eead4,0xfde047,0xc4b5fd];
+    const decoNeons=[batch(),batch()];
+    const decoNeonHex=[0xff2e88,0x18f0ff];
+    for(const side of [-1,1]){
+      b.box(0x8c877c,side*21,-.08,4,5.6,.10,48); // Ocean Drive 海滨人行大道
+      b.box(side<0?0x28bfd4:0xe03e7a,side*18.6,.03,4,.14,.14,48);
+      for(let k=0;k<3;k++){
+        const hz=-12+k*14,hx=side*24.5,w=7.2,d=10.5,h=11.0+(k%2)*3.8;
+        const hCol=hotelColors[(k+(side>0?2:0))%4],faceX=hx-side*(w*.5+.04);
+        b.box(hCol,hx,h/2,hz,w,h,d);
+        b.box(0xffffff,hx,h+.24,hz,w+.4,.42,d+.4);
+        b.box(0xf5eedc,faceX-side*.26,h*.55,hz,.42,h*.85,1.2); // 中央突出 Art Deco 鳍片
+        // 阶梯状女儿墙冠顶 + 荧光门窗与垂直霓虹灯牌
+        b.box(hCol,hx,h+.85,hz,w*.55,.9,4.2);
+        decoNeons[(k+1)%2].box(0xffffff,faceX-side*.50,h*.56,hz,.14,h*.76,.34);
+        decoNeons[k%2].box(0xffffff,faceX-side*.14,h+.30,hz,.18,.20,d+.25);
+        for(let y=2.6;y<h-1.2;y+=2.8){
+          b.box(0xf7f2e8,faceX-side*.20,y+1.0,hz,.38,.15,d+.15); // 迈阿密特征横向遮阳檐
+          for(let dz=-3.4;dz<=3.4;dz+=2.2){
+            b.box(0x203846,faceX,y,hz+dz,.06,1.3,1.2);
+            decoNeons[(k+Math.round(y))%2].box(0xffffff,faceX-side*.05,y,hz+dz,.04,.95,.85);
+          }
+        }
+      }
+    }
+
+    // 5. 海岸 Art Deco 粉青双色救生塔 (x=-16.8, z=-12.5, 高<4.3m, 安全避开所有相机)
+    (()=>{
+      const tx=-16.8,tz=-12.5;
+      for(const dx of [-.95,.95])for(const dz of [-.95,.95])b.box(0xf5eedc,tx+dx,.72,tz+dz,.16,1.44,.16);
+      b.box(0x5eead4,tx,1.45,tz,3.1,.16,3.1);
+      b.box(0xf48fb1,tx,2.45,tz,2.35,1.8,2.35);
+      b.box(0x234252,tx+1.19,2.6,tz,.06,.75,1.4); // 朝海/场大窗
+      b.box(0xffffff,tx,3.45,tz,3.2,.18,3.2);
+      b.box(0x28bfd4,tx,3.62,tz,1.4,.22,1.4);
+      decoNeons[0].box(0xffffff,tx,3.50,tz,3.26,.11,3.26); // 救生塔霓虹檐灯
+      b.box(0xfacc15,tx+1.65,.78,tz+.6,.12,1.65,.42,0,0,-.22); // 倚靠冲浪板
+    })();
+
+    decoNeons.forEach((nb,idx)=>{
+      const m=nb.finish(s.root,`beachDecoNeon_${idx}`,true);
+      if(!m)return;
+      const c=new THREE.Color(decoNeonHex[idx]);
+      m.material.color.copy(c).multiplyScalar(.12);
+      s.lights.push({mesh:m,threshold:.22+idx*.24,baseColor:c});
+    });
+
+    // 6. 海面上冲浪的人 (保留并适配霓虹海岸浪)
     s.surfers=[];
     const surferConfigs=[
       [-20,-28,0xf2ede0,0x22262e,1.0,0.0],
-      [-5,-34,0xe66a4c,0x1f2833,0.85,1.8],
-      [14,-26,0x4fb0bd,0x2b2420,1.15,3.4],
-      [28,-38,0xf2c14e,0x202830,0.9,5.0]
+      [-5,-34,0xf43f8e,0x1f2833,0.85,1.8],
+      [14,-26,0x22d3ee,0x2b2420,1.15,3.4],
+      [28,-38,0xfacc15,0x202830,0.9,5.0]
     ];
     surferConfigs.forEach(([sx,sz,boardCol,suitCol,spd,ph])=>{
       const sg=new THREE.Group(),sb=batch();
-      sb.box(boardCol,0,0,0,.52,.06,1.85); // 冲浪板
-      sb.box(suitCol,0,.38,.05,.24,.52,.18,.15,0,0); // 屈膝半蹲躯干
-      sb.add("sphere",0xdfb48c,0,.78,.12,.11,.12,.11); // 头
-      sb.box(suitCol,-.26,.5,.05,.38,.09,.09,0,0,-.35); // 展开双臂平衡
+      sb.box(boardCol,0,0,0,.52,.06,1.85);
+      sb.box(suitCol,0,.38,.05,.24,.52,.18,.15,0,0);
+      sb.add("sphere",0xdfb48c,0,.78,.12,.11,.12,.11);
+      sb.box(suitCol,-.26,.5,.05,.38,.09,.09,0,0,-.35);
       sb.box(suitCol,.26,.5,.05,.38,.09,.09,0,0,.35);
       sb.box(suitCol,-.11,.15,-.12,.11,.34,.12,-.35,0,0);
       sb.box(suitCol,.11,.15,.22,.11,.34,.12,.35,0,0);
@@ -1494,17 +1766,99 @@
       s.surfers.push({g:sg,baseX:sx,baseZ:sz,speed:spd,phase:ph});
     });
 
-    // 远侧少量海岸棕榈与零星矮木，绝不遮挡正面海景
-    for(const [tx,tz,sc] of [[-19,-14,1.05],[18,-15,.95],[-24,6,1.1],[22,12,1.0]]){
+    // 7. 彩蛋 ①：海岸崖边涉水与晚霞高空V字编队的粉色火烈鸟群 (Pink Flamingos)
+    s.flamingos=[];
+    const makeFlamingo=(flying)=>{
+      const fg=new THREE.Group(),fb=batch();
+      fb.add("sphere",0xff4d88,0,0,0,.15,.13,.26); // 粉红躯干
+      fb.box(0xff7aa8,0,.04,-.06,.24,.10,.20);
+      if(!flying){
+        fb.box(0xe8997a,-.05,-.28,0,.032,.46,.032);
+        fb.box(0xe8997a,.05,-.24,.02,.032,.36,.032);
+      }else{
+        fb.box(0xff4d88,0,0,-.30,.04,.04,.34); // 飞行向后伸腿
+      }
+      fb.finish(fg,"flamingoBody");
+      const neckPivot=new THREE.Group();neckPivot.position.set(0,.05,.16);
+      const nb=batch();
+      nb.box(0xff5c94,0,.14,.04,.05,.32,.05,flying?1.35:0,0,0);
+      nb.add("sphere",0xff75a8,0,.30,flying?.22:.06,.055,.055,.065);
+      nb.box(0x23262e,0,.28,flying?.28:.12,.035,.045,.09,.3,0,0); // 黑尖弯喙
+      nb.finish(neckPivot,"flamingoHead");fg.add(neckPivot);
+      const wingL=new THREE.Group(),wingR=new THREE.Group();
+      wingL.position.set(-.13,.04,0);wingR.position.set(.13,.04,0);
+      const wlb=batch();wlb.box(0xff2e78,-.20,0,0,.38,.035,.17);wlb.finish(wingL,"flamingoWingL");
+      const wrb=batch();wrb.box(0xff2e78,.20,0,0,.38,.035,.17);wrb.finish(wingR,"flamingoWingR");
+      if(!flying){wingL.rotation.z=.45;wingR.rotation.z=-.45;}
+      fg.add(wingL);fg.add(wingR);
+      return {g:fg,neckPivot,wingL,wingR};
+    };
+    // 5 只岸边粉红火烈鸟 (z=-15.2, 高度 <1.3m, 全在崖边两侧)
+    [[-14.2,.5],[-12.4,.2],[-11.0,-.4],[11.2,.4],[13.6,-.2]].forEach(([fx,ry],idx)=>{
+      const f=makeFlamingo(false);
+      f.g.position.set(fx,.52,-15.2);f.g.rotation.y=ry;s.root.add(f.g);
+      s.flamingos.push({...f,mode:"wade",baseX:fx,baseY:.52,baseZ:-15.2,baseRy:ry,phase:idx*1.25});
+    });
+    // 5 只夕阳海天一线飞过的 V 字形火烈鸟群 (y=13.5, z=-56)
+    for(let idx=0;idx<5;idx++){
+      const f=makeFlamingo(true);
+      const bx=-38-Math.abs(idx-2)*2.6,by=13.5+(idx%2)*.45,bz=-56+(idx-2)*2.4;
+      f.g.position.set(bx,by,bz);f.g.rotation.y=Math.PI/2;s.root.add(f.g);
+      s.flamingos.push({...f,mode:"fly",baseX:bx,baseY:by,baseZ:bz,speed:5.2,phase:idx*.75});
+    }
+
+    // 8. 彩蛋 ②：近海疾驰的 Vice 离岸快艇 + V字浪花尾迹 (z=-46 与 z=-60)
+    s.speedboats=[];
+    [[-34,-46,1,0xffffff,0xff2e88],[38,-60,-1,0xf0f6fa,0x18f0ff]].forEach(([bx,bz,dir,hullCol,trimCol],idx)=>{
+      const bg=new THREE.Group(),bb=batch();
+      bb.box(hullCol,0,.15,0,4.8,.55,1.5);
+      bb.box(hullCol,dir*2.7,.22,0,1.2,.38,1.0); // 尖锐船首
+      bb.box(trimCol,0,.30,0,4.6,.12,1.56);     // 霓虹涂装条纹
+      bb.box(0x1f3646,dir*.2,.58,0,1.6,.35,1.15); // 倾斜挡风玻璃
+      bb.box(0x28303c,-dir*2.45,.28,0,.35,.5,.4); // 外挂双引擎
+      bb.finish(bg,"viceSpeedboat");
+      const wakeMat=new THREE.MeshBasicMaterial({color:0xecfaff,transparent:true,opacity:.58,depthWrite:false,side:THREE.DoubleSide});
+      const wake=new THREE.Mesh(new THREE.PlaneGeometry(8.5,2.4),wakeMat);
+      wake.rotation.x=-Math.PI/2;wake.position.set(-dir*6.4,.04,0);bg.add(wake);
+      bg.position.set(bx,-1.18,bz);s.root.add(bg);
+      s.speedboats.push({g:bg,wakeMat,dir,baseZ:bz,speed:7.5+idx*1.6,phase:idx*2.1});
+    });
+
+    // 9. 彩蛋 ③：远空巡航 Vice City 霓虹广告飞艇 (y=25, z=-92)
+    (()=>{
+      const blG=new THREE.Group(),blb=batch();
+      blb.add("sphere",0xe8eef5,0,0,0,8.2,2.5,2.6);
+      blb.box(0x202a38,0,-2.6,0,4.2,.8,1.1); // 吊舱
+      blb.box(0xff2e88,-6.2,1.6,0,2.4,1.6,.22); // 尾翼
+      blb.box(0x18f0ff,-6.2,-1.4,0,2.4,1.4,.22);
+      blb.box(0x18f0ff,-6.2,0,1.8,2.4,.22,1.6);
+      blb.box(0x18f0ff,-6.2,0,-1.8,2.4,.22,1.6);
+      blb.finish(blG,"viceBlimp");
+      const neonB=batch();
+      neonB.box(0xffffff,0,0,2.58,8.5,.45,.12);neonB.box(0xffffff,0,0,-2.58,8.5,.45,.12);
+      const neonBMesh=neonB.finish(blG,"viceBlimpNeon",true);
+      const bc=new THREE.Color(0xff2e88);neonBMesh.material.color.copy(bc).multiplyScalar(.16);
+      s.lights.push({mesh:neonBMesh,threshold:.32,baseColor:bc});
+      blG.position.set(-28,25,-92);s.root.add(blG);
+      s.blimp={g:blG,speed:2.4};
+    })();
+
+    // 远侧椰林与 Ocean Drive 霓虹路灯 (沿海岸线与人行大道外侧，避开酒店实体与环绕轨道)
+    for(const [tx,tz,sc] of [[-19,-14,1.02],[18,-15,.95],[-19.5,6,1.05],[19.5,12,1.0]]){
       tree(s,b,tx,tz,"palm",sc);
     }
-    for(const [lx,lz] of [[-13,-6],[13,-6],[-13,12],[13,12]])lamp(s,b,lx,lz);
+    for(const [lx,lz] of [[-13,-6],[13,-6],[-13,12],[13,12]]){
+      lamp(s,b,lx,lz,5,lx<0?0x18f0ff:0xff2e88,lx<0?1:-1);
+    }
 
     const sunDisc=new THREE.Mesh(new THREE.SphereGeometry(3.2,20,14),new THREE.MeshBasicMaterial({color:0xffb85c,transparent:true,fog:false}));
     sunDisc.position.set(-24,7.5,-96);s.root.add(sunDisc);s.sunDisc=sunDisc;
-    s.nightColors=[0xe87a48,0xb85872,0x39466f,0x101e35].map(c=>new THREE.Color(c));s.skyColor=new THREE.Color();s.fogTint=new THREE.Color(0x607485);s.oceanDay=new THREE.Color(0x163754);s.oceanNight=new THREE.Color(0x0a1628);
+    s.nightColors=[0xf47b42,0xd9387c,0x3b2667,0x091328].map(c=>new THREE.Color(c));
+    s.skyColor=new THREE.Color();s.fogTint=new THREE.Color(0x4b2b58);s.oceanDay=new THREE.Color(0x163754);s.oceanNight=new THREE.Color(0x0a1628);
+    s.cloudDayTint=new THREE.Color(0xffb89e);s.cloudNightTint=new THREE.Color(0x3b2d66);s.tmpCloudTint=new THREE.Color();
     s.sky=s.root.getObjectByName("aibaSkyDome");if(s.sky){s.skyBase=s.sky.geometry.attributes.color.array.slice();s.skyVertex=new THREE.Color();}
-    for(let x of [-12,12]){const light=new THREE.PointLight(0xffd2a0,0,23,1.3);light.position.set(x,4.8,0);s.root.add(light);s.realLights.push(light);}
+    const lMag=new THREE.PointLight(0xff4e98,0,26,1.3);lMag.position.set(-12,4.8,-2);s.root.add(lMag);s.realLights.push(lMag);
+    const lCyn=new THREE.PointLight(0x28e8ff,0,26,1.3);lCyn.position.set(12,4.8,4);s.root.add(lCyn);s.realLights.push(lCyn);
   }
   function makeBirdPool(s){
     // Pool before gameplay starts: no UUID allocation / Math.random in flight updates.
@@ -1525,6 +1879,161 @@
       }
     }
     for(let i=s.birds.length-1;i>=0;i--){const b=s.birds[i];b.age+=dt;b.g.position.addScaledVector(b.dir,dt*b.speed);b.wings.forEach((w,j)=>w.rotation.z=(j?1:-1)*(.1+Math.sin(b.age*7+b.phase)*.35));if(b.age>31){b.g.visible=false;s.birds.splice(i,1);}}
+  }
+  const _vfxDummy=new THREE.Object3D(),_vfxColor=new THREE.Color();
+  function buildViceAtmosphere(s){
+    if(s.name!=="outdoorSunny"&&s.name!=="beachSunset")return;
+    const rr=s.fxRng=rng(991023+(s.name==="beachSunset"?17:0));
+    const vice=s.name==="outdoorSunny";
+    // 1. 悬空萤光微尘：65% 环绕近端篮筐区域，35% 飘浮在球场外围，响应篮球尾迹与砸筐震荡
+    const count=s.mobile?160:360;
+    const pos=new Float32Array(count*3),col=new Float32Array(count*3);
+    const home=new Float32Array(count*3),off=new Float32Array(count*3),vel=new Float32Array(count*3);
+    const phase=new Float32Array(count),speed=new Float32Array(count);
+    const pal=vice?[0xff1e80,0x00e5ff,0xffbe2e]:[0xffbe2e,0xff1e80,0x00e5ff];
+    const pCols=pal.map(hex=>new THREE.Color(hex));
+    for(let i=0;i<count;i++){
+      const hoopZone=i<Math.floor(count*.65);
+      const hx=hoopZone?(rr()-.5)*11:(rr()-.5)*19;
+      const hy=hoopZone?(0.8+rr()*4.2):(0.6+rr()*3.6);
+      const hz=hoopZone?(-11.5+rr()*7.0):(-12+rr()*32);
+      home[i*3]=hx;home[i*3+1]=hy;home[i*3+2]=hz;
+      pos[i*3]=hx;pos[i*3+1]=hy;pos[i*3+2]=hz;
+      const c=pCols[i%pCols.length];
+      col[i*3]=c.r;col[i*3+1]=c.g;col[i*3+2]=c.b;
+      phase[i]=rr()*6.283;speed[i]=.6+rr()*1.1;
+    }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute("position",new THREE.BufferAttribute(pos,3));
+    geo.setAttribute("color",new THREE.BufferAttribute(col,3));
+    const cv=document.createElement("canvas");cv.width=cv.height=32;
+    const cg=cv.getContext("2d"),rad=cg.createRadialGradient(16,16,1,16,16,16);
+    rad.addColorStop(0,"rgba(255,255,255,1)");rad.addColorStop(.4,"rgba(255,255,255,.65)");rad.addColorStop(1,"rgba(255,255,255,0)");
+    cg.fillStyle=rad;cg.fillRect(0,0,32,32);
+    const spTex=new THREE.CanvasTexture(cv);
+    const moteMat=new THREE.PointsMaterial({map:spTex,size:vice?.085:.08,vertexColors:true,transparent:true,opacity:.08,depthWrite:false,blending:THREE.AdditiveBlending});
+    const motes=new THREE.Points(geo,moteMat);
+    motes.name="viceFloatingMotes";motes.frustumCulled=false;motes.renderOrder=4;
+    s.root.add(motes);
+
+    // 2. 砸框与进球爆散 3D 彩纸/热带扶桑花瓣池 (36 片)
+    const burstMax=36;
+    const pGeo=new THREE.PlaneGeometry(.22,.13,2,1);
+    const pp=pGeo.attributes.position;
+    for(let i=0;i<pp.count;i++){
+      const px=pp.getX(i);pp.setZ(i,px*px*1.8);
+    }
+    pGeo.computeVertexNormals();
+    const bMat=new THREE.MeshBasicMaterial({color:0xffffff,transparent:true,opacity:.95,side:THREE.DoubleSide,depthWrite:false});
+    const burstMesh=new THREE.InstancedMesh(pGeo,bMat,burstMax);
+    burstMesh.name="viceHoopBurst";burstMesh.frustumCulled=false;
+    burstMesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+    const bPal=vice?[0xff2e88,0x18f0ff,0xffd23f,0xc058ff]:[0xff3e88,0xff8b3d,0x18f0ff,0xffe596];
+    const slots=[];
+    for(let i=0;i<burstMax;i++){
+      const cHex=bPal[i%bPal.length];
+      burstMesh.setColorAt(i,_vfxColor.setHex(cHex).convertSRGBToLinear());
+      _vfxDummy.position.set(0,-99,0);_vfxDummy.scale.setScalar(.001);_vfxDummy.updateMatrix();
+      burstMesh.setMatrixAt(i,_vfxDummy.matrix);
+      slots.push({active:false,colorHex:cHex,x:0,y:0,z:0,vx:0,vy:0,vz:0,rx:0,ry:0,rz:0,vrx:0,vry:0,vrz:0,life:0,maxLife:1,scale:1});
+    }
+    if(burstMesh.instanceColor)burstMesh.instanceColor.needsUpdate=true;
+    burstMesh.count=0;
+    s.root.add(burstMesh);
+    s.viceFx={motes,moteMat,count,home,off,vel,phase,speed,burstMesh,burstMax,slots,cursor:0};
+  }
+  function updateViceAtmosphere(s,dt,progress){
+    const fx=s.viceFx;if(!fx)return;
+    const t=s.time,pos=fx.motes.geometry.attributes.position.array;
+    fx.moteMat.opacity=.08+clamp01(progress)*.52;
+    const hasBalls=typeof balls!=="undefined"&&Array.isArray(balls);
+    const damp=dt>0?Math.exp(-3.1*dt):1;
+    for(let i=0;i<fx.count;i++){
+      const j=i*3;
+      const hx=fx.home[j]+Math.sin(t*fx.speed[i]+fx.phase[i])*.16;
+      const hy=fx.home[j+1]+Math.cos(t*fx.speed[i]*.82+fx.phase[i])*.13;
+      const hz=fx.home[j+2]+Math.sin(t*fx.speed[i]*.71+fx.phase[i]*1.3)*.16;
+      let ox=fx.off[j],oy=fx.off[j+1],oz=fx.off[j+2];
+      let vx=fx.vel[j],vy=fx.vel[j+1],vz=fx.vel[j+2];
+      const px=hx+ox,py=hy+oy,pz=hz+oz;
+      if(hasBalls&&dt>0){
+        for(let bi=0;bi<balls.length;bi++){
+          const b=balls[bi];if(!b||!b.mesh||!b.mesh.visible)continue;
+          const bp=b.mesh.position,dx=px-bp.x,dy=py-bp.y,dz=pz-bp.z,d2=dx*dx+dy*dy+dz*dz;
+          if(d2<6.76&&d2>.0001){
+            const d=Math.sqrt(d2),inv=1/d,fall=(1-d/2.6)*dt*6.5;
+            vx+=(dx*inv*2.4-dz*inv*1.6)*fall;
+            vy+=(dy*inv*1.8+1.1)*fall;
+            vz+=(dz*inv*2.4+dx*inv*1.6)*fall;
+          }
+        }
+      }
+      if(dt>0){
+        vx=(vx-ox*3.6*dt)*damp;vy=(vy-oy*3.6*dt)*damp;vz=(vz-oz*3.6*dt)*damp;
+        ox+=vx*dt;oy+=vy*dt;oz+=vz*dt;
+        fx.off[j]=ox;fx.off[j+1]=oy;fx.off[j+2]=oz;
+        fx.vel[j]=vx;fx.vel[j+1]=vy;fx.vel[j+2]=vz;
+      }
+      pos[j]=hx+ox;pos[j+1]=hy+oy;pos[j+2]=hz+oz;
+    }
+    fx.motes.geometry.attributes.position.needsUpdate=true;
+
+    // 更新爆散的 3D 霓虹彩纸/扶桑花瓣
+    let activeCount=0;
+    const bDrag=dt>0?Math.exp(-2.1*dt):1;
+    for(let i=0;i<fx.burstMax;i++){
+      const p=fx.slots[i];if(!p.active)continue;
+      if(dt>0){
+        p.life+=dt;
+        if(p.life>=p.maxLife){p.active=false;continue;}
+        p.vy=(p.vy-2.2*dt)*bDrag;p.vx=p.vx*bDrag+.28*Math.sin(t*2.4+i)*dt;p.vz=p.vz*bDrag+.18*Math.cos(t*1.9+i)*dt;
+        p.x+=p.vx*dt;p.y+=p.vy*dt;p.z+=p.vz*dt;
+        if(p.y<.04){p.y=.04;p.vy*=-.25;p.vx*=.6;p.vz*=.6;}
+        p.rx+=p.vrx*dt;p.ry+=p.vry*dt;p.rz+=p.vrz*dt;
+      }
+      const k=1-clamp01((p.life/p.maxLife-.72)/.28);
+      _vfxDummy.position.set(p.x,p.y,p.z);
+      _vfxDummy.rotation.set(p.rx+Math.sin(t*5+i)*.4,p.ry,p.rz);
+      _vfxDummy.scale.setScalar(p.scale*k);
+      _vfxDummy.updateMatrix();
+      fx.burstMesh.setMatrixAt(activeCount,_vfxDummy.matrix);
+      fx.burstMesh.setColorAt(activeCount,_vfxColor.setHex(p.colorHex).convertSRGBToLinear());
+      activeCount++;
+    }
+    fx.burstMesh.count=activeCount;
+    if(activeCount>0){
+      fx.burstMesh.instanceMatrix.needsUpdate=true;
+      if(fx.burstMesh.instanceColor)fx.burstMesh.instanceColor.needsUpdate=true;
+    }
+  }
+  function hoopImpact(kind,x,y,z,force=3.0){
+    const s=typeof environmentRoot!=="undefined"&&environmentRoot?.userData?.placeState;
+    if(!s||!s.viceFx)return;
+    const fx=s.viceFx,rr=s.fxRng;
+    const amp=Math.min(5.0,Math.max(1.8,force||3.0));
+    s.celebrateTimer=Math.max(s.celebrateTimer||0,kind==="made"?2.8:1.4);
+    // 1. 冲击波弹开篮筐周围悬浮微尘
+    for(let i=0;i<fx.count;i++){
+      const j=i*3,px=fx.home[j]+fx.off[j],py=fx.home[j+1]+fx.off[j+1],pz=fx.home[j+2]+fx.off[j+2];
+      const dx=px-x,dy=py-y,dz=pz-z,d2=dx*dx+dy*dy+dz*dz;
+      if(d2<20.25&&d2>.0001){
+        const d=Math.sqrt(d2),inv=1/d,fall=(1-d/4.5)*amp*1.5;
+        fx.vel[j]+=(dx*inv-dz*inv*.45)*fall;
+        fx.vel[j+1]+=(dy*inv+.35)*fall;
+        fx.vel[j+2]+=(dz*inv+dx*inv*.45)*fall;
+      }
+    }
+    // 2. 爆散 24..36 片 3D 热带花瓣 / 霓虹彩纸
+    const burstCount=kind==="made"?36:(amp>3.1?28:24);
+    for(let k=0;k<burstCount;k++){
+      const slot=fx.slots[fx.cursor];fx.cursor=(fx.cursor+1)%fx.burstMax;
+      const a=rr()*6.283,spd=(1.2+rr()*2.4)*(amp/3.0);
+      slot.active=true;slot.x=x+(rr()-.5)*.45;slot.y=y+(rr()-.5)*.28;slot.z=z+(rr()-.5)*.45;
+      slot.vx=Math.cos(a)*spd;slot.vy=1.4+rr()*2.6;slot.vz=Math.sin(a)*spd;
+      slot.rx=rr()*6.28;slot.ry=rr()*6.28;slot.rz=rr()*6.28;
+      slot.vrx=(rr()-.5)*8;slot.vry=(rr()-.5)*8;slot.vrz=(rr()-.5)*6;
+      slot.life=0;slot.maxLife=1.4+rr()*1.3;slot.scale=.85+rr()*.6;
+    }
   }
   function build(root,name){
     const s={root,name,r:rng(72191+Object.keys(palettes).indexOf(name)*173),time:0,mobile:matchMedia("(pointer:coarse)").matches,plants:[],clouds:[],vehicles:[],lights:[],realLights:[],birds:[],nextBird:24};root.userData.placeState=s;
@@ -1552,7 +2061,7 @@
     }
     const architecture=b.finish(root,`placeArchitecture:${name}`);
     if(name==="rainforest"&&architecture)architecture.castShadow=true;
-    if(name!=="lunarCrater"&&name!=="beachSunset"&&name!=="tokyoRooftop"&&name!=="flowerCourt"&&name!=="rainforest"){clouds(s);}
+    if(name!=="lunarCrater"&&name!=="tokyoRooftop"&&name!=="flowerCourt"&&name!=="rainforest"){clouds(s);}
     if(name!=="lunarCrater"&&name!=="tokyoRooftop"&&name!=="rainforest"){makeBirdPool(s);}
     if(name==="outdoorSunny"){scene.fog.near=52;scene.fog.far=145;}
     if(name==="shonanCoast"){scene.fog.near=58;scene.fog.far=190;}
@@ -1567,6 +2076,7 @@
       if(m.clearcoatRoughness!==undefined)m.clearcoatRoughness=(name==="rainyCourt"||name==="tokyoRooftop")?.24:.5;
       m.envMapIntensity=name==="tokyoRooftop"?.18:.04;m.needsUpdate=true;
     }
+    if(name==="outdoorSunny"||name==="beachSunset")buildViceAtmosphere(s);
     const hidden=["courtZone","courtLine","courtMark","nearCourtCrowdRoot"];
     if(name==="lunarCrater"||name==="flowerCourt"||name==="rainforest")hidden.push("courtFloor");
     scene.traverse(o=>{if(hidden.includes(o.name)){o.userData.placeHidden=o.visible;o.visible=false;}});
@@ -1593,9 +2103,82 @@
       }
     }
     s.clouds.forEach(c=>{c.g.position.x+=dt*c.speed;if(c.g.position.x>65)c.g.position.x=-65;});
-    s.vehicles.forEach(v=>{v.g.position.z+=v.dir*v.speed*dt;if(v.g.position.z>59)v.g.position.z=-55;if(v.g.position.z< -59)v.g.position.z=55;});
+    if(s.celebrateTimer>0)s.celebrateTimer=Math.max(0,s.celebrateTimer-dt);
+    const celeb=s.celebrateTimer>0?Math.min(1,s.celebrateTimer*.55):0;
+    s.vehicles.forEach(v=>{
+      v.g.position.z+=v.dir*v.speed*dt;
+      if(v.g.position.z>59)v.g.position.z=-55;
+      if(v.g.position.z< -59)v.g.position.z=55;
+      if(v.hydraulics&&v.body){
+        const hop=Math.abs(Math.sin(s.time*(celeb>0?7.5:2.4)+v.phase));
+        v.body.position.y=(.04+.14*celeb)*Math.pow(hop,1.35);
+        v.body.rotation.x=Math.sin(s.time*3.8+v.phase)*(.025+.06*celeb);
+      }
+    });
     birds(s,dt);
-    if(s.name==="beachSunset"){
+    if(s.name==="outdoorSunny"){
+      const targetP=clamp01(progress);
+      if(s.viceProgress===undefined){s.viceProgress=targetP;s.viceProgressVel=0;}
+      if(dt<=0){s.viceProgress=targetP;s.viceProgressVel=0;}
+      else{
+        const isBattle=typeof G!=="undefined"&&!!G&&G.mode==="battle";
+        const st=isBattle?6.0:2.6,maxSpd=isBattle?.020:.065,omega=2/st,x=omega*dt;
+        const exp=1/(1+x+0.48*x*x+0.235*x*x*x);
+        const change=THREE.MathUtils.clamp(s.viceProgress-targetP,-maxSpd*st,maxSpd*st);
+        const clampedT=s.viceProgress-change;
+        const temp=(s.viceProgressVel+omega*change)*dt;
+        s.viceProgressVel=(s.viceProgressVel-omega*temp)*exp;
+        let out=clampedT+(change+temp)*exp;
+        if((targetP-s.viceProgress>0)===(out>targetP)){out=targetP;s.viceProgressVel=0;}
+        s.viceProgress=clamp01(out);
+      }
+      const p=s.viceProgress,u=p*3,idx=Math.min(2,Math.floor(u));
+      s.viceSkyColor.copy(s.viceColors[idx]).lerp(s.viceColors[idx+1],u-idx);
+      scene.background.copy(s.viceSkyColor);scene.fog.color.copy(s.viceSkyColor).lerp(s.viceFogTint,.22);
+      if(s.sky){const attr=s.sky.geometry.attributes.color;for(let j=0;j<attr.count;j++){const a=j*3,base=s.skyBase;s.skyVertex.setRGB(base[a],base[a+1],base[a+2]).lerp(s.viceSkyColor,clamp01(.15+p*.92));attr.setXYZ(j,s.skyVertex.r,s.skyVertex.g,s.skyVertex.b);}attr.needsUpdate=true;}
+      let on=0;
+      s.lights.forEach((l,li)=>{
+        const t=clamp01((p-l.threshold)/.12);
+        const flash=celeb>0?(.22*Math.sin(s.time*12+li)):0;
+        const sc=.16+t*.92+Math.max(0,flash);
+        if(l.baseColor)l.mesh.material.color.copy(l.baseColor).multiplyScalar(sc);
+        else l.mesh.material.color.setScalar(clamp01(sc));
+        if(t>.5)on++;
+      });
+      s.root.userData.litWindows=on;
+      s.realLights.forEach(l=>{l.intensity=clamp01((p-.32)/.35)*1.35+celeb*.55;});
+      ambient.intensity=.36-p*.10;hemi.intensity=.55-p*.18;
+      sun.intensity=.95-p*.70;
+      sun.color.setHex(p<.35?0xffe4ad:(p<.72?0xff7aa8:0x7a90c8));
+      sun.position.set(-12-p*10,Math.max(3.5,22-p*17),14-p*32);
+      s.clouds.forEach(c=>{const cm=c.g.children[0].material;if(cm)cm.color.copy(s.viceSkyColor).lerp(s.viceFogTint,.32);});
+      if(s.gator){
+        s.gator.tail.rotation.y=Math.sin(s.time*(celeb>0?6.8:1.9))*(.14+celeb*.18);
+        s.gator.jaw.rotation.x=celeb>0?(Math.max(0,Math.sin(s.time*11))*.42*celeb):(.025+.025*Math.sin(s.time*1.3));
+      }
+      if(s.viceStars){
+        const lit=celeb>0?5:Math.min(5,1+Math.floor(p*4.99));
+        s.viceStars.forEach((sm,si)=>{
+          if(si<lit){
+            if(celeb>.25)sm.material.color.setHex(((Math.floor(s.time*8)+si)%2)?0xff2e55:0x20d8ff);
+            else sm.material.color.setHex(0xffd23f);
+          }else sm.material.color.setHex(0x2b3240);
+        });
+      }
+      if(s.chopper){
+        const ch=s.chopper,ct=s.time*.32;
+        const nx=Math.sin(ct)*26,nz=-52+Math.sin(ct*2)*7,dx=Math.cos(ct)*26*.32,dz=Math.cos(ct*2)*14*.32;
+        ch.g.position.set(nx,24+Math.cos(s.time*.5)*1.4,nz);
+        ch.g.rotation.y=Math.atan2(dx,dz);ch.g.rotation.x=.10;
+        ch.mainRotor.rotation.y+=dt*18;ch.tailRotor.rotation.x+=dt*26;
+        const strobe=Math.sin(s.time*(celeb>0?18:7));
+        ch.redStrobe.visible=strobe>0;ch.blueStrobe.visible=strobe<=0;
+        ch.beamCone.rotation.x=Math.sin(s.time*1.1)*.16;ch.beamCone.rotation.z=Math.cos(s.time*.8)*.22;
+        ch.beamMat.uniforms.uOpacity.value=clamp01((p-.28)/.35)*.28+celeb*.12;
+      }
+      updateViceAtmosphere(s,dt,p);
+      document.documentElement.dataset.environmentPhase=p<.25?"tropical":p<.5?"goldenDusk":p<.78?"magentaRush":"viceNight";
+    }else if(s.name==="beachSunset"){
       const targetP=clamp01(progress);
       if(s.beachProgress===undefined){s.beachProgress=targetP;s.beachProgressVel=0;}
       if(dt<=0){s.beachProgress=targetP;s.beachProgressVel=0;}
@@ -1623,12 +2206,49 @@
         sf.g.rotation.z=Math.sin(ph*.45)*.22;
         sf.g.rotation.x=Math.cos(ph*.9)*.12;
       });
-      let on=0;s.lights.forEach(l=>{const t=clamp01((p-l.threshold)/.07);l.mesh.material.color.setScalar(.12+t*.88);if(t>.5)on++;});s.root.userData.litWindows=on;
-      s.realLights.forEach(l=>l.intensity=clamp01((p-.5)/.3)*1.25);ambient.intensity=.36-p*.08;hemi.intensity=.52-p*.15;sun.intensity=1.25-p*.92;sun.color.setHex(p>.6?0x9aa9c4:0xffbe78);
+      if(s.flamingos)s.flamingos.forEach(f=>{
+        if(f.mode==="wade"){
+          f.neckPivot.rotation.x=Math.max(0,Math.sin(s.time*1.4+f.phase))*.45;
+          const flap=celeb>0?(Math.abs(Math.sin(s.time*11+f.phase))*.48*celeb):0;
+          f.wingL.rotation.z=.45+flap;f.wingR.rotation.z=-.45-flap;
+        }else{
+          f.g.position.x+=f.speed*dt*(1+celeb*.35);
+          if(f.g.position.x>68)f.g.position.x=-68;
+          f.g.position.y=f.baseY+Math.sin(s.time*2.2+f.phase)*.35;
+          const w=Math.sin(s.time*7.5+f.phase)*.55;
+          f.wingL.rotation.z=w;f.wingR.rotation.z=-w;
+        }
+      });
+      if(s.speedboats)s.speedboats.forEach(sb=>{
+        sb.g.position.x+=sb.dir*sb.speed*dt*(1+celeb*.75);
+        if(sb.g.position.x>78)sb.g.position.x=-78;
+        if(sb.g.position.x< -78)sb.g.position.x=78;
+        sb.g.position.y=-1.18+Math.sin(s.time*3.2+sb.phase)*.14+celeb*.12;
+        sb.g.rotation.z=sb.dir*(.04+.10*celeb+Math.sin(s.time*3.0+sb.phase)*.03);
+        sb.wakeMat.opacity=.46+celeb*.32+.1*Math.sin(s.time*5+sb.phase);
+      });
+      if(s.blimp){
+        s.blimp.g.position.x+=s.blimp.speed*dt;
+        if(s.blimp.g.position.x>75)s.blimp.g.position.x=-75;
+        s.blimp.g.position.y=25+Math.sin(s.time*.4)*.75;
+      }
+      let on=0;
+      s.lights.forEach(l=>{
+        const t=clamp01((p-l.threshold)/.07);
+        const sc=.12+t*.92+celeb*.20;
+        if(l.baseColor)l.mesh.material.color.copy(l.baseColor).multiplyScalar(sc);
+        else l.mesh.material.color.setScalar(clamp01(sc));
+        if(t>.5)on++;
+      });
+      s.root.userData.litWindows=on;
+      s.realLights.forEach(l=>l.intensity=clamp01((p-.48)/.3)*1.35+celeb*.45);
+      ambient.intensity=.36-p*.08;hemi.intensity=.52-p*.15;sun.intensity=1.25-p*.92;sun.color.setHex(p>.6?0x9aa9c4:0xffbe78);
       sun.position.set(-22,Math.max(1.8,8.5-p*6.7),-36);
-      s.clouds.forEach(c=>c.g.children[0].material.color.copy(s.skyColor).lerp(s.fogTint,.45-p*.25));
+      s.tmpCloudTint.copy(s.skyColor).lerp(p<.55?s.cloudDayTint:s.cloudNightTint,.38);
+      s.clouds.forEach(c=>c.g.children[0].material.color.copy(s.tmpCloudTint));
+      updateViceAtmosphere(s,dt,p);
       document.documentElement.dataset.environmentPhase=p<.25?"golden":p<.5?"sunset":p<.75?"dusk":"night";
     }else s.lights.forEach(l=>l.mesh.material.color.setScalar(s.name==="rainyCourt"?.9:.18));
   }
-  window.AIBAWorldPlaces={enabled,build,update,restore,palettes,rng};
+  window.AIBAWorldPlaces={enabled,build,update,restore,palettes,rng,hoopImpact};
 })();

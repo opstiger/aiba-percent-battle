@@ -1962,16 +1962,87 @@
     const tau=Math.PI*2;
     const bounds={halfWidth:16,minZ:-13,maxZ:23};
 
+    // Non-periodic 2D value noise & golden-angle fBm shared by terrain, grass cushions & wildflower heights (zero grid/diamond waves).
+    function turfHash(ix,iz){
+      const k=((Math.imul(ix+131,374761393)^Math.imul(iz+59,668265263))>>>0);
+      return (((Math.imul(k^(k>>>13),1274126177))>>>0)%8192)/8191;
+    }
+    function turfNoise2D(x,z){
+      const ix=Math.floor(x),iz=Math.floor(z),fx=x-ix,fz=z-iz;
+      const ux=fx*fx*(3-2*fx),uz=fz*fz*(3-2*fz);
+      const a=turfHash(ix,iz),b=turfHash(ix+1,iz),c=turfHash(ix,iz+1),d=turfHash(ix+1,iz+1);
+      return a+(b-a)*ux+(c-a)*uz+(a-b-c+d)*ux*uz;
+    }
+    function turfFbm(x,z){
+      let v=0.54*turfNoise2D(x,z);
+      const x1=0.80*x-0.60*z+17.3,z1=0.60*x+0.80*z-11.7;
+      v+=0.30*turfNoise2D(x1*2.03,z1*2.03);
+      const x2=0.80*x1-0.60*z1-23.1,z2=0.60*x1+0.80*z1+19.4;
+      v+=0.16*turfNoise2D(x2*4.07,z2*4.07);
+      return v;
+    }
+
     function elevation(x,z){
       const along=z-COURT.midZ,r=Math.hypot(x,along);
-      const clearance=Math.hypot(Math.max(0,Math.abs(x)-13),Math.max(0,Math.abs(along)-19));
-      const waves=Math.sin(x*.043+z*.047)+.68*Math.cos(z*.091-x*.037)+.24*Math.sin(x*.183-z*.137);
-      const folds=smooth(r,22,43)*(3.7*Math.sin(z*.111+x*.073)+2.5*Math.cos(x*.128-z*.041));
+      const clearance=Math.hypot(Math.max(0,Math.abs(x)-11.8),Math.max(0,Math.abs(along)-17.6));
+      // Subtle 1-3cm natural pasture undulation even across the semi-wild court clearing so it never feels laser-leveled.
+      const microUndul=(turfFbm(x*0.085+3.1,z*0.085-4.7)-0.5)*0.042*(1-smooth(clearance,2,14));
+      const nA=turfFbm(x*0.026+7.4,z*0.026+2.9)*2-1;
+      const nB=turfFbm(x*0.058-13.2,z*0.058+9.6)*2-1;
+      const waves=nA*1.35+nB*0.52;
+      const folds=smooth(r,22,45)*((turfFbm(x*0.038+31.0,z*0.038-18.0)*2-1)*4.8+(turfFbm(x*0.074-21.0,z*0.074+14.0)*2-1)*2.1);
       const shoulder=8.8*Math.exp(-((x+51)**2/1560+(along+57)**2/5500))
         +11.8*Math.exp(-((x-82)**2/2300+(along+32)**2/8200));
       // The far foot of the meadow drops below the rock layers, outside the tree and flower belts.
       const foothill=smooth(r,126,184);
-      return -.025+smooth(clearance,1,16)*((waves*(1.5+Math.min(r/82,2.3))+shoulder+folds)*(1-foothill)-4.7*foothill);
+      return -.025+microUndul+smooth(clearance,0.5,16)*((waves*(1.5+Math.min(r/82,2.3))+shoulder+folds)*(1-foothill)-4.7*foothill);
+    }
+
+    function terrainNormalAt(x,z,out){
+      const e=0.65;
+      const nx=elevation(x-e,z)-elevation(x+e,z);
+      const nz=elevation(x,z-e)-elevation(x,z+e);
+      return out.set(nx,2*e,nz).normalize();
+    }
+
+    function terrainHorizonAt(x,z,y){
+      let obstruction=-.38;
+      for(const distance of [3,6,10,15,22,32,45,62,82,108]){
+        obstruction=Math.max(obstruction,(elevation(x-.49*distance,z+.872*distance)-y-.12)/distance);
+      }
+      return obstruction;
+    }
+
+    function turfWearAt(x,z){
+      const wx=x+(turfNoise2D(x*0.42+5.1,z*0.42-2.3)-0.5)*0.95;
+      const wz=z+(turfNoise2D(x*0.42-8.4,z*0.42+6.7)-0.5)*0.95;
+      const hoopNear=Math.exp(-(((wx)/2.1)**2+((wz+8.2)/2.5)**2));
+      const hoopFar=Math.exp(-(((wx)/1.9)**2+((wz-17.7)/2.2)**2))*0.62;
+      const arcDist=Math.abs(Math.hypot(wx,wz+9.25)-7.15);
+      const arcWear=Math.exp(-(arcDist*arcDist)/0.95)*smooth(wz,-10.5,-1.0)*(0.45+0.55*turfNoise2D(wx*0.55+12,wz*0.55));
+      const laneNear=1-smooth(((wx-0.18)/2.55)**2+((wz+5.5)/4.6)**2,0.22,1.18);
+      const eastCurve=8.8+(z-13.5)*.46+2.2*Math.sin(z*.16+.5);
+      const eastPath=Math.exp(-(((x-eastCurve)/1.05)**2))*smooth(z,10.5,14.5)*(1-smooth(z,48,68));
+      const westCurve=-9.2-(z+6.0)*.38+1.8*Math.cos(z*.19);
+      const westPath=Math.exp(-(((x-westCurve)/.95)**2))*smooth(-z,3.0,8.5)*(1-smooth(-z,34,52));
+      const patch=turfFbm(x*0.22+4.3,z*0.22-7.1);
+      const raw=Math.max(hoopNear*0.80,hoopFar*0.65,arcWear*0.64,Math.max(eastPath,westPath)*0.74,laneNear*(0.30+patch*0.42));
+      return THREE.MathUtils.clamp(raw*(0.72+patch*0.68),0,0.75);
+    }
+
+    function turfHeightAt(x,z){
+      // Semi-wild pasture clearing: ragged hand-scythed boundary + undulating tussocks inside & outside the court.
+      const warpA=(turfFbm(x*0.17+11.2,z*0.17-5.8)-0.5)*2.9;
+      const warpB=(turfFbm(x*0.15-7.4,z*0.15+13.1)-0.5)*3.1;
+      const edgeX=Math.max(0,Math.abs(x)+warpA-6.85);
+      const edgeZ=Math.max(0,Math.abs(z-COURT.midZ)+warpB-13.4);
+      const wildBlend=smooth(Math.hypot(edgeX,edgeZ),0.0,3.6);
+      const billow=turfFbm(x*0.13-3.7,z*0.13+8.9);
+      const tussock=turfNoise2D(x*0.52+19.1,z*0.52-14.3);
+      const wear=turfWearAt(x,z);
+      const courtH=(0.082+0.115*billow+0.048*tussock)*(1-wear*0.56);
+      const wildH=0.165+0.235*Math.pow(billow,1.15)+0.105*tussock;
+      return THREE.MathUtils.lerp(courtH,wildH,wildBlend);
     }
 
     function courtMarks(){
@@ -1981,33 +2052,38 @@
       const {nearBaseline:near,farBaseline:far,halfWidth,midZ}=COURT;
       const line=(x,z,x2,z2)=>{g.beginPath();g.moveTo(x,z);g.lineTo(x2,z2);g.stroke();};
       const circle=(z,r,a=0,b=tau)=>{g.beginPath();g.arc(0,z,r,a,b);g.stroke();};
-      // Bake a mown playing surface into the existing chalk map so its silhouette survives minification.
-      g.fillStyle="rgba(172,157,89,.27)";
-      g.fillRect(-halfWidth,near,COURT.width,far-near);
-      g.strokeStyle="rgba(94,101,54,.44)";g.lineWidth=.55;
-      g.strokeRect(-halfWidth-.28,near-.28,COURT.width+.56,far-near+.56);
+      // No sharp rectangular turf fill! Only soft, irregular radial wear smudges + hand-dusted pasture lime lines
+      // so the court reads as a semi-wild clearing scythed right out of a real Xinjiang grassland.
+      for(const [cx,cz,rx,rz,al] of [[0,-5.8,6.8,5.6,.12],[0,14.8,6.4,5.2,.09],[0,midZ,6.6,8.2,.07]]){
+        g.save();g.translate(cx,cz);g.scale(rx,rz);
+        const rg=g.createRadialGradient(0,0,.1,0,0,1);
+        rg.addColorStop(0,`rgba(168,150,92,${al})`);
+        rg.addColorStop(.65,`rgba(152,140,84,${(al*.45).toFixed(3)})`);
+        rg.addColorStop(1,"rgba(152,140,84,0)");
+        g.fillStyle=rg;g.beginPath();g.arc(0,0,1,0,tau);g.fill();g.restore();
+      }
       g.strokeStyle="#f2e9cc";g.lineCap="round";
-      g.globalAlpha=.73;g.lineWidth=.061;g.setLineDash([2.1,.024,1.03,.068,.84,.042]);
+      g.globalAlpha=.74;g.lineWidth=.064;g.setLineDash([1.65,.055,.92,.085,.74,.062]);
       g.strokeRect(-halfWidth,near,COURT.width,far-near);
       line(-halfWidth,midZ,halfWidth,midZ);circle(midZ,1.8);
       for(const [z,baseline,dir] of [[HOOP.z,near,1],[COURT.farHoopZ,far,-1]]){
         const turn=dir===1?0:Math.PI,free=baseline+dir*5.79;
-        g.globalAlpha=.65;g.lineWidth=.055;g.setLineDash([1.22,.055,1.6,.040]);
+        g.globalAlpha=.66;g.lineWidth=.058;g.setLineDash([1.12,.068,1.42,.055]);
         g.strokeRect(-2.45,Math.min(baseline,free),4.9,5.79);
         circle(free,1.8,turn,turn+Math.PI);
-        g.setLineDash([.15,.13]);circle(free,1.8,turn+Math.PI,turn+tau);
-        g.setLineDash([.86,.045,1.2,.039]);circle(z,1.22,turn,turn+Math.PI);
+        g.setLineDash([.15,.14]);circle(free,1.8,turn+Math.PI,turn+tau);
+        g.setLineDash([.82,.058,1.12,.050]);circle(z,1.22,turn,turn+Math.PI);
         const arcR=7.24,sideX=6.71,angle=Math.acos(sideX/arcR);
         const join=z+dir*Math.sqrt(arcR*arcR-sideX*sideX);
-        g.globalAlpha=.84;g.lineWidth=.071;g.setLineDash([2.3,.051,1.8,.043,.89,.036]);
+        g.globalAlpha=.85;g.lineWidth=.074;g.setLineDash([1.9,.065,1.45,.058,.82,.048]);
         circle(z,arcR,turn+angle,turn+Math.PI-angle);
         for(const side of [-1,1]){
           line(side*sideX,baseline,side*sideX,join);
-          g.globalAlpha=.64;g.lineWidth=.052;
+          g.globalAlpha=.64;g.lineWidth=.054;
           for(const lane of [2.13,2.44,3.35,4.27]){
             const az=baseline+dir*lane;line(side*2.45,az,side*2.73,az);
           }
-          g.globalAlpha=.84;g.lineWidth=.071;
+          g.globalAlpha=.85;g.lineWidth=.074;
         }
       }
       const map=new THREE.CanvasTexture(canvas);map.name="placeSurface:flowerCourt";
@@ -2022,7 +2098,18 @@
       return map;
     }
 
-    // 新疆喀拉峻/那拉提雪岭云杉林带 614 棵实树烘焙阴影贴图 (meadowTreeMap: R=方向性锥形投射长树影, G=林下松针腐殖质与树根接触暗部 AO) + 4 棵近景主云杉精确解析阴影
+    // Shared ground/grass color harmony, 3-tier grass & spruce LODs, hero spruces, and per-layer controls
+    // adapted from MIT-licensed references: Long Wind (grass-glsl.js / grass.js), Tiny Planet (flora/wind.ts), and Valley Ride.
+    const HERO_SPRUCES=[
+      [-22.5,-24.5,11.6],
+      [25.5,-19.5,10.4],
+      [-26.5,22.5,12.2],
+      [27.0,26.0,9.8],
+      [-24.0,-5.0,10.8],
+      [25.0,3.5,11.2]
+    ];
+
+    // 新疆喀拉峻/那拉提雪岭云杉林带实树烘焙阴影贴图 (meadowTreeMap: R=方向性锥形投射长树影, G=林下松针腐殖质与树根接触暗部 AO) + 6 棵近景主云杉精确解析阴影
     const spruceShadowGLSL=`
       uniform sampler2D meadowTreeMap;
       vec2 sampleSpruceForest(vec3 worldPos, vec3 sunDir){
@@ -2036,8 +2123,10 @@
         vec3 h1 = vec3(25.5, -19.5, 10.4);
         vec3 h2 = vec3(-26.5, 22.5, 12.2);
         vec3 h3 = vec3(27.0, 26.0, 9.8);
-        for(int i=0;i<4;i++){
-          vec3 h = i==0?h0:(i==1?h1:(i==2?h2:h3));
+        vec3 h4 = vec3(-24.0, -5.0, 10.8);
+        vec3 h5 = vec3(25.0, 3.5, 11.2);
+        for(int i=0;i<6;i++){
+          vec3 h = i==0?h0:(i==1?h1:(i==2?h2:(i==3?h3:(i==4?h4:h5))));
           vec2 d = p - h.xy;
           heroAO = max(heroAO, exp(-dot(d,d)/(h.z*1.35))*0.82);
           float proj = clamp(dot(d, -sDir)/max(1.0, dot(sDir,sDir)), 0.0, h.z*1.25);
@@ -2057,33 +2146,127 @@
       }
     `;
 
+    // Unified ground-to-grass pasture palette, non-periodic organic fBm & lighting (inspired by Long Wind grass-glsl.js, MIT).
+    const meadowPaletteGLSL=`
+      float meadowHash21(vec2 p){
+        p=fract(p*vec2(123.34,456.21));
+        p+=dot(p,p+45.32);
+        return fract(p.x*p.y);
+      }
+      float meadowNoise2D(vec2 p){
+        vec2 i=floor(p),f=fract(p);
+        vec2 u=f*f*(3.0-2.0*f);
+        float a=meadowHash21(i),b=meadowHash21(i+vec2(1.0,0.0));
+        float c=meadowHash21(i+vec2(0.0,1.0)),d=meadowHash21(i+vec2(1.0,1.0));
+        return mix(mix(a,b,u.x),mix(c,d,u.x),u.y);
+      }
+      float meadowFbm(vec2 p){
+        const mat2 rotG=mat2(0.80,-0.60,0.60,0.80);
+        float v=0.54*meadowNoise2D(p);
+        p=rotG*p*2.03+vec2(17.3,-11.7);
+        v+=0.30*meadowNoise2D(p);
+        p=rotG*p*2.01+vec2(-23.1,19.4);
+        v+=0.16*meadowNoise2D(p);
+        return v;
+      }
+      vec3 meadowBaseTint(vec2 m){
+        float nA=meadowFbm(m*0.036+vec2(4.2,-7.8));
+        float nB=meadowFbm(m*0.072+vec2(-13.5,9.1));
+        vec3 base=mix(vec3(0.092,0.158,0.042),vec3(0.218,0.328,0.072),clamp(nA*1.12-0.06,0.0,1.0));
+        return mix(base,vec3(0.068,0.142,0.052),clamp(nB*0.42,0.0,0.40));
+      }
+      vec3 meadowGroundAlbedo(vec2 m,vec3 baseCol,float coarse,float macro,float micro,vec2 spruceData,out float wornOut){
+        float swaleNoise=meadowFbm(m*0.048+vec2(-8.3,14.6));
+        float swaleZone=smoothstep(0.56,0.28,swaleNoise);
+        float thatchMask=smoothstep(.09,.24,coarse*.52+macro*.48+(micro-.12)*.34);
+        vec3 emeraldSwale=baseCol*vec3(.82,1.00,.74);
+        vec3 goldenFescue=baseCol*vec3(1.08,1.05,.82);
+        vec3 strawTone=baseCol*vec3(1.26,1.13,.77);
+        vec3 col=mix(goldenFescue,emeraldSwale,swaleZone*.56);
+        col=mix(col,strawTone,thatchMask*(.68-swaleZone*.24));
+        // Semi-wild clearing subtle hand-scythed straw warmth (organic warped boundary, never a sharp box!).
+        float warpX=(meadowFbm(m*0.17+vec2(11.2,-5.8))-0.5)*2.9;
+        float warpZ=(meadowFbm(m*0.15+vec2(-7.4,13.1))-0.5)*3.1;
+        float cEdge=length(vec2(max(0.0,abs(m.x)+warpX-6.85),max(0.0,abs(m.y-4.745)+warpZ-13.4)));
+        float scythed=1.0-smoothstep(0.0,3.8,cEdge);
+        col=mix(col,col*vec3(1.07,1.03,0.90),scythed*0.32);
+        float forestFloorAO=spruceData.y;
+        vec3 forestHumus=mix(vec3(.13,.18,.11),vec3(.20,.17,.12),coarse*2.2);
+        col=mix(col,forestHumus,forestFloorAO*0.72);
+        col*=1.0-forestFloorAO*0.38;
+        vec2 w=m+vec2(meadowNoise2D(m*0.42+vec2(5.1,-2.3))-0.5,meadowNoise2D(m*0.42+vec2(-8.4,6.7))-0.5)*0.95;
+        float hoopWear=exp(-dot((w-vec2(0.0,-8.2))/vec2(2.1,2.5),(w-vec2(0.0,-8.2))/vec2(2.1,2.5)));
+        float farHoopWear=exp(-dot((w-vec2(0.0,17.7))/vec2(1.9,2.2),(w-vec2(0.0,17.7))/vec2(1.9,2.2)))*0.62;
+        float arcDist=abs(length(w-vec2(0.0,-9.25))-7.15);
+        float arcWear=exp(-arcDist*arcDist/.95)*smoothstep(-10.5,-1.0,w.y)*(.45+.55*meadowNoise2D(w*0.55+vec2(12.0,0.0)));
+        float eastCurve=8.8+(m.y-13.5)*.46+2.2*sin(m.y*.16+.5);
+        float eastPath=exp(-pow((m.x-eastCurve)/1.05,2.0))*smoothstep(10.5,14.5,m.y)*(1.0-smoothstep(48.0,68.0,m.y));
+        float westCurve=-9.2-(m.y+6.0)*.38+1.8*cos(m.y*.19);
+        float westPath=exp(-pow((m.x-westCurve)/.95,2.0))*smoothstep(-3.0,-8.5,m.y)*(1.0-smoothstep(-34.0,-52.0,m.y));
+        vec2 lane=(w-vec2(.18,-5.5))/vec2(2.55,4.6);
+        float shortTurf=1.0-smoothstep(.22,1.18,dot(lane,lane));
+        float rawWear=max(max(max(hoopWear*.80,farHoopWear*.65),arcWear*.64),max(eastPath,westPath)*.74);
+        rawWear=max(rawWear,shortTurf*(.28+coarse*.72));
+        wornOut=clamp(rawWear*(.72+coarse*1.95),0.0,.74);
+        vec3 loamSoil=mix(vec3(.20,.17,.11),vec3(.28,.24,.16),clamp((micro-.06)*4.5,0.0,1.0));
+        return mix(col,loamSoil,wornOut);
+      }
+      vec3 meadowSharedLight(vec3 col,vec3 worldPos,float camDist,float facing,float horizonSun,vec2 spruceData){
+        float movingLight=sunWindow(worldPos,1.0);
+        float treeShadow=max(spruceData.x,spruceData.y*0.78);
+        float overcastDapple=mix(.66,1.30,movingLight);
+        float sunnyDapple=1.0-.38*(1.0-meadowSky.y)*(1.0-movingLight);
+        float cloudShade=mix(overcastDapple,sunnyDapple,meadowSky.x)+movingLight*meadowAir.y*.54;
+        float slopeRelief=mix(.68,1.30,smoothstep(-.30,.38,facing));
+        cloudShade*=slopeRelief;
+        vec3 treeShadowTint=mix(vec3(1.0),vec3(.42,.56,.68),treeShadow*(.62+.38*meadowSky.x*horizonSun));
+        cloudShade*=1.0-treeShadow*.48;
+        float sideLight=horizonSun*smoothstep(-.12,.34,facing)*(1.0-treeShadow*.88);
+        vec3 dusk=mix(vec3(.44,.55,.50),vec3(1.42,1.36,.80),sideLight);
+        vec3 overcastTint=mix(vec3(.76,.87,.98),vec3(1.12,1.09,.97),movingLight*smoothstep(-.18,.32,facing)*(1.0-treeShadow*.65));
+        col*=cloudShade*treeShadowTint*mix(overcastTint,mix(vec3(1.0),dusk,meadowSky.y),meadowSky.x);
+        float hillHaze=smoothstep(26.0,108.0,camDist)*mix(.38,.22,meadowSky.x);
+        vec3 hillHazeCol=mix(vec3(.44,.53,.60),vec3(.68,.64,.54),meadowSky.y);
+        return mix(col,hillHazeCol,hillHaze);
+      }
+    `;
+
     function ground(s){
-      const geo=new THREE.PlaneGeometry(560,560,s.mobile?100:152,s.mobile?100:152);
+      const segs=s.mobile?104:160;
+      const geo=new THREE.PlaneGeometry(560,560,segs,segs);
       geo.rotateX(-Math.PI/2);
-      const p=geo.attributes.position,c=[],horizon=[],shade=new THREE.Color();
+      const p=geo.attributes.position,nrm=geo.attributes.normal,c=[],horizon=[],shade=new THREE.Color(),nTmp=new THREE.Vector3();
       const low=linear(0x546d39),light=linear(0x819c4b),cool=linear(0x486841);
+      // Concentrate vertex density organically inside the court & visible slopes (r < 110m -> ~1.35m spacing, zero extra tris).
+      const warpCoord=v=>{
+        const u=v/280,au=Math.abs(u);
+        return Math.sign(u)*280*(0.36*au+0.64*Math.pow(au,1.88));
+      };
       for(let i=0;i<p.count;i++){
-        const x=p.getX(i),z=p.getZ(i)+COURT.midZ;
+        const x=warpCoord(p.getX(i)),z=warpCoord(p.getZ(i))+COURT.midZ;
         const y=elevation(x,z);
         p.setXYZ(i,x,y,z);
-        // Bake the terrain horizon along the late sun's bearing. Each vertex carries its own shadow threshold.
-        let obstruction=-.38;
-        for(const distance of [3,6,10,15,22,32,45,62,82,108]){
-          obstruction=Math.max(obstruction,(elevation(x-.49*distance,z+.872*distance)-y-.12)/distance);
-        }
-        horizon.push(obstruction);
-        const t=.52+.27*Math.sin(x*.045+z*.066)+.15*Math.cos(x*.096-z*.051);
-        shade.copy(low).lerp(light,t).lerp(cool,.22+.17*Math.sin(x*.031-z*.089));
+        terrainNormalAt(x,z,nTmp);
+        nrm.setXYZ(i,nTmp.x,nTmp.y,nTmp.z);
+        horizon.push(terrainHorizonAt(x,z,y));
+        const nA=turfFbm(x*0.036+4.2,z*0.036-7.8);
+        const nB=turfFbm(x*0.072-13.5,z*0.072+9.1);
+        shade.copy(low).lerp(light,THREE.MathUtils.clamp(nA*1.12-0.06,0,1)).lerp(cool,THREE.MathUtils.clamp(nB*0.42,0,0.40));
         c.push(shade.r,shade.g,shade.b);
       }
       geo.setAttribute("color",new THREE.Float32BufferAttribute(c,3));
       geo.setAttribute("terrainHorizon",new THREE.Float32BufferAttribute(horizon,1));
-      geo.computeVertexNormals();
-      const mat=new THREE.MeshStandardMaterial({vertexColors:true,map:courtMarks(),roughness:.93,metalness:0});
+      const marks=courtMarks();
+      s.meadowCourtMarks=marks;
+      const mat=new THREE.MeshStandardMaterial({vertexColors:true,map:marks,roughness:.93,metalness:0});
       const grass=terrainTexture("leafy-grass.jpg");
+      s.meadowGrassTex=grass;
       mat.addEventListener("dispose",()=>{
         grass.dispose();
         s.meadow.drifts.coverage.dispose();
+        if(typeof sun!=="undefined"&&sun)sun.castShadow=true;
+        if(typeof renderer!=="undefined"&&renderer)renderer.shadowMap.enabled=true;
+        if(window.AIBAGrade?.setEnabled)AIBAGrade.setEnabled(true);
       });
       mat.onBeforeCompile=shader=>{
         shader.uniforms.grassDetail={value:grass};
@@ -2094,16 +2277,25 @@
         shader.vertexShader="attribute float terrainHorizon;\n"+varyings+shader.vertexShader.replace(
           "#include <begin_vertex>","#include <begin_vertex>\nvMeadowPos=position;vMeadowNormal=normal;vTerrainHorizon=terrainHorizon;"
         );
-        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+AIBAMeadowCourt.waterGLSL+spruceShadowGLSL+varyings+"uniform sampler2D grassDetail;\nuniform sampler2D flowerCover;\nuniform float fieldProgress;\n"+shader.fragmentShader.replace("#include <map_fragment>",`
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+AIBAMeadowCourt.waterGLSL+spruceShadowGLSL+meadowPaletteGLSL+varyings+"uniform sampler2D grassDetail;\nuniform sampler2D flowerCover;\nuniform float fieldProgress;\n"+shader.fragmentShader.replace("#include <map_fragment>",`
           vec2 m = vMeadowPos.xz;
           vec2 uvMarks = vec2(m.x/32.0+0.5, 1.0-(m.y+13.0)/36.0);
           vec4 chalk = mapTexelToLinear(texture2D(map, uvMarks));
-          mat2 rot = mat2(0.91,-0.41,0.41,0.91);
-          vec3 microTex = mapTexelToLinear(texture2D(grassDetail, (rot*m)*1.75)).rgb;
-          vec3 blades = mapTexelToLinear(texture2D(grassDetail, (rot*m)*0.52)).rgb;
-          vec3 patches = mapTexelToLinear(texture2D(grassDetail, m*0.095+vec2(0.26,0.31))).rgb;
-          vec3 macroTex = mapTexelToLinear(texture2D(grassDetail, m*0.026+vec2(0.61,0.17))).rgb;
-          float micro = dot(microTex,vec3(0.22,0.70,0.08));
+          // Domain-warped anti-tiling UV + 2-layer parallax micro-fur offset for velvety turf pile depth (zero grid repetition).
+          vec2 uvWarp = vec2(meadowNoise2D(m*0.14+vec2(3.7,-6.2))-0.5, meadowNoise2D(m*0.14+vec2(-11.4,8.9))-0.5)*2.6;
+          vec2 mOrg = m + uvWarp;
+          mat2 rotA = mat2(0.866,-0.500,0.500,0.866);
+          mat2 rotB = mat2(0.588,0.809,-0.809,0.588);
+          vec3 viewRay = normalize(cameraPosition - vMeadowPos);
+          vec2 furOffset = (viewRay.xz / max(0.32, viewRay.y)) * 0.042;
+          vec3 microRoot = mapTexelToLinear(texture2D(grassDetail, (rotA*mOrg)*1.55)).rgb;
+          vec3 microTip = mapTexelToLinear(texture2D(grassDetail, (rotB*(mOrg + furOffset))*2.35 + vec2(0.37,0.71))).rgb;
+          vec3 blades = mapTexelToLinear(texture2D(grassDetail, (rotA*mOrg)*0.48 + vec2(0.19,0.43))).rgb;
+          vec3 patches = mapTexelToLinear(texture2D(grassDetail, mOrg*0.088 + vec2(0.26,0.31))).rgb;
+          vec3 macroTex = mapTexelToLinear(texture2D(grassDetail, (rotB*m)*0.024 + vec2(0.61,0.17))).rgb;
+          float rootGrain = dot(microRoot,vec3(0.22,0.70,0.08));
+          float tipGrain = dot(microTip,vec3(0.22,0.70,0.08));
+          float micro = mix(rootGrain, tipGrain, 0.58);
           float fine = dot(blades,vec3(0.22,0.70,0.08));
           float coarse = dot(patches,vec3(0.22,0.70,0.08));
           float macro = dot(macroTex,vec3(0.22,0.70,0.08));
@@ -2111,61 +2303,38 @@
           float meadowCapillary = 0.0;
         `).replace("#include <color_fragment>",`
           #include <color_fragment>
-          // 真实新疆喀拉峻/那拉提立体高山草甸生态：消除塑料人工草坪感，构建「深润冷翠凹谷 + 暖金羊茅阳坡 + 枯草腐殖质层 + 林下深色松针苔藓床」多重自然生态层次！
           float camDist=length(cameraPosition.xz-m);
           float closeGrain=1.0-smoothstep(28.0,115.0,camDist);
-          // 远中景山坡防平涂：即使在 30m~100m 远坡也保留风吹羊茅草浪与草甸团块肌理，绝不退化成光滑塑料绿坡！
-          float midSlopeWave=sin(m.x*0.62+m.y*0.48)*cos(m.y*0.78-m.x*0.36);
-          float tussockHeight=coarse*0.50+fine*0.34+micro*0.16;
-          float tussockAO=mix(0.72,1.22,smoothstep(0.08,0.28,tussockHeight));
-          float bladeDetail=(0.80+coarse*1.62+(fine-.13)*(1.15+0.55*closeGrain)+(micro-.13)*1.18*closeGrain+midSlopeWave*0.08)*tussockAO;
-          diffuseColor.rgb*=bladeDetail*mix(1.24,1.0,meadowSky.x);
+          float nearFur=1.0-smoothstep(4.5,20.0,camDist);
+          float organicTussock=meadowFbm(m*0.34+vec2(-4.7,9.3));
+          float tussockHeight=coarse*0.44+fine*0.30+organicTussock*0.26;
+          float tussockAO=mix(0.78,1.18,smoothstep(0.10,0.34,tussockHeight));
+          // 3-layer procedural micro-blade fur shell (root cavity -> mid stalk -> sunlit upright grass tips) eliminates flat skin between 3D blades!
+          vec2 shellStep=(viewRay.xz/max(0.38,viewRay.y))*0.018;
+          float sh0=meadowNoise2D(m*34.0);
+          float sh1=meadowNoise2D((m+shellStep*0.55)*38.0+vec2(13.7,5.9));
+          float sh2=meadowNoise2D((m+shellStep*1.15)*42.0+vec2(-7.3,19.1));
+          float microFur=mix(0.76,1.26,clamp(sh0*0.22+smoothstep(0.36,0.78,sh1)*0.36+smoothstep(0.52,0.88,sh2)*0.52,0.0,1.0));
+          float furPile=mix(1.0,mix(0.84,1.22,smoothstep(0.06,0.24,tipGrain*0.72+(tipGrain-rootGrain)*0.65)),closeGrain)*mix(1.0,microFur,nearFur*0.78);
+          float bladeDetail=(0.82+coarse*1.48+(fine-.13)*(1.05+0.48*closeGrain)+(organicTussock-.48)*0.18)*tussockAO*furPile;
+          diffuseColor.rgb*=bladeDetail*mix(1.22,1.0,meadowSky.x);
 
-          // 四区新疆天然牧场色彩分带：凹处湿润翠绿冷草、凸坡阳光金橄榄羊茅、以及天然微枯草甸斑块
-          float swaleZone=smoothstep(0.22,-0.32,sin(m.x*0.055+m.y*0.048)+0.65*cos(m.y*0.082-m.x*0.039));
-          float thatchMask=smoothstep(.10,.23,coarse*.56+macro*.44+(micro-.12)*.38);
-          vec3 emeraldSwale=diffuseColor.rgb*vec3(.78,.98,.72);
-          vec3 goldenFescue=diffuseColor.rgb*vec3(1.06,1.04,.82);
-          vec3 strawTone=diffuseColor.rgb*vec3(1.28,1.14,.78);
-          diffuseColor.rgb=mix(goldenFescue,emeraldSwale,swaleZone*.58);
-          diffuseColor.rgb=mix(diffuseColor.rgb,strawTone,thatchMask*(.72-swaleZone*.28));
-
-          // 614 棵雪岭云杉林下深色松针腐殖质苔藓床 (Forest-Floor Pine Humus & Root Skirt)：让每一棵树和树林带稳稳扎根在深色林地上，彻底消除“树贴在亮绿塑料坡上”的假感！
           vec2 spruceData=sampleSpruceForest(vMeadowPos,meadowSun);
-          float treeCastShadow=spruceData.x;
+          float worn=0.0;
+          diffuseColor.rgb=meadowGroundAlbedo(m,diffuseColor.rgb,coarse,macro,micro,spruceData,worn);
           float forestFloorAO=spruceData.y;
-          vec3 forestHumus=mix(vec3(.13,.18,.11),vec3(.20,.17,.12),coarse*2.2);
-          diffuseColor.rgb=mix(diffuseColor.rgb,forestHumus,forestFloorAO*0.72);
-          diffuseColor.rgb*=1.0-forestFloorAO*0.38;
 
-          // Organic, localized trampled earth & grit ONLY in real footwork pivots (under hoop, 3pt spots) and winding hill trails.
-          vec2 w=m+vec2(.42*sin(m.y*.73)-.28*cos(m.x*.91),.38*cos(m.x*.67)+.25*sin(m.y*1.12));
-          float hoopWear=exp(-dot((w-vec2(0.0,-8.2))/vec2(2.0,2.4),(w-vec2(0.0,-8.2))/vec2(2.0,2.4)));
-          float arcDist=abs(length(w-vec2(0.0,-9.25))-7.15);
-          float arcWear=exp(-arcDist*arcDist/.85)*smoothstep(-10.5,-1.2,w.y)*(.42+.58*sin(atan(w.x,w.y+9.25)*5.0));
-          float eastCurve=8.8+(m.y-13.5)*.46+2.2*sin(m.y*.16+.5);
-          float eastPath=exp(-pow((m.x-eastCurve)/1.05,2.0))*smoothstep(10.5,14.5,m.y)*(1.0-smoothstep(48.0,68.0,m.y));
-          float westCurve=-9.2-(m.y+6.0)*.38+1.8*cos(m.y*.19);
-          float westPath=exp(-pow((m.x-westCurve)/.95,2.0))*smoothstep(-3.0,-8.5,m.y)*(1.0-smoothstep(-34.0,-52.0,m.y));
-          vec2 lane=(w-vec2(.22,-5.5))/vec2(2.5,4.6);
-          float shortTurf=1.0-smoothstep(.24,1.18,dot(lane,lane));
-          float rawWear=max(max(hoopWear*.78,arcWear*.63),max(eastPath,westPath)*.74);
-          rawWear=max(rawWear,shortTurf*(.32+coarse*.76));
-          float worn=clamp(rawWear*(.72+coarse*2.1),0.0,.75);
-          vec3 loamSoil=mix(vec3(.21,.18,.115),vec3(.29,.25,.165),clamp((micro-.06)*4.5,0.0,1.0));
-          diffuseColor.rgb=mix(diffuseColor.rgb,loamSoil,worn);
+          // Smooth organic tussock normal (strictly non-periodic fBm gradient, never sine-wave diamonds!).
+          float nEps=0.55;
+          float hC=meadowFbm(m*0.28),hX=meadowFbm((m+vec2(nEps,0.0))*0.28),hZ=meadowFbm((m+vec2(0.0,nEps))*0.28);
+          vec2 softBump=(vec2(hC-hX,hC-hZ)*0.16 + vec2(tipGrain-rootGrain, fine-coarse)*0.18)*(1.0-worn*0.75)*(1.0-smoothstep(24.0,78.0,camDist));
+          vec3 macroNormal=normalize(vMeadowNormal);
+          vec3 turfNormal=normalize(macroNormal+vec3(softBump.x,0.0,softBump.y));
 
-          // 程序化草墩微法线凹凸 (Procedural Turf Tussock Normal Relief)：打破大网格平面感，让斜射阳光照出草甸每一处微起伏！
-          vec2 bumpGrad=vec2(
-            sin(m.x*1.8+m.y*1.1)*0.45+cos(m.x*7.2-m.y*5.4)*0.35+(fine-coarse)*2.6,
-            cos(m.y*1.7-m.x*1.2)*0.45+sin(m.y*6.8+m.x*5.8)*0.35+(micro-fine)*2.6
-          )*(1.0-worn*0.7);
-          vec3 turfNormal=normalize(vMeadowNormal+vec3(bumpGrad.x*0.28,0.0,bumpGrad.y*0.28));
-
-          // Grazing-angle anisotropic velvet turf backscatter eliminates flat plastic sheen.
+          // Grazing-angle anisotropic velvet turf backscatter gives plush meadow fur volume.
           vec3 viewDir=normalize(cameraPosition-vMeadowPos);
-          float velvet=pow(1.0-max(0.0,dot(viewDir,turfNormal)),2.1)*(.42+.64*clamp(micro*4.5,0.0,1.0))*(1.0-worn*.75)*(1.0-forestFloorAO*.7);
-          diffuseColor.rgb+=vec3(.078,.105,.040)*velvet;
+          float velvet=pow(1.0-max(0.0,dot(viewDir,turfNormal)),2.0)*(.44+.62*clamp(tipGrain*4.4,0.0,1.0))*(1.0-worn*.78)*(1.0-forestFloorAO*.7);
+          diffuseColor.rgb+=vec3(.076,.104,.039)*velvet;
 
           vec2 fromCenter=m-vec2(0.0,4.745);
           vec2 flowersUV=vec2(fromCenter.x,-fromCenter.y)/232.0+0.5;
@@ -2175,32 +2344,15 @@
           float farCover=smoothstep(6.0,24.0,camDist);
           diffuseColor.rgb=mix(diffuseColor.rgb,drift.rgb*.83,drift.a*flowering*farCover*.68);
 
-          // 云隙丁达尔光斑 + 雪岭云杉林带投射长阴影 + 3D 坡面微法线明暗对比（新疆草原大片级立体光影）
-          float movingLight=sunWindow(vMeadowPos,1.0);
-          float treeShadow=max(treeCastShadow,forestFloorAO*0.78);
-          float overcastDapple=mix(.64,1.32,movingLight);
-          float sunnyDapple=1.0-.40*(1.0-meadowSky.y)*(1.0-movingLight);
-          float cloudShade=mix(overcastDapple,sunnyDapple,meadowSky.x)+movingLight*meadowAir.y*.56;
-          float horizonSun=smoothstep(vTerrainHorizon-.018,vTerrainHorizon+.026,
+          float horizonSun=smoothstep(vTerrainHorizon-.055,vTerrainHorizon+.085,
             meadowSun.y/max(.1,length(meadowSun.xz)));
-          float facing=dot(turfNormal,meadowSun);
-          float slopeRelief=mix(.66,1.32,smoothstep(-.26,.34,facing));
-          cloudShade*=slopeRelief;
-          // 云杉林投射在草坡上的深邃冷蓝绿树影（阴天与晴天均清晰立体）
-          vec3 treeShadowTint=mix(vec3(1.0),vec3(.42,.56,.68),treeShadow*(.62+.38*meadowSky.x*horizonSun));
-          cloudShade*=1.0-treeShadow*.48;
-          float sideLight=horizonSun*smoothstep(-.023,.185,facing)*(1.0-treeShadow*.88);
-          vec3 dusk=mix(vec3(.40,.53,.48),vec3(1.46,1.40,.80),sideLight);
-          vec3 overcastTint=mix(vec3(.76,.87,.98),vec3(1.12,1.09,.97),movingLight*smoothstep(-.15,.28,facing)*(1.0-treeShadow*.65));
-          diffuseColor.rgb*=cloudShade*treeShadowTint*mix(overcastTint,mix(vec3(1.0),dusk,meadowSky.y),meadowSky.x);
+          float facing=dot(macroNormal,meadowSun)+dot(vec3(softBump.x,0.0,softBump.y),meadowSun)*0.35;
+          diffuseColor.rgb=meadowSharedLight(diffuseColor.rgb,vMeadowPos,camDist,facing,horizonSun,spruceData);
 
-          float hillHaze=smoothstep(24.0,105.0,camDist)*mix(.38,.22,meadowSky.x);
-          vec3 hillHazeCol=mix(vec3(.44,.53,.60),vec3(.68,.64,.54),meadowSky.y);
-          diffuseColor.rgb=mix(diffuseColor.rgb,hillHazeCol,hillHaze);
           diffuseColor.rgb*=1.0-meadowSky.w*(.18+fine*.22);
           // Hand-dusted lime chalk sits on upper grass blades with organic blade gaps & dirt wear.
-          float chalkFiber=clamp(.52+micro*3.4+fine*1.8,0.35,1.0)*(1.0-worn*.23);
-          diffuseColor.rgb=mix(diffuseColor.rgb,chalk.rgb,chalk.a*(1.0-meadowSky.w*.29)*chalkFiber*.78);
+          float chalkFiber=clamp(.44+tipGrain*3.2+fine*1.6,0.28,1.0)*(1.0-worn*.28);
+          diffuseColor.rgb=mix(diffuseColor.rgb,chalk.rgb,chalk.a*(1.0-meadowSky.w*.29)*chalkFiber*.76);
           if(meadowSky.w>.025&&abs(m.x)<8.7&&abs(m.y-4.8)<15.0){
             float edge=poolShape(m)+.072*sin(m.x*17.0+m.y*11.0)+.089*sin(m.y*21.0-m.x*7.0);
             float liquid=(1.0-smoothstep(.15+meadowSky.w*.65,.39+meadowSky.w*.70,edge))*smoothstep(.045,.63,meadowSky.w);
@@ -2330,54 +2482,97 @@
     }
 
     function spruceForest(s){
-      const p=[],colors=[],uv=[],seg=s.mobile?10:14;
-      // Rich interior-to-tip botanical gradient: deep shaded pine interior to sun-catching needle tips.
+      // 3-tier conifer LOD + hero court-side spruces (inspired by Valley Ride flora hierarchy, MIT).
       const dark=linear(0x4e6352),tipColor=linear(0xc6d4a8),bark=linear(0x6e5a4c),c=new THREE.Color();
-      function surface(triangle,coords,color){
-        for(let i=0;i<3;i++){p.push(...triangle[i]);uv.push(...coords[i]);colors.push(color.r,color.g,color.b);}
-      }
-      const barkUV=[[.76,.03],[.99,.03],[.76,.95],[.99,.95]];
-      for(let j=0;j<6;j++){
-        const point=(k,y,r)=>[Math.cos(k*tau/6)*r,y,Math.sin(k*tau/6)*r];
-        const a=point(j,0,.028),b=point(j+1,0,.028),m=point(j,.94,.009),n=point(j+1,.94,.009);
-        surface([a,b,m],[barkUV[0],barkUV[1],barkUV[2]],bark);
-        surface([b,n,m],[barkUV[1],barkUV[3],barkUV[2]],bark);
-      }
-      for(let tier=0;tier<8;tier++){
-        const y=.15+tier*.098,width=.30*Math.pow(1-tier/8.8,.84),turn=tier*.79;
-        for(let j=0;j<seg;j++){
-          const rim=(k,outer)=>{
-            const a=k/seg*tau+turn,gap=.76+.24*Math.sin(k*7.7+tier*2.67)+.11*Math.cos(k*13.1-tier*1.9);
-            const r=width*gap*(outer?1:.45);
-            return [.009*tier+Math.cos(a)*r,y+(outer?-width*.14+Math.sin(k*9+tier)*.042:.12),Math.sin(a)*r];
-          };
-          const tip=[.012*tier,y+.21,0],a=rim(j,true),b=rim(j+1,true),m=rim(j,false),n=rim(j+1,false);
-          const left=.03+(j%3)*.13,right=left+.36;
-          // Outer rim maps near v=0.08 (jagged alpha-cutout branch tips), inner crown near v=0.92 (dense).
-          const t0=[left,.08],t1=[right,.08],t2=[left+.035,.59],t3=[right-.03,.62],top=[(left+right)*.5,.92];
-          const ao=.62+.38*(tier/7);
-          c.copy(dark).lerp(tipColor,.18+.64*(Math.cos(j/seg*tau+turn)*.5+.5)).multiplyScalar(ao);
-          surface([m,b,a],[t2,t1,t0],c);surface([m,n,b],[t2,t3,t1],c);surface([tip,n,m],[top,t3,t2],c);
+      function buildSpruceGeo(tiers,segs,detailed){
+        const p=[],colors=[],uv=[];
+        function surface(triangle,coords,color){
+          for(let i=0;i<3;i++){p.push(...triangle[i]);uv.push(...coords[i]);colors.push(color.r,color.g,color.b);}
         }
+        const barkUV=[[.76,.03],[.99,.03],[.76,.95],[.99,.95]];
+        const trunkSides=detailed?8:(tiers>=5?5:4);
+        const trunkTop=detailed?.94:(tiers>=5?.89:.84);
+        if(detailed){
+          const point=(k,y,r,flute=0)=>{
+            const a=k*tau/trunkSides,rad=r*(1+flute*(.28*Math.cos(a*4)+.12*Math.sin(a*3)));
+            return [Math.cos(a)*rad,y,Math.sin(a)*rad];
+          };
+          for(let j=0;j<trunkSides;j++){
+            const r0=point(j,0,.056,1),r1=point(j+1,0,.056,1),k0=point(j,.14,.028,0),k1=point(j+1,.14,.028,0);
+            surface([r0,r1,k0],[barkUV[0],barkUV[1],barkUV[2]],bark);
+            surface([r1,k1,k0],[barkUV[1],barkUV[3],barkUV[2]],bark);
+            const t0=point(j,trunkTop,.008,0),t1=point(j+1,trunkTop,.008,0);
+            surface([k0,k1,t0],[barkUV[0],barkUV[1],barkUV[2]],bark);
+            surface([k1,t1,t0],[barkUV[1],barkUV[3],barkUV[2]],bark);
+          }
+          // Four weathered lower dead-branch stubs near base for close foreground silhouette.
+          for(let sb=0;sb<4;sb++){
+            const a=sb*1.58+.4,sy=.11+sb*.026,dx=Math.cos(a),dz=Math.sin(a),px=-dz*.008,pz=dx*.008;
+            surface([[dx*.022+px,sy,dz*.022+pz],[dx*.022-px,sy,dz*.022-pz],[dx*.135,sy-.018,dz*.135]],
+              [barkUV[0],barkUV[1],barkUV[2]],bark);
+            surface([[dx*.022-px,sy,dz*.022-pz],[dx*.022+px,sy-.012,dz*.022+pz],[dx*.135,sy-.018,dz*.135]],
+              [barkUV[1],barkUV[3],barkUV[2]],bark);
+          }
+        }else{
+          for(let j=0;j<trunkSides;j++){
+            const point=(k,y,r)=>[Math.cos(k*tau/trunkSides)*r,y,Math.sin(k*tau/trunkSides)*r];
+            const a=point(j,0,.028),b=point(j+1,0,.028),m=point(j,trunkTop,.009),n=point(j+1,trunkTop,.009);
+            surface([a,b,m],[barkUV[0],barkUV[1],barkUV[2]],bark);
+            surface([b,n,m],[barkUV[1],barkUV[3],barkUV[2]],bark);
+          }
+        }
+        const yStart=detailed?.17:(tiers>=5?.14:.12),ySpan=detailed?.72:.68;
+        const yStep=ySpan/Math.max(1,tiers-1);
+        for(let tier=0;tier<tiers;tier++){
+          const tierFrac=tier/Math.max(1,tiers-1);
+          const y=yStart+tierFrac*ySpan,width=(detailed?.32:.31)*Math.pow(1-tier/(tiers+0.85),.84),turn=tier*.79;
+          const rise=Math.max(detailed?.21:.22,yStep*1.62)*Math.pow(1-tierFrac*.20,.85);
+          for(let j=0;j<segs;j++){
+            const rim=(k,outer)=>{
+              const a=k/segs*tau+turn,gap=.76+.24*Math.sin(k*7.7+tier*2.67)+.11*Math.cos(k*13.1-tier*1.9);
+              const r=width*gap*(outer?1:.45);
+              return [.009*tier+Math.cos(a)*r,y+(outer?-width*(detailed?.16:.15)+Math.sin(k*9+tier)*(detailed?.046:.040):.12),Math.sin(a)*r];
+            };
+            const tip=[.012*tier,y+rise,0],a=rim(j,true),b=rim(j+1,true),m=rim(j,false),n=rim(j+1,false);
+            const left=.03+(j%3)*.12,right=left+.36;
+            const cutV=detailed?.08:.14;
+            const t0=[left,cutV],t1=[right,cutV],t2=[left+.035,.64],t3=[right-.03,.66],top=[(left+right)*.5,.92];
+            const ao=(detailed?.56:.62)+(detailed?.44:.38)*tierFrac;
+            c.copy(dark).lerp(tipColor,.18+.64*(Math.cos(j/segs*tau+turn)*.5+.5)).multiplyScalar(ao);
+            surface([m,b,a],[t2,t1,t0],c);surface([m,n,b],[t2,t3,t1],c);surface([tip,n,m],[top,t3,t2],c);
+          }
+        }
+        const geo=new THREE.BufferGeometry();geo.setAttribute("position",new THREE.Float32BufferAttribute(p,3));
+        geo.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));
+        geo.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));geo.computeVertexNormals();
+        return geo;
       }
-      const geo=new THREE.BufferGeometry();geo.setAttribute("position",new THREE.Float32BufferAttribute(p,3));
-      geo.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));
-      geo.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));geo.computeVertexNormals();
+      const heroGeo=buildSpruceGeo(10,s.mobile?10:12,true);
+      const midGeo=buildSpruceGeo(6,7,false);
+      const farGeo=buildSpruceGeo(4,5,false);
       const mat=new THREE.MeshLambertMaterial({vertexColors:true,map:spruceAtlas(),alphaTest:.42,side:THREE.DoubleSide});
+      mat.addEventListener("dispose",()=>{
+        if(s.meadow?.uniforms?.meadowTreeMap?.value){
+          s.meadow.uniforms.meadowTreeMap.value.dispose();
+          s.meadow.uniforms.meadowTreeMap.value=null;
+        }
+      });
       mat.onBeforeCompile=shader=>{
         shader.uniforms.meadowTime=s.meadow.time;
         shader.uniforms.meadowWind=s.meadow.wind;
         shader.uniforms.meadowSun=s.meadow.uniforms.meadowSun;
         shader.uniforms.meadowSky=s.meadow.uniforms.meadowSky;
         shader.uniforms.meadowPressure=s.meadow.uniforms.meadowPressure;
-        shader.vertexShader="uniform vec4 meadowPressure;\nuniform float meadowTime,meadowWind;\nvarying float vSpruceH;\nvarying vec3 vSpruceWorld,vSpruceCrownN;\n"+
+        shader.vertexShader=AIBAMeadowWeather.windGLSL+"uniform vec4 meadowPressure;\nuniform float meadowTime,meadowWind;\nvarying float vSpruceH;\nvarying vec3 vSpruceWorld,vSpruceCrownN;\n"+
           shader.vertexShader.replace("#include <begin_vertex>",`
             #include <begin_vertex>
             vSpruceH=clamp(position.y,0.0,1.0);
             vec2 root=instanceMatrix[3].xz;
-            float sway=(sin(meadowTime*1.15+root.x*.09+root.y*.07)*.024+meadowWind*.028)*vSpruceH*vSpruceH;
-            transformed.x+=sway;
-            transformed.z+=sway*.45;
+            // Lower trunk stays stiff while upper boughs trail behind passing wind gusts.
+            float trunkFlex=pow(vSpruceH,2.2);
+            vec3 tw=sampleMeadowWind(root,meadowTime-0.35,meadowWind);
+            vec2 tLocal=meadowLocalWind(instanceMatrix,(MEADOW_WIND_DIR*tw.x+MEADOW_WIND_PERP*tw.y)*0.28);
+            transformed.xz+=tLocal*trunkFlex;
             ${pressureBend("vSpruceH*vSpruceH*.38")}
             vSpruceWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
             vSpruceCrownN=normalize(mat3(instanceMatrix)*vec3(position.x,.36,position.z));
@@ -2402,15 +2597,14 @@
             #include <dithering_fragment>
           `);
       };
-      const heroSpruces=[[-22.5,-24.5,11.6],[25.5,-19.5,10.4],[-26.5,22.5,12.2],[27.0,26.0,9.8]];
-      const count=(s.mobile?310:610)+heroSpruces.length;
-      const forest=new THREE.InstancedMesh(geo,mat,count);
+      const heroMesh=new THREE.InstancedMesh(heroGeo,mat,HERO_SPRUCES.length);
+      const midCount=s.mobile?80:150,farCount=s.mobile?228:450;
+      const midMesh=new THREE.InstancedMesh(midGeo,mat,midCount);
+      const farMesh=new THREE.InstancedMesh(farGeo,mat,farCount);
       const tree=new THREE.Object3D(),tone=new THREE.Color();
-      // Cohesive, natural Tian Shan evergreen conifer palette (mature spruce, olive pine, glaucous blue-green fir, fresh-shoot spruce).
       const sprucePalette=[0x4d6e4e,0x5f7d4c,0x45665c,0x6b8550,0x3f5e46,0x738252,0x537349,0x486b55];
       const ridges=[[-1.04,61,17],[-.68,82,23],[.35,67,14],[.71,86,23],[1.59,82,31],[-1.81,78,23],[2.7,88,30],[-2.66,97,32]];
-      // 烘焙 614 棵雪岭云杉的精确地面阴影与林下松针苔藓腐殖质图 (512x512, 覆盖 [-140m, +140m]):
-      // R 通道 = 顺阳光反方向投射的锥形长树影; G 通道 = 树根底部的松针腐殖质与林冠接触暗部 AO
+      // 烘焙雪岭云杉的精确地面阴影与林下松针苔藓腐殖质图 (512x512, 覆盖 [-140m, +140m])
       const treeCv=document.createElement("canvas");treeCv.width=512;treeCv.height=512;
       const tg=treeCv.getContext("2d");
       tg.fillStyle="#000000";tg.fillRect(0,0,512,512);
@@ -2421,14 +2615,12 @@
       const paintTreeShadow=(tx,tz,th)=>{
         const cx=toMapX(tx),cy=toMapY(tz);
         const aoR=Math.max(3.5,th*0.64*scalePx);
-        // 1. G 通道：树底圆形林下松针腐殖质与接触 AO
         const gGrad=tg.createRadialGradient(cx,cy,aoR*0.1,cx,cy,aoR);
         gGrad.addColorStop(0,"rgba(0,185,0,1)");
         gGrad.addColorStop(0.55,"rgba(0,110,0,1)");
         gGrad.addColorStop(1,"rgba(0,0,0,0)");
         tg.fillStyle=gGrad;
         tg.beginPath();tg.arc(cx,cy,aoR,0,tau);tg.fill();
-        // 2. R 通道：沿阳光投射方向 (-sunX, -sunZ ≈ (-0.51, +0.86)) 的长锥形树冠阴影
         const shLen=th*1.55*scalePx;
         const ex=cx-0.51*shLen,ey=cy+0.86*shLen;
         const rGrad=tg.createLinearGradient(cx,cy,ex,ey);
@@ -2444,157 +2636,500 @@
         tg.lineTo(ex-perpX*0.18,ey-perpY*0.18);
         tg.closePath();tg.fill();
       };
-      let idx=0;
-      for(const [hx,hz,hh] of heroSpruces){
-        tree.position.set(hx,elevation(hx,hz)-.08*hh,hz);
-        tree.rotation.set((s.r()-.5)*.035,s.r()*tau,(s.r()-.5)*.035);
-        tree.scale.set(hh*.76,hh,hh*.76);tree.updateMatrix();
-        forest.setMatrixAt(idx,tree.matrix);
-        tone.set(sprucePalette[idx%sprucePalette.length]).convertSRGBToLinear().multiplyScalar(.92+.20*s.r());
-        forest.setColorAt(idx,tone);
+      for(let i=0;i<HERO_SPRUCES.length;i++){
+        const [hx,hz,hh]=HERO_SPRUCES[i];
+        tree.position.set(hx,elevation(hx,hz)-.07*hh,hz);
+        tree.rotation.set((s.r()-.5)*.03,s.r()*tau,(s.r()-.5)*.03);
+        tree.scale.set(hh*.78,hh,hh*.78);tree.updateMatrix();
+        heroMesh.setMatrixAt(i,tree.matrix);
+        tone.set(sprucePalette[i%sprucePalette.length]).convertSRGBToLinear().multiplyScalar(.95+.18*s.r());
+        heroMesh.setColorAt(i,tone);
         paintTreeShadow(hx,hz,hh);
-        idx++;
       }
-      for(;idx<forest.count;idx++){
-        const [heading,radius,width]=ridges[idx%ridges.length],r=radius+(s.r()-.5)*31;
-        const a=heading+(s.r()+s.r()-1)*width/r;
-        const x=Math.sin(a)*r,z=COURT.midZ-Math.cos(a)*r,h=4.2+6.9*Math.pow(s.r(),1.45);
-        tree.position.set(x,elevation(x,z)-.09*h,z);
-        tree.rotation.set((s.r()-.5)*.045,s.r()*tau,(s.r()-.5)*.05);
-        tree.scale.set(h*(.68+s.r()*.4),h,h*(.68+s.r()*.4));tree.updateMatrix();
-        forest.setMatrixAt(idx,tree.matrix);
-        tone.set(sprucePalette[(idx*3+Math.floor(s.r()*7))%sprucePalette.length]).convertSRGBToLinear().multiplyScalar(.78+.36*s.r());
-        forest.setColorAt(idx,tone);
-        paintTreeShadow(x,z,h);
-      }
+      const placeBelts=(mesh,rMin,rMax,seedShift)=>{
+        for(let i=0;i<mesh.count;i++){
+          const [heading,,width]=ridges[(i+seedShift)%ridges.length];
+          const r=THREE.MathUtils.lerp(rMin,rMax,s.r());
+          const a=heading+(s.r()+s.r()-1)*(width*1.12)/r;
+          const x=Math.sin(a)*r,z=COURT.midZ-Math.cos(a)*r,h=4.3+6.8*Math.pow(s.r(),1.4);
+          tree.position.set(x,elevation(x,z)-.09*h,z);
+          tree.rotation.set((s.r()-.5)*.045,s.r()*tau,(s.r()-.5)*.05);
+          tree.scale.set(h*(.68+s.r()*.4),h,h*(.68+s.r()*.4));tree.updateMatrix();
+          mesh.setMatrixAt(i,tree.matrix);
+          tone.set(sprucePalette[(i*3+seedShift+Math.floor(s.r()*7))%sprucePalette.length]).convertSRGBToLinear().multiplyScalar(.78+.36*s.r());
+          mesh.setColorAt(i,tone);
+          paintTreeShadow(x,z,h);
+        }
+      };
+      placeBelts(midMesh,32,65,0);
+      placeBelts(farMesh,65,115,3);
       const treeMap=new THREE.CanvasTexture(treeCv);
       treeMap.wrapS=treeMap.wrapT=THREE.ClampToEdgeWrapping;
       s.meadow.uniforms.meadowTreeMap.value=treeMap;
-      forest.name="alpineSpruceBelts";forest.frustumCulled=false;s.root.add(forest);
+      heroMesh.name="alpineHeroSpruces";heroMesh.castShadow=!s.mobile;heroMesh.receiveShadow=false;heroMesh.frustumCulled=false;s.root.add(heroMesh);
+      midMesh.name="alpineSpruceBelts";midMesh.frustumCulled=false;s.root.add(midMesh);
+      farMesh.name="alpineFarSpruces";farMesh.frustumCulled=false;s.root.add(farMesh);
+      s.meadowLayersRefs=s.meadowLayersRefs||{grass:[],trees:[]};
+      s.meadowLayersRefs.heroTree=heroMesh;
+      s.meadowLayersRefs.trees.push(heroMesh,midMesh,farMesh);
+    }
+
+    function meadowFurShells(s){
+      // 6-layer 3D GPU Shell-Fur carpet (Shadow of the Colossus / EA FC turf technique) over the semi-wild court & ragged sidelines.
+      // Gives true dense velvety short-grass pile (~7,000 curved micro-fibers/m²), real-time hoop/player shadows, and soft chalk dust with ZERO white shark-teeth or needle spikes!
+      const layers=s.mobile?5:6;
+      const sx=s.mobile?38:56,sz=s.mobile?44:64;
+      const width=30.8,depth=36.4,centerZ=COURT.midZ;
+      const geo=new THREE.PlaneGeometry(width,depth,sx,sz);
+      geo.rotateX(-Math.PI/2);
+      const pos=geo.attributes.position,nrm=geo.attributes.normal;
+      const furMeta=new Float32Array(pos.count*3),nTmp=new THREE.Vector3();
+      for(let i=0;i<pos.count;i++){
+        const x=pos.getX(i),z=pos.getZ(i)+centerZ;
+        const y=elevation(x,z);
+        pos.setXYZ(i,x,y,z);
+        terrainNormalAt(x,z,nTmp);
+        nrm.setXYZ(i,nTmp.x,nTmp.y,nTmp.z);
+        const hor=terrainHorizonAt(x,z,y);
+        const wear=turfWearAt(x,z);
+        const rawH=turfHeightAt(x,z);
+        // Playable velvety mown court fur (3.0cm worn paint -> 8.2cm rougher court pockets), rising smoothly to 14cm plush base undercoat in sidelines!
+        const furH=THREE.MathUtils.clamp(rawH*0.52*(1-wear*0.32),0.026,0.145);
+        const edgeX=1-smooth(Math.abs(x),width*0.5-3.4,width*0.5-0.2);
+        const edgeZ=1-smooth(Math.abs(z-centerZ),depth*0.5-3.4,depth*0.5-0.2);
+        furMeta[i*3]=hor;
+        furMeta[i*3+1]=furH;
+        furMeta[i*3+2]=edgeX*edgeZ;
+      }
+      geo.setAttribute("aFurMeta",new THREE.BufferAttribute(furMeta,3));
+      const shellFracs=new Float32Array(layers);
+      for(let l=0;l<layers;l++)shellFracs[l]=(l+1)/layers;
+      geo.setAttribute("aShellFrac",new THREE.InstancedBufferAttribute(shellFracs,1));
+      const mat=new THREE.MeshStandardMaterial({
+        roughness:.93,metalness:0,transparent:true,depthWrite:false,side:THREE.FrontSide
+      });
+      mat.onBeforeCompile=shader=>{
+        Object.assign(shader.uniforms,s.meadow.uniforms);
+        shader.uniforms.meadowTime=s.meadow.time;
+        shader.uniforms.meadowWind=s.meadow.wind;
+        shader.uniforms.grassDetail={value:s.meadowGrassTex};
+        shader.uniforms.courtChalk={value:s.meadowCourtMarks};
+        shader.vertexShader=AIBAMeadowWeather.windGLSL+
+          "attribute vec3 aFurMeta;\nattribute float aShellFrac;\nuniform float meadowTime,meadowWind;\nuniform vec4 meadowActors,meadowBall,meadowPressure;\nvarying float vShellFrac,vFurHeight,vFurEdge,vFurHorizon,vFurGust;\nvarying vec3 vFurWorld,vFurNormal;\nvarying vec2 vFurWind;\n"+
+          shader.vertexShader.replace("#include <begin_vertex>",`
+            #include <begin_vertex>
+            vFurHorizon=aFurMeta.x;
+            vFurHeight=aFurMeta.y;
+            vFurEdge=aFurMeta.z;
+            vShellFrac=aShellFrac;
+            vec2 rootXZ=position.xz;
+            vec3 gw=sampleMeadowWind(rootXZ,meadowTime,meadowWind);
+            vFurGust=gw.z;
+            vec2 windVec=MEADOW_WIND_DIR*gw.x+MEADOW_WIND_PERP*gw.y;
+            vFurWind=windVec;
+            vec2 pushVec=vec2(0.0);
+            float pushDown=0.0;
+            vec2 dA=rootXZ-meadowActors.xy;float lA=length(dA);
+            if(lA<.85){float wA=pow(1.0-lA/.85,1.6);pushVec+=dA/max(.04,lA)*wA*.40;pushDown=max(pushDown,wA*.65);}
+            vec2 dB=rootXZ-meadowActors.zw;float lB=length(dB);
+            if(lB<.85){float wB=pow(1.0-lB/.85,1.6);pushVec+=dB/max(.04,lB)*wB*.40;pushDown=max(pushDown,wB*.65);}
+            vec2 dC=rootXZ-meadowBall.xy;float lC=length(dC);
+            if(lC<.55){float wC=pow(1.0-lC/.55,1.6);pushVec+=dC/max(.04,lC)*wC*.34;pushDown=max(pushDown,wC*.55);}
+            if(meadowPressure.w>0.0){
+              vec2 deltaP=rootXZ-meadowPressure.xy;float dP=length(deltaP);
+              float crestP=meadowPressure.w*(1.0-smoothstep(.55,3.8,abs(dP-meadowPressure.z)));
+              pushVec+=(deltaP/max(dP,.05))*crestP*.45;pushDown=max(pushDown,crestP*.50);
+            }
+            float shY=vFurHeight*vShellFrac*(1.0-pushDown*0.62);
+            vec2 horizOff=windVec*(shY*0.62*vShellFrac)+pushVec*(shY*0.65);
+            transformed.y+=shY+0.004;
+            transformed.xz+=horizOff;
+            vFurWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
+            vFurNormal=normalize(normal);
+          `);
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+spruceShadowGLSL+meadowPaletteGLSL+
+          "uniform sampler2D grassDetail;\nuniform sampler2D courtChalk;\nvarying float vShellFrac,vFurHeight,vFurEdge,vFurHorizon,vFurGust;\nvarying vec3 vFurWorld,vFurNormal;\nvarying vec2 vFurWind;\n"+
+          shader.fragmentShader.replace("#include <color_fragment>",`
+            #include <color_fragment>
+            vec2 m=vFurWorld.xz;
+            float camDist=length(cameraPosition.xz-m);
+            float distFade=1.0-smoothstep(18.0,28.5,camDist);
+            float fadeMask=vFurEdge*distFade;
+            if(fadeMask<0.015)discard;
+
+            // Curved velvety micro-grass fiber field (~7,000 soft tapered micro-blades per m²) sheared subtly along organic tuft curl.
+            mat2 rotA=mat2(0.866,-0.500,0.500,0.866);
+            mat2 rotB=mat2(0.588,0.809,-0.809,0.588);
+            vec2 curlDir=vec2(meadowNoise2D(m*2.4+vec2(4.1,-8.3))-0.5,meadowNoise2D(m*2.4+vec2(-9.2,6.7))-0.5);
+            vec2 fCoord=m-curlDir*(vFurHeight*vShellFrac*0.58);
+            float clump=meadowNoise2D(fCoord*15.5+vec2(2.3,-5.7));
+            float hairA=meadowNoise2D(rotA*fCoord*46.0+vec2(7.1,13.4));
+            float hairB=meadowNoise2D(rotB*fCoord*74.0+vec2(-11.3,5.2));
+            float fineTip=meadowNoise2D(rotA*fCoord*116.0+vec2(19.7,-4.1));
+            float fiberH=clamp(hairA*0.44+hairB*0.36+fineTip*0.20+(clump-0.5)*0.30,0.0,1.0);
+
+            vec2 uvWarp=vec2(meadowNoise2D(m*0.14+vec2(3.7,-6.2))-0.5,meadowNoise2D(m*0.14+vec2(-11.4,8.9))-0.5)*2.6;
+            vec2 mOrg=m+uvWarp;
+            vec3 bladesTex=sRGBToLinear(texture2D(grassDetail,(rotA*mOrg)*0.48+vec2(0.19,0.43))).rgb;
+            vec3 patches=sRGBToLinear(texture2D(grassDetail,mOrg*0.088+vec2(0.26,0.31))).rgb;
+            vec3 macroTex=sRGBToLinear(texture2D(grassDetail,(rotB*m)*0.024+vec2(0.61,0.17))).rgb;
+            float fine=dot(bladesTex,vec3(0.22,0.70,0.08));
+            float coarse=dot(patches,vec3(0.22,0.70,0.08));
+            float macro=dot(macroTex,vec3(0.22,0.70,0.08));
+            float organicTussock=meadowFbm(m*0.34+vec2(-4.7,9.3));
+            float tussockAO=mix(0.80,1.18,smoothstep(0.10,0.34,coarse*0.44+fine*0.30+organicTussock*0.26));
+            float bladeDetail=(0.82+coarse*1.48+(fine-.13)*1.45+(organicTussock-.48)*0.18)*tussockAO;
+
+            vec2 spData=sampleSpruceForest(vFurWorld,meadowSun);
+            float worn=0.0;
+            vec3 baseEst=meadowBaseTint(m)*bladeDetail*mix(1.22,1.0,meadowSky.x);
+            vec3 groundCol=meadowGroundAlbedo(m,baseEst,coarse,macro,0.14,spData,worn);
+
+            // Thin fiber density organically over heavily scuffed dirt spots so trampled loam peeks naturally through short grass.
+            float thresh=vShellFrac*(0.76+worn*0.28);
+            float fiberCov=smoothstep(thresh-0.11,thresh+0.13,fiberH);
+            vec3 viewDir=normalize(cameraPosition-vFurWorld);
+            float grazeFill=mix(0.66,0.92,pow(1.0-clamp(viewDir.y,0.0,1.0),1.3));
+            float furAlpha=fiberCov*grazeFill*(1.0-vShellFrac*0.28)*fadeMask*(1.0-worn*0.42);
+            if(furAlpha<0.018)discard;
+
+            float velvet=pow(1.0-max(0.0,dot(viewDir,vFurNormal)),2.0)*(.44+.48*organicTussock)*(1.0-worn*.78)*(1.0-spData.y*.7);
+            groundCol+=vec3(.076,.104,.039)*velvet;
+
+            // Plush carpet depth: deeper mossy root shadow on lower shells -> warm sunlit golden-sage velvet tips on top shells!
+            vec3 tipTint=mix(vec3(1.06,1.11,0.90),vec3(1.24,1.20,0.84),clamp(organicTussock*0.7+clump*0.45,0.0,1.0));
+            vec3 furCol=mix(groundCol*0.78,groundCol*tipTint,smoothstep(0.05,0.95,vShellFrac));
+            furCol*=mix(0.92,1.12,fineTip);
+            furCol+=groundCol*(vFurGust*0.12*vShellFrac*meadowSky.x);
+
+            float horizonSun=smoothstep(vFurHorizon-.055,vFurHorizon+.085,meadowSun.y/max(.1,length(meadowSun.xz)));
+            float facing=dot(vFurNormal,meadowSun);
+            vec3 litCol=meadowSharedLight(furCol,vFurWorld,camDist,facing,horizonSun,spData)*(1.0-meadowSky.w*.18);
+
+            // Soft hand-dusted lime chalk sits naturally across the dense short velvet fur (zero white shark teeth!).
+            if(abs(m.x)<15.5&&m.y>-12.5&&m.y<22.5){
+              vec2 uvMarks=vec2(m.x/32.0+0.5,1.0-(m.y+13.0)/36.0);
+              vec4 chalk=sRGBToLinear(texture2D(courtChalk,uvMarks));
+              float chalkDust=chalk.a*(1.0-meadowSky.w*.29)*(0.55+0.45*vShellFrac)*(1.0-worn*0.24)*0.78;
+              litCol=mix(litCol,chalk.rgb,chalkDust);
+            }
+            diffuseColor=vec4(litCol,furAlpha);
+          `);
+      };
+      const mesh=new THREE.InstancedMesh(geo,mat,layers);
+      const idMat=new THREE.Matrix4();
+      for(let l=0;l<layers;l++)mesh.setMatrixAt(l,idMat);
+      mesh.instanceMatrix.needsUpdate=true;
+      mesh.name="meadowTurfFurShells";mesh.receiveShadow=true;mesh.castShadow=false;mesh.frustumCulled=false;mesh.renderOrder=1;
+      s.root.add(mesh);
+      return mesh;
     }
 
     function meadowGrass(s){
-      function buildTuftGeo(blades,segs,widthScale){
-        const positions=[],normals=[],bladeH=[],indices=[];
+      // 1) 6-layer 3D GPU Shell-Fur carpet covers the playable semi-wild court & ragged sidelines in plush velvety fur.
+      const furShellMesh=meadowFurShells(s);
+
+      // 2) Gracefully curved 3D parabolic grass tufts (adapted from MIT-licensed Long Wind grass.js / grass-glsl.js).
+      // Pure unit-scale instance matrices + begin_vertex deformation ensure 100% accurate real-time hoop/player shadow reception!
+      function buildCurvedPatchGeo(blades,segs,patchRadius,halfWidth,archMin,archRange){
+        const positions=[],normals=[],bladeMeta=[],bladeShape=[],indices=[];
         for(let blade=0;blade<blades;blade++){
-          const a=blade*(tau/blades)+blade*.61,dx=Math.sin(a),dz=Math.cos(a),start=positions.length/3;
-          // 44cm 自然蓬松羊茅草丛，多叶片柔和舒展覆盖地面，绝不形成孤立黑刺点！
-          const ox=Math.sin(blade*2.399)*.21*(1+(blade%2)*.42),oz=Math.cos(blade*2.399)*.21*(1+((blade+1)%2)*.42);
-          const heightScale=.76+(blade%3)*.18;
-          for(let row=0;row<=segs;row++){
-            const t=row/segs,h=heightScale*t,lean=(.18+.10*(blade%2))*t*t,w=.074*widthScale*Math.pow(1-t,.58);
-            for(const side of [-1,1]){
-              positions.push(ox+dx*lean+dz*w*side,h,oz+dz*lean-dx*w*side);
-              normals.push(dx*.14,1.0,dz*.14);
-              bladeH.push(t);
+          const u1=((blade*0.754877666+0.19)%1)-0.5;
+          const u2=((blade*0.569840291+0.63)%1)-0.5;
+          // Soft organic mini-clumping inside each patch so grass grows in natural pasture tufts rather than a uniform grid.
+          const clumpAng=(blade%3)*2.0944+0.4;
+          const ox=u1*patchRadius*1.75+Math.cos(clumpAng)*patchRadius*0.18;
+          const oz=u2*patchRadius*1.75+Math.sin(clumpAng)*patchRadius*0.18;
+          // Natural 360-degree curved arch with gentle alpine wind bias (zero stiff vertical spikes!).
+          const yaw=blade*2.399963+0.53;
+          const dirX=0.28*0.8819+0.72*Math.sin(yaw),dirZ=0.28*0.4714+0.72*Math.cos(yaw);
+          const dLen=Math.hypot(dirX,dirZ)||1,ux=dirX/dLen,uz=dirZ/dLen;
+          const sideX=uz,sideZ=-ux;
+          const hScale=0.58+((blade*7)%5)*0.145;
+          const arch=archMin+((blade*3)%4)*(archRange/3);
+          const shadeVar=((blade*11)%7)/6-0.5;
+          const base=positions.length/3;
+          if(segs>=3){
+            // Smooth 3-segment parabolic arched blade (2+2+2+1 = 7 verts, 5 tris): upright base, graceful drooping tip!
+            const rows=[[0.0,1.0],[0.36,0.82],[0.70,0.46],[1.0,0.0]];
+            for(let r=0;r<rows.length;r++){
+              const [t,wFrac]=rows[r];
+              if(wFrac===0){
+                positions.push(ox,hScale*t,oz);normals.push(0,1,0);
+                bladeMeta.push(t,shadeVar);bladeShape.push(0,0,ux*arch,uz*arch);
+              }else{
+                for(const sd of [-1,1]){
+                  positions.push(ox,hScale*t,oz);normals.push(0,1,0);
+                  bladeMeta.push(t,shadeVar);bladeShape.push(sideX*halfWidth*wFrac*sd,sideZ*halfWidth*wFrac*sd,ux*arch,uz*arch);
+                }
+              }
             }
-            if(row<segs){const k=start+row*2;indices.push(k,k+1,k+2,k+1,k+3,k+2);}
+            indices.push(base,base+1,base+2,base+1,base+3,base+2,base+2,base+3,base+4,base+3,base+5,base+4,base+4,base+5,base+6);
+          }else if(segs===2){
+            const rows=[[0.0,1.0],[0.54,0.54],[1.0,0.0]];
+            for(let r=0;r<rows.length;r++){
+              const [t,wFrac]=rows[r];
+              if(wFrac===0){
+                positions.push(ox,hScale*t,oz);normals.push(0,1,0);
+                bladeMeta.push(t,shadeVar);bladeShape.push(0,0,ux*arch,uz*arch);
+              }else{
+                for(const sd of [-1,1]){
+                  positions.push(ox,hScale*t,oz);normals.push(0,1,0);
+                  bladeMeta.push(t,shadeVar);bladeShape.push(sideX*halfWidth*wFrac*sd,sideZ*halfWidth*wFrac*sd,ux*arch,uz*arch);
+                }
+              }
+            }
+            indices.push(base,base+1,base+2,base+1,base+3,base+2,base+2,base+3,base+4);
+          }else{
+            for(const sd of [-1,1]){
+              positions.push(ox,0,oz);normals.push(0,1,0);
+              bladeMeta.push(0,shadeVar);bladeShape.push(sideX*halfWidth*sd,sideZ*halfWidth*sd,ux*arch,uz*arch);
+            }
+            positions.push(ox,hScale,oz);normals.push(0,1,0);
+            bladeMeta.push(1,shadeVar);bladeShape.push(0,0,ux*arch,uz*arch);
+            indices.push(base,base+1,base+2);
           }
         }
         const geo=new THREE.BufferGeometry();geo.setIndex(indices);
         geo.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
         geo.setAttribute("normal",new THREE.Float32BufferAttribute(normals,3));
-        geo.setAttribute("bladeH",new THREE.Float32BufferAttribute(bladeH,1));
+        geo.setAttribute("bladeMeta",new THREE.Float32BufferAttribute(bladeMeta,2));
+        geo.setAttribute("bladeShape",new THREE.Float32BufferAttribute(bladeShape,4));
         return geo;
       }
-      const mat=new THREE.MeshLambertMaterial({side:THREE.DoubleSide}),time=s.meadow.time;
+      // MeshStandardMaterial + native begin_vertex deformation => 100% real-time shadow reception from hoop, racks & players!
+      const mat=new THREE.MeshStandardMaterial({roughness:.92,metalness:0,side:THREE.DoubleSide}),time=s.meadow.time;
       mat.onBeforeCompile=shader=>{
         Object.assign(shader.uniforms,s.meadow.uniforms);
         shader.uniforms.meadowTime=time;
         shader.uniforms.meadowWind=s.meadow.wind;
-        shader.vertexShader="attribute float bladeH;\nuniform float meadowTime,meadowWind;\nuniform sampler2D meadowClouds;\nuniform vec4 meadowActors,meadowBall,meadowPressure;\nvarying float vBladeH;\nvarying vec3 vGrassWorld;\n"+
-          shader.vertexShader.replace("#include <begin_vertex>",`
+        shader.uniforms.grassDetail={value:s.meadowGrassTex};
+        shader.vertexShader=AIBAMeadowWeather.windGLSL+
+          "attribute vec2 bladeMeta;\nattribute vec4 bladeShape;\nattribute vec4 aTerrainInfo;\nuniform float meadowTime,meadowWind;\nuniform vec4 meadowActors,meadowBall,meadowPressure;\nvarying float vBladeH,vBladeVar,vGust,vGrassHorizon;\nvarying vec3 vGrassWorld,vTerrainNormal;\n"+
+          shader.vertexShader.replace("#include <beginnormal_vertex>",`
+            #include <beginnormal_vertex>
+            float tNy=sqrt(max(0.08,1.0-aTerrainInfo.x*aTerrainInfo.x-aTerrainInfo.y*aTerrainInfo.y));
+            vTerrainNormal=normalize(vec3(aTerrainInfo.x,tNy,aTerrainInfo.y));
+            vGrassHorizon=aTerrainInfo.z;
+            objectNormal=vTerrainNormal;
+          `).replace("#include <begin_vertex>",`
             #include <begin_vertex>
-            vBladeH=bladeH;
-            vec2 root=instanceMatrix[3].xz;
-            // Dual-layer wind: sweeping gust waves + local blade flutter.
-            vec2 gustUV=root*.014+vec2(meadowTime*.055,-meadowTime*.028);
-            float gust=(texture2D(meadowClouds,gustUV).r-.35)*1.8;
-            float wave=sin(meadowTime*1.65-root.x*.24-root.y*.13)+.42*sin(meadowTime*3.1+root.x*.55-root.y*.42);
-            float bend=(wave*.11+gust*.24)*(1.0+meadowWind*1.35)+meadowWind*.16;
-            float flex=bladeH*bladeH;
-            transformed.x+=bend*flex;
-            transformed.z+=bend*.52*flex;
-            transformed.y-=abs(bend)*.12*flex;
-            // Interactive foliage bending: grass blades part radially around player/opponent feet and rolling basketballs.
+            vBladeH=bladeMeta.x;
+            vBladeVar=bladeMeta.y;
+            float bladeHeight=aTerrainInfo.w;
+            // instanceMatrix has unit scale (1,1,1), so rotX/rotZ are orthonormal and transformed stays in exact world meters!
+            vec2 rotX=instanceMatrix[0].xz;
+            vec2 rotZ=instanceMatrix[2].xz;
+            vec3 patchCenter=instanceMatrix[3].xyz;
+            vec2 dWorldXZ=rotX*position.x+rotZ*position.z;
+            vec2 rootXZ=patchCenter.xz+dWorldXZ;
+            float slopeDY=-(vTerrainNormal.x*dWorldXZ.x+vTerrainNormal.z*dWorldXZ.y)/max(0.36,vTerrainNormal.y);
+
+            float camDistV=length(cameraPosition.xz-rootXZ);
+            float distWiden=1.0+smoothstep(10.0,48.0,camDistV)*1.55;
+            vec2 sideLocal=bladeShape.xy*distWiden;
+            vec2 archWorld=rotX*bladeShape.z+rotZ*bladeShape.w;
+
+            // Graceful parabolic arch (curves softly sideways toward tip instead of poking straight up like a needle!).
+            float flex=vBladeH*vBladeH;
+            vec3 gw=sampleMeadowWind(rootXZ,meadowTime,meadowWind);
+            vGust=gw.z;
+            float windScale=bladeHeight*(0.48+0.34*smoothstep(0.10,0.32,bladeHeight));
+            vec2 windWorld=(MEADOW_WIND_DIR*gw.x+MEADOW_WIND_PERP*gw.y)*windScale*flex;
+            vec2 archDisp=archWorld*(bladeHeight*flex);
+
             vec2 pushVec=vec2(0.0);
             float pushDown=0.0;
-            vec2 dA=root-meadowActors.xy;float lA=length(dA);
-            if(lA<.88){float wA=pow(1.0-lA/.88,1.6);pushVec+=dA/max(.04,lA)*wA*.46;pushDown=max(pushDown,wA*.48);}
-            vec2 dB=root-meadowActors.zw;float lB=length(dB);
-            if(lB<.88){float wB=pow(1.0-lB/.88,1.6);pushVec+=dB/max(.04,lB)*wB*.46;pushDown=max(pushDown,wB*.48);}
-            vec2 dC=root-meadowBall.xy;float lC=length(dC);
-            if(lC<.58){float wC=pow(1.0-lC/.58,1.6);pushVec+=dC/max(.04,lC)*wC*.38;pushDown=max(pushDown,wC*.42);}
-            ${pressureBend("bladeH")}
-            transformed.xz+=pushVec*bladeH;
-            transformed.y*=1.0-pushDown*.55*bladeH;
+            vec2 dA=rootXZ-meadowActors.xy;float lA=length(dA);
+            if(lA<.88){float wA=pow(1.0-lA/.88,1.6);pushVec+=dA/max(.04,lA)*wA*.46;pushDown=max(pushDown,wA*.55);}
+            vec2 dB=rootXZ-meadowActors.zw;float lB=length(dB);
+            if(lB<.88){float wB=pow(1.0-lB/.88,1.6);pushVec+=dB/max(.04,lB)*wB*.46;pushDown=max(pushDown,wB*.55);}
+            vec2 dC=rootXZ-meadowBall.xy;float lC=length(dC);
+            if(lC<.58){float wC=pow(1.0-lC/.58,1.6);pushVec+=dC/max(.04,lC)*wC*.38;pushDown=max(pushDown,wC*.48);}
+            if(meadowPressure.w>0.0){
+              vec2 deltaP=rootXZ-meadowPressure.xy;float dP=length(deltaP);
+              float crestP=meadowPressure.w*(1.0-smoothstep(.55,3.8,abs(dP-meadowPressure.z)));
+              pushVec+=(deltaP/max(dP,.05))*crestP*.55;pushDown=max(pushDown,crestP*.45);
+            }
+            vec2 totalWorldHoriz=archDisp+windWorld+pushVec*(bladeHeight*1.25*vBladeH);
+            float rawH=position.y*bladeHeight*(1.0-pushDown*0.58*vBladeH);
+            // Parabolic arc-length droop keeps curved grass blades supple and natural.
+            float droop=min(rawH*rawH*0.52,dot(totalWorldHoriz,totalWorldHoriz)*0.42);
+            float vertH=sqrt(max(0.00002,rawH*rawH-droop));
+            vec2 localHoriz=vec2(dot(totalWorldHoriz,rotX),dot(totalWorldHoriz,rotZ));
+            transformed=vec3(position.x+sideLocal.x+localHoriz.x,slopeDY+vertH,position.z+sideLocal.y+localHoriz.y);
             vGrassWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
           `);
-        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+spruceShadowGLSL+"varying float vBladeH;\nvarying vec3 vGrassWorld;\n"+
-          shader.fragmentShader.replace("#include <color_fragment>",`
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+spruceShadowGLSL+meadowPaletteGLSL+
+          "uniform sampler2D grassDetail;\nvarying float vBladeH,vBladeVar,vGust,vGrassHorizon;\nvarying vec3 vGrassWorld,vTerrainNormal;\n"+
+          shader.fragmentShader.replace("#include <normal_fragment_maps>",`
+            #include <normal_fragment_maps>
+            // Force BOTH front and back faces of DoubleSide grass blades to use the upward terrain normal (never flipped to -Y!).
+            normal=normalize((viewMatrix*vec4(normalize(vTerrainNormal+vec3(0.0,0.28*vBladeH,0.0)),0.0)).xyz);
+          `).replace("#include <color_fragment>",`
             #include <color_fragment>
-            // 3D 草丛根部与地面草皮亮度无缝衔接 (rootAO: 0.84 -> 1.22，消除孤立深色小黑刺感)，同时同步采样 614 棵雪岭云杉的烘焙树影与云隙光斑！
-            float rootAO=mix(.84,1.22,smoothstep(0.0,.72,vBladeH));
-            vec3 tipTint=mix(vec3(.90,.98,.82),vec3(1.22,1.18,.84),vBladeH);
-            float cloudLight=.68+.34*sunWindow(vGrassWorld,1.0);
+            vec3 instVar=diffuseColor.rgb;
+            vec2 m=vGrassWorld.xz;
+            float camDist=length(cameraPosition.xz-m);
+            float closeGrain=1.0-smoothstep(28.0,115.0,camDist);
+            vec2 uvWarp=vec2(meadowNoise2D(m*0.14+vec2(3.7,-6.2))-0.5,meadowNoise2D(m*0.14+vec2(-11.4,8.9))-0.5)*2.6;
+            vec2 mOrg=m+uvWarp;
+            mat2 rotA=mat2(0.866,-0.500,0.500,0.866);
+            mat2 rotB=mat2(0.588,0.809,-0.809,0.588);
+            vec3 bladesTex=sRGBToLinear(texture2D(grassDetail,(rotA*mOrg)*0.48+vec2(0.19,0.43))).rgb;
+            vec3 patches=sRGBToLinear(texture2D(grassDetail,mOrg*0.088+vec2(0.26,0.31))).rgb;
+            vec3 macroTex=sRGBToLinear(texture2D(grassDetail,(rotB*m)*0.024+vec2(0.61,0.17))).rgb;
+            float fine=dot(bladesTex,vec3(0.22,0.70,0.08));
+            float coarse=dot(patches,vec3(0.22,0.70,0.08));
+            float macro=dot(macroTex,vec3(0.22,0.70,0.08));
+            float organicTussock=meadowFbm(m*0.34+vec2(-4.7,9.3));
+            float tussockHeight=coarse*0.44+fine*0.30+organicTussock*0.26;
+            float tussockAO=mix(0.78,1.18,smoothstep(0.10,0.34,tussockHeight));
+            float bladeDetail=(0.82+coarse*1.48+(fine-.13)*(1.05+0.48*closeGrain)+(organicTussock-.48)*0.18)*tussockAO;
+
             vec2 spData=sampleSpruceForest(vGrassWorld,meadowSun);
-            float spSh=max(spData.x,spData.y*0.85);
-            vec3 shCol=mix(vec3(1.0),vec3(.42,.56,.68),spSh*(.62+.38*meadowSky.x));
-            diffuseColor.rgb*=rootAO*tipTint*cloudLight*shCol*(1.0-spData.y*0.36)*(1.0-meadowSky.w*.18);
+            float worn=0.0;
+            vec3 baseEst=meadowBaseTint(m)*bladeDetail*mix(1.22,1.0,meadowSky.x);
+            vec3 groundCol=meadowGroundAlbedo(m,baseEst,coarse,macro,0.14,spData,worn);
+
+            vec3 viewDir=normalize(cameraPosition-vGrassWorld);
+            float velvet=pow(1.0-max(0.0,dot(viewDir,vTerrainNormal)),2.0)*(.44+.48*organicTussock)*(1.0-worn*.78)*(1.0-spData.y*.7);
+            groundCol+=vec3(.076,.104,.039)*velvet;
+
+            // Soft root-to-tip pasture harmony: roots melt seamlessly into the Shell-Fur undercoat, curved tips warm gently in sunlight!
+            vec3 perBladeTint=mix(vec3(0.94,0.98,0.92),vec3(1.10,1.07,0.88),vBladeVar+0.5);
+            vec3 tipTint=mix(vec3(1.06,1.10,0.92),vec3(1.22,1.18,0.86),clamp(organicTussock*0.85+coarse*1.4,0.0,1.0))*perBladeTint;
+            vec3 bladeCol=mix(groundCol*0.88,groundCol*tipTint*mix(vec3(1.0),instVar,0.28),smoothstep(0.06,0.90,vBladeH));
+            bladeCol+=groundCol*(vGust*0.13*vBladeH*meadowSky.x);
+
+            float horizonSun=smoothstep(vGrassHorizon-.055,vGrassHorizon+.085,meadowSun.y/max(.1,length(meadowSun.xz)));
+            float facing=dot(vTerrainNormal,meadowSun);
+            float farBlend=smoothstep(28.0,64.0,camDist);
+            diffuseColor.rgb=meadowSharedLight(mix(bladeCol,groundCol,farBlend),vGrassWorld,camDist,facing,horizonSun,spData)*(1.0-meadowSky.w*.18);
           `).replace("#include <dithering_fragment>",`
-            // Backlit subsurface scattering (SSS): sunlit blades glow warm chartreuse/gold.
             vec3 gView=normalize(cameraPosition-vGrassWorld);
+            float farFade=1.0-smoothstep(26.0,64.0,length(cameraPosition.xz-vGrassWorld.xz))*0.75;
             float spSh2=spruceCanopyShadow(vGrassWorld,meadowSun);
-            float sss=pow(clamp(dot(-gView,meadowSun),0.0,1.0),2.6)*vBladeH*(.25+.75*meadowSky.x)*(1.0-spSh2*.82);
-            vec3 sssCol=mix(vec3(.72,.88,.30),vec3(1.0,.78,.34),meadowSky.y);
-            gl_FragColor.rgb+=sssCol*sss*.44;
+            float sss=pow(clamp(dot(-gView,meadowSun),0.0,1.0),2.4)*pow(vBladeH,1.2)*(.28+.72*meadowSky.x)*(1.0-spSh2*.82)*farFade;
+            vec3 sssCol=mix(vec3(.70,.86,.30),vec3(1.0,.78,.35),meadowSky.y);
+            gl_FragColor.rgb+=sssCol*sss*.34;
             #include <dithering_fragment>
           `);
       };
-      const dummy=new THREE.Object3D(),color=new THREE.Color();
-      const green=[0x688844,0x74924c,0x829c52,0x5a7c3c,0x8fa058,0x6e8a48];
-      // Near/mid dense grass sea (7-blade fuller fescue tufts = 65,800 blades on desktop)
-      const nearGeo=buildTuftGeo(7,4,1.52);
-      const nearMesh=new THREE.InstancedMesh(nearGeo,mat,s.mobile?3200:9400);
-      for(let i=0;i<nearMesh.count;i++){
-        let x,z,h;
-        const inCourtTuft=i%3===0;
-        if(inCourtTuft){
-          // Organic clumps of short trampled pasture grass inside the court & taller ragged clumps straddling the sidelines/baselines.
-          x=(s.r()-.5)*16.8;
-          z=COURT.nearBaseline-1.2+s.r()*(COURT.farBaseline-COURT.nearBaseline+2.4);
-          const dx=Math.max(0,Math.abs(x)-6.4),dz=Math.max(0,Math.abs(z-COURT.midZ)-12.6);
-          const borderZone=smooth(Math.hypot(dx,dz),0,2.6);
-          const clump=.5+.5*(Math.sin(x*.85+z*.72)*Math.cos(x*1.18-z*.94));
-          // Keep heavily trampled paint under the hoop sparser and shorter
-          const hoopDist=Math.hypot(x*.83,(z-(HOOP.z+2.6))*.64);
-          if(hoopDist<2.6&&s.r()<.78){x=Math.sign(x||1)*(7.75+s.r()*1.65);}
-          h=(.042+s.r()*.085)*(1.0+borderZone*1.15)*(.65+.65*clump);
-        }else{
-          const a=s.r()*tau,r=6.8+33*Math.pow(s.r(),1.42);
-          x=Math.sin(a)*r;z=COURT.midZ-Math.cos(a)*r;
-          const dx=Math.max(0,Math.abs(x)-7.2),dz=Math.max(0,Math.abs(z-COURT.midZ)-13.8);
-          const edgeDist=Math.hypot(dx,dz);
-          const edgeTaper=smooth(edgeDist,0,2.8);
-          h=(.09+s.r()*.30)*(.32+.68*edgeTaper);
+      const dummy=new THREE.Object3D(),color=new THREE.Color(),nTmp=new THREE.Vector3();
+      const tintSwatches=[0xf6f8ee,0xf2f6e6,0xfaf6e2,0xeef3e6,0xf7f2dc,0xf0f5e8];
+      const camPads=[
+        [-8.27,-5.88,.82],[-9.96,-5.44,.85],[-8.64,-1.35,.78],
+        [-6.40,-1.60,.82],[-7.64,-0.36,.85],[-8.67,1.42,.78],
+        [0.00,1.05,.82],[0.00,2.80,.85],[-4.95,1.26,.78],
+        [6.40,-1.60,.82],[7.64,-0.36,.85],[-1.94,-0.48,.78],
+        [8.27,-5.88,.82],[9.96,-5.44,.85],[-1.58,-1.89,.78]
+      ];
+      if(typeof RACKS!=="undefined"&&typeof HOOP!=="undefined"){
+        for(const rk of RACKS){
+          const dx=rk.p.x-HOOP.x,dz=rk.p.z-HOOP.z,len=Math.hypot(dx,dz)||1,ux=dx/len,uz=dz/len;
+          for(const d of [2.4,2.95,3.55,4.3])camPads.push([rk.p.x+ux*d,rk.p.z+uz*d,.78]);
         }
-        dummy.position.set(x,elevation(x,z)-.014,z);dummy.rotation.y=s.r()*tau;
-        dummy.scale.set(h*(.85+s.r()*.45),h,h*(.85+s.r()*.45));dummy.updateMatrix();nearMesh.setMatrixAt(i,dummy.matrix);
-        nearMesh.setColorAt(i,color.set(green[i%green.length]).convertSRGBToLinear().multiplyScalar(.82+.32*s.r()));
       }
-      nearMesh.name="alpineSwayingGrass";nearMesh.frustumCulled=false;s.root.add(nearMesh);
-      // Far LOD ring (wider 3-blade tufts covering rolling hillside out to 78m).
-      const farGeo=buildTuftGeo(3,2,1.65);
-      const farMesh=new THREE.InstancedMesh(farGeo,mat,s.mobile?950:2600);
-      for(let i=0;i<farMesh.count;i++){
-        const a=s.r()*tau,r=34+44*Math.pow(s.r(),1.15);
+      const orbit=s.menuOrbit||[18,20,8,2.2];
+      for(let oi=0;oi<24;oi++){
+        const oa=oi/24*tau;
+        camPads.push([Math.cos(oa)*orbit[0],COURT.midZ+Math.sin(oa)*orbit[1],.78]);
+      }
+      const makeTerrainAttr=count=>new THREE.InstancedBufferAttribute(new Float32Array(count*4),4);
+      const setPatch=(mesh,tAttr,i,x,z,h)=>{
+        for(let pass=0;pass<2;pass++){
+          for(const [px,pz,rad] of camPads){
+            const ddx=x-px,ddz=z-pz,dd=Math.hypot(ddx,ddz);
+            if(dd<rad){
+              const ux=dd>.001?ddx/dd:Math.cos(i*2.399),uz=dd>.001?ddz/dd:Math.sin(i*2.399);
+              x=px+ux*(rad+.16);z=pz+uz*(rad+.16);
+            }
+          }
+        }
+        const y=elevation(x,z);
+        terrainNormalAt(x,z,nTmp);
+        const hor=terrainHorizonAt(x,z,y);
+        tAttr.setXYZW(i,nTmp.x,nTmp.z,hor,h);
+        dummy.position.set(x,y-.006,z);dummy.rotation.y=s.r()*tau;
+        // Pure unit scale (1,1,1): preserves orthonormal instanceMatrix so begin_vertex & shadowmap_vertex match 1:1!
+        dummy.scale.set(1,1,1);dummy.updateMatrix();
+        mesh.setMatrixAt(i,dummy.matrix);
+        mesh.setColorAt(i,color.set(tintSwatches[i%tintSwatches.length]).convertSRGBToLinear().multiplyScalar(.92+.16*s.r()));
+      };
+
+      // Tier 0: Gracefully curved 3-seg pasture clumps around the ragged court border + subtle low semi-wild tufts in less-trodden court pockets.
+      const nearCount=s.mobile?2800:4400;
+      const nearGeo=buildCurvedPatchGeo(s.mobile?9:12,s.mobile?2:3,0.42,0.0115,0.52,0.28);
+      const nearTerrain=makeTerrainAttr(nearCount);
+      nearGeo.setAttribute("aTerrainInfo",nearTerrain);
+      const nearMesh=new THREE.InstancedMesh(nearGeo,mat,nearCount);
+      for(let i=0;i<nearCount;i++){
+        let x,z,h;
+        const slot=i%10;
+        if(slot<2){
+          // Subtle low, gracefully curved semi-wild tufts in less-trodden court margins/midcourt (keeping the mown paint playable & clean!).
+          for(let tries=0;tries<4;tries++){
+            x=(s.r()-.5)*14.8;
+            z=COURT.nearBaseline+0.4+s.r()*(COURT.farBaseline-COURT.nearBaseline-0.8);
+            const inKey=Math.abs(x)<3.1&&(z<-2.6||z>12.2);
+            if(!inKey&&turfWearAt(x,z)<0.32)break;
+          }
+          h=THREE.MathUtils.clamp(turfHeightAt(x,z)*(0.52+s.r()*0.38),0.045,0.105);
+        }else if(slot<8){
+          // Ragged hand-scythed court border & lush billowing sidelines (curved meadow fescue emerging out of the Shell-Fur undercoat)
+          if(i%3===0){
+            const side=i%2?1:-1;
+            x=side*(6.75+Math.pow(s.r(),1.22)*9.8);
+            z=COURT.nearBaseline-4.5+s.r()*(COURT.farBaseline-COURT.nearBaseline+9.5);
+          }else{
+            x=(s.r()-.5)*30.0;
+            z=s.r()<.62?(COURT.nearBaseline-7.2+s.r()*6.9):(COURT.farBaseline-.2+s.r()*8.0);
+          }
+          h=turfHeightAt(x,z)*(0.80+s.r()*0.46);
+        }else{
+          const a=(s.r()-.5)*2.6,r=13.5+s.r()*9.5;
+          x=Math.sin(a)*r;z=COURT.midZ-Math.cos(a)*r;
+          h=turfHeightAt(x,z)*(0.84+s.r()*0.46);
+        }
+        setPatch(nearMesh,nearTerrain,i,x,z,h);
+      }
+      nearMesh.name="alpineSwayingGrass";nearMesh.receiveShadow=true;nearMesh.frustumCulled=false;s.root.add(nearMesh);
+
+      // Tier 1: Mid-slope undulating curved meadow clumps biased toward the shooting camera hemisphere.
+      const midCount=s.mobile?1800:3800;
+      const midGeo=buildCurvedPatchGeo(10,2,0.52,0.015,0.46,0.26);
+      const midTerrain=makeTerrainAttr(midCount);
+      midGeo.setAttribute("aTerrainInfo",midTerrain);
+      const midMesh=new THREE.InstancedMesh(midGeo,mat,midCount);
+      for(let i=0;i<midCount;i++){
+        const forward=i%10<8;
+        const a=forward?(s.r()-.5)*4.3:(Math.PI+(s.r()-.5)*2.0);
+        const r=12.0+27*Math.pow(s.r(),1.12);
+        let x=Math.sin(a)*r,z=COURT.midZ-Math.cos(a)*r;
+        if(Math.abs(x)<7.2&&z>COURT.nearBaseline-.5&&z<COURT.farBaseline+.5)x=Math.sign(x||1)*(7.5+s.r()*6.5);
+        const h=turfHeightAt(x,z)*(0.84+s.r()*0.46);
+        setPatch(midMesh,midTerrain,i,x,z,h);
+      }
+      midMesh.name="alpineMidGrass";midMesh.frustumCulled=false;s.root.add(midMesh);
+
+      // Tier 2: Far hillside soft grass tufts breaking up ridge silhouettes and melting seamlessly into ground.
+      const farCount=s.mobile?1200:2600;
+      const farGeo=buildCurvedPatchGeo(6,1,0.62,0.022,0.42,0.22);
+      const farTerrain=makeTerrainAttr(farCount);
+      farGeo.setAttribute("aTerrainInfo",farTerrain);
+      const farMesh=new THREE.InstancedMesh(farGeo,mat,farCount);
+      for(let i=0;i<farCount;i++){
+        const forward=i%10<8;
+        const a=forward?(s.r()-.5)*4.2:(Math.PI+(s.r()-.5)*2.1);
+        const r=32+34*Math.pow(s.r(),1.06);
         const x=Math.sin(a)*r,z=COURT.midZ-Math.cos(a)*r;
-        const h=.28+s.r()*.44;
-        dummy.position.set(x,elevation(x,z)-.03,z);dummy.rotation.y=s.r()*tau;
-        dummy.scale.set(h*1.2,h,h*1.2);dummy.updateMatrix();farMesh.setMatrixAt(i,dummy.matrix);
-        farMesh.setColorAt(i,color.set(green[(i*3)%green.length]).convertSRGBToLinear().multiplyScalar(.76+.34*s.r()));
+        const h=turfHeightAt(x,z)*(0.86+s.r()*0.48)*(.58+.42*smooth(r,66,44));
+        setPatch(farMesh,farTerrain,i,x,z,h);
       }
       farMesh.name="alpineFarGrass";farMesh.frustumCulled=false;s.root.add(farMesh);
+      s.meadowLayersRefs=s.meadowLayersRefs||{grass:[],trees:[]};
+      s.meadowLayersRefs.grass.push(furShellMesh,nearMesh,midMesh,farMesh);
       s.meadowWind=time;
     }
 
@@ -2607,20 +3142,32 @@
         pos.setXYZ(i,vx*n,vy*(vy<0?.42:.78)*n,vz*n);
       }
       geo.computeVertexNormals();
-      const mat=new THREE.MeshStandardMaterial({map:rockTex,roughness:.92,metalness:.03,flatShading:true});
+      const mat=new THREE.MeshStandardMaterial({map:rockTex,roughness:.90,metalness:.02});
       mat.onBeforeCompile=shader=>{
         Object.assign(shader.uniforms,s.meadow.uniforms);
-        shader.vertexShader="varying vec3 vBoulderNormal;\n"+shader.vertexShader.replace("#include <begin_vertex>",`
+        shader.vertexShader="varying vec3 vBoulderNormal,vBoulderWorld;\nvarying float vBoulderBaseH;\n"+shader.vertexShader.replace("#include <begin_vertex>",`
           #include <begin_vertex>
           vBoulderNormal=normalize(mat3(instanceMatrix)*normal);
+          vBoulderBaseH=clamp((position.y+0.42)/1.20,0.0,1.0);
+          vBoulderWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
         `);
-        shader.fragmentShader="uniform vec4 meadowSky;\nvarying vec3 vBoulderNormal;\n"+
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+spruceShadowGLSL+meadowPaletteGLSL+
+          "varying vec3 vBoulderNormal,vBoulderWorld;\nvarying float vBoulderBaseH;\n"+
           shader.fragmentShader.replace("#include <color_fragment>",`
             #include <color_fragment>
-            // Alpine moss clings to upward-facing weathered granite faces.
-            float moss=smoothstep(.46,.84,vBoulderNormal.y);
-            diffuseColor.rgb=mix(diffuseColor.rgb*vec3(.78,.77,.73),vec3(.24,.35,.15),moss*.68);
-            diffuseColor.rgb*=1.0-meadowSky.w*.26;
+            // Weathered warm-grey Tian Shan granite with alpine sky-fill on shaded faces, lichen top & turf-blended root skirt.
+            float bSunFace=dot(vBoulderNormal,meadowSun);
+            vec3 skyFill=vec3(0.085,0.105,0.120)*(1.0-clamp(bSunFace,0.0,1.0));
+            vec3 granite=diffuseColor.rgb*vec3(1.52,1.48,1.38)+vec3(0.048,0.046,0.040)+skyFill;
+            vec3 turfMatch=meadowBaseTint(vBoulderWorld.xz)*1.24;
+            float moss=smoothstep(.38,.80,vBoulderNormal.y);
+            vec3 lichenCol=mix(vec3(.28,.38,.17),turfMatch*vec3(1.10,1.12,0.88),.55);
+            vec3 rockBody=mix(granite,lichenCol,moss*.64);
+            float rootSkirt=1.0-smoothstep(0.0,.30,vBoulderBaseH);
+            rockBody=mix(rockBody,turfMatch*.80,rootSkirt*.74);
+            vec2 bSp=sampleSpruceForest(vBoulderWorld,meadowSun);
+            float bDist=length(cameraPosition.xz-vBoulderWorld.xz);
+            diffuseColor.rgb=meadowSharedLight(rockBody,vBoulderWorld,bDist,max(-0.08,bSunFace),1.0,bSp)*(1.0-meadowSky.w*.22);
           `).replace("#include <roughnessmap_fragment>",`
             #include <roughnessmap_fragment>
             roughnessFactor=mix(.92,.48,meadowSky.w);
@@ -2648,16 +3195,16 @@
         dummy.rotation.set((s.r()-.5)*.28,s.r()*tau,(s.r()-.5)*.28);
         dummy.scale.set(sc*(.9+s.r()*.5),sc*(.48+s.r()*.36),sc*(.85+s.r()*.45));
         dummy.updateMatrix();mesh.setMatrixAt(i,dummy.matrix);
-        tone.setScalar(.74+.32*s.r());mesh.setColorAt(i,tone);
+        tone.setScalar(.88+.24*s.r());mesh.setColorAt(i,tone);
       }
-      mesh.castShadow=true;mesh.receiveShadow=true;mesh.name="alpineMossyBoulders";mesh.frustumCulled=false;s.root.add(mesh);
+      mesh.castShadow=!s.mobile;mesh.receiveShadow=true;mesh.name="alpineMossyBoulders";mesh.frustumCulled=false;s.root.add(mesh);
     }
 
     function meadowShrubs(s){
-      const p=[],c=[],hAttr=[];
-      const low=linear(0x284326),high=linear(0x637d3e),col=new THREE.Color();
+      const p=[],nrm=[],c=[],hAttr=[];
+      const low=linear(0x2f4d28),high=linear(0x6f8b45),col=new THREE.Color();
       const lobes=[[0,.34,0,.44],[-.26,.25,.14,.32],[.25,.28,-.12,.34],[.06,.48,.16,.28],[-.15,.44,-.18,.27],[.20,.18,.22,.24]];
-      const unit=new THREE.IcosahedronGeometry(1,1);
+      const unit=new THREE.IcosahedronGeometry(1,0);
       const uPos=unit.attributes.position;
       for(const [lx,ly,lz,lr] of lobes){
         for(let i=0;i<uPos.count;i++){
@@ -2665,6 +3212,8 @@
           const jag=.82+.24*Math.sin(vx*5.2+vz*4.1+ly*9);
           const x=lx+vx*lr*jag,y=Math.max(0,ly+vy*lr*.85*jag),z=lz+vz*lr*jag;
           p.push(x,y,z);
+          const rx=x-lx*.35,ry=y+.22,rz=z-lz*.35,rl=Math.hypot(rx,ry,rz)||1;
+          nrm.push(rx/rl,ry/rl,rz/rl);
           const h=THREE.MathUtils.clamp(y/.78,0,1);
           hAttr.push(h);
           col.copy(low).lerp(high,h*(.72+.28*(vy*.5+.5)));
@@ -2674,30 +3223,40 @@
       unit.dispose();
       const geo=new THREE.BufferGeometry();
       geo.setAttribute("position",new THREE.Float32BufferAttribute(p,3));
+      geo.setAttribute("normal",new THREE.Float32BufferAttribute(nrm,3));
       geo.setAttribute("color",new THREE.Float32BufferAttribute(c,3));
       geo.setAttribute("shrubH",new THREE.Float32BufferAttribute(hAttr,1));
-      geo.computeVertexNormals();
       const mat=new THREE.MeshLambertMaterial({vertexColors:true});
       mat.onBeforeCompile=shader=>{
+        Object.assign(shader.uniforms,s.meadow.uniforms);
         shader.uniforms.meadowTime=s.meadow.time;
         shader.uniforms.meadowWind=s.meadow.wind;
-        shader.uniforms.meadowSun=s.meadow.uniforms.meadowSun;
-        shader.uniforms.meadowSky=s.meadow.uniforms.meadowSky;
-        shader.vertexShader="attribute float shrubH;\nuniform float meadowTime,meadowWind;\nvarying float vShrubH;\nvarying vec3 vShrubWorld;\n"+
+        shader.vertexShader=AIBAMeadowWeather.windGLSL+"attribute float shrubH;\nuniform float meadowTime,meadowWind;\nvarying float vShrubH;\nvarying vec3 vShrubWorld;\n"+
           shader.vertexShader.replace("#include <begin_vertex>",`
             #include <begin_vertex>
             vShrubH=shrubH;
             vec2 root=instanceMatrix[3].xz;
-            float sway=(sin(meadowTime*1.85+root.x*.31+root.y*.19)*.055+meadowWind*.07)*shrubH*shrubH;
-            transformed.x+=sway;transformed.z+=sway*.5;
+            vec3 sw=sampleMeadowWind(root,meadowTime-0.18,meadowWind);
+            vec2 sLocal=meadowLocalWind(instanceMatrix,(MEADOW_WIND_DIR*sw.x+MEADOW_WIND_PERP*sw.y)*0.48);
+            transformed.xz+=sLocal*(shrubH*shrubH);
             vShrubWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
           `);
-        shader.fragmentShader="uniform vec3 meadowSun;\nuniform vec4 meadowSky;\nvarying float vShrubH;\nvarying vec3 vShrubWorld;\n"+
-          shader.fragmentShader.replace("#include <dithering_fragment>",`
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+spruceShadowGLSL+meadowPaletteGLSL+
+          "varying float vShrubH;\nvarying vec3 vShrubWorld;\n"+
+          shader.fragmentShader.replace("#include <color_fragment>",`
+            #include <color_fragment>
+            vec3 sTurf=meadowBaseTint(vShrubWorld.xz);
+            diffuseColor.rgb=mix(sTurf*.85,diffuseColor.rgb,smoothstep(0.0,.35,vShrubH));
+            float sCloud=.68+.34*sunWindow(vShrubWorld,1.0);
+            float sSp=spruceCanopyShadow(vShrubWorld,meadowSun);
+            vec3 sShade=mix(vec3(1.0),vec3(.46,.60,.72),sSp*(.52+.48*meadowSky.x));
+            diffuseColor.rgb*=sCloud*sShade*(1.0-meadowSky.w*.18);
+          `).replace("#include <dithering_fragment>",`
             vec3 sv=normalize(cameraPosition-vShrubWorld);
-            float back=pow(clamp(dot(-sv,meadowSun),0.0,1.0),3.2)*vShrubH*meadowSky.x;
+            float sSp2=spruceCanopyShadow(vShrubWorld,meadowSun);
+            float back=pow(clamp(dot(-sv,meadowSun),0.0,1.0),3.2)*vShrubH*meadowSky.x*(1.0-sSp2*.80);
             vec3 glow=mix(vec3(.42,.56,.20),vec3(.92,.62,.28),meadowSky.y);
-            gl_FragColor.rgb=gl_FragColor.rgb*(1.0-meadowSky.w*.18)+glow*back*.28;
+            gl_FragColor.rgb+=glow*back*.28;
             #include <dithering_fragment>
           `);
       };
@@ -2715,6 +3274,8 @@
         tone.setScalar(.72+.36*s.r());mesh.setColorAt(i,tone);
       }
       mesh.name="alpineShrubs";mesh.frustumCulled=false;s.root.add(mesh);
+      s.meadowLayersRefs=s.meadowLayersRefs||{grass:[],trees:[]};
+      s.meadowLayersRefs.trees.push(mesh);
     }
 
     function driftCoverage(instances){
@@ -2747,22 +3308,23 @@
     ];
 
     function driftGeometry(plant,mobile){
-      const verts=[],colors=[],stem=linear(0x4e783a),leafDark=linear(0x3a5f2d),heart=linear(0xeab74a);
+      const verts=[],colors=[],stem=linear(0x748e48),leafDark=linear(0x688340),heart=linear(0xeab74a);
       const petals=plant.petals.map(linear);
       const tri=(a,b,c,color)=>{
         verts.push(...a,...b,...c);
         for(let i=0;i<3;i++)colors.push(color.r,color.g,color.b);
       };
-      // Basal rosette leaves anchor each wildflower clump into the turf.
+      // Low, turf-matched basal leaves anchor each wildflower clump without creating dark triangular specks.
       for(let l=0;l<3;l++){
-        const a=l*tau/3+.4,dx=Math.cos(a),dz=Math.sin(a),px=-dz*.055,pz=dx*.055;
-        tri([px,0,pz],[-px,0,-pz],[dx*.21,.15,dz*.21],leafDark);
+        const a=l*tau/3+.4,dx=Math.cos(a),dz=Math.sin(a),px=-dz*.042,pz=dx*.042;
+        tri([px,0,pz],[-px,0,-pz],[dx*.15,.085,dz*.15],leafDark);
       }
       const spire=plant.name==="lavender";
-      const heads=[[-.195,-.12,.31,.122],[.18,.13,.43,.107],[.053,-.205,.55,.105]];
+      // Lower, compact flower heads nestled inside the lush grass cushions (never towering above the grass!).
+      const heads=[[-.165,-.10,.175,.112],[.15,.11,.235,.098],[.045,-.165,.285,.096]];
       for(const [i,[x,z,height,r]] of heads.entries()){
-        const h=height*(spire?1.36:1),tip=[x,h,z];
-        tri([x*.42,0,z*.47],tip,[x+.019,h,z],stem);
+        const h=height*(spire?1.18:1),tip=[x,h,z];
+        tri([x*.42,0,z*.47],tip,[x+.016,h,z],stem);
         if(spire){
           // Smaller, interrupted florets keep a lavender silhouette up close.
           for(const [dx,dz] of [[1,0],[0,1]]){
@@ -2780,7 +3342,7 @@
           }
           tri([x-.029,h+.012,z-.03],[x+.028,h+.016,z-.028],[x,h+.028,z+.032],heart);
         }
-        if(plant.name==="mixed")tri([x*.42,0,z*.42],[x-.115,h*.54,z+.12],[x-.036,h*.39,z],stem);
+        if(plant.name==="mixed")tri([x*.42,0,z*.42],[x-.095,h*.52,z+.095],[x-.030,h*.38,z],stem);
       }
       const geo=new THREE.BufferGeometry();geo.setAttribute("position",new THREE.Float32BufferAttribute(verts,3));
       geo.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));geo.computeVertexNormals();
@@ -2809,14 +3371,13 @@
       geo.setAttribute("emerges",new THREE.Float32BufferAttribute(starts,1));
       const mat=new THREE.ShaderMaterial({transparent:true,depthWrite:false,
         uniforms:{clock:weather.time,wind:weather.wind,bloom},
-        vertexShader:`
+        vertexShader:AIBAMeadowWeather.windGLSL+`
           attribute vec2 travel;attribute float emerges;
           varying float alpha;
           uniform float clock,wind,bloom;
           void main(){
-            // 1. 平时零散蒲公英绒毛 360 度轻盈热气流漫飞
-            // 2. 周期性高山大风阵风浪潮 (gustWave) 席卷山坡，成批蒲公英迎风横向加速掠过球场与草坡！
-            float gustEnv=pow(max(0.0,sin(clock*0.37-position.x*0.025)*cos(clock*0.23+0.9)),3.0);
+            vec3 sw=sampleMeadowWind(position.xz,clock,wind);
+            float gustEnv=sw.z;
             float isGustBatch=step(0.42,fract(travel.x*7.3));
             float life=fract(travel.x+clock*(.022+.012*travel.y));
             float az=travel.x*62.8318+travel.y*19.0;
@@ -2824,8 +3385,7 @@
             vec2 perp=vec2(-dir.y,dir.x);
             float driftDist=life*(2.8+1.8*travel.y);
             float swirl=sin(life*6.283+travel.x*41.0)*(.36+.24*travel.y);
-            // 大风刮起时成批绒毛顺着高山主风向 vec2(0.88, 0.46) 翻涌飞掠
-            vec2 gustSweep=vec2(0.88,0.46)*(life*(5.5+4.2*travel.y)*gustEnv*isGustBatch);
+            vec2 gustSweep=(MEADOW_WIND_DIR*(5.5+4.2*travel.y)*gustEnv+MEADOW_WIND_PERP*(sw.y*3.2))*life*isGustBatch;
             float gustLift=life*(1.45*gustEnv*isGustBatch);
             vec2 horiz=dir*driftDist+perp*swirl+gustSweep;
             vec3 p=position+vec3(horiz.x,.16+life*travel.y*2.8+gustLift+.24*sin(life*9.4+travel.x*27.0),horiz.y);
@@ -2875,47 +3435,45 @@
         const kind=s.r()<.94?main:Math.floor(s.r()*meadowPlants.length);
         add(kind,x,z,(.49+.63*s.r())*(1+smooth(r,29,86)*.64),THREE.MathUtils.clamp(.07+(r-16)/121+s.r()*.18,.07,.84));
       }
-      const nearCount=s.mobile?453:960;
+      const nearCount=s.mobile?420:880;
       for(let i=0;i<nearCount;i++){
-        const side=i%2?1:-1,onCourt=i%9===0;
-        let x,z;
-        if(onCourt){
-          do{
-            x=(s.r()-.5)*14.3;z=COURT.nearBaseline+.5+s.r()*(COURT.farBaseline-COURT.nearBaseline-1);
-          }while(BATTLE_SPOTS.some(spot=>Math.hypot(x-spot.p.x,z-spot.p.z)<.64));
-        }else{
-          x=side*(7.1+s.r()*7.1);z=COURT.nearBaseline-5+s.r()*(COURT.farBaseline-COURT.nearBaseline+11);
-        }
-        add(i%meadowPlants.length,x,z,onCourt?.20+s.r()*.29:.46+s.r()*.51,.085+s.r()*.75,true);
+        const side=i%2?1:-1;
+        // Keep drift clumps nestled inside the lush outer meadow grass (never isolated dark triangles on the court!).
+        const x=side*(7.4+s.r()*7.4),z=COURT.nearBaseline-5+s.r()*(COURT.farBaseline-COURT.nearBaseline+11);
+        const gh=turfHeightAt(x,z);
+        add(i%meadowPlants.length,x,z,gh*(1.35+s.r()*0.85),.085+s.r()*.75,true);
       }
       const bloom={value:0},mat=new THREE.MeshLambertMaterial({vertexColors:true,side:THREE.DoubleSide,emissive:0xdcd2a4,emissiveIntensity:.042});
       mat.onBeforeCompile=shader=>{
         Object.assign(shader.uniforms,weather.uniforms);
         shader.uniforms.meadowTime=weather.time;shader.uniforms.meadowBloom=bloom;shader.uniforms.meadowWind=weather.wind;
-        shader.vertexShader="uniform float meadowTime,meadowBloom,meadowWind;\nuniform vec4 meadowActors,meadowBall,meadowPressure;\nattribute float bloomStart;\nvarying float vPetalH;\nvarying vec3 vPetalWorld;\n"+
+        shader.vertexShader=AIBAMeadowWeather.windGLSL+"uniform float meadowTime,meadowBloom,meadowWind;\nuniform vec4 meadowActors,meadowBall,meadowPressure;\nattribute float bloomStart;\nvarying float vPetalH;\nvarying vec3 vPetalWorld;\n"+
           shader.vertexShader.replace("#include <begin_vertex>",`
             #include <begin_vertex>
-            vPetalH=clamp(position.y*1.8,0.0,1.0);
+            vPetalH=clamp(position.y*3.0,0.0,1.0);
             vec2 root=instanceMatrix[3].xz;
-            float wind=sin(meadowTime*1.55-root.x*.23-root.y*.125)*(.15+meadowWind*.15)+meadowWind*.15;
-            transformed.x+=wind*position.y*position.y;
-            transformed.z+=wind*.53*position.y*position.y;
+            vec3 dw=sampleMeadowWind(root,meadowTime,meadowWind);
+            vec2 dLocal=meadowLocalWind(instanceMatrix,(MEADOW_WIND_DIR*dw.x+MEADOW_WIND_PERP*dw.y)*0.85);
+            transformed.xz+=dLocal*(position.y*position.y);
+            transformed.y-=length(dLocal)*0.12*(position.y*position.y);
             vec2 dA=root-meadowActors.xy;float lA=length(dA);
-            if(lA<.85){float wA=pow(1.0-lA/.85,1.5);transformed.xz+=dA/max(.04,lA)*wA*.38*vPetalH;transformed.y*=1.0-wA*.40*vPetalH;}
+            if(lA<.85){float wA=pow(1.0-lA/.85,1.5);transformed.xz+=meadowLocalWind(instanceMatrix,dA/max(.04,lA))*wA*.38*vPetalH;transformed.y*=1.0-wA*.40*vPetalH;}
             vec2 dB=root-meadowActors.zw;float lB=length(dB);
-            if(lB<.85){float wB=pow(1.0-lB/.85,1.5);transformed.xz+=dB/max(.04,lB)*wB*.38*vPetalH;transformed.y*=1.0-wB*.40*vPetalH;}
+            if(lB<.85){float wB=pow(1.0-lB/.85,1.5);transformed.xz+=meadowLocalWind(instanceMatrix,dB/max(.04,lB))*wB*.38*vPetalH;transformed.y*=1.0-wB*.40*vPetalH;}
             vec2 dC=root-meadowBall.xy;float lC=length(dC);
-            if(lC<.55){float wC=pow(1.0-lC/.55,1.5);transformed.xz+=dC/max(.04,lC)*wC*.32*vPetalH;transformed.y*=1.0-wC*.35*vPetalH;}
+            if(lC<.55){float wC=pow(1.0-lC/.55,1.5);transformed.xz+=meadowLocalWind(instanceMatrix,dC/max(.04,lC))*wC*.32*vPetalH;transformed.y*=1.0-wC*.35*vPetalH;}
             ${pressureBend("vPetalH")}
             transformed*=max(.001,smoothstep(bloomStart,bloomStart+.145,meadowBloom));
             vPetalWorld=(modelMatrix*instanceMatrix*vec4(transformed,1.0)).xyz;
           `);
-        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+spruceShadowGLSL+"varying float vPetalH;\nvarying vec3 vPetalWorld;\n"+
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+spruceShadowGLSL+meadowPaletteGLSL+"varying float vPetalH;\nvarying vec3 vPetalWorld;\n"+
           shader.fragmentShader.replace("#include <color_fragment>",`
             #include <color_fragment>
-            // 3D 花丛根部接触遮蔽 (baseAO: 0.34 -> 1.12) + 云隙光斑 + 雪岭云杉林冠投射树影，让野花真正扎根在草甸光影中！
-            float baseAO=mix(.34,1.12,smoothstep(0.0,.62,vPetalH));
-            float cloudLit=.68+.34*sunWindow(vPetalWorld,1.0);
+            // Blend lower stems/leaves into the pasture base tint so flower clumps emerge softly from the furry grass.
+            vec3 turfMatch=meadowBaseTint(vPetalWorld.xz)*1.22;
+            diffuseColor.rgb=mix(turfMatch,diffuseColor.rgb,smoothstep(0.0,.48,vPetalH));
+            float baseAO=mix(.84,1.10,smoothstep(0.0,.65,vPetalH));
+            float cloudLit=.70+.32*sunWindow(vPetalWorld,1.0);
             float spSh=spruceCanopyShadow(vPetalWorld,meadowSun);
             vec3 shCol=mix(vec3(1.0),vec3(.50,.64,.74),spSh*(.45+.55*meadowSky.x));
             diffuseColor.rgb*=baseAO*cloudLit*shCol*(1.0-meadowSky.w*.18);
@@ -2960,8 +3518,95 @@
         seeds:dandelionSeeds(s,weather,collections[1].filter(d=>!d.near||Math.abs(d.x)>8),bloom)};
     }
 
+    function parseMeadowLayers(){
+      const cfg={base:true,grass:true,trees:true,flowers:true,shadows:true,fx:true};
+      try{
+        const q=new URLSearchParams(location.search).get("meadowLayers");
+        if(q!==null&&q!==""){
+          const set=new Set(q.split(",").map(v=>v.trim()).filter(Boolean));
+          for(const k of Object.keys(cfg))cfg[k]=set.has(k);
+        }
+      }catch(e){}
+      return cfg;
+    }
+
+    function applyMeadowLayers(s){
+      if(!s||!s.meadow)return;
+      const L=s.meadowLayers||(s.meadowLayers=parseMeadowLayers());
+      const baseNames=["alpineMeadowGround","alpineNearRidges","alpineFarSnowPeaks","alpineCloudSky","alpineMossyBoulders"];
+      for(const n of baseNames){
+        const o=s.root.getObjectByName(n);
+        if(o)o.visible=!!L.base;
+      }
+      if(s.meadowLayersRefs){
+        for(const g of s.meadowLayersRefs.grass)g.visible=!!L.grass;
+        for(const t of s.meadowLayersRefs.trees)t.visible=!!L.trees;
+        if(s.meadowLayersRefs.heroTree)s.meadowLayersRefs.heroTree.castShadow=!!(L.trees&&L.shadows&&!s.mobile);
+      }
+      if(s.meadow.drifts?.beds){
+        for(const {mesh} of s.meadow.drifts.beds)mesh.visible=!!L.flowers;
+      }
+      const flState=typeof environmentRoot!=="undefined"&&environmentRoot?.userData?.flowerState;
+      if(flState){
+        for(const layer of [flState.ambient,flState.ground,flState.structure]){
+          if(layer?.meshes)for(const m of layer.meshes)m.visible=!!L.flowers;
+        }
+      }
+      if(typeof sun!=="undefined"&&sun)sun.castShadow=!!L.shadows;
+      if(typeof renderer!=="undefined"&&renderer){
+        renderer.shadowMap.enabled=!!L.shadows;
+        if(L.shadows)renderer.shadowMap.needsUpdate=true;
+      }
+      s.meadow.fxDisabled=!L.fx;
+      if(s.meadow.mountainClouds)s.meadow.mountainClouds.visible=!!L.fx;
+      if(s.meadow.fallback)s.meadow.fallback.visible=!!(L.fx&&(!window.AIBAGrade?.isActive?.()));
+      if(s.meadow.drifts?.seeds)s.meadow.drifts.seeds.visible=!!(L.fx&&L.flowers);
+      if(!L.fx){
+        if(s.meadow.rain)s.meadow.rain.visible=false;
+        if(s.meadow.bolt)s.meadow.bolt.visible=false;
+      }
+      if(s.meadow.court){
+        for(const pool of [s.meadow.court.petals,s.meadow.court.pollen]){
+          if(pool?.mesh)pool.mesh.visible=!!L.fx;
+        }
+      }
+      if(s.meadow.specShadows)s.meadow.specShadows.mesh.visible=!!(L.base&&L.shadows);
+      if(window.AIBAGrade?.setEnabled)AIBAGrade.setEnabled(!!L.fx);
+    }
+
+    function spectatorShadows(s){
+      // Single instanced soft contact shadow pass grounding court-side spectators into the pasture turf (1 draw call, 48 tris max).
+      const geo=new THREE.PlaneGeometry(1,1);
+      geo.rotateX(-Math.PI/2);
+      const mat=new THREE.ShaderMaterial({
+        transparent:true,depthWrite:false,polygonOffset:true,polygonOffsetFactor:-1,polygonOffsetUnits:-2,
+        uniforms:{meadowSky:s.meadow.uniforms.meadowSky},
+        vertexShader:`
+          varying vec2 vUv;
+          void main(){
+            vUv=uv;
+            gl_Position=projectionMatrix*modelViewMatrix*instanceMatrix*vec4(position,1.0);
+          }`,
+        fragmentShader:`
+          uniform vec4 meadowSky;
+          varying vec2 vUv;
+          void main(){
+            vec2 p=vUv*2.0-1.0;
+            float r=length(p);
+            float a=exp(-r*r*3.2)*(1.0-smoothstep(0.62,1.0,r))*mix(0.32,0.50,meadowSky.x);
+            gl_FragColor=vec4(0.04,0.07,0.035,a);
+          }`
+      });
+      const mesh=new THREE.InstancedMesh(geo,mat,24);
+      mesh.name="meadowSpectatorShadows";mesh.count=0;mesh.frustumCulled=false;
+      mesh.instanceMatrix.setUsage(THREE.DynamicDrawUsage);
+      s.root.add(mesh);
+      return {mesh,dummy:new THREE.Object3D()};
+    }
+
     function updateMeadow(s,dt){
       const weather=s.meadow,p=weather.flowerProgress;
+      const L=s.meadowLayers||(s.meadowLayers=parseMeadowLayers());
       try{
         let px=999,pz=999,ox=999,oz=999,b1x=999,b1z=999,b2x=999,b2z=999;
         if(typeof player!=="undefined"&&player?.g?.visible){px=player.g.position.x;pz=player.g.position.z;}
@@ -2984,6 +3629,8 @@
       drifts.bloom.value=p;
       drifts.count=0;
       for(const {mesh,targets} of drifts.beds){
+        if(!L.flowers){mesh.count=0;mesh.visible=false;continue;}
+        mesh.visible=true;
         let low=0,high=targets.length;
         while(low<high){
           const middle=(low+high)>>>1;
@@ -2991,7 +3638,26 @@
         }
         mesh.count=low;drifts.count+=low*3;
       }
-      drifts.seeds.visible=rain<.42;
+      drifts.seeds.visible=!!(L.fx&&L.flowers&&rain<.42);
+      if(weather.specShadows&&L.base&&L.shadows){
+        const sh=weather.specShadows,d=sh.dummy,sunV=weather.uniforms.meadowSun.value;
+        const offX=-sunV.x*0.18,offZ=-sunV.z*0.18,yaw=Math.atan2(offX,offZ);
+        let sc=0;
+        if(typeof streetCrowd!=="undefined"&&streetCrowd?.root?.visible!==false&&Array.isArray(streetCrowd?.people)){
+          for(let i=0;i<streetCrowd.people.length&&sc<24;i++){
+            const g=streetCrowd.people[i]?.g;
+            if(!g||!g.visible)continue;
+            const x=g.position.x+offX,z=g.position.z+offZ;
+            d.position.set(x,elevation(g.position.x,g.position.z)+0.024,z);
+            d.rotation.set(0,yaw,0);
+            d.scale.set(0.95,1,1.22);
+            d.updateMatrix();
+            sh.mesh.setMatrixAt(sc++,d.matrix);
+          }
+        }
+        sh.mesh.count=sc;
+        if(sc)sh.mesh.instanceMatrix.needsUpdate=true;
+      }
       if(weather.livestock){
         const t=s.time;
         for(const a of weather.livestock){
@@ -3013,7 +3679,7 @@
       sun.position.copy(weather.uniforms.meadowSun.value).multiplyScalar(49);
       sun.color.copy(weather.wetColor).lerp(weather.sunColor,clear).lerp(weather.warmColor,gold);
       scene.fog.color.copy(weather.coolFog).lerp(weather.clearingFog,clear);
-      scene.fog.near=24+18*clear;scene.fog.far=265-55*rain+210*clear;
+      scene.fog.near=28+16*clear;scene.fog.far=275-45*rain+195*clear;
       const data=document.documentElement.dataset;
       if(data.environmentPhase!==weather.stage)data.environmentPhase=weather.stage;
       const count=String(drifts.count);
@@ -3077,7 +3743,11 @@
 
     function buildMeadow(s){
       s.heightAt=elevation;
+      s.turfHeightAt=turfHeightAt;
+      s.turfWearAt=turfWearAt;
       s.meadow=AIBAMeadowWeather.build(s);
+      s.meadow.spruceShadowGLSL=spruceShadowGLSL;
+      s.meadow.meadowPaletteGLSL=meadowPaletteGLSL;
       s.meadow.uniforms.meadowPressure={value:new THREE.Vector4()};
       s.meadow.uniforms.meadowTreeMap={value:null};
       ground(s);
@@ -3166,10 +3836,39 @@
       };
       mountainRange(s,true,mountain);mountainRange(s,false,mountain);
       spruceForest(s);meadowGrass(s);meadowRocks(s,rock);meadowShrubs(s);
+      s.meadow.specShadows=spectatorShadows(s);
       s.meadow.livestock=pastureLivestock(s);
       s.meadow.drifts=distantFlowers(s,s.meadow);
+      s.meadowLayers=parseMeadowLayers();
       updateMeadow(s,0);
+      applyMeadowLayers(s);
     }
+    const PRESETS={
+      base:{base:true,grass:false,trees:false,flowers:false,shadows:false,fx:false},
+      grass:{base:true,grass:true,trees:false,flowers:false,shadows:false,fx:false},
+      trees:{base:true,grass:true,trees:true,flowers:false,shadows:false,fx:false},
+      flowers:{base:true,grass:true,trees:true,flowers:true,shadows:false,fx:false},
+      shadows:{base:true,grass:true,trees:true,flowers:true,shadows:true,fx:false},
+      full:{base:true,grass:true,trees:true,flowers:true,shadows:true,fx:true}
+    };
+    const activePlace=()=>typeof environmentRoot!=="undefined"&&environmentRoot?.userData?.placeState?.meadow?environmentRoot.userData.placeState:null;
+    window.AIBAFloraLab=Object.freeze({
+      getLayers(){const s=activePlace();return s?{...s.meadowLayers}:null;},
+      setLayers(cfg){const s=activePlace();if(!s)return null;s.meadowLayers={...(s.meadowLayers||parseMeadowLayers()),...(cfg||{})};applyMeadowLayers(s);return {...s.meadowLayers};},
+      preset(name){const p=PRESETS[name];return p?this.setLayers(p):this.getLayers();},
+      stats(){
+        const s=activePlace();if(!s)return null;
+        const countTris=list=>(list||[]).reduce((acc,m)=>acc+(m.visible?m.count*((m.geometry.index?m.geometry.index.count:m.geometry.attributes.position.count)/3):0),0);
+        return {
+          layers:{...s.meadowLayers},
+          grassInstances:(s.meadowLayersRefs?.grass||[]).reduce((a,m)=>a+(m.visible?m.count:0),0),
+          grassTris:Math.round(countTris(s.meadowLayersRefs?.grass)),
+          treeInstances:(s.meadowLayersRefs?.trees||[]).reduce((a,m)=>a+(m.visible?m.count:0),0),
+          treeTris:Math.round(countTris(s.meadowLayersRefs?.trees)),
+          distantFlowerCount:s.meadow.drifts?.count||0
+        };
+      }
+    });
     return {build:buildMeadow,update:updateMeadow};
   })();
   function build(s,b,helpers){if(s.name==="flowerCourt")meadow.build(s);else if(s.name==="arcticSnow")arctic(s,b,helpers);else if(s.name==="spanishQuarter")spanish(s,b,helpers);else if(s.name==="lunarCrater")lunar(s,b,helpers);else if(s.name==="tokyoRooftop")tokyo(s,b,helpers);}
@@ -3312,6 +4011,7 @@
     localQ.setFromUnitVectors(restDir.copy(gloveOffset).normalize(),wristDir);
     arm.quaternion.slerp(upperQ,weight);fore.quaternion.slerp(localQ,weight);
   }
+  // Each crew member can take either direction around a short route off the playing surface.
   const crewRoutes=[
     [[2.5,-14.1],[1.8,-12.2],[3.1,-11.1],[4.0,-13.0]],
     [[8.8,-11.4],[10.3,-10.7],[10.6,-12.4],[9.5,-14.1]],

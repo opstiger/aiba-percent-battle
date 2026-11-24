@@ -1,24 +1,27 @@
 /* Place-specific contact layers: independent seeds, disposable art, unchanged shot geometry. */
 (()=>{
   function surface(g,name,p,r){
-    if(name!=="spanishQuarter"&&name!=="beachSunset")return;
+    if(name!=="spanishQuarter"&&name!=="beachSunset"&&name!=="outdoorSunny")return;
     // Wear has a footprint: exposed undercoat around the busy paint and wall-side drainage.
-    const oldTown=name==="spanishQuarter";
+    const oldTown=name==="spanishQuarter",vice=name==="outdoorSunny";
     for(let i=0;i<115;i++){
       const edge=i%3!==0,x=edge?(i%2?1:-1)*(6.6+r()*1.5):(r()-.5)*12,z=-9+r()*27;
-      g.fillStyle=oldTown?(i%3?"#a49b82":"#746957"):(i%3?"#8d8b79":"#6c7266");g.globalAlpha=.14+r()*.19;
+      g.fillStyle=oldTown?(i%3?"#a49b82":"#746957"):vice?(i%3?"#22414c":"#1e2230"):(i%3?"#6f7b84":"#4b5660");g.globalAlpha=.14+r()*.19;
       const w=.18+r()*.9,h=.12+r()*.65;g.beginPath();
       for(let j=0;j<9;j++){const a=j/9*6.283,rad=.5+r()*.5,xx=x+Math.cos(a)*w*rad,zz=z+Math.sin(a)*h*rad;j?g.lineTo(xx,zz):g.moveTo(xx,zz);}g.closePath();g.fill();
     }
-    g.globalAlpha=.45;g.strokeStyle=oldTown?"#685e4f":"#5c6257";g.lineWidth=.019;
+    g.globalAlpha=.45;g.strokeStyle=oldTown?"#685e4f":"#3a444d";g.lineWidth=.019;
     for(let i=0;i<20;i++){
       let x=(r()-.5)*14,z=-9+r()*26;g.beginPath();g.moveTo(x,z);
       for(let j=0;j<7;j++){x+=(r()-.4)*.6;z+=.2+r()*.4;g.lineTo(x,z);}g.stroke();
     }
     g.globalAlpha=1;
     // Faded murals belong on unused apron and the rear half, away from active aiming marks.
-    for(const [x,z,rot,txt] of [[-9.1,-5,-Math.PI/2,name==="spanishQuarter"?"BARRIO":"VENICE"],[1,10,.1,name==="spanishQuarter"?"LA CANCHA":"SUNSET RUN"]]){
-      g.save();g.translate(x,z);g.rotate(rot);g.globalAlpha=.4;g.font="900 1.1px sans-serif";g.textAlign="center";g.lineWidth=.13;g.strokeStyle="#343932";g.strokeText(txt,0,0);g.fillStyle=name==="spanishQuarter"?"#d39455":"#ba695e";g.fillText(txt,0,0);g.restore();
+    const tags=oldTown?[[-9.1,-5,-Math.PI/2,"BARRIO","#d39455"],[1,10,.1,"LA CANCHA","#d39455"]]:
+      vice?[[-9.1,-5,-Math.PI/2,"VICE BLOCK","#28d7ea"],[1,10,.1,"LEONIDA 305","#f25294"]]:
+      [[-9.1,-5,-Math.PI/2,"VICE BEACH","#36c2ce"],[1,10,.1,"OCEAN DRIVE","#f05e94"]];
+    for(const [x,z,rot,txt,fill] of tags){
+      g.save();g.translate(x,z);g.rotate(rot);g.globalAlpha=.56;g.font="900 1.05px sans-serif";g.textAlign="center";g.lineWidth=.14;g.strokeStyle="#161b26";g.strokeText(txt,0,0);g.fillStyle=fill;g.fillText(txt,0,0);g.restore();
     }
     for(let i=0;i<450;i++){
       const x=(r()-.5)*15.2,z=COURT.nearBaseline+r()*COURT.length;

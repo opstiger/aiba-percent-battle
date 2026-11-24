@@ -196,6 +196,7 @@ function startCharge(){
     if(!battleAutoMoveIfNeeded())toast(battleSpotStatus(G.battleSpot).label,"#9fd1ff");
     return false;
   }
+  if(hero.on&&hero.mode==="speed")endHero();
   G.chargeWetness=meadowBallWetness();
   G.charging=true;G.power=0;G.apexed=false;
   const chargeShot=curShot();
@@ -500,7 +501,7 @@ function afterBallSpawn(B,shot,err,isBattle,isRush,isDeep){
   // hero moment: last ball / buzzer beater / tiebreak
   const isLast=G.shotIdx===G.seq.length-1;
   /* 每日绝杀模式的核心是第一人称看球和全场反应,不切英雄时刻特写。 */
-  if(!B.cosmic&&G.mode!=="lastshot"&&!G.practice&&(isLast||G.state==="tiebreak"||(G.state==="round"&&G.timer<=3)))startHero(B);
+  if(!B.cosmic&&G.mode!=="lastshot"&&!G.practice&&(isLast||G.buzzed)&&heroPredictedMake(B))startHero(B);
   // advance
   G.shotIdx++;G.canShoot=false;
   const nxt=curShot();if(nxt){if(G.mode==="contest"&&shot&&nxt.rack!==shot.rack&&shot.rack!==null){if(nxt.rack===G.moneyRack)playAudioEvent("contest_moneyrack");else if(nxt.rack===4)playAudioEvent("contest_finalrack");}const samePos=isSameShotSpot(nxt,shot);afterPlayerLands(samePos?260:200,()=>{if(G.state!=="round"&&G.state!=="tiebreak")return;if(samePos){readyBall();}else{walkTo(nxt,readyBall,{overlapPass:true});}});}
@@ -563,7 +564,7 @@ function madeBall(b){
     const momentumSpoke=!ending&&triggerMakeRunVoice();
     if(big&&!momentumSpoke)toast((b.money?"花球! ":"")+(b.bonus?"最后10秒加成 · ":"")+CHEERS[(Math.random()*CHEERS.length)|0],b.bonus?"#ff8d7a":"#ffd23f");
     if(G.streak>=3){$("hudStreak").style.display="block";$("hudStreak").textContent="🔥 x"+G.streak;}
-    if(ending){updateRackRushHUD();updJumbo();finishRackRushSpeed();return;}
+    if(ending){window.AIBAHeroMoments?.onSpeedFinish(b);updateRackRushHUD();updJumbo();finishRackRushSpeed();return;}
     if(!cfg.final&&!rush.levelCleared&&rush.levelScore>=target){rush.levelCleared=true;rackRushClearFlash();}
     updateRackRushHUD();updJumbo();return;
   }
@@ -678,6 +679,7 @@ function physicsBallEvent(b,e){
       if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(e.x??HOOP.x,e.y??HOOP.y,e.z??HOOP.z,Math.max(2.4,Math.min(5.2,(e.impulse||2.6)*1.25)),"rim");
       if(globalThis.AIBAWorldWonders?.lunarImpulse)globalThis.AIBAWorldWonders.lunarImpulse(e.x??HOOP.x,e.y??HOOP.y,e.z??HOOP.z,Math.max(2.2,Math.min(5.0,(e.impulse||2.5)*1.2)),"rim");
       if(globalThis.AIBAMeadowCourt?.triggerHoopPetals)globalThis.AIBAMeadowCourt.triggerHoopPetals("rim",e.impulse||2.6);
+      if(globalThis.AIBAWorldPlaces?.hoopImpact)globalThis.AIBAWorldPlaces.hoopImpact("rim",e.x??HOOP.x,e.y??HOOP.y,e.z??HOOP.z,e.impulse||2.6);
       haptic(b,e.impulse);
       b.rimHitCount=(b.rimHitCount||0)+1;
       if(e.hitIndex==null)e.hitIndex=b.rimHitCount-1;
@@ -694,6 +696,7 @@ function physicsBallEvent(b,e){
       if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(e.x??HOOP.x,e.y??(HOOP.y+.35),e.z??(HOOP.z-.35),Math.max(1.8,Math.min(4.2,(e.impulse||2.2)*1.05)),"board");
       if(globalThis.AIBAWorldWonders?.lunarImpulse)globalThis.AIBAWorldWonders.lunarImpulse(e.x??HOOP.x,e.y??(HOOP.y+.35),e.z??(HOOP.z-.35),Math.max(1.8,Math.min(4.0,(e.impulse||2.1)*1.0)),"board");
       if(globalThis.AIBAMeadowCourt?.triggerHoopPetals)globalThis.AIBAMeadowCourt.triggerHoopPetals("board",e.impulse||2.4);
+      if(globalThis.AIBAWorldPlaces?.hoopImpact)globalThis.AIBAWorldPlaces.hoopImpact("board",e.x??HOOP.x,e.y??(HOOP.y+.35),e.z??(HOOP.z-.35),e.impulse||2.4);
       sfx("board",sBoard);haptic(b,e.impulse);break;
     case "support":case "scenery":sfx("floor",sBounce);break;
     case "floor":
@@ -709,6 +712,7 @@ function physicsBallEvent(b,e){
       if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(HOOP.x,HOOP.y,HOOP.z,4.2,"made");
       if(globalThis.AIBAWorldWonders?.lunarImpulse)globalThis.AIBAWorldWonders.lunarImpulse(HOOP.x,HOOP.y,HOOP.z,4.2,"made");
       if(globalThis.AIBAMeadowCourt?.triggerHoopPetals)globalThis.AIBAMeadowCourt.triggerHoopPetals("made",3.6);
+      if(globalThis.AIBAWorldPlaces?.hoopImpact)globalThis.AIBAWorldPlaces.hoopImpact("made",HOOP.x,HOOP.y,HOOP.z,3.8);
       if(b.opp){oppScore(b);b.made=true;}
       else if(b.silent)silentBallMade(b);
       else madeBall(b);
@@ -743,9 +747,9 @@ function updPhysicsBall(b,dt,index){
   }
   return false;
 }
-function updBalls(dt){
+function updBalls(frameDt){
   for(let i=balls.length-1;i>=0;i--){
-    const b=balls[i];b.t+=dt;
+    const b=balls[i],dt=frameDt*heroBallRate(b);b.t+=dt;
     if(b.phase==="path"){
       if(updPhysicsBall(b,dt,i))continue;
     }else if(b.phase==="fly"){
@@ -757,6 +761,7 @@ function updBalls(dt){
         if(b.outcome==="swish"){
           if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(HOOP.x,HOOP.y,HOOP.z,4.2,"made");
           if(globalThis.AIBAMeadowCourt?.triggerHoopPetals)globalThis.AIBAMeadowCourt.triggerHoopPetals("made",3.6);
+          if(globalThis.AIBAWorldPlaces?.hoopImpact)globalThis.AIBAWorldPlaces.hoopImpact("made",HOOP.x,HOOP.y,HOOP.z,3.8);
           if(b.opp){
             oppScore(b);b.made=true;
           }else if(b.silent)silentBallMade(b);
@@ -767,17 +772,20 @@ function updBalls(dt){
         }else if(b.outcome==="bank"){
           if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(HOOP.x,HOOP.y+.35,HOOP.z-.35,3.2,"board");
           if(globalThis.AIBAMeadowCourt?.triggerHoopPetals)globalThis.AIBAMeadowCourt.triggerHoopPetals("board",3.4);
+          if(globalThis.AIBAWorldPlaces?.hoopImpact)globalThis.AIBAWorldPlaces.hoopImpact("board",HOOP.x,HOOP.y+.35,HOOP.z-.35,3.2);
           sBoard();b.phase="bankdrop";b.bt=0;
           b.bFrom=b.mesh.position.clone();
         }else if(b.outcome==="rattle"||b.outcome==="rattleout"){
           if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(HOOP.x,HOOP.y,HOOP.z,3.8,"rim");
           if(globalThis.AIBAMeadowCourt?.triggerHoopPetals)globalThis.AIBAMeadowCourt.triggerHoopPetals("rim",3.8);
+          if(globalThis.AIBAWorldPlaces?.hoopImpact)globalThis.AIBAWorldPlaces.hoopImpact("rim",HOOP.x,HOOP.y,HOOP.z,3.8);
           playerRimHaptic(b);b.rin=b.outcome==="rattle";playRimImpactSound(b,b.rin);b.phase="rattle";b.rt=0;
           b.ra=Math.atan2(b.mesh.position.z-HOOP.z,b.mesh.position.x-HOOP.x);
           b.rdir=Math.random()<.5?1:-1;
         }else if(b.outcome==="rimout"){
           if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(HOOP.x,HOOP.y,HOOP.z,3.6,"rim");
           if(globalThis.AIBAMeadowCourt?.triggerHoopPetals)globalThis.AIBAMeadowCourt.triggerHoopPetals("rim",3.6);
+          if(globalThis.AIBAWorldPlaces?.hoopImpact)globalThis.AIBAWorldPlaces.hoopImpact("rim",HOOP.x,HOOP.y,HOOP.z,3.6);
           playerRimHaptic(b);playRimImpactSound(b,false);if(b.opp)triggerStreetCrowdReaction("oppMiss",0);else if(b.silent){if(typeof announceAIShowResult==="function")announceAIShowResult(b,false);}else missBall();b.phase="free";
           const d=V3(b.mesh.position.x-HOOP.x,0,b.mesh.position.z-HOOP.z).normalize();
           b.vel.set(d.x*rnd(1.2,2.2)+rnd(-.6,.6),rnd(2.4,3.6),d.z*rnd(1.2,2.2)+rnd(-.6,.6));

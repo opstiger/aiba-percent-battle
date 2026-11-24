@@ -1179,7 +1179,14 @@ const DICT={
 "手感会冷,但杀手本能不能冷。":"The touch can go cold; the killer instinct can't.",
 "当机会出现,别犹豫,让球说话。":"When the chance comes, don't hesitate — let the ball talk.",
 "最好的传球,是让队友也相信奇迹。":"The best pass makes your teammate believe in miracles too.",
-"基本功不会上热搜,但会赢到最后。":"Fundamentals don't trend — they win in the end."
+"基本功不会上热搜,但会赢到最后。":"Fundamentals don't trend — they win in the end.",
+"霓虹 · 罪城街区":"Neon · Vice Block",
+"霓虹":"Neon",
+"罪城街区":"Vice Block",
+"棕榈与装饰艺术街区,随投篮从毒辣骄阳滑入紫粉晚霞与霓虹夜场,低趴改装车、鳄鱼与五星通缉直升机齐聚":"Palms and Art Deco blocks shift from tropical sun to magenta dusk and neon night, with bouncing lowriders, a Leonida gator and a 5-star chopper.",
+"夕阳 · 罪城海滩":"Sunset · Vice Beach",
+"罪城海滩":"Vice Beach",
+"海洋大道棕榈海岸,随比分从落日金滩步入粉紫霓虹夜海,火烈鸟掠过晚霞、快艇破浪、远空飞艇巡航":"Ocean Drive palm coast shifts from golden sunset to magenta neon night as flamingos cross the dusk, speedboats carve wakes and a blimp cruises by."
 };
 
 /* 参数化文案:整节点正则规则 */

@@ -547,6 +547,7 @@ function updateCameraDirector(dt){
     !G.cutAway&&!G.battleCut&&!editing&&!rep.on&&!VICTORY_CINE.on&&!winCine.on;
   const cosmicReplay=rep.on&&rep.clip?.cosmic&&rep.t>=REPLAY_PHOTO_DUR;
   if((!cosmic&&!cosmicReplay)||editing||(cosmicView&&cosmicView.preset!==currentScenePreset))endCosmicView();
+  if(hero.on&&hero.mode!=="boot"&&(editing||rep.on||VICTORY_CINE.on||winCine.on||cosmic||G.cutAway||G.battleCut))endHero();
   if(editing){
     AIBACamera.updateEditor(dt);return "editor";
   }
@@ -555,7 +556,7 @@ function updateCameraDirector(dt){
   if(VICTORY_CINE.on){updVictoryCine(dt);return "victory";}
   if(winCine.on){updWinCine(dt);return "win";}
   if(cosmic){updateCosmicCamera(cosmicBall,dt);return "cosmic";}
-  if(hero.on){updHero(dt);return "hero";}
+  if(hero.on){updHero(dt);if(hero.on)return "hero";}
   if(G.cutAway||G.battleCut||G.state==="pregame")return "takeover";
   if(G.state==="aishow"){updShowCam();return "show";}
   if(["menu","diff","intro","roundend","sim","bracket","champion","runnerup","eliminated","battleend","rushend","lsend"].includes(G.state)){

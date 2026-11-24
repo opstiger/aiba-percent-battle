@@ -415,7 +415,9 @@
       if(rush.uiAcc>=.1){rush.uiAcc=0;updateRackRushHUD();}
       if(G.timer<=0&&!G.buzzed){
         G.buzzed=true;G.running=false;sBuzz();paSay("时间到!",true);
-        if(G.charging)doRelease(true);G.canShoot=false;G.charging=false;handBall.visible=false;pBall.visible=false;
+        if(G.charging)doRelease(true);
+        else global.AIBAHeroMoments?.onRackRushBuzzer();
+        G.canShoot=false;G.charging=false;handBall.visible=false;pBall.visible=false;
         toast("时间到 · 等待最后一球","#ff8d7a");
       }
     }
@@ -439,7 +441,17 @@
     G.charging=false;handBall.visible=false;pBall.visible=false;const passing=ctx.getPassing();if(passing){scene.remove(passing.mesh);ctx.setPassing(null);}
     rush.levels=[{level:1,name:"百分竞速",score:rush.total,target:RACK_RUSH_SPEED_TARGET,attempts:rush.levelAttempts,makes:rush.levelMakes,passed:true}];
     const el=$("countN");el.innerHTML=`<span style="font-size:36px;text-align:center;line-height:1.35;color:#ffd23f">100!<br><small style="font-size:15px;color:#fff">用时 ${formatRackRushClock(rush.elapsed)}</small></span>`;
-    el.style.display="flex";startConfetti();cheerSound(true);airhorn();broadcastSting("score");setTimeout(()=>{el.style.display="none";finishRackRushRun(true);},950);
+    const withHero=typeof hero!=="undefined"&&hero.on&&hero.b?.made;
+    const celebrate=()=>{
+      if(G.rush!==rush||G.state!=="rushbetween")return;
+      el.style.display="flex";startConfetti();cheerSound(true);airhorn();broadcastSting("score");
+      setTimeout(()=>{
+        if(G.rush!==rush||G.state!=="rushbetween")return;
+        el.style.display="none";finishRackRushRun(true);
+      },withHero?720:950);
+    };
+    if(withHero)setTimeout(celebrate,580);
+    else celebrate();
   }
   function loadRackRushRuns(variant){
     try{const rows=JSON.parse(localStorage.getItem(rackRushStorageKey(variant))||"[]");return Array.isArray(rows)?rows:[];}catch(e){return[];}

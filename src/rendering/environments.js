@@ -90,8 +90,8 @@ function buildRainWeather(){
   rainState={positions,geometry,count,reset,speed:mobile?12:15};
 }
 /* Thin petal surfaces are curled across their width and along the tip. */
-function flowerPetalGeometry(mobile){
-  const positions=[],colors=[],indices=[],uv=[],rows=mobile?7:9,columns=4;
+function flowerPetalGeometry(rows,columns=2){
+  const positions=[],colors=[],indices=[],uv=[];
   for(let i=0;i<=rows;i++){
     const t=(1-Math.cos(i/rows*Math.PI))*.5,width=.5*Math.pow(Math.sin(Math.PI*(.045+.955*t)),.52)*(.76+.24*t);
     for(let j=0;j<=columns;j++){
@@ -135,10 +135,16 @@ function makeFlowerLayer(state,data,name){
   let petalCount=0;
   for(const d of data){d.petalStart=petalCount;petalCount+=d.form.petals;}
   const total=data.length;
-  const stems=new THREE.InstancedMesh(state.stemGeo,state.stemMat,total*2);
-  const leaves=new THREE.InstancedMesh(state.petalGeo,state.leafMat,total*2);
-  const petals=new THREE.InstancedMesh(state.petalGeo,state.petalMat,petalCount);
-  const centers=new THREE.InstancedMesh(state.centerGeo,state.coreMat,total);
+  const stemGeo=state.stemGeo.clone(),leafGeo=state.leafGeo.clone(),petalGeo=state.petalGeo.clone(),centerGeo=state.centerGeo.clone();
+  const makeFlex=(n)=>new THREE.InstancedBufferAttribute(new Float32Array(n*4),4).setUsage(THREE.DynamicDrawUsage);
+  stemGeo.setAttribute("flowerFlex",makeFlex(total*2));
+  leafGeo.setAttribute("flowerFlex",makeFlex(total*2));
+  petalGeo.setAttribute("flowerFlex",makeFlex(petalCount));
+  centerGeo.setAttribute("flowerFlex",makeFlex(total));
+  const stems=new THREE.InstancedMesh(stemGeo,state.stemMat,total*2);
+  const leaves=new THREE.InstancedMesh(leafGeo,state.leafMat,total*2);
+  const petals=new THREE.InstancedMesh(petalGeo,state.petalMat,petalCount);
+  const centers=new THREE.InstancedMesh(centerGeo,state.coreMat,total);
   const meshes=[stems,leaves,petals,centers],c=new THREE.Color();
   data.forEach((d,i)=>{
     for(let side=0;side<2;side++){
@@ -162,11 +168,8 @@ function makeFlowerLayer(state,data,name){
 function writeFlowerInstance(state,layer,i,grow){
   const d=layer.data[i],o=state.dummy,form=d.form;
   let scale=Math.max(.001,Math.pow(grow,.76));
-  const phase=state.time*1.3-d.x*.23-d.z*.125;
-  const wind=state.wind||0;
-  const gust=(Math.sin(phase)*.105+Math.sin(phase*.62+d.phase)*.053)*(1+wind*1.25);
-  const flick=Math.sin(state.time*2.37+d.phase*1.7)*.033;
   // Interactive bending: close-up court wildflowers bend away from player/opponent feet and low rolling balls.
+  // Regular wind sway runs on the GPU shader via flowerFlex so grown flowers cost zero CPU per-frame math.
   let pushX=0,pushZ=0,press=0;
   if(layer.name!=="structure"){
     const actors=state.actors;
@@ -181,10 +184,15 @@ function writeFlowerInstance(state,layer,i,grow){
     }
   }
   const height=d.h*scale*(1-press*.45);
-  const arcX=(gust+flick+.037+.16*wind)*height+pushX,arcZ=(gust*.54-flick*.50+.075*wind)*height+pushZ;
+  const hFlex=height*(layer.name==="structure"?0.22:1.0);
+  const arcX=pushX,arcZ=pushZ;
   const at=(p,t)=>p.set(d.x+d.axis.x*height*t+arcX*t*t,d.y+d.axis.y*height*t,d.z+d.axis.z*height*t+arcZ*t*t);
   at(state.root,0);at(state.mid,.5);at(state.tip,1);
   const radius=d.stem*scale;
+  const sFlex=layer.stems.geometry.attributes.flowerFlex;
+  const lFlex=layer.leaves.geometry.attributes.flowerFlex;
+  const pFlex=layer.petals.geometry.attributes.flowerFlex;
+  const cFlex=layer.centers.geometry.attributes.flowerFlex;
   for(let part=0;part<2;part++){
     const a=part===0?state.root:state.mid,b=part===0?state.mid:state.tip;
     state.axis.subVectors(b,a);
@@ -192,26 +200,32 @@ function writeFlowerInstance(state,layer,i,grow){
     o.quaternion.setFromUnitVectors(state.up,state.axis.normalize());
     o.scale.set(radius*(part?.7:1),a.distanceTo(b),radius*(part?.7:1));
     o.updateMatrix();layer.stems.setMatrixAt(i*2+part,o.matrix);
+    sFlex.setXYZW(i*2+part,d.x,d.z,part?0.25*hFlex:0,part?hFlex:0.25*hFlex);
     at(o.position,part?.61:.30);
-    o.quaternion.identity();o.rotateY(d.rot+part*2.48+gust*.65);o.rotateX(-.39+(part?.2:0)+flick*1.3);
+    o.quaternion.identity();o.rotateY(d.rot+part*2.48);o.rotateX(-.39+(part?.2:0));
     o.scale.set(d.size*.52*scale,d.size*.52*scale,d.size*(part?1.10:1.32)*scale);
     o.updateMatrix();layer.leaves.setMatrixAt(i*2+part,o.matrix);
+    const lFactor=(part?0.3721:0.09)*hFlex;
+    lFlex.setXYZW(i*2+part,d.x,d.z,lFactor,lFactor);
   }
-  state.axis.set(d.axis.x*.80+d.faceX+gust*.95,d.axis.y*.85+.20,d.axis.z*.80+d.faceZ+flick).normalize();
+  state.axis.set(d.axis.x*.80+d.faceX,d.axis.y*.85+.20,d.axis.z*.80+d.faceZ).normalize();
   state.head.setFromUnitVectors(state.up,state.axis);
   o.position.copy(state.tip);
+  const isProbe=layer.name==="ground"&&i===0;
   for(let j=0;j<form.petals;j++){
     const angle=d.rot+j*Math.PI*2/form.petals+.065*Math.sin(j*4.2+d.phase);
-    const flex=.063*Math.sin(state.time*2.7+j*.84+d.phase);
+    const breathe=isProbe?.015*Math.sin(state.time*2.4+j):0;
     const length=d.size*scale*form.length*(.91+.09*Math.cos(j*4.2+d.phase)**2);
-    o.quaternion.copy(state.head);o.rotateY(angle);o.rotateX(-form.lift+flex);
+    o.quaternion.copy(state.head);o.rotateY(angle);o.rotateX(-form.lift+breathe);
     o.scale.set(length*form.width,length*(.64+form.lift),length);
     o.updateMatrix();layer.petals.setMatrixAt(d.petalStart+j,o.matrix);
+    pFlex.setXYZW(d.petalStart+j,d.x,d.z,hFlex,hFlex);
   }
   const center=d.size*scale*form.center;
   o.position.addScaledVector(state.axis,center*.26);
   o.quaternion.copy(state.head);o.scale.set(center*1.72,center*.54,center*1.72);
   o.updateMatrix();layer.centers.setMatrixAt(i,o.matrix);
+  cFlex.setXYZW(i,d.x,d.z,hFlex,hFlex);
 }
 
 function setFlowerLayerTarget(state,layer,target,born=false){
@@ -223,65 +237,124 @@ function setFlowerLayerTarget(state,layer,target,born=false){
     layer.data[i].grow=born?1:-Math.min(.60,(i-old)*.022);
     writeFlowerInstance(state,layer,i,born?1:0);
   }
-  for(const mesh of layer.meshes)mesh.instanceMatrix.needsUpdate=true;
+  for(const mesh of layer.meshes){
+    mesh.instanceMatrix.needsUpdate=true;
+    const flexAttr=mesh.geometry.attributes.flowerFlex;
+    if(flexAttr)flexAttr.needsUpdate=true;
+  }
 }
 function updateFlowerLayer(state,layer,dt){
   if(!layer.target)return;
+  const actors=layer.name!=="structure"&&state.actors;
+  const nActors=actors?actors.length:0;
+  let dirty=false;
   for(let i=0;i<layer.target;i++){
-    const d=layer.data[i];d.grow=Math.min(1,d.grow+dt*(1.8+d.speed));
-    writeFlowerInstance(state,layer,i,Math.max(0,d.grow));
+    const d=layer.data[i];
+    const growing=d.grow<1;
+    if(growing)d.grow=Math.min(1,d.grow+dt*(1.8+d.speed));
+    let nearActor=false;
+    if(nActors){
+      for(let a=0;a<nActors;a+=3){
+        const rPad=actors[a+2]+0.15;
+        if(Math.abs(d.x-actors[a])<rPad&&Math.abs(d.z-actors[a+1])<rPad){nearActor=true;break;}
+      }
+    }
+    const checkBreathe=layer.name==="ground"&&i===0;
+    if(growing||nearActor||d.pushed||checkBreathe){
+      d.pushed=nearActor;
+      writeFlowerInstance(state,layer,i,Math.max(0,d.grow));
+      dirty=true;
+    }
   }
-  for(const mesh of layer.meshes)mesh.instanceMatrix.needsUpdate=true;
+  if(dirty){
+    for(const mesh of layer.meshes){
+      mesh.instanceMatrix.needsUpdate=true;
+      const flexAttr=mesh.geometry.attributes.flowerFlex;
+      if(flexAttr)flexAttr.needsUpdate=true;
+    }
+  }
 }
 
 function buildFlowerCourt(){
   const mobile=matchMedia("(pointer:coarse)").matches||Math.min(innerWidth,innerHeight)<700;
   const rng=mulberry32((GAME_SEED^0x46a3b27d)>>>0),r=(a,b)=>a+rng()*(b-a),pick=list=>list[Math.floor(rng()*list.length)];
   const place=environmentRoot.userData.placeState,heightAt=place?.heightAt||(()=>.012);
+  const turfH=place?.turfHeightAt||(()=>.18),turfWear=place?.turfWearAt||(()=>0);
   const state={
     dummy:new THREE.Object3D(),root:new THREE.Vector3(),mid:new THREE.Vector3(),tip:new THREE.Vector3(),axis:new THREE.Vector3(),
     up:new THREE.Vector3(0,1,0),head:new THREE.Quaternion(),time:0,elapsed:0,step:mobile?1/27:1/40,
-    stemGeo:new THREE.CylinderGeometry(1,1,1,5,1,true),petalGeo:flowerPetalGeometry(mobile),centerGeo:new THREE.SphereGeometry(.5,11,6),
+    stemGeo:new THREE.CylinderGeometry(1,1,1,4,1,true),leafGeo:flowerPetalGeometry(3,2),
+    petalGeo:flowerPetalGeometry(mobile?3:4,2),centerGeo:new THREE.SphereGeometry(.5,7,4),
     stemMat:new THREE.MeshLambertMaterial({side:THREE.DoubleSide}),leafMat:new THREE.MeshLambertMaterial({side:THREE.DoubleSide,vertexColors:true}),
     petalMat:new THREE.MeshLambertMaterial({side:THREE.DoubleSide,vertexColors:true,map:flowerVeinTexture(),emissive:0xffd7bc,emissiveIntensity:.038}),
     coreMat:new THREE.MeshLambertMaterial({emissive:0xc29b41,emissiveIntensity:.025}),
     pulse:0,revealProgress:0,visualProgress:0,visualVel:0,visible:0,structureVisible:0,
     weedTotal:place?.root.getObjectByName("alpineSwayingGrass")?.count||0
   };
-  if(place?.meadow?.uniforms){
-    const addPetalSSS=(mat,strength,warmMix)=>{
+  if(place?.meadow?.uniforms&&window.AIBAMeadowWeather?.windGLSL){
+    const attachMeadowFlowerShader=(mat,strength,warmMix,blendTurf=false)=>{
+      mat.customProgramCacheKey=()=>`meadowFlower_${strength}_${warmMix}_${blendTurf?1:0}`;
       mat.onBeforeCompile=shader=>{
-        shader.uniforms.meadowSun=place.meadow.uniforms.meadowSun;
-        shader.uniforms.meadowSky=place.meadow.uniforms.meadowSky;
-        shader.vertexShader="varying vec3 vFlowerWorld;\n"+shader.vertexShader.replace("#include <begin_vertex>",`
-          #include <begin_vertex>
-          vec4 fw=vec4(transformed,1.0);
-          #ifdef USE_INSTANCING
-            fw=instanceMatrix*fw;
-          #endif
-          vFlowerWorld=(modelMatrix*fw).xyz;
-        `);
-        shader.fragmentShader="uniform vec3 meadowSun;\nuniform vec4 meadowSky;\nvarying vec3 vFlowerWorld;\n"+
-          shader.fragmentShader.replace("#include <dithering_fragment>",`
+        Object.assign(shader.uniforms,place.meadow.uniforms);
+        shader.uniforms.meadowClock=place.meadow.time;
+        shader.uniforms.meadowWind=place.meadow.wind;
+        shader.vertexShader=AIBAMeadowWeather.windGLSL+"attribute vec4 flowerFlex;\nuniform float meadowClock,meadowWind;\nvarying vec3 vFlowerWorld;\nvarying float vFlowerFlex;\n"+
+          shader.vertexShader.replace("#include <project_vertex>",`
+            vec4 fwPos=vec4(transformed,1.0);
+            #ifdef USE_INSTANCING
+              fwPos=instanceMatrix*fwPos;
+            #endif
+            fwPos=modelMatrix*fwPos;
+            float flT=clamp(position.y+0.5,0.0,1.0);
+            float flFlex=mix(flowerFlex.z,flowerFlex.w,flT);
+            vFlowerFlex=flFlex;
+            vec3 flW=sampleMeadowWind(flowerFlex.xy,meadowClock,meadowWind);
+            vec2 flDisp=(MEADOW_WIND_DIR*flW.x+MEADOW_WIND_PERP*flW.y)*flFlex*0.88;
+            fwPos.xz+=flDisp;
+            fwPos.y-=length(flDisp)*0.14;
+            vFlowerWorld=fwPos.xyz;
+            vec4 mvPosition=viewMatrix*fwPos;
+            gl_Position=projectionMatrix*mvPosition;
+          `);
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+(place.meadow.spruceShadowGLSL||"")+(blendTurf?(place.meadow.meadowPaletteGLSL||""):"")+
+          "varying vec3 vFlowerWorld;\nvarying float vFlowerFlex;\n"+
+          shader.fragmentShader.replace(
+            "( gl_FrontFacing ) ? vLightFront : vLightBack",
+            "max( vLightFront, vLightBack )"
+          ).replace("#include <color_fragment>",`
+            #include <color_fragment>
+            ${blendTurf?`
+            vec3 flTurf=meadowBaseTint(vFlowerWorld.xz)*1.32;
+            diffuseColor.rgb=mix(flTurf,diffuseColor.rgb,smoothstep(0.0,0.22,vFlowerFlex));
+            `:""}
+            float flCloud=.72+.30*sunWindow(vFlowerWorld,1.0);
+            float flTree=spruceCanopyShadow(vFlowerWorld,meadowSun);
+            vec3 flShade=mix(vec3(1.0),vec3(.48,.62,.74),flTree*(.48+.52*meadowSky.x));
+            float stemRootAO=mix(.86,1.06,smoothstep(0.0,.16,vFlowerFlex));
+            diffuseColor.rgb*=flCloud*flShade*stemRootAO*(1.0-meadowSky.w*.16);
+          `).replace("#include <dithering_fragment>",strength>0?`
             vec3 fView=normalize(cameraPosition-vFlowerWorld);
-            float back=pow(clamp(dot(-fView,meadowSun),0.0,1.0),3.2);
+            float flTreeS=spruceCanopyShadow(vFlowerWorld,meadowSun);
+            float back=pow(clamp(dot(-fView,meadowSun),0.0,1.0),3.2)*(1.0-flTreeS*.78);
             float sunLit=.25+.75*meadowSky.x;
             vec3 sssCol=mix(vec3(1.0,.96,.84),vec3(1.0,.76,.44),meadowSky.y*${warmMix.toFixed(2)});
             gl_FragColor.rgb+=diffuseColor.rgb*sssCol*back*sunLit*${strength.toFixed(3)};
             #include <dithering_fragment>
-          `);
+          `:`#include <dithering_fragment>`);
       };
     };
-    addPetalSSS(state.petalMat,.46,.85);
-    addPetalSSS(state.leafMat,.30,.65);
+    attachMeadowFlowerShader(state.stemMat,0,0,true);
+    attachMeadowFlowerShader(state.coreMat,0,0,false);
+    attachMeadowFlowerShader(state.petalMat,.46,.85,false);
+    attachMeadowFlowerShader(state.leafMat,.30,.65,true);
   }
-  const greens=[0x4d733e,0x628d48,0x547e42,0x698e4d];
+  const greens=[0x6f8946,0x7d964e,0x657f40,0x869b52];
   const flower=(x,y,z,h,size,form,axis=new THREE.Vector3(r(-.10,.10),1,r(-.11,.11)).normalize())=>({
-    x,y,z,h,size,axis,form,stem:r(.0045,.0079),phase:r(0,Math.PI*2),rot:r(0,Math.PI*2),
+    x,y,z,h,size,axis,form,stem:r(.0042,.0072),phase:r(0,Math.PI*2),rot:r(0,Math.PI*2),
     faceX:r(-.39,.32),faceZ:r(-.27,.50),shade:Math.floor(rng()*3),green:pick(greens),speed:r(0,.7),grow:0
   });
 
-  // Visible immediately. Clusters leave breaks alongside the play area and steps.
+  // Visible immediately. Wildflower clusters nestle right inside the undulating grass cushions (never towering over short turf!).
   const ambient=[];
   const clumps=[[-8.35,-6.6,1.7],[7.95,-7.8,1.4],[-8.9,-.6,2.7],[8.15,2.4,2.8],
     [-8.45,9.1,2.6],[9.3,13,2.7],[-5.0,-11.6,1.9],[5.8,-11.9,2.4],[-7.5,20.2,2.2],[5.6,20.4,2.3]];
@@ -291,13 +364,14 @@ function buildFlowerCourt(){
       const angle=r(0,Math.PI*2),rad=width*Math.sqrt(rng());
       let x=cx+Math.cos(angle)*rad*.52,z=cz+Math.sin(angle)*rad;
       if(Math.abs(x)<7.86&&z>-10.2&&z<19.75)x=Math.sign(x)*r(7.87,8.24);
-      ambient.push(flower(x,heightAt(x,z),z,r(.23,.71),r(.085,.168),rng()<.78?main:pick(FLOWER_FORMS)));
+      const gh=turfH(x,z);
+      ambient.push(flower(x,heightAt(x,z),z,clamp(gh*r(.74,1.14),.11,.32),r(.064,.122),rng()<.78?main:pick(FLOWER_FORMS)));
     }
   }
   const ground=[];
   const quantity=mobile?340:720,outer=Math.floor(quantity*.64),edges=Math.floor(quantity*.20);
   for(let i=0;i<quantity;i++){
-    // Interleave lawn, sidelines and playing surface while retaining the previous quotas.
+    // Interleave lawn, sidelines and playing surface while matching local grass cushion height.
     const slot=i*37%quantity,side=i%2?1:-1;
     let x,z,height,size;
     if(slot<outer){
@@ -305,7 +379,8 @@ function buildFlowerCourt(){
       else if(i%4===1){x=-r(8,14);z=r(COURT.nearBaseline-4,COURT.farBaseline+5);}
       else if(i%4===2){x=r(8,14);z=r(COURT.nearBaseline-4,COURT.farBaseline+5);}
       else{x=r(-14,14);z=r(COURT.nearBaseline-8,COURT.nearBaseline-.7);}
-      height=r(.27,.72);size=r(.08,.16);
+      const gh=turfH(x,z);
+      height=clamp(gh*r(.75,1.16),.115,.33);size=r(.062,.118);
     }else if(slot<outer+edges){
       if(i%3===0){
         x=side*r(6.53,7.43);z=r(COURT.nearBaseline+.2,COURT.farBaseline-.25);
@@ -313,12 +388,17 @@ function buildFlowerCourt(){
         const baseline=i%3===1?COURT.farBaseline:COURT.nearBaseline;
         x=r(-7.19,7.19);z=baseline+(i%3===1?-1:1)*r(.17,.99);
       }
-      height=r(.16,.52);size=r(.077,.14);
+      const gh=turfH(x,z);
+      height=clamp(gh*r(.74,1.10),.078,.21);size=r(.056,.098);
     }else{
+      let tries=0;
       do{
         x=r(-7.15,7.15);z=r(COURT.nearBaseline+.45,COURT.farBaseline-.45);
-      }while(BATTLE_SPOTS.some(spot=>Math.hypot(x-spot.p.x,z-spot.p.z)<.62));
-      height=r(.13,.38);size=r(.072,.134);
+        tries++;
+      }while(BATTLE_SPOTS.some(spot=>Math.hypot(x-spot.p.x,z-spot.p.z)<.62)||(tries<6&&turfWear(x,z)>.44));
+      // Low alpine clovers, dwarf buttercups & short dandelions tucked right inside the short court grass!
+      const gh=turfH(x,z);
+      height=clamp(gh*r(.68,1.04),.042,.112);size=r(.046,.078);
     }
     const form=FLOWER_FORMS[Math.floor((Math.sin(z*.59+x*.54)+1)*1.84)];
     ground.push(flower(x,heightAt(x,z),z,height,size,rng()<.67?form:pick(FLOWER_FORMS)));
@@ -350,7 +430,7 @@ function buildFlowerCourt(){
     attached("rim",HOOP.x+.315*dx,HOOP.y,HOOP.z+.315*dz,
       new THREE.Vector3(dx*.68,-.22,dz*.68),r(.092,.20),r(.052,.088));
   }
-  // Small, staggered flower breaks in the grass close to the low sideline sightline.
+  // Small, staggered flower breaks nestled inside the grass cushions close to the low sideline sightline.
   const foreground=[[-6.9,-2.9],[-8.4,.1],[8.65,1.15],[8.2,2.30],[7.85,4.45],
     [-7.9,5.9],[7.8,9.4],[-8.4,12.2],[4.85,13.8],[-2.2,18.8]];
   for(const [cx,cz] of foreground){
@@ -358,14 +438,19 @@ function buildFlowerCourt(){
     for(let i=0;i<count;i++){
       const x=cx+(rng()+rng()-1)*1.16,z=cz+(rng()+rng()-1)*1.34;
       if(BATTLE_SPOTS.some(spot=>Math.hypot(x-spot.p.x,z-spot.p.z)<.77))continue;
-      ambient.push(flower(x,heightAt(x,z),z,r(.22,.60),r(.08,.14),i%3?main:pick(FLOWER_FORMS)));
+      const gh=turfH(x,z);
+      ambient.push(flower(x,heightAt(x,z),z,clamp(gh*r(.74,1.14),.105,.29),r(.062,.112),i%3?main:pick(FLOWER_FORMS)));
     }
   }
   state.ambient=makeFlowerLayer(state,ambient,"ambient");
   state.ground=makeFlowerLayer(state,ground,"ground");
   state.structure=makeFlowerLayer(state,structure,"structure");
+  state.stemGeo.dispose();state.leafGeo.dispose();state.petalGeo.dispose();state.centerGeo.dispose();
   state.total=ground.length+structure.length;
   setFlowerLayerTarget(state,state.ambient,ambient.length,true);
+  if(place?.meadowLayers&&!place.meadowLayers.flowers){
+    for(const layer of [state.ambient,state.ground,state.structure])for(const m of layer.meshes)m.visible=false;
+  }
   environmentRoot.userData.flowerState=state;
   document.documentElement.dataset.flowerCount="0";document.documentElement.dataset.flowerGround="0";
   document.documentElement.dataset.flowerStructure="0";document.documentElement.dataset.weedCount=String(state.weedTotal);
@@ -784,7 +869,7 @@ function applyScenePreset(name,opts){
 }function resetProgressiveSceneForRun(){cosmicGroundFX.reset();if(window.AIBASceneLifecycle)return AIBASceneLifecycle.resetForRun();const preset=SCENE_PRESETS[currentScenePreset];if(preset&&preset.progression!=="none")applyScenePreset(currentScenePreset,{persist:false});}
 function getEnvironmentProgress(){
   if(G.state==="boot"||G.state==="menu"||G.state==="diff"||G.state==="intro")return 0;
-  const timedVenue=currentScenePreset==="rainforest"||currentScenePreset==="lunarCrater";
+  const timedVenue=currentScenePreset==="rainforest"||currentScenePreset==="lunarCrater"||currentScenePreset==="outdoorSunny"||currentScenePreset==="beachSunset";
   if(G.mode==="battle")return clamp(Math.max(G.score||0,G.battleOppScore||0)/BATTLE_TARGET,0,1);
   if(G.mode==="rackrush"&&G.rush){
     if((currentScenePreset==="flowerCourt"||timedVenue)&&isRackRushSpeed(G.rush))return clamp((G.rush.total||0)/RACK_RUSH_SPEED_TARGET,0,1);

@@ -30,6 +30,13 @@
   }
 
   function resetBeach(){
+    const place=environmentRoot&&environmentRoot.userData&&environmentRoot.userData.placeState;
+    if(place&&place.name==="beachSunset"){
+      place.beachProgress=0;place.beachProgressVel=0;place.celebrateTimer=0;
+      if(window.AIBAWorldPlaces)AIBAWorldPlaces.update(0,0);
+      document.documentElement.dataset.environmentPhase="golden";
+      if(!(environmentRoot&&environmentRoot.userData&&environmentRoot.userData.beachState))return true;
+    }
     const state=environmentRoot&&environmentRoot.userData&&environmentRoot.userData.beachState;
     if(!state)return false;
     state.time=0;state.finalBoost=0;state.nextGull=6;
@@ -61,7 +68,18 @@
 
   function resetForRun(){
     const preset=SCENE_PRESETS[currentScenePreset];
-    if(!preset||preset.progression==="none")return true;
+    if(!preset)return true;
+    if(currentScenePreset==="outdoorSunny"){
+      const place=environmentRoot&&environmentRoot.userData&&environmentRoot.userData.placeState;
+      if(place&&place.name==="outdoorSunny"){
+        place.viceProgress=0;place.viceProgressVel=0;place.celebrateTimer=0;
+        if(window.AIBAWorldPlaces)AIBAWorldPlaces.update(0,0);
+        document.documentElement.dataset.environmentPhase="tropical";
+      }
+      environmentRoot.userData.progress=0;
+      return true;
+    }
+    if(preset.progression==="none")return true;
     let reset=false;
     if(preset.progression==="flowerBloom")reset=resetFlower();
     else if(preset.progression==="sunsetToNight")reset=resetBeach();

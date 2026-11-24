@@ -78,7 +78,11 @@ function animate(){
   if(typeof syncArenaAmbience==="function")syncArenaAmbience(realDt);
   updTweens(realDt);
   const frozen=!!G.cutAway||!!G.battleCut;
-  if(!frozen){updBalls(dt);updPose(dt);updPass(dt);updWalk(dt);}
+  if(!frozen){
+    updBalls(dt);
+    updPose(hero.on&&hero.mode==="terminal"&&hero.b?.t<.42?dt*heroBallRate(hero.b):dt);
+    updPass(dt);updWalk(dt);
+  }
   /* 角色接地影跟位置走,姿势算完再同步。冻结时也要跑一次,否则暂停/回放里影子会留在原地。 */
   if(typeof updGroundShadows==="function")updGroundShadows();
   if(G.state==="aishow")updShow(realDt);
@@ -101,7 +105,7 @@ function animate(){
   /* 近场观众的欢呼、举牌和身体摆动在 12fps 下会明显卡顿；只把远景留在
      节流分支，近场每帧更新。它不参与玩法和判定。 */
   if(typeof updNearCourtCrowd==="function")updNearCourtCrowd(G.tNow,realDt);
-  if(typeof updateNetPulse==="function")updateNetPulse(realDt);
+  if(typeof updateNetPulse==="function")updateNetPulse(realDt*(hero.b?.made?heroBallRate(hero.b):1));
   // 反超特写排队
   if(G.state==="round"&&!frozen)tryCutAway();
   if(G.cutAway)updCutAway(realDt);
@@ -119,6 +123,10 @@ function animate(){
     if(G.timer<=0&&!G.buzzed){
       G.buzzed=true;sBuzz();paSay("时间到!",true);
       if(G.charging)doRelease(true);
+      else if(!hero.on){
+        const last=balls[balls.length-1];
+        if(last&&!last.made&&!last.cosmic&&!last.opp&&!last.silent&&heroPredictedMake(last))startHero(last);
+      }
       G.canShoot=false;G.charging=false;handBall.visible=false;
       toast("⏱ 时间到!","#ff8d7a");
     }

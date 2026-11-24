@@ -3,10 +3,10 @@
   "use strict";
 
   const SKY_LOOKS=Object.freeze({
-    outdoorSunny:{top:0x1e6091,horizon:0x7fb8c9,lower:0xc4d2c3},
+    outdoorSunny:{top:0x14588a,horizon:0x66c2d6,lower:0xd6c8b8},
     flowerCourt:{top:0x247eb5,horizon:0xa5cedb,lower:0xc8d7c4},
     rainyCourt:{top:0x304658,horizon:0x788b93,lower:0x596b63},
-    beachSunset:{top:0x263f73,horizon:0xf47b42,lower:0xffc072},
+    beachSunset:{top:0x2b2d6e,horizon:0xf25c66,lower:0xffba68},
     /* 夏末傍晚:上方仍是没退尽的蓝,近地平线才转金 —— 不要一整片橙,
        那是 beachSunset 的日落;湘南要的是"放学时分"而不是"日落时刻"。 */
     shonanCoast:{top:0x3f6f96,horizon:0xf0c489,lower:0xe8d3ab},

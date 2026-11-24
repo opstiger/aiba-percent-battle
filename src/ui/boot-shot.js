@@ -438,7 +438,7 @@ function watchFlight(){
   const balls=ctx.balls;
   if(!S.ball&&balls&&balls.length){
     S.ball=balls[balls.length-1];
-    try{if(typeof global.startHero==="function")global.startHero(S.ball);}catch(e){}
+    try{if(typeof global.startHero==="function")global.startHero(S.ball,"boot");}catch(e){}
     playBootEvent("crowd_boot_hush");   // 垫在球飞行下面,音量要低于刷网
   }
   if(S.ball&&S.ball.made){finish("made");return;}

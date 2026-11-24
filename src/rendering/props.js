@@ -610,7 +610,7 @@ function buildVenueEquipment(root,name,theme){
     }
     for(const x of [-.131,.131])for(const z of [-.131,.131])rod(x,y+h+.009,z,.025,.051,trim);
   }
-  return skin;
+  return window.AIBAModelDetail?.batchFixedHardware?AIBAModelDetail.batchFixedHardware(skin):skin;
 }
 function applyRackVenue(name){
   for(const root of [...rackStands,...deepStands,halfCourtBall?.ped]){

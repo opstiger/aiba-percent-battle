@@ -1,7 +1,10 @@
-/* Score-driven weather for the alpine meadow. All meshes and textures belong to the place root. */
+/* Score-driven weather for the alpine meadow. All meshes and textures belong to the place root.
+   Shared directional wind & clarity masking inspired by MIT-licensed Tiny Planet (flora/wind.ts), Long Wind, and Valley Ride. */
 (function(global){
   "use strict";
   const {smoothstep:curve,lerp,degToRad,clamp}=THREE.MathUtils;
+  const WIND_DIR_X=0.8819,WIND_DIR_Z=0.4714;
+  const WIND_PERP_X=-0.4714,WIND_PERP_Z=0.8819;
   const stages=[[.90,"golden-peaks"],[.64,"rainbow"],[.55,"cloudbreak"],[.36,"wind-rain"],[.18,"light-rain"],[0,"cloudy"]];
 
   // June 20, Kalajun (42°57′30″ N, 82°22′35″ E), UTC+8.
@@ -57,6 +60,52 @@
     map.minFilter=THREE.LinearMipmapLinearFilter;map.magFilter=THREE.LinearFilter;
     map.generateMipmaps=true;map.needsUpdate=true;
     return map;
+  }
+
+  // Shared alpine directional wind field (adapted from Tiny Planet flora/wind.ts, MIT).
+  // Returns vec3(gustPushAlongWind, crossFlutter, gustEnvelope [0..1]).
+  const windGLSL=`
+    const vec2 MEADOW_WIND_DIR=vec2(0.8819,0.4714);
+    const vec2 MEADOW_WIND_PERP=vec2(-0.4714,0.8819);
+    vec3 sampleMeadowWind(vec2 worldXZ,float clock,float windAmp){
+      float along=dot(worldXZ,MEADOW_WIND_DIR);
+      float across=dot(worldXZ,MEADOW_WIND_PERP);
+      float frontA=sin(clock*0.92-along*0.085+across*0.028);
+      float frontB=cos(clock*0.54-along*0.048-across*0.041+0.9);
+      float gustEnv=pow(clamp(0.5+0.5*frontA*frontB,0.0,1.0),2.2);
+      float roll=sin(clock*1.75-along*0.24+across*0.09);
+      float flutter=sin(clock*3.35-along*0.52+across*0.41);
+      float strength=0.24+windAmp*1.15;
+      float push=(0.14+roll*0.11+gustEnv*0.34)*strength;
+      float crossF=(flutter*0.055+frontB*0.035)*strength;
+      return vec3(push,crossF,gustEnv);
+    }
+    vec2 meadowLocalWind(mat4 instMat,vec2 worldWind){
+      vec2 xAxis=instMat[0].xz;
+      vec2 zAxis=instMat[2].xz;
+      xAxis/=max(1e-4,length(xAxis));
+      zAxis/=max(1e-4,length(zAxis));
+      return vec2(dot(worldWind,xAxis),dot(worldWind,zAxis));
+    }
+  `;
+
+  function sampleWind(x,z,clock,windAmp){
+    const along=x*WIND_DIR_X+z*WIND_DIR_Z;
+    const across=x*WIND_PERP_X+z*WIND_PERP_Z;
+    const frontA=Math.sin(clock*0.92-along*0.085+across*0.028);
+    const frontB=Math.cos(clock*0.54-along*0.048-across*0.041+0.9);
+    const gustEnv=Math.pow(clamp(0.5+0.5*frontA*frontB,0,1),2.2);
+    const roll=Math.sin(clock*1.75-along*0.24+across*0.09);
+    const flutter=Math.sin(clock*3.35-along*0.52+across*0.41);
+    const strength=0.24+(windAmp||0)*1.15;
+    const push=(0.14+roll*0.11+gustEnv*0.34)*strength;
+    const cross=(flutter*0.055+frontB*0.035)*strength;
+    return {
+      dirX:WIND_DIR_X,dirZ:WIND_DIR_Z,perpX:WIND_PERP_X,perpZ:WIND_PERP_Z,
+      push,cross,gustEnv,
+      dx:WIND_DIR_X*push+WIND_PERP_X*cross,
+      dz:WIND_DIR_Z*push+WIND_PERP_Z*cross
+    };
   }
 
   // Sky and ground use the same moving cloud field. Rays sample openings above their world-space position.
@@ -253,10 +302,13 @@
           float veil=1.0-exp(-stepSize*mist*meadowAir.x*.013);
           float shaftA=shaft(beamFromA,beamToA,.24,end);
           float shaftB=shaft(beamFromB,beamToB,.31,end);
-          float light=min(1.0,(1.0-exp(-stepSize*beam*.045))+(shaftA+.82*shaftB)*meadowAir.y*.42)*(1.0-.72*meadowAir.z);
+          float courtKeep=smoothstep(14.5,27.0,end);
+          // Keep sunset/valley shafts softly toned so hoop & ball silhouette stay crisp (Valley Ride clarity principle, MIT).
+          float shaftScale=mix(0.42,0.30,meadowSky.y);
+          float light=min(1.0,(1.0-exp(-stepSize*beam*.045))+(shaftA+.82*shaftB)*meadowAir.y*shaftScale)*(1.0-.72*meadowAir.z);
           vec3 cool=mix(vec3(.42,.51,.59),vec3(.54,.62,.69),meadowSky.x)*(1.0-.75*meadowStorm.y);
           vec3 warm=mix(vec3(1.0,.91,.72),vec3(1.0,.74,.42),meadowSky.y);
-          float opacity=min(.62,veil+light*.82);
+          float opacity=min(.58,(veil+light*.80)*courtKeep);
           vec3 col=(cool*veil+warm*light*.82)/max(.001,veil+light*.82);
           gl_FragColor=vec4(col,opacity);
         }`
@@ -473,7 +525,7 @@
       meadowActors:{value:new THREE.Vector4(999,999,999,999)},meadowBall:{value:new THREE.Vector4(999,999,999,999)},
       meadowClock:{value:0},meadowWind:{value:0}};
     const w={uniforms,progress:0,progressVel:0,sunProgress:0,sunProgressVel:0,flowerProgress:0,score:0,stage:"cloudy",wind:uniforms.meadowWind,
-      wetness:0,ballWetness:0,previousRain:0,
+      wetness:0,ballWetness:0,previousRain:0,fxDisabled:false,
       sunColor:new THREE.Color(0xffe7c5),skyColor:new THREE.Color(0xc1c9d5),wetColor:new THREE.Color(0xa5baca),
       warmColor:new THREE.Color(0xffb06b),coolFog:new THREE.Color(0x879eab),clearingFog:new THREE.Color(0x9aafb7),
       time:uniforms.meadowClock,stormAt:null,thunderAt:null,thunderOpts:null,nextStrike:0,nextStrikeAt:null,
@@ -575,10 +627,10 @@
     moveSun(w,w.sunProgress);
     const sweep=curve(w.sunProgress,.53,.745);
     u.meadowOpening.value.set(lerp(-42,15,sweep)+Math.sin(time*.26)*2.8,lerp(-63,-24,sweep));
-    w.rain.visible=rain>.018;w.bolt.visible=flash>.035;
+    w.rain.visible=!w.fxDisabled&&rain>.018;w.bolt.visible=!w.fxDisabled&&flash>.035;
     w.stage=stages.find(([cut])=>score>=cut)[1];
     return {rain,clear,gold,flash,blackout};
   }
 
-  global.AIBAMeadowWeather=Object.freeze({build,reset,update,cloudGLSL,skyGLSL});
+  global.AIBAMeadowWeather=Object.freeze({build,reset,update,cloudGLSL,skyGLSL,windGLSL,sampleWind});
 })(window);

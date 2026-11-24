@@ -318,8 +318,10 @@
           occ+=.68*smoothstep(tol*1.4,tol+.14,lin-dD2)*(1.0-smoothstep(cap*1.2,cap*2.2,lin-dD2));
           occ+=.48*smoothstep(tol*1.4,tol+.14,lin-dU2)*(1.0-smoothstep(cap*1.2,cap*2.2,lin-dU2));
           float aoFade=1.0-smoothstep(20.0,36.0,lin);
-          float aoMult=meadowGrade>.5?.125:(forestGrade>.5?.115:.095);
-          float ao=clamp(occ*aoMult*aoFade,0.0,.36);
+          float aoMult=meadowGrade>.5?.115:(forestGrade>.5?.115:.095);
+          // Prevent screen-space depth SSAO from drawing dark outlines around individual 3D grass blades on the meadow turf!
+          float meadowTurfMask=meadowGrade*smoothstep(.010,.052,base.g-max(base.r*.88,base.b*1.08));
+          float ao=clamp(occ*aoMult*aoFade*(1.0-meadowTurfMask*.88),0.0,.36);
           col*=1.0-ao;
         }
 
@@ -593,8 +595,18 @@
     const preset=(typeof currentScenePreset==="string"&&currentScenePreset)||document.documentElement.dataset.scenePreset||"indoor";
     const lunar=preset==="lunarCrater"&&!lookLocked;
     const isFP=camera.userData.firstPerson===true;
-    focus.foreground=(!isFP||!!forest)&&foreground>.001;
-    if(focus.foreground){
+    const heroFocus=camera.userData.heroFocus;
+    focus.foreground=!heroFocus&&(!isFP||!!forest)&&foreground>.001;
+    if(heroFocus){
+      camera.getWorldDirection(focusDirection);
+      let furthest=0;
+      for(const point of heroFocus.points){
+        furthest=Math.max(furthest,focusOffset.copy(point).sub(camera.position).dot(focusDirection));
+      }
+      focus.near=Math.max(.6,furthest+heroFocus.padding);
+      focus.far=focus.near+heroFocus.falloff;
+      focus.strength=heroFocus.strength*(COARSE?.82:1);
+    }else if(focus.foreground){
       focus.near=forest ? .34 : foregroundRange.x;
       focus.far=forest ? 4.15 : foregroundRange.y;
       focus.strength=foreground*(COARSE?.87:1);
@@ -614,7 +626,7 @@
         focus.strength=(meadow?.48:P.dof)*(COARSE?.83:1);
       }
     }
-    const u=focusMat.uniforms,pixels=focus.foreground?(forest?39:34):isFP?19.5:(meadow?12.5:9.5);
+    const u=focusMat.uniforms,pixels=heroFocus?.pixels??(focus.foreground?(forest?39:34):isFP?19.5:(meadow?12.5:9.5));
     u.foreground.value=focus.foreground?(forest?2:1):0;
     const scale=rtH/Math.max(1,renderer.domElement.clientHeight);
     u.tScene.value=rtScene.texture;u.tDepth.value=rtScene.depthTexture;
@@ -674,18 +686,18 @@
     const weather=place?.meadow,forest=place?.rainforest,atmosphere=forest||weather;
     const foreground=hasDepth&&P.dof>.001?(forest?.94:lowMeadowFocus(weather)):0;
     const farLens=camera.userData.firstPerson===true;
-    const wantsFocus=hasDepth&&P.dof>.001&&(farLens||foreground>.001);
+    const wantsFocus=hasDepth&&P.dof>.001&&(farLens||foreground>.001||!!camera.userData.heroFocus);
     focusActive=false;
     if(failed||!P.enabled||(!FULL&&!wantsFocus&&!(forest&&hasDepth))){
-      if(atmosphere)atmosphere.fallback.visible=true;
+      if(atmosphere)atmosphere.fallback.visible=!atmosphere.fxDisabled;
       if(rtAir){disposeRT(rtAir);rtAir=null;}
       if(rtFoliage){disposeRT(rtFoliage);rtFoliage=null;}
       return baseRender(sc,cam);
     }
     try{
       ensureTargets();
-      const useAir=!!(atmosphere&&rtScene.depthTexture&&(forest||(!COARSE&&!WEAK)));
-      if(atmosphere)atmosphere.fallback.visible=!useAir;
+      const useAir=!!(atmosphere&&!atmosphere.fxDisabled&&rtScene.depthTexture&&(forest||(!COARSE&&!WEAK)));
+      if(atmosphere)atmosphere.fallback.visible=!useAir&&!atmosphere.fxDisabled;
       if(!useAir&&rtAir){disposeRT(rtAir);rtAir=null;}
       if(window.AIBACharacterShading?.syncSceneLight)window.AIBACharacterShading.syncSceneLight();
       renderer.setRenderTarget(rtScene);
@@ -700,7 +712,7 @@
       }
 
       const air=useAir?drawVenueAir(atmosphere):null;
-      const foliage=forest&&wantsFocus?drawFoliageDepth(forest):null;
+      const foliage=forest&&wantsFocus&&!camera.userData.heroFocus?drawFoliageDepth(forest):null;
       if(!foliage&&rtFoliage){disposeRT(rtFoliage);rtFoliage=null;}
       const lens=wantsFocus&&rtScene.depthTexture?drawFocus(weather,foreground,forest,foliage):null;
       focusActive=!!lens;

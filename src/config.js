@@ -18,7 +18,7 @@
 
   const SCENE_PRESETS=Object.freeze({
     indoor:{name:"室内经典",type:"indoor",weather:"none",progression:"none",desc:"木地板、看台与球馆灯光"},
-    outdoorSunny:{name:"晴天 · 都会街头",type:"outdoor",weather:"sunny",progression:"none",desc:"摩天楼之间，城市车流从街场旁经过"},
+    outdoorSunny:{name:"霓虹 · 罪城街区",type:"outdoor",weather:"sunny",progression:"none",desc:"棕榈与装饰艺术街区，随投篮从毒辣骄阳滑入紫粉晚霞与霓虹夜场，低趴改装车、鳄鱼与五星通缉直升机齐聚"},
     rainyCourt:{name:"雨天 · 京都雨巷",type:"outdoor",weather:"rain",progression:"none",desc:"木屋瓦檐、暖灯与雨中的石板巷"},
     // Stable preset ID preserves saved selections and the score-driven bloom.
     flowerCourt:{name:"鲜花 · 天山草甸",type:"outdoor",weather:"sunny",progression:"flowerBloom",desc:"随比分穿过山雨与彩虹，野花开满草坡，终场暖光照亮雪峰"},
@@ -28,7 +28,7 @@
     /* 地中海半岛:锚点是蓝海+白建筑。主篮筐朝海湾,所以海在篮筐后方而不是侧面。 */
     medCliff:{name:"午后 · 地中海半岛",type:"outdoor",weather:"sunny",progression:"none",desc:"半岛崖顶的海盐蓝球场，一侧白墙村落石阶，篮筐之外是深蓝海湾与远帆"},
     shonanCoast:{name:"夏末 · 湘南海岸",type:"outdoor",weather:"sunny",progression:"none",desc:"海边高校的水泥外场，铁丝网外是防波堤、电车线与夕照的海平线"},
-    beachSunset:{name:"夕阳 · 西海岸",type:"outdoor",weather:"sunny",progression:"sunsetToNight",desc:"开放海滨旧街场，日落后酒店与路灯渐次点亮"},
+    beachSunset:{name:"夕阳 · 罪城海滩",type:"outdoor",weather:"sunny",progression:"sunsetToNight",desc:"海洋大道棕榈海岸，随比分从落日金滩步入粉紫霓虹夜海，火烈鸟掠过晚霞、快艇破浪、远空飞艇巡航"},
     arcticSnow:{name:"极光 · 雪原冰湖",type:"outdoor",weather:"none",progression:"none",desc:"扫雪硬场与冰湖林线，静夜极光在头顶缓慢舒展"},
     spanishQuarter:{name:"红土 · 西班牙老街",type:"outdoor",weather:"sunny",progression:"none",desc:"陶土红街场嵌入老城住宅，百叶窗、阳台与巷口都是生活"},
     lunarCrater:{name:"静海 · 月球陨石坑",type:"outdoor",weather:"none",progression:"lunarEclipse",desc:"在静海投篮，唤醒月壤中的晶群。探月器将载着访客降落，远处的地球渐渐遮住太阳。"},
