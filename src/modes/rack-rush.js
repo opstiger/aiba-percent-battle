@@ -84,7 +84,7 @@
       const mesh=spareBall(number%5===0);
       storeRushSpare(supply,mesh);root.add(mesh);
     }
-    passer.g.position.copy(station);passer.g.rotation.y=faceTo(station,top);
+    passer.g.position.copy(station);passer.g.rotation.y=faceTo(station,pickup);
     passer.g.userData.rushHelper=true;
     passerBall.visible=false;
     global.AIBAPasserAvatar?.resetPose();
@@ -156,56 +156,71 @@
     const supply=rush.supply;
     if(!supply)return;
     moveRushReturns(supply,dt);
+    const avatar=global.AIBAPasserAvatar;
+    const smooth=THREE.MathUtils.smoothstep;
     if(supply.retract){
       const move=supply.retract;
       move.t+=dt;
-      const k=THREE.MathUtils.smoothstep(move.t,0,.33);
-      passer.g.position.copy(move.stand).lerp(supply.station,k);
-      const yaw=faceTo(supply.station,supply.pickup);
-      passer.g.rotation.y=move.yaw+Math.atan2(Math.sin(yaw-move.yaw),Math.cos(yaw-move.yaw))*k;
-      const rest=passer.g.localToWorld(v(0,1.10,.255));
-      global.AIBAPasserAvatar?.setRackPose(move.from.clone().lerp(rest,k),k);
+      const k=smooth(move.t,0,.23);
+      avatar?.setRackPose(move.from,k);
       if(k<1)return;
       supply.retract=null;
-      global.AIBAPasserAvatar?.setRackPose(null);
+      avatar?.setRackPose(null);
     }
     if(!supply.feed&&supply.stock.length<=3){
       const money=supply.nextBall%5===0;
-      const spareIndex=supply.spares.findIndex(ball=>ball.userData.money===money);
-      if(spareIndex>=0){
-        const ball=supply.spares.splice(spareIndex,1)[0];
-        supply.feed={ball,t:0,from:ball.position.clone(),goal:null};
+      const available=supply.spares.filter(ball=>ball.userData.money===money);
+      const ball=available.reduce((nearest,option)=>!nearest||
+        option.position.distanceToSquared(supply.pickup)<nearest.position.distanceToSquared(supply.pickup)?option:nearest,null);
+      if(ball){
+        supply.spares.splice(supply.spares.indexOf(ball),1);
+        supply.feed={ball,t:0,from:ball.position.clone(),goal:null,
+          standFrom:passer.g.position.clone(),yawFrom:passer.g.rotation.y};
       }
     }
     const feed=supply.feed;
     if(!feed)return;
     feed.t+=dt;
     const {ball,from}=feed;
-    const smooth=THREE.MathUtils.smoothstep;
     const nextSlot=props.rackSlotWorld(rush.spot,slotCount-1-supply.stock.length);
     if(!nextSlot)return;
     if(!feed.goal)feed.goal=nextSlot.clone();
     const goal=feed.goal.lerp(nextSlot,Math.min(1,dt*14));
-    // Place into the next free groove from the assistant's side of the rail.
-    const stand=supply.station.clone().addScaledVector(supply.axis,Math.max(0,goal.clone().sub(supply.top).dot(supply.axis))*.80);
-    const turn=smooth(feed.t,.24,.59);
-    passer.g.position.copy(supply.station).lerp(stand,turn);
-    const yaw0=faceTo(supply.station,supply.pickup),yaw1=faceTo(stand,goal);
-    passer.g.rotation.y=yaw0+Math.atan2(Math.sin(yaw1-yaw0),Math.cos(yaw1-yaw0))*turn;
-    if(feed.t<.24){
-      ball.position.copy(from).lerp(supply.pickup,smooth(feed.t,0,.24));
-      const reach=passer.g.localToWorld(v(0,1.074,.26)).lerp(supply.pickup,smooth(feed.t,.06,.24));
-      global.AIBAPasserAvatar?.setRackPose(reach,1-smooth(feed.t,.02,.22));
+    const pickup=supply.pickup;
+    const pickupYaw=faceTo(supply.station,pickup);
+    // Stand square to the side of the receiving groove. A lower slot calls
+    // for more hip hinge, never for extra arm length.
+    const stand=goal.clone().setY(0).addScaledVector(supply.outward,.405);
+    const rackYaw=faceTo(stand,goal);
+    function moveFeet(from,to,yawFrom,yawTo,progress){
+      const ease=smooth(progress,0,1);
+      passer.g.position.copy(from).lerp(to,ease);
+      const turn=Math.atan2(Math.sin(yawTo-yawFrom),Math.cos(yawTo-yawFrom));
+      passer.g.rotation.y=yawFrom+turn*ease;
+      return {from,to,yawFrom,yawTo:yawFrom+turn,progress,
+        lead:turn<0?"Left":"Right"};
+    }
+    if(feed.t<.40){
+      const returning=smooth(feed.t,0,.27);
+      const step=moveFeet(feed.standFrom,supply.station,feed.yawFrom,pickupYaw,returning);
+      const tray=smooth(feed.t,.02,.22);
+      ball.position.copy(from).lerp(pickup,tray);
+      const relax=1-smooth(feed.t,.20,.40);
+      avatar?.setRackPose(ball.position,relax,step);
       return;
     }
-    const center=passer.g.localToWorld(v(0,1.11,.253));
-    if(feed.t<.56){
-      ball.position.copy(supply.pickup).lerp(center,smooth(feed.t,.24,.56));
+    const carry=smooth(feed.t,.57,.95);
+    const step=moveFeet(supply.station,stand,pickupYaw,rackYaw,carry);
+    const center=passer.g.localToWorld(v(0,1.16,.265));
+    if(feed.t<.57){
+      ball.position.copy(pickup).lerp(center,smooth(feed.t,.40,.57));
     }else{
-      ball.position.copy(center).lerp(goal,smooth(feed.t,.56,.97));
+      const lower=smooth(feed.t,.95,1.22);
+      ball.position.copy(center).lerp(goal,lower);
+      ball.position.y+=Math.sin(Math.PI*lower)*.045;
     }
-    global.AIBAPasserAvatar?.setRackPose(ball.position);
-    if(feed.t<.97||goal.distanceTo(nextSlot)>.022)return;
+    avatar?.setRackPose(ball.position,0,step);
+    if(feed.t<1.22||goal.distanceTo(nextSlot)>.022)return;
     // Let the shooter's hands clear the released ball before adding to the queue.
     const grabbing=ctx.getPassing();
     if(grabbing?.pickup&&!grabbing.rackRolled)return;
@@ -216,7 +231,7 @@
     slot.position.copy(nextSlot);slot.material=shotMaterialForSupply(supply.nextBall);
     slot.visible=true;supply.stock.push(index);supply.nextBall++;
     supply.root.remove(ball);supply.feed=null;
-    supply.retract={t:0,from:nextSlot.clone(),stand:passer.g.position.clone(),yaw:passer.g.rotation.y};
+    supply.retract={t:0,from:nextSlot.clone()};
     if(supply.waiting&&!ctx.getPassing()&&!G.buzzed){
       supply.waiting=false;readyBall();
     }

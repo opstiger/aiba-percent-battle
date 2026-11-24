@@ -1188,9 +1188,8 @@
     crystalGlints.name="lunarCrystalGlints";crystalGlints.frustumCulled=false;crystalGlints.renderOrder=7;
     s.root.add(crystalGlints);
 
-    // 11. 1/6G 失重悬浮玄武岩碎石与嵌晶原石 (1/6G Levitating Floating Rocks)
-    const floatGrp=new THREE.Group();floatGrp.name="lunarFloatingRocks";
-    const floatingRocks=[];
+    // Basalt outcrops and embedded minerals along the perimeter.
+    const floatGrp=new THREE.Group();floatGrp.name="lunarOutcrops";
     const floatGeo=new THREE.DodecahedronGeometry(1,0);
     const floatBasaltMat=new THREE.MeshStandardMaterial({color:0x60646c,roughness:0.88,metalness:0.08,flatShading:true});
     const nFloat=s.mobile?12:20;
@@ -1211,13 +1210,6 @@
       }
       rg.position.set(fx,fy0+sc*0.35,fz);
       floatGrp.add(rg);
-      floatingRocks.push({
-        mesh:rg,fx,fy0:fy0+sc*0.35,fz,
-        liftH:0.8+s.r()*3.8,
-        wake:0.15+s.r()*0.50,
-        phase:s.r()*Math.PI*2,
-        rx:(s.r()-0.5)*0.55,ry:(s.r()-0.5)*0.65,rz:(s.r()-0.5)*0.45
-      });
     }
     s.root.add(floatGrp);
 
@@ -1287,109 +1279,94 @@
       trail:{mesh:blupeeTrailMesh,geo:bpGeo,pos:bpPos,data:bpData,items:bpItems,cursor:0}
     };
 
-    // 12. 大规模 1/6G 悬空发光晶石微粒与微碎石场（覆盖篮筐光晕 + 篮球飞行轨迹走廊，像水墨萤火虫一样随篮球划过空气与砸框产生黏滞阻尼冲击波！）
-    const swarmN=s.mobile?620:1280;
-    const shardCount=s.mobile?72:144;
-    const shardStride=Math.floor(swarmN/shardCount);
-    const swPos=new Float32Array(swarmN*3),swSize=new Float32Array(swarmN),swOrbit=new Float32Array(swarmN*2),swWake=new Float32Array(swarmN*4),swKind=new Float32Array(swarmN);
+    // Tiny chips share a point draw. Only revealed chips take part in the wake simulation.
+    const swarmN=s.mobile?156:224;
+    const swPos=new Float32Array(swarmN*3),swShape=new Float32Array(swarmN*4);
+    const swWake=new Float32Array(swarmN*4),swBirth=new Float32Array(swarmN);
     const swItems=[];
     for(let i=0;i<swarmN;i++){
       let hx,hy,hz;
-      const u=(i+.5)/swarmN;
-      if(u<0.52){
-        // 52% 环绕玄武岩石板篮筐的 3.8m 发光晶尘云
-        const near=u<0.30;
-        const rad=near?(0.56+Math.pow(s.r(),1.15)*2.95):(2.45+s.r()*4.7);
-        const th=s.r()*Math.PI*2,el=(s.r()-0.36)*(near?2.4:4.7);
-        hx=HOOP.x+Math.cos(th)*rad;
-        hy=Math.max(0.55,HOOP.y+0.15+el);
-        hz=HOOP.z+Math.sin(th)*rad*0.88;
-      }else if(u<0.85){
-        // 33% 分布在篮球投篮飞行抛物线轨迹走廊 (z ∈ [-9.6, +3.8], x ∈ [-5.8, +5.8], y ∈ [1.15, 5.45])，让篮球划过时劈开一条晶尘尾流！
-        const tz=s.r();
-        hz=HOOP.z-0.6+tz*13.4;
-        const arcPeak=Math.sin(tz*Math.PI);
-        hx=(s.r()-0.5)*(4.4+tz*7.2);
-        hy=1.15+arcPeak*2.45+(s.r()-0.38)*2.15;
+      const zone=i%10;
+      if(i<3||zone<5){
+        const reach=i<3?1.4:6.1;
+        const rad=.65+Math.pow(s.r(),1.2)*reach,angle=s.r()*Math.PI*2;
+        hx=HOOP.x+Math.cos(angle)*rad;
+        hy=HOOP.y+.3+(s.r()-.43)*(i<3?1.35:3.7);
+        hz=HOOP.z+Math.sin(angle)*rad*.88;
+      }else if(zone<9){
+        const along=s.r();
+        hz=HOOP.z-.4+along*11.8;
+        hx=(s.r()-.5)*(4.0+along*6.5);
+        hy=1.15+Math.sin(along*Math.PI)*2.45+(s.r()-.38)*2.15;
       }else{
-        // 15% 环绕半场外缘的悬浮晶石微粒带
-        const ang=s.r()*Math.PI*2,rad=5.5+s.r()*7.5;
-        hx=Math.cos(ang)*rad;
-        hz=-2.5+Math.sin(ang)*rad*0.92;
-        hy=0.75+s.r()*3.8;
+        const angle=s.r()*Math.PI*2,rad=5.5+s.r()*7.5;
+        hx=Math.cos(angle)*rad;
+        hz=-2.5+Math.sin(angle)*rad*.92;
+        hy=.75+s.r()*3.8;
       }
-      const sa=s.r()*Math.PI*2,sb=(s.r()-0.5)*1.4;
-      const sz=0.72+s.r()*1.35,kd=i%3;
+      const azimuth=s.r()*Math.PI*2,elevation=(s.r()-.5)*1.4;
+      const birth=i<3?i*.47:1.8+27*Math.pow((i-2)/(swarmN-3),.79);
+      const phase=s.r()*Math.PI*2,rate=.32+s.r()*.48;
       swItems.push({
-        hx,hy,hz,dx:0,dy:0,dz:0,vx:0,vy:0,vz:0,
-        sx:Math.cos(sa)*Math.cos(sb),sy:Math.sin(sb),sz:Math.sin(sa)*Math.cos(sb),
-        phase:s.r()*Math.PI*2,rate:0.32+s.r()*0.48,size:sz,kind:kd,excited:0,
-        perspectiveScale:1-.43*THREE.MathUtils.smoothstep(hz-HOOP.z,5,12)
+        hx,hy,hz,birth,phase,rate,dx:0,dy:0,dz:0,vx:0,vy:0,vz:0,
+        sx:Math.cos(azimuth)*Math.cos(elevation),sy:Math.sin(elevation),sz:Math.sin(azimuth)*Math.cos(elevation),excited:0
       });
-      swPos[i*3]=hx;swPos[i*3+1]=hy;swPos[i*3+2]=hz;
-      swSize[i]=sz;swKind[i]=kd;swOrbit[i*2]=swItems[i].rate;swOrbit[i*2+1]=swItems[i].phase;
+      swPos.set([hx,hy,hz],i*3);
+      swShape.set([phase,rate,.62+s.r()*.46,s.r()],i*4);
+      swBirth[i]=birth;
     }
     const swGeo=new THREE.BufferGeometry();
     swGeo.setAttribute("position",new THREE.BufferAttribute(swPos,3));
-    swGeo.setAttribute("aSize",new THREE.BufferAttribute(swSize,1));
-    swGeo.setAttribute("aOrbit",new THREE.BufferAttribute(swOrbit,2));
+    swGeo.setAttribute("aShape",new THREE.BufferAttribute(swShape,4));
+    swGeo.setAttribute("aBirth",new THREE.BufferAttribute(swBirth,1));
     swGeo.setAttribute("aWake",new THREE.BufferAttribute(swWake,4).setUsage(THREE.DynamicDrawUsage));
-    swGeo.setAttribute("aKind",new THREE.BufferAttribute(swKind,1));
+    swGeo.setDrawRange(0,0);
     const swMat=new THREE.ShaderMaterial({
       transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,
-      uniforms:{uClock:{value:0},uReveal:{value:0},uBrightness:{value:1}},
-      vertexShader:`attribute float aSize,aKind;attribute vec2 aOrbit;attribute vec4 aWake;
-        uniform float uClock,uReveal,uBrightness;varying float vGlow,vKind;
+      uniforms:{uClock:{value:0},uAge:{value:0},uBrightness:{value:1},uPixels:{value:1}},
+      vertexShader:`attribute vec4 aShape,aWake;attribute float aBirth;
+        uniform float uClock,uAge,uBrightness,uPixels;
+        varying float vGlow,vSeed;varying vec2 vTurn;
         void main(){
-          float rate=aOrbit.x,phase=aOrbit.y,tt=uClock*rate+phase;
-          float reveal=smoothstep(rate*.48,min(1.,rate*.48+.61),uReveal);
+          float phase=aShape.x,rate=aShape.y,tt=uClock*rate+phase;
+          float age=uAge-aBirth,fade=smoothstep(0.,1.05,age);
           vec3 drift=vec3(sin(tt*.76)*.32,sin(tt*.98+phase)*.24,cos(tt*.68-phase)*.30);
-          vec3 p=position+drift+aWake.xyz;p.y=max(.28,p.y)*(.10+.90*reveal);
-          float tw=.34+.66*pow(.5+.5*sin(uClock*(1.4+rate)+phase*7.),1.7);
-          vGlow=reveal*uBrightness*(tw+aWake.w*.96);vKind=aKind;
-          vec4 mv=modelViewMatrix*vec4(p,1.0);
-          float dist=max(1.0,-mv.z);
+          vec3 p=position+drift+aWake.xyz;
+          p.y=max(.28,p.y)*mix(.72,1.,smoothstep(0.,2.8,age));
+          vec4 mv=modelViewMatrix*vec4(p,1.);
+          float distance=-mv.z;
+          float flicker=.60+.40*sin(uClock*(1.4+rate)+phase*7.);
+          vSeed=aShape.w;
+          vGlow=fade*uBrightness*(.50+.50*flicker)*smoothstep(.55,1.65,distance);
+          vGlow*=1.+min(aWake.w,.75)*.22;
+          float angle=phase+sin(tt*.46)*.65;
+          vTurn=vec2(cos(angle),sin(angle));
           gl_Position=projectionMatrix*mv;
-          gl_PointSize=clamp(aSize*(42.0+28.0*min(1.5,vGlow))/max(1.2,dist),1.8,14.5)*step(0.01,vGlow);
+          // Cap the entire point, including its halo, in CSS pixels even in a near-camera pass.
+          gl_PointSize=uPixels*clamp(aShape.z*(1.85+17./max(1.,distance)),1.45,4.8);
         }`,
-      fragmentShader:`varying float vGlow,vKind;
+      fragmentShader:`varying float vGlow,vSeed;varying vec2 vTurn;
         void main(){
-          if(vGlow<0.01)discard;
-          vec2 p=gl_PointCoord*2.0-1.0;
-          float r=length(p);if(r>1.0)discard;
-          // 晶石切面菱形微光 + 柔和星尘核
-          float facet=exp(-(abs(p.x)*1.25+abs(p.y)*1.25)*3.6);
-          float soft=exp(-r*r*4.5)*(1.0-smoothstep(0.65,1.0,r));
-          float shape=mix(soft,facet,0.45);
-          vec3 c0=vec3(0.52,0.94,1.0);   // 冰青晶尘
-          vec3 c1=vec3(1.0,0.90,0.58);   // 琥珀金晶粒
-          vec3 c2=vec3(0.84,0.76,1.0);   // 紫晶微粒
-          vec3 col=vKind<0.5?c0:(vKind<1.5?c1:c2);
-          float a=shape*min(0.95,vGlow*0.76);
-          gl_FragColor=vec4(mix(col,vec3(1.0),soft*0.45),a);
+          vec2 p=gl_PointCoord*2.-1.;
+          vec2 q=vec2(dot(p,vTurn),dot(p,vec2(-vTurn.y,vTurn.x)));
+          float radius=dot(p,p);
+          float halo=exp(-radius*5.5)*(1.-smoothstep(.48,1.,radius));
+          // A sliver biased to one edge, with a chipped tip and a darker broken face.
+          float edge=max(abs(q.y+q.x*(vSeed-.45))*(2.1+vSeed),max(q.x*.98-q.y*.44,-q.x*1.32-q.y*.79));
+          float chip=(1.-smoothstep(.21,.47,edge))*(.58+.42*smoothstep(-.22,.12,q.x-q.y));
+          vec3 tint=mix(vec3(.55,.78,.83),vec3(.83,.74,.61),smoothstep(.69,.93,vSeed));
+          gl_FragColor=vec4(tint,vGlow*(halo*.29+chip*.65));
         }`
     });
     const hoopSwarmMesh=new THREE.Points(swGeo,swMat);
     hoopSwarmMesh.name="lunarHoopRegolithDust";hoopSwarmMesh.frustumCulled=false;hoopSwarmMesh.renderOrder=7;
+    const particleViewport=new THREE.Vector4();
+    hoopSwarmMesh.onBeforeRender=renderer=>{
+      renderer.getCurrentViewport(particleViewport);
+      swMat.uniforms.uPixels.value=particleViewport.w/Math.max(1,renderer.domElement.clientHeight||particleViewport.w);
+    };
     hoopSwarmMesh.visible=false;s.root.add(hoopSwarmMesh);
-
-    // Sample every region of the field for physical facets, including the flight corridor.
-
-    const shardGeo=new THREE.OctahedronGeometry(0.048,0);
-    const shardMat=new THREE.MeshStandardMaterial({
-      color:0xb9ceda,emissive:0x17485f,emissiveIntensity:.24,
-      roughness:.26,metalness:.35,flatShading:true
-    });
-    const shardInst=new THREE.InstancedMesh(shardGeo,shardMat,shardCount);
-    shardInst.name="lunarFloatingCrystalShards";shardInst.frustumCulled=false;
-    const shardDummy=new THREE.Object3D(),shardCol=new THREE.Color();
-    const shardPalette=[0x7ceeff,0xffd678,0xc4a8ff,0x98b4c8];
-    for(let i=0;i<shardCount;i++){
-      shardCol.setHex(shardPalette[i%shardPalette.length]);
-      shardInst.setColorAt(i,shardCol);
-    }
-    shardInst.visible=false;shardInst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);s.root.add(shardInst);
-    const hoopSwarm={mesh:hoopSwarmMesh,geo:swGeo,offsets:swWake,items:swItems,shardInst,shardMat,shardDummy,shardCount,shardStride,wake:0};
+    const hoopSwarm={mesh:hoopSwarmMesh,geo:swGeo,offsets:swWake,items:swItems,age:0,count:0};
 
     // 13. 3A 级高精度阿波罗/阿尔忒弥斯舱外宇航员 (3A Articulated EVA Astronauts)
     // 分段式硬壳胸甲、波纹腰环、双氧气瓶 PLSS 背包+通讯鞭状天线、胸前遥测控制盒 (DCM)、双层镀金遮阳头盔+两侧探照灯、折叠肘/膝关节，以及「巡线漫步/驻足勘探/抬头看球/偶发失重高跳」非重复 AI！
@@ -1524,7 +1501,8 @@
         group:ag,body,head,cameraRig,flash,aim:new THREE.Vector3(),
         armL,armR,foreArmL,foreArmR,
         legL,legR,shinL,shinR,
-        mode:"aboard",modeT:0,modeDur:0,curYaw:0,photoIndex:0,
+        mode:"aboard",modeT:0,modeDur:0,curYaw:0,lastPhoto:null,
+        stop:0,nextStop:0,patrolSpeed:.76+Math.random()*.22,
         celebrateT:0,leap:0
       });
     }
@@ -1609,7 +1587,7 @@
       meteor,meteorMat,
       // Lunar Living World state (Crimson-Ring Eclipse + Varied Crystals + Floating Rocks + Jade Rabbit + Hopping Astronauts + 1 Drone + Lander)
       progress:0,progressVel:0,targetProgress:0,eclipseAmount:0,stage:"apolloDay",
-      crystalMats,glintMat,floatingRocks,jadeRabbit,
+      crystalMats,glintMat,jadeRabbit,
       hoopSwarm,astronauts,drones,droneHotMat,
       lander,hatch,missionTime:-1,makes:0,contacts:0,hareVisit:Math.random()<.32,landerHome:{x:lx,y:ly0,z:lz},flameMat,dustRing,dustRingMat,
       derrickPlume,plumeMat,lunarHoopLight
@@ -3217,8 +3195,10 @@
   function applyLunarHoopImpulse(w,ox,oy,oz,strength,radius){
     if(!w)return;
     const rad=radius||5.2,str=Math.max(0.5,strength||3.6);
-    if(w.hoopSwarm?.wake>0){
-      for(const f of w.hoopSwarm.items){
+    const swarm=w.hoopSwarm;
+    if(swarm){
+      for(let i=0;i<swarm.count;i++){
+        const f=swarm.items[i];
         const px=f.hx+f.dx,py=f.hy+f.dy,pz=f.hz+f.dz;
         const rx=px-ox,ry=py-oy,rz=pz-oz;
         const d2=rx*rx+ry*ry+rz*rz;
@@ -3332,15 +3312,20 @@
     localQ.setFromUnitVectors(restDir.copy(gloveOffset).normalize(),wristDir);
     arm.quaternion.slerp(upperQ,weight);fore.quaternion.slerp(localQ,weight);
   }
-  const crewStations=[[3.8,-13.6],[8.4,-10.2],[-4.6,-14.2]];
+  const crewRoutes=[
+    [[2.5,-14.1],[1.8,-12.2],[3.1,-11.1],[4.0,-13.0]],
+    [[8.8,-11.4],[10.3,-10.7],[10.6,-12.4],[9.5,-14.1]],
+    [[-3.4,-15.5],[-5.5,-16.5],[-7.9,-16.45],[-7.1,-14.7]]
+  ];
   const crewPhotos=["court","portrait","selfie"];
   function updateLunarCrew(w,a,index,mission,t,dt,ball){
     const local=mission-7.65-index*2.48;
     if(local<0)return;
     const smooth=THREE.MathUtils.smoothstep,lerp=THREE.MathUtils.lerp;
-    const [sx,sz]=crewStations[index],home=w.landerHome;
+    const route=crewRoutes[index],home=w.landerHome;
+    const [sx,sz]=route[0];
     a.group.visible=true;
-    const walkTime=3+Math.hypot(sx-home.x,sz-home.z-3.35)/1.9;
+    const walkTime=3+Math.hypot(sx-home.x,sz-home.z-3.35)/1.65;
     const onSite=local-2.8-walkTime;
     let x=home.x,z=home.z,y=home.y,walk=0,stepPhase=0;
     let yaw=0,torso=0,lPitch=0,rPitch=0,lRoll=-.19,rRoll=.19,lElbow=-.4,rElbow=-.4;
@@ -3360,21 +3345,47 @@
       y=w.terrainY(x,z);yaw=Math.atan2(sx-home.x,sz-home.z-3.35);
       walk=Math.sin(Math.PI*u);stepPhase=ease*walkTime*4.1;torso=.09*walk;
     }else{
-      x=sx;z=sz;y=w.terrainY(x,z);
       a.celebrateT=Math.max(0,a.celebrateT-dt);
       if(a.mode==="approach"||a.mode==="egress"||a.mode==="aboard"||a.mode==="idleWatch"){
-        a.mode="wonder";a.modeT=0;a.modeDur=2.2+index*.34;a.photoIndex=index;
+        a.mode="wonder";a.modeT=0;a.modeDur=1.8+Math.random()*1.1;
       }else a.modeT+=dt;
       if(a.modeT>=a.modeDur){
         a.modeT=0;
-        if(a.mode==="wonder"){a.mode="salute";a.modeDur=2.3;}
-        else if(a.mode==="salute"||a.mode==="watch"){
-          a.mode=crewPhotos[a.photoIndex%3];a.photoIndex++;
-          a.modeDur=3.5+Math.random()*1.4;
-        }else{a.mode="watch";a.modeDur=2.1+Math.random()*4;}
+        if(a.mode==="wonder"){
+          a.mode="salute";a.modeDur=1.75+Math.random()*.7;
+        }else if(a.mode==="patrol"){
+          a.stop=a.nextStop;
+          a.mode="watch";a.modeDur=1.8+Math.random()*3.9;
+        }else if((a.mode==="watch"||a.mode==="salute")&&Math.random()<(ball ? .3 : .65)){
+          a.mode="patrol";
+          a.nextStop=(a.stop+(Math.random()<.5?1:-1)+route.length)%route.length;
+          const [fromX,fromZ]=route[a.stop],[toX,toZ]=route[a.nextStop];
+          a.modeDur=Math.hypot(toX-fromX,toZ-fromZ)/a.patrolSpeed+.52;
+        }else if(a.mode==="watch"||a.mode==="salute"){
+          const previous=crewPhotos.indexOf(a.lastPhoto);
+          const pick=previous<0?Math.floor(Math.random()*crewPhotos.length):previous+1+Math.floor(Math.random()*2);
+          a.mode=crewPhotos[pick%crewPhotos.length];
+          a.lastPhoto=a.mode;a.modeDur=3.2+Math.random()*1.9;
+        }else{
+          a.mode="watch";a.modeDur=2.2+Math.random()*3.7;
+        }
       }
+      const [fromX,fromZ]=route[a.stop];
+      x=fromX;z=fromZ;
       const u=a.modeT/a.modeDur;
       const hold=smooth(u,0,.22)*(1-smooth(u,.8,1));
+      let travelYaw=0;
+      if(a.mode==="patrol"){
+        const [toX,toZ]=route[a.nextStop];
+        // A tapered gait envelope covers the turn out of a pause and the final weight shift.
+        const travel=smooth(u,0,1);
+        x=lerp(fromX,toX,travel);z=lerp(fromZ,toZ,travel);
+        travelYaw=Math.atan2(toX-fromX,toZ-fromZ);
+        walk=smooth(u,.06,.25)*(1-smooth(u,.76,1));
+        stepPhase=travel*Math.hypot(toX-fromX,toZ-fromZ)*Math.PI*1.7;
+        torso=.085*walk;
+      }
+      y=w.terrainY(x,z);
       const subject=ball||playerPos;
       const aim=a.aim;
       aim.set(subject.x,ball?subject.y:playerPos.y+1.6,subject.z);
@@ -3382,13 +3393,18 @@
       if(a.mode==="portrait")aim.set(playerPos.x,playerPos.y+1.45,playerPos.z);
       yaw=Math.atan2(aim.x-x,aim.z-z);
       headPitch=-Math.atan2(aim.y-y-1.5,Math.max(1,Math.hypot(aim.x-x,aim.z-z)));
-      if(a.mode==="wonder"){
+      if(a.mode==="patrol"){
+        const glance=Math.atan2(Math.sin(yaw-travelYaw),Math.cos(yaw-travelYaw));
+        headYaw=THREE.MathUtils.clamp(glance,-.6,.6)*(.5+hold*.5);
+        yaw=travelYaw;
+      }else if(a.mode==="wonder"){
         torso=-.22*hold;lRoll-=.65*hold;rRoll+=.55*hold;headPitch-=.20*hold;
       }else if(a.mode==="salute"){
         salute=hold;
       }else if(a.mode==="watch"){
         const reaction=Math.sin(Math.PI*Math.min(1,a.celebrateT/1.55));
-        torso=-.16*reaction;lPitch=-.6*reaction;lRoll-=.65*reaction;
+        const breathing=Math.sin(t*2.3+index*1.67);
+        torso=.022*breathing-.16*reaction;lPitch=-.6*reaction;lRoll-=.018*breathing+.65*reaction;
       }else{
         photo=hold;
         if(a.mode==="selfie"){
@@ -3476,11 +3492,12 @@
     w.progress=0;w.progressVel=0;w.targetProgress=0;w.eclipseAmount=0;w.stage="apolloDay";
     w.makes=0;w.contacts=0;w.missionTime=-1;w.hareVisit=Math.random()<.32;
     const hs=w.hoopSwarm;
-    hs.wake=0;hs.offsets.fill(0);hs.geo.attributes.aWake.needsUpdate=true;hs.mesh.visible=hs.shardInst.visible=false;
+    hs.age=0;hs.count=0;hs.mesh.visible=false;hs.geo.setDrawRange(0,0);
+    hs.offsets.fill(0);hs.geo.attributes.aWake.needsUpdate=true;
     for(const f of hs.items)f.dx=f.dy=f.dz=f.vx=f.vy=f.vz=f.excited=0;
     for(const a of w.astronauts){
       a.group.visible=a.cameraRig.visible=a.flash.visible=false;
-      a.mode="aboard";a.modeT=0;a.celebrateT=0;a.leap=0;a.curYaw=0;
+      a.mode="aboard";a.modeT=0;a.celebrateT=0;a.leap=0;a.curYaw=0;a.stop=0;a.nextStop=0;a.lastPhoto=null;
     }
     const jr=w.jadeRabbit;
     jr.group.visible=jr.trail.mesh.visible=false;jr.state="hidden";jr.curious=0;
@@ -3569,18 +3586,6 @@
       if(w.glintMat){
         w.glintMat.uniforms.uTime.value=t;
         w.glintMat.uniforms.uPower.value=crystalPower;
-      }
-
-      // B2. 1/6G 失重悬浮玄武岩与嵌晶原石（随进度缓缓离地升空、失重自转）
-      if(w.floatingRocks){
-        for(const r of w.floatingRocks){
-          const lift=THREE.MathUtils.smoothstep(p,r.wake,Math.min(1,r.wake+0.34));
-          const bob=lift>0.01?(Math.sin(t*0.58+r.phase)*0.24+Math.cos(t*0.37-r.phase)*0.12)*lift:0;
-          r.mesh.position.set(r.fx,r.fy0+lift*r.liftH+bob,r.fz);
-          if(lift>0.01){
-            r.mesh.rotation.set(t*r.rx*lift+r.phase,t*r.ry*lift,t*r.rz*lift);
-          }
-        }
       }
 
       // A rare visitor notices repeated baskets, listens, bounds a short distance and dissolves.
@@ -3694,9 +3699,11 @@
       const swarmAwake=w.makes>=2||w.contacts>=4;
       if(swarmAwake){
         const hs=w.hoopSwarm,dtSim=Math.min(0.05,Math.max(0.001,step||1/60));
-        hs.wake=Math.min(1,hs.wake+step/2.8);
-        hs.mesh.visible=hs.shardInst.visible=hs.wake>0;
-        const visAmt=.63+THREE.MathUtils.smoothstep(p,.08,.75)*.53;
+        hs.age+=step;
+        while(hs.count<hs.items.length&&hs.items[hs.count].birth<=hs.age)hs.count++;
+        hs.mesh.visible=hs.age>0;
+        hs.geo.setDrawRange(0,hs.count);
+        const visAmt=.40+THREE.MathUtils.smoothstep(p,.08,.75)*.17;
         const activeBalls=(typeof balls!=="undefined"&&Array.isArray(balls))?balls:null;
         const bPts=[];
         if(activeBalls){
@@ -3715,12 +3722,11 @@
           }
         }
         const drag=Math.exp(-2.65*dtSim),springK=0.46;
-        const sd=hs.shardDummy,uniforms=hs.mesh.material.uniforms;
-        uniforms.uClock.value=t;uniforms.uReveal.value=hs.wake;uniforms.uBrightness.value=visAmt;
+        const uniforms=hs.mesh.material.uniforms;
+        uniforms.uClock.value=t;uniforms.uAge.value=hs.age;uniforms.uBrightness.value=visAmt;
         let offsetsChanged=false;
-        for(let i=0;i<hs.items.length;i++){
+        for(let i=0;i<hs.count;i++){
           const f=hs.items[i];
-          const shard=i%hs.shardStride===0&&i/hs.shardStride<hs.shardCount;
           // The widest ambient orbit is .32 m. Reject outside the wake before evaluating trig.
           let nearby=false;
           for(let bi=0;bi<bPts.length;bi++){
@@ -3729,13 +3735,13 @@
               nearby=true;break;
             }
           }
-          if(!shard&&!nearby&&!f.vx&&!f.vy&&!f.vz&&!f.excited&&!f.dx&&!f.dy&&!f.dz)continue;
+          if(!nearby&&!f.vx&&!f.vy&&!f.vz&&!f.excited&&!f.dx&&!f.dy&&!f.dz)continue;
           const tt=t*f.rate+f.phase;
           const ix=Math.sin(tt*.76)*.32,iy=Math.sin(tt*.98+f.phase)*.24,iz=Math.cos(tt*.68-f.phase)*.30;
-          const reveal=THREE.MathUtils.smoothstep(hs.wake,f.rate*.48,Math.min(1,f.rate*.48+.61));
+          const rise=.72+.28*THREE.MathUtils.smoothstep(hs.age-f.birth,0,2.8);
           for(let bi=0;bi<bPts.length;bi++){
             const bp=bPts[bi];
-            const rx=(f.hx+ix+f.dx)-bp.x,ry=(f.hy+iy+f.dy)*(.1+.9*reveal)-bp.y,rz=(f.hz+iz+f.dz)-bp.z;
+            const rx=(f.hx+ix+f.dx)-bp.x,ry=Math.max(.28,f.hy+iy+f.dy)*rise-bp.y,rz=(f.hz+iz+f.dz)-bp.z;
             const d2=rx*rx+ry*ry+rz*rz;
             if(d2<2.85*2.85&&d2>.0004){
               const d=Math.sqrt(d2);
@@ -3761,22 +3767,8 @@
           if(f.dx||f.dy||f.dz||f.excited||hs.offsets[j]||hs.offsets[j+1]||hs.offsets[j+2]||hs.offsets[j+3]){
             hs.offsets[j]=f.dx;hs.offsets[j+1]=f.dy;hs.offsets[j+2]=f.dz;hs.offsets[j+3]=f.excited;offsetsChanged=true;
           }
-          if(shard){
-            const px=f.hx+ix+f.dx,pz=f.hz+iz+f.dz,liftedY=Math.max(.28,f.hy+iy+f.dy)*(.1+.9*reveal);
-            sd.position.set(px,liftedY,pz);
-            const spinRate=1.0+f.excited*3.5;
-            sd.rotation.set(t*0.8*spinRate+f.phase,t*1.1*spinRate+i,t*0.65*spinRate);
-            const sc=reveal*f.size*(.95+.32*visAmt+f.excited*.32)*(1+.85*(i%7)/6)*f.perspectiveScale;
-            sd.scale.set(sc,sc*1.35,sc*0.85);
-            sd.updateMatrix();
-            hs.shardInst.setMatrixAt(i/hs.shardStride,sd.matrix);
-          }
         }
         if(offsetsChanged)hs.geo.attributes.aWake.needsUpdate=true;
-        if(hs.shardInst){
-          hs.shardInst.instanceMatrix.needsUpdate=true;
-          hs.shardMat.emissiveIntensity=.24+.46*eclipse;
-        }
       }
 
       // Start one descent per visit. Its clock keeps running between baskets, including in practice.

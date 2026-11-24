@@ -2105,7 +2105,9 @@ function startPass(targetPos,face){
   }
   /* 取球要给足时间才读得出"转身伸手触球—双手抓球端回—余球滚落"三拍因果。 */
   const dur=pickup?RACK_PICKUP_SECONDS:passFlightSeconds(from.distanceTo(catchP));
-  const mesh=new THREE.Mesh(ballGeo,shotMat(s));
+  const passMaterial=shotMat(s);
+  if(!pickup)passerBall.material=passMaterial;
+  const mesh=new THREE.Mesh(ballGeo,passMaterial);
   mesh.position.copy(from);
   mesh.visible=!pickup&&releaseDelay<=0; // 3D传球员蓄力推球期间、或球架取球触球前，飞行网格先隐藏
   scene.add(mesh);

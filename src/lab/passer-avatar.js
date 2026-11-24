@@ -95,7 +95,8 @@
           const thigh=bones[side+"UpLeg"],shin=bones[side+"Leg"],foot=bones[side+"Foot"];
           if(!arm||!elbow||!hand||!thigh||!shin||!foot)continue;
           state.chains[side]={
-            arm:bindChain(arm,elbow,hand),leg:bindChain(thigh,shin,foot),
+            arm:bindChain(arm,elbow,hand,v(0,.58,1)),leg:bindChain(thigh,shin,foot,v(0,0,1)),
+            palm:bindPalm(side,bones,hand),
             foot:root.worldToLocal(foot.getWorldPosition(new THREE.Vector3()))
           };
         }
@@ -148,74 +149,144 @@
   const slerpSpace=new THREE.Quaternion();
   const jointFrame=new THREE.Matrix4();
   const localBall=v();
-  function bindChain(start,joint,tip){
+  function flatten(direction,axis){
+    return direction.addScaledVector(axis,-direction.dot(axis)).normalize();
+  }
+
+  // The hand's local axes differ between sides. Derive the contact frame from
+  // the actual knuckles, so palm orientation is independent of Mixamo's roll.
+  function frameRotation(forward,normal){
+    const across=v().crossVectors(forward,normal).normalize();
+    return new THREE.Quaternion().setFromRotationMatrix(jointFrame.makeBasis(across,forward,normal));
+  }
+  function bindPalm(side,bones,hand){
+    const start=hand.getWorldPosition(v());
+    const middle=bones[side+"HandMiddle1"].getWorldPosition(v());
+    const index=bones[side+"HandIndex1"].getWorldPosition(v());
+    const pinky=bones[side+"HandPinky1"].getWorldPosition(v());
+    const fingers=middle.clone().sub(start).normalize();
+    const normal=v().crossVectors(fingers,index.sub(pinky)).normalize().multiplyScalar(side==="Left"?1:-1);
+    const inverseFrame=frameRotation(fingers,normal).invert().multiply(hand.getWorldQuaternion(new THREE.Quaternion()));
+    const curls=[];
+    for(const digit of ["Index","Middle","Ring","Pinky"]){
+      for(let i=1;i<=3;i++){
+        const key=side+"Hand"+digit+i,bone=bones[key],next=bones[side+"Hand"+digit+(i+1)];
+        const localNormal=normal.clone().applyQuaternion(bone.getWorldQuaternion(new THREE.Quaternion()).invert());
+        const axis=v().crossVectors(next.position.clone().normalize(),localNormal).normalize();
+        curls.push({key,bone,axis,angle:[.27,.38,.17][i-1]});
+      }
+    }
+    return {inverseFrame,curls};
+  }
+  function bindChain(start,joint,tip,front){
     const a=start.getWorldPosition(v()),b=joint.getWorldPosition(v()),c=tip.getWorldPosition(v());
+    function bindFrame(bone,child){
+      const localAxis=child.position.clone().normalize();
+      const localFront=front.clone().applyQuaternion(bone.getWorldQuaternion(new THREE.Quaternion()).invert());
+      return frameRotation(localAxis,flatten(localFront,localAxis)).invert();
+    }
     return {start,joint,tip,a:a.distanceTo(b),b:b.distanceTo(c),
-      startAxis:joint.position.clone().normalize(),jointAxis:tip.position.clone().normalize()};
+      startFrame:bindFrame(start,joint),jointFrame:bindFrame(joint,tip)};
   }
   function setWorldRotation(bone,q){
     bone.parent.getWorldQuaternion(slerpSpace).invert();
     bone.quaternion.copy(slerpSpace).multiply(q);
     bone.updateMatrixWorld(true);
   }
-  function aimBone(bone,axis,direction){
-    const at=bone.parent.getWorldQuaternion(new THREE.Quaternion()).multiply(state.restLocal[bone.name.replace(/^mixamorig:?/,"")]);
-    const restAxis=axis.clone().applyQuaternion(at);
-    const aim=new THREE.Quaternion().setFromUnitVectors(restAxis,direction);
-    setWorldRotation(bone,aim.multiply(at));
-  }
-  function solveChain(chain,target,pole){
-    const origin=chain.start.getWorldPosition(v());
+  function chainPoints(chain,origin,target,pole){
     const along=target.clone().sub(origin);
-    const length=THREE.MathUtils.clamp(along.length(),Math.abs(chain.a-chain.b)+.001,chain.a+chain.b-.001);
+    const length=THREE.MathUtils.clamp(along.length(),Math.abs(chain.a-chain.b)+.001,chain.a+chain.b-.002);
     along.normalize();
-    const bend=pole.clone().addScaledVector(along,-pole.dot(along)).normalize();
-    const above=(chain.a*chain.a-chain.b*chain.b+length*length)/(2*length);
-    const elbow=origin.clone().addScaledVector(along,above).addScaledVector(bend,Math.sqrt(Math.max(0,chain.a*chain.a-above*above)));
-    const end=origin.clone().addScaledVector(along,length);
-    aimBone(chain.start,chain.startAxis,elbow.clone().sub(origin).normalize());
-    aimBone(chain.joint,chain.jointAxis,end.sub(elbow).normalize());
+    const bend=flatten(pole.clone(),along);
+    const projected=(chain.a*chain.a-chain.b*chain.b+length*length)/(2*length);
+    return {
+      joint:origin.clone().addScaledVector(along,projected).addScaledVector(bend,Math.sqrt(Math.max(0,chain.a*chain.a-projected*projected))),
+      tip:origin.clone().addScaledVector(along,length)
+    };
   }
-  function poseGrip(center,dip,lean,relax=0){
+  function poseChain(chain,origin,points,upperFront,lowerFront){
+    const upper=points.joint.clone().sub(origin).normalize();
+    const lower=points.tip.clone().sub(points.joint).normalize();
+    setWorldRotation(chain.start,frameRotation(upper,flatten(upperFront,upper)).multiply(chain.startFrame));
+    setWorldRotation(chain.joint,frameRotation(lower,flatten(lowerFront,lower)).multiply(chain.jointFrame));
+  }
+  function plantedFoot(limb,side,step){
+    if(!step)return {
+      position:state.attachedGuy.g.localToWorld(limb.foot.clone()),
+      rotation:_qWorld.clone()
+    };
+    const {from,to,yawFrom,yawTo,progress}=step;
+    const second=side!==step.lead;
+    const start=second ? .51 : 0,end=second?1:.48;
+    const phase=THREE.MathUtils.clamp((progress-start)/(end-start),0,1);
+    const amount=THREE.MathUtils.smoothstep(phase,0,1);
+    const rotation=new THREE.Quaternion().setFromAxisAngle(v(0,1,0),yawFrom);
+    const finalRotation=new THREE.Quaternion().setFromAxisAngle(v(0,1,0),yawTo);
+    const position=limb.foot.clone().applyQuaternion(rotation).add(from)
+      .lerp(limb.foot.clone().applyQuaternion(finalRotation).add(to),amount);
+    position.y+=Math.sin(Math.PI*phase)*.085;
+    return {position,rotation:rotation.slerp(finalRotation,amount)};
+  }
+  function poseGrip(center,dip,lean,relax=0,step=null){
     restoreRestPose();
-    state.root.position.y=-dip;
+    // Send the hips back as they descend. The torso can lean over a low
+    // ball while the knees and shoes remain clear of the front of the rack.
+    state.root.position.set(0,-dip,-dip*.68);
     state.root.updateMatrixWorld(true);
     state.root.getWorldQuaternion(_qWorld);
+    setBoneCharDelta("Spine",_qChar.setFromEuler(_eul.set(lean*.72,0,0,"XYZ")));
     setBoneCharDelta("Spine1",_qChar.setFromEuler(_eul.set(lean,0,0,"XYZ")));
+    const gazeHeight=state.attachedGuy.g.worldToLocal(center.clone()).y;
+    const lookDown=THREE.MathUtils.clamp(.18+(1.16-gazeHeight)*.65,.08,.40)*(1-relax);
+    setBoneCharDelta("Head",_qChar.setFromEuler(_eul.set(lookDown,0,0,"XYZ")));
     for(const side of ["Left","Right"]){
       const limb=state.chains[side];
       if(!limb)continue;
       const sign=side==="Left"?1:-1;
-      const planted=limb.foot.clone();planted.y+=dip;
-      state.root.localToWorld(planted);
-      solveChain(limb.leg,planted,v(sign*.04,.04,1).applyQuaternion(_qWorld));
-      setWorldRotation(limb.leg.tip,_qWorld.clone().multiply(state.restWorld[side+"Foot"]));
+      const foot=plantedFoot(limb,side,step);
+      const kneeFront=v(sign*.095,0,1).applyQuaternion(foot.rotation);
+      const hip=limb.leg.start.getWorldPosition(v());
+      poseChain(limb.leg,hip,chainPoints(limb.leg,hip,foot.position,kneeFront),kneeFront.clone(),kneeFront.clone());
+      setWorldRotation(limb.leg.tip,foot.rotation.multiply(state.restWorld[side+"Foot"]));
 
-      const radial=v(sign*.126,-.073,-.069).normalize().applyQuaternion(_qWorld);
-      const gripNormal=radial.clone().negate();
-      const normal=gripNormal.clone().lerp(v(-sign,.08,.16).applyQuaternion(_qWorld),relax).normalize();
-      const fingerGuide=v(sign*-.14,.29,1).applyQuaternion(_qWorld);
-      const gripFingers=fingerGuide.clone().addScaledVector(gripNormal,-fingerGuide.dot(gripNormal)).normalize();
-      const fingers=fingerGuide.lerp(v(0,-1,.19).applyQuaternion(_qWorld),relax);
-      fingers.addScaledVector(normal,-fingers.dot(normal)).normalize();
-      const palm=center.clone().addScaledVector(radial,.164);
-      const wrist=palm.clone().addScaledVector(gripFingers,-.046).addScaledVector(gripNormal,-.010);
-      if(relax>0)wrist.lerp(state.attachedGuy.g.localToWorld(v(sign*.224,1.072,.049)),relax);
-      const pole=v(sign*.88,-.74,-.09).applyQuaternion(_qWorld);
-      solveChain(limb.arm,wrist,pole);
-      const across=v().crossVectors(fingers,normal).normalize();
-      jointFrame.makeBasis(across,fingers,normal);
-      setWorldRotation(limb.arm.tip,new THREE.Quaternion().setFromRotationMatrix(jointFrame));
+      const shoulder=limb.arm.start.getWorldPosition(v());
+      const lowSlot=1-THREE.MathUtils.smoothstep(gazeHeight,.86,1.045);
+      const radial=v(sign*.94,-.16+lowSlot*.36,-.30).normalize().applyQuaternion(_qWorld);
+      const normal=radial.clone().negate().lerp(v(-sign,.10,.19).applyQuaternion(_qWorld),relax).normalize();
+      const guide=v(0,.30,1).applyQuaternion(_qWorld);
+      const fingers=flatten(guide.clone(),normal);
+      const contact=center.clone().addScaledVector(radial,.169);
+      const pole=v(sign*.67,-.72,-.25).applyQuaternion(_qWorld);
+      const rest=state.attachedGuy.g.localToWorld(v(sign*.224,1.085,.045));
+      let points;
+      for(let i=0;i<3;i++){
+        // Offset the wrist by the measured wrist-to-palm distance. Settle the
+        // last direction along the forearm to avoid hinging the wrist sideways.
+        const wrist=contact.clone().addScaledVector(fingers,-.058).addScaledVector(normal,-.010).lerp(rest,relax);
+        points=chainPoints(limb.arm,shoulder,wrist,pole);
+        if(i<2){
+          const fore=flatten(points.tip.clone().sub(points.joint),normal);
+          fingers.copy(flatten(fore.lerp(guide,.32*(1-relax)),normal));
+        }
+      }
+      const upperFront=points.tip.clone().sub(points.joint);
+      const forearmFront=normal.clone().lerp(upperFront.clone().negate().normalize(),.12);
+      poseChain(limb.arm,shoulder,points,upperFront,forearmFront);
+      setWorldRotation(limb.arm.tip,frameRotation(fingers,normal).multiply(limb.palm.inverseFrame));
+      const curl=THREE.MathUtils.lerp(.86,.36,relax);
+      for(const digit of limb.palm.curls){
+        digit.bone.quaternion.copy(state.restLocal[digit.key]).multiply(_dq.setFromAxisAngle(digit.axis,digit.angle*curl));
+      }
     }
-    state.ballCenter=relax>.99?null:center.clone();
+    state.ballCenter=relax>.99?null:center;
   }
   function chestPoint(y,z,x=0){
     return state.attachedGuy.g.localToWorld(localBall.set(x,y,z));
   }
   function idleGrip(){
     const t=typeof G!=="undefined"?G.tNow:0;
-    const helper=!!state.attachedGuy.g.userData.rushHelper;
-    poseGrip(chestPoint(1.108+.006*Math.sin(t*1.65),.273),helper?.018:.073,helper?.028:.114,helper?1:0);
+    const hasBall=!state.attachedGuy.g.userData.rushHelper&&(typeof passerBall==="undefined"||passerBall.visible);
+    poseGrip(chestPoint(1.185+.006*Math.sin(t*1.65),.273),hasBall ? .055 : .018,hasBall ? .085 : .027,hasBall?0:1);
   }
   function getBallWorldPos(out){
     if(!state.ready||!state.ballCenter)return null;
@@ -225,7 +296,7 @@
     if(!state.ready||!state.chains.Left||!state.chains.Right)return;
     state.rackPose=null;
     state.isThrowing=true;state.released=false;state.throwTime=0;
-    idleGrip();
+    poseGrip(chestPoint(1.185,.273),.055,.085);
   }
   function markReleased(){state.released=true;}
   function getReleaseDelay(){return state.isThrowing?THROW_RELEASE_TIME:0;}
@@ -238,16 +309,18 @@
       idleGrip();return;
     }
     const wind=smooth(t,0,.13),push=smooth(t,.13,THROW_RELEASE_TIME);
-    const easeOut=1-smooth(t,.38,THROW_DURATION);
-    const y=1.108+(.047*wind+.069*push)*easeOut;
-    const z=.273+(-.038*wind+.152*push)*easeOut;
-    poseGrip(chestPoint(y,z),.073+.030*wind*easeOut-.042*push*easeOut,.114+.10*push*easeOut);
+    const settle=smooth(t,.40,THROW_DURATION);
+    const y=1.185+.036*wind+.059*push;
+    const z=.273-.030*wind+.161*push;
+    poseGrip(chestPoint(y,z),.055+.027*wind-.025*push,.085+.11*push,settle);
   }
-  function setRackPose(center,relax=0){
+  function setRackPose(center,relax=0,step=null){
     state.rackPose=center;
     if(center&&state.ready&&state.attachedGuy?.g.visible){
-      const dip=THREE.MathUtils.clamp(.075+(1.12-center.y)*.68,.07,.215);
-      poseGrip(center,THREE.MathUtils.lerp(dip,.018,relax),THREE.MathUtils.lerp(.14+(dip-.07)*.61,.028,relax),relax);
+      const dip=THREE.MathUtils.clamp(.062+(1.16-center.y)*.86,.035,.305);
+      const reach=state.attachedGuy.g.worldToLocal(center.clone()).z;
+      const lean=THREE.MathUtils.clamp(.14+(reach-.26)*1.8+(dip-.06)*1.2,.09,.68);
+      poseGrip(center,THREE.MathUtils.lerp(dip,.018,relax),THREE.MathUtils.lerp(lean,.028,relax),relax,step);
     }
   }
   function resetPose(){
@@ -276,7 +349,7 @@
       bone.updateMatrix();
       bone.matrixWorld.multiplyMatrices(bone.parent.matrixWorld, bone.matrix);
     }
-    state.root.position.y = dn.hy > 0.02 ? dn.hy * state.hipY * w * 0.35 : 0;
+    state.root.position.set(0,dn.hy > 0.02 ? dn.hy * state.hipY * w * 0.35 : 0,0);
     state.root.updateMatrixWorld(true);
   }
 
@@ -300,7 +373,7 @@
     const B = state.bones;
     if(!B.RightArm || !B.LeftArm || !state.root) return;
     restoreRestPose();
-    state.root.position.y = 0;
+    state.root.position.set(0,0,0);
     state.root.updateMatrixWorld(true);
     state.root.getWorldQuaternion(_qWorld);
 
@@ -382,8 +455,10 @@
     const gameState = (typeof G !== "undefined" && G && G.state) || "";
     const inShow = gameState === "pregame" || gameState === "wincine" || gameState === "victorycine";
 
-    if(dn && dw > 0.001){
+    if(inShow && dn && dw > 0.001){
       state.ballCenter=null;
+      if(dw<1)applyLimbMotion(guy);
+      else restoreRestPose();
       applyDance(dn);
     }else if(inShow){
       state.ballCenter=null;
