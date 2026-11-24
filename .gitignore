@@ -80,6 +80,9 @@ trailer/
 # 宣传稿与选角笔记
 aiba_promo_posts.md
 VOICE_SELECTION.md
-# 旧版本快照:只保留 index.html 与当前版本那一个
+# 历史版本快照留在 Git 历史中，本地备份不再误加回仓库。
 block-3pt-kingv2.1*-modular.html
-block-3pt-kingv2.2[0-7]*-modular.html
+block-3pt-kingv2.2*-modular.html
+block-3pt-kingv2.3*-modular.html
+block-3pt-kingv2.4[0-5]*-modular.html
+block-3pt-kingv2.46.[0-7]-modular.html
