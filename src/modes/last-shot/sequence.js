@@ -127,6 +127,7 @@
     Object.assign(LS,{on:true,t:0,phase:"intro",cfg,practice:!!practice,
       passed:false,released:false,resolved:false,pass:null,lookYaw:0,timedOut:false,shooting:false,
       shotMade:false,callStyle:CALL_STYLES[(Math.random()*CALL_STYLES.length)|0],
+      offball:cfg.offball?global.AIBAOffball.create():null,holdT:0,contestTriggered:false,diag:null,_beat:null,
       cutFrom:null,cutDur:0,introT:0,introDur:14.0,introBall:null,introCut:-1,
       reactionT:0,reactionStarted:false,reactionDuration:0,finishMade:false,finishReason:"shot",
       celeb:null,madeAt:null,buzzAt:null,boardStarted:false,buzzed:false,foul:null,foulCallT:0,
@@ -454,7 +455,7 @@
     squadApi.setHandlerBall(true);
     P.pos.copy(LS.cutFrom||LS.spot);
     const handler=squadApi.handler();
-    P.face=faceTo(P.pos,handler?handler.pos:HOOP);
+    P.face=faceTo(P.pos,LS.offball?HOOP:(handler?handler.pos:HOOP));
     LS.lookYaw=P.face;
     if(player&&player.g){
       player.g.visible=(CAM.mode!==0);
@@ -482,7 +483,7 @@
     squadApi.setHandlerBall(true);
     P.pos.copy(LS.cutFrom||LS.spot);
     const handler=squadApi.handler();
-    P.face=faceTo(P.pos,handler?handler.pos:HOOP);
+    P.face=faceTo(P.pos,LS.offball?HOOP:(handler?handler.pos:HOOP));
     LS.lookYaw=P.face;
     if(player&&player.g){
       player.g.visible=(CAM.mode!==0);
@@ -492,7 +493,7 @@
     }
     if(typeof whistle==="function")whistle();
     if(typeof sGo==="function")sGo();
-    toast("看球 · 球会分到你手上","#ffd23f");
+    toast(LS.offball?"站稳放低双手，准备跑位":"看球 · 球会分到你手上","#ffd23f");
   }
   function skipIntro(){
     if(LS.phase==="intro")finishIntro();
@@ -532,15 +533,16 @@
       P.walking=false;
     }
     const handler=squadApi.handler();
-    P.face=faceTo(P.pos,handler?handler.pos:HOOP);
+    P.face=faceTo(P.pos,LS.offball?HOOP:(handler?handler.pos:HOOP));
     if(player&&player.g){
       player.g.position.set(P.pos.x,0,P.pos.z);
       player.g.rotation.y=P.face;
     }
     P.jump=0;P.eyeDip=0;
     LS.footT=0;
+    if(LS.offball)VISION.faceAim=0;
     LS.lookYaw=P.face;
-    CAM.mode=0;if(global.AIBASetIcon)global.AIBASetIcon("camBtn","camera",CAM.names[0]);
+    CAM.mode=cfg.offball?1:0;if(global.AIBASetIcon)global.AIBASetIcon("camBtn","camera",CAM.names[CAM.mode]);
     ctx.setCamSnap(true);
     hudSetup(cfg);
     G.state="lastshot";G.running=true;
@@ -562,6 +564,11 @@
       });
     }
 
+    if(cfg.offball){
+      G.seq[0].p=LS.spot.clone();
+      finishIntro();
+      return;
+    }
     // 悬浮跳过特写小按钮
     const oldSkip=document.getElementById("lsSkipBtn");
     if(oldSkip)oldSkip.remove();
@@ -582,17 +589,19 @@
   }
 
   /* ---------------- 传球:核心把球分给你 ---------------- */
-  function startHandlerPass(){
+  function startHandlerPass(intercepted=false){
     const handler=squadApi.handler();if(!handler)return;
     squadApi.setHandlerBall(false);
     const from=V3(handler.pos.x,1.28,handler.pos.z);
     // 接球点用第一人称视线略下方,和共用 startPass 的手感保持一致
-    const to=global.eyePos();to.y-=0.3;
+    const to=intercepted?squadApi.actorHand("foe0"):global.eyePos();
+    if(!intercepted)to.y-=0.3;
     const mesh=new THREE.Mesh(ballGeo,matBall);
     mesh.position.copy(from);scene.add(mesh);
     const dur=clamp(0.26+from.distanceTo(to)*0.032,0.34,0.6);
-    LS.pass={mesh,from,to,t:0,dur};
-    G.passCatch={active:true,progress:0,target:to.clone()};
+    LS.pass={mesh,from,to,t:0,dur,intercepted};
+    if(intercepted)G.passCatch=null;
+    else G.passCatch={active:true,progress:0,target:to.clone()};
     LS.passed=true;
     // 核心的传球动作
     const guy=handler.guy;
@@ -605,23 +614,41 @@
   function updHandlerPass(dt){
     const p=LS.pass;if(!p)return;
     p.t+=dt;const k=Math.min(1,p.t/p.dur);
+    if(p.intercepted)p.to.copy(squadApi.actorHand("foe0"));
     p.mesh.position.lerpVectors(p.from,p.to,k);
     p.mesh.position.y+=Math.sin(k*Math.PI)*0.5;
     if(G.passCatch){G.passCatch.active=k<1;G.passCatch.progress=k;G.passCatch.target.copy(p.mesh.position);}
     p.mesh.rotation.x-=dt*11;
     if(k>=1){
       scene.remove(p.mesh);LS.pass=null;
+      if(p.intercepted){
+        squadApi.setActorBall("foe0",true);
+        G.running=false;
+        offballHint("传球被断");
+        startResultReaction(false,"intercepted",1.2);
+        return;
+      }
       if(G.passCatch){
         G.passCatch.active=true;G.passCatch.settling=true;G.passCatch.settle=0;G.passCatch.progress=1;
       }
       sBounce();
       if(navigator.vibrate)navigator.vibrate(8);
       // 交接:从这一刻起完全走共用的投篮生命周期
+      if(LS.offball){
+        if(typeof resetVisionGesture==="function"&&typeof VISION!=="undefined"&&VISION?.machine)resetVisionGesture(VISION.machine);
+        if(typeof VISION!=="undefined"&&VISION)VISION.faceAim=0;
+      }
       G.canShoot=true;
       if(typeof global.setHandBall==="function")global.setHandBall();
       updPowerUI();updDotsUI();
       LS.phase="shoot";
-      toast("出手!","#ff5d4d");
+      if(LS.offball){
+        const wide=LS.offball.passQuality==="wide";
+        offballHint(wide?"大空位接球 · 转头瞄篮，放低双手蓄力":"接稳 · 防守扑上来了，速瞄出手");
+        toast(wide?"大空位接球 · 瞄篮出手!":"勉强接球 · 快出手!",wide?"#7CFC6B":"#ffd23f");
+      }else{
+        toast("出手!","#ff5d4d");
+      }
     }
   }
 
@@ -653,7 +680,7 @@
     const foulDist=squadApi.defenderDistance?squadApi.defenderDistance(P.pos):99;
     const st=currentStage();
     const forceAndOne=!!(st&&st.foulType==="andOne");
-    const noRandomFoul=!!(st&&st.foulType==="none");
+    const noRandomFoul=!!LS.offball||!!(st&&st.foulType==="none");
     const willMakeShot=b.outcome==="swish"||b.outcome==="rattle"||b.outcome==="bank";
     if(forceAndOne&&willMakeShot){
       LS.foul={andOne:true,shots:1,made:0,taken:0};
@@ -880,7 +907,7 @@
       if(LS.dribbleBall)LS.dribbleBall.visible=false;
       squadApi.setHandlerBall(true);
       const handler=squadApi.handler();
-      P.face=faceTo(P.pos,handler?handler.pos:HOOP);
+      P.face=faceTo(P.pos,LS.offball?HOOP:(handler?handler.pos:HOOP));
     }
     LS.lookYaw=P.face;
     if(player&&player.g){
@@ -1100,6 +1127,12 @@
   }
 
   /* ---------------- 帧更新 ---------------- */
+  function waitingForCall(){return LS.on&&!!LS.offball&&LS.phase==="live"&&!LS.passed;}
+  function offballHint(text){
+    if(LS.offball.hint===text)return;
+    LS.offball.hint=text;
+    $("hudTarget").textContent=text;
+  }
   function updateLastShot(dt){
     if(!LS.on)return;
     if(G.state!=="lastshot"){
@@ -1132,6 +1165,19 @@
       advanceResultReaction(dt);return;
     }
     // 出手之后比赛钟继续走——球在空中时间照跑，这才是真实的最后一攻。
+    if(waitingForCall()){
+      const play=LS.offball,actors=squadApi.squad.actors;
+      if(!global.AIBAOffball.track(play,global.visionOffballSample())){
+        P.walking=false;
+        updateBodyState(dt);
+        passer.g.visible=false;oppPasser.g.visible=false;
+        offballHint(play.neutralFrames<3?"正对镜头，放低双手站稳":"回到镜头内 · 比赛钟暂停");
+        return;
+      }
+      global.AIBAOffball.move(play,P.pos,LS.spot,HOOP,dt,LS.t);
+      G.seq[0].p.copy(P.pos);
+      global.AIBAOffball.readDefense(play,LS.t,actors.foe0.pos,actors.ally2.pos,P.pos);
+    }
     LS.t+=dt;
     updateBodyState(dt);
     updatePlayerCelebrate(dt);
@@ -1211,7 +1257,7 @@
         LS.contestTriggered=true;
         if(squadApi.triggerContest)squadApi.triggerContest(P.pos);
       }
-      squadApi.update(LS.t,dt,P.pos,{passing:!!LS.pass,inHand:G.canShoot&&!LS.released,chargeT:LS.holdT||0});
+      squadApi.update(LS.t,dt,P.pos,{passing:!!LS.pass,inHand:G.canShoot&&!LS.released,chargeT:LS.holdT||0,offball:LS.offball});
     }
     // 共用递球员在本模式全程不出现(applyCamMode 会按 inPlay 打开它们)
     passer.g.visible=false;oppPasser.g.visible=false;
@@ -1237,8 +1283,30 @@
         toast("急停拔起 · 出手!","#ffd23f");
       }
     }
-    if(!LS.passed&&LS.t>=cfg.passAt)startHandlerPass();
+    if(waitingForCall()&&clock>0){
+      const guard=squadApi.squad.actors.foe0;
+      const play=LS.offball;
+      const read=global.AIBAOffball.passRead(squadApi.handler().pos,P.pos,guard.pos);
+      if(play.screen?.planted&&!play.screenToasted){
+        play.screenToasted=true;
+        toast("🧱 队友无球掩护到位 · 贴着绕出去!","#70e8ff");
+      }
+      const gapStr=read.gap.toFixed(1)+"m";
+      if(read.quality==="wide")offballHint(`大空位 ${gapStr} · 双手举过肩要球`);
+      else if(read.quality==="tight")offballHint(`拉开半步 ${gapStr} · 可举手要球`);
+      else if(guard.onBallPhase==="screen")offballHint("掩护挂住防守人 · 快绕出去要球");
+      else if(guard.onBallPhase==="glance")offballHint("他在看别人 · 快加速横移");
+      else offballHint(`贴防 ${gapStr} · 左右急停摆脱`);
+      if(play.call){
+        play.call=false;
+        play.passQuality=read.quality;
+        play.passGap=read.gap;
+        startHandlerPass(read.cut);
+        offballHint(read.cut?"传球路线被封 · 危险!":"球传过来了");
+      }
+    }else if(!LS.offball&&!LS.passed&&LS.t>=cfg.passAt)startHandlerPass();
     if(LS.pass)updHandlerPass(dt);
+    if(LS.phase==="reaction"&&!LS.released)return;
 
     if(!LS.released&&G.shotIdx>0){
       LS.released=true;LS.phase="flight";G.running=false;
@@ -1265,11 +1333,13 @@
       LS.timedOut=true;G.buzzed=true;G.running=false;
       if(G.charging)doRelease(true);
       if(!G.charging&&G.shotIdx===0){
+        if(LS.offball&&LS.pass){scene.remove(LS.pass.mesh);LS.pass=null;G.passCatch=null;}
         G.canShoot=false;handBall.visible=false;pBall.visible=false;
         LS.buzzed=true;sBuzz();toast("⏱ 终场蜂鸣 · 没能出手","#ff8d7a");
         broadcastSting("danger");crowdSwell&&crowdSwell(.52,2.2);
         if(typeof playAudioEvent==="function")playAudioEvent("lastshot_timeout");
-        startResultReaction(false,"timeout",TIMEOUT_REACTION_SECONDS);
+        if(LS.offball)startResultReaction(false,"offball-timeout",1.2);
+        else startResultReaction(false,"timeout",TIMEOUT_REACTION_SECONDS);
       }
     }
     // 最后 5 秒每秒一响，出手后时钟还在走也继续响到 0
@@ -1479,6 +1549,7 @@
       const e=k*k*(3-2*k);
       target.lerp(V3(HOOP.x,HOOP.y+0.15,HOOP.z),e);
     }
+    if(LS.offball&&!inHand&&!LS.pass)target.lerp(HOOP,.78);
     const want=faceTo(P.pos,target);
     let d=want-LS.lookYaw;while(d>Math.PI)d-=6.283185307;while(d<-Math.PI)d+=6.283185307;
     // 传球途中与接球出手时迅速转向正对篮筐（squared up），绝不侧身/背身投篮
@@ -1487,7 +1558,9 @@
     LS.footT=(LS.footT||0)+dt;
     const cutDur=LS.cutDur||0;
     const isCutting=cutDur>0.05&&LS.t<cutDur;
-    if(isCutting){
+    if(LS.offball){
+      P.walking=waitingForCall()&&LS.offball.walking;
+    }else if(isCutting){
       const cutP=clamp(LS.t/cutDur,0,1);
       // 三次平滑曲线切入
       const cutEase=cutP*cutP*(3-2*cutP);
@@ -1526,10 +1599,22 @@
 
     // 张手要球靶心手势与接球呼叫（Target Hands & Ball Calling）
     // 接球等待期间保持双手前伸张开做靶心，面向持球核心
+    if(waitingForCall()&&!P.walking){
+      const raised=LS.offball.raisedAt!==null;
+      const lift=raised?1:0;
+      LS.offball.armLift+=(lift-LS.offball.armLift)*(1-Math.exp(-16*dt));
+      const k=LS.offball.armLift;
+      player.arms.forEach((arm,i)=>{
+        arm.rotation.set(-.18-2.35*k,0,(i?1:-1)*(.08+.12*k));
+        player.elbows[i].rotation.set(-.45-.2*k,0,0);
+      });
+      player.g.updateMatrixWorld(true);
+      global.AIBAShotMotion?.syncFp?.();
+    }
     const readyStart=cutDur>0.05?Math.max(0,cutDur-0.9):0;
     const readyK=clamp((LS.t-readyStart)/0.7,0,1);
     const passCatchActive=G.passCatch&&G.passCatch.active;
-    if(!inHand&&!LS.shooting&&!LS.pass&&!passCatchActive&&readyK>0.02&&player&&player.arms&&player.elbows){
+    if(!LS.offball&&!inHand&&!LS.shooting&&!LS.pass&&!passCatchActive&&readyK>0.02&&player&&player.arms&&player.elbows){
       const guy=player;
       if(guy.knees){
         guy.knees[0].rotation.x=0.28*readyK;
@@ -1593,6 +1678,14 @@
   function updateLastShotCam(dt){
     if(LS.on&&LS.celeb&&updateCelebrateCam())return true;
     if(!LS.on||LS.phase==="shoot"||LS.phase==="flight"||LS.released)return false;
+    if(LS.offball&&LS.phase==="live"&&CAM.mode===1){
+      // Leave room at both shoulders for a screen and for a cutter moving across the arc.
+      const guard=squadApi.squad.actors.foe0.pos;
+      const x=P.pos.x*.78+guard.x*.22;
+      rig.pos.lerp(camTarget.pos.set(x+.6,2.85,P.pos.z+4.45),1-Math.exp(-9*dt));
+      rig.look.lerp(camTarget.look.set(x*.64,1.62,HOOP.z+2.5),1-Math.exp(-10*dt));
+      return true;
+    }
     if(CAM.mode!==0)return false;   // 玩家手动切了机位就别抢镜头
     const handler=squadApi.handler();if(!handler)return false;
     const target=V3(handler.pos.x,1.5,handler.pos.z);
@@ -1605,8 +1698,15 @@
     const bob=P.walking?Math.sin(LS.t*11.0)*0.032:Math.sin((LS.footT||0)*2.30)*0.015*(LS.settle==null?1:LS.settle);
     const eye=V3(P.pos.x,1.78+P.eyeDip+bob,P.pos.z);
     const dir=V3(Math.sin(LS.lookYaw),0,Math.cos(LS.lookYaw));
-    rig.pos.set(eye.x-dir.x*0.85,eye.y+(typeof FP_RISE==="number"?FP_RISE:0.05),eye.z-dir.z*0.85);
-    rig.look.copy(target);
+    if(LS.offball){
+      // First-person off-ball view sits cleanly at eye height, framing defender, screener, handler, and hoop!
+      rig.pos.set(eye.x+dir.x*0.08,eye.y+(typeof FP_RISE==="number"?FP_RISE:0.05),eye.z+dir.z*0.08);
+      target.lerp(HOOP,.76);
+      rig.look.copy(target);
+    }else{
+      rig.pos.set(eye.x-dir.x*0.85,eye.y+(typeof FP_RISE==="number"?FP_RISE:0.05),eye.z-dir.z*0.85);
+      rig.look.copy(target);
+    }
 
     if(LS.phase==="interlude"&&LS.interlude){
       const il=LS.interlude,u=clamp(LS.interludeT/Math.max(0.1,il.dur),0,1);
@@ -1719,6 +1819,7 @@
   function isOvertime(){const p=possessionPoints();return p>0&&p===pointsToWin()-1;}
   function finish(made,reason){
     if(LS.resolved)return;
+    if(LS.offball)squadApi.setActorBall("foe0",false);
     setCelebrateView(false);
     hideLastShotHud();
     LS.resolved=true;LS.on=false;LS.phase="done";
@@ -1745,6 +1846,7 @@
   }
 
   function exitLastShot(){
+    if(LS.offball){squadApi.setActorBall("foe0",false);P.walking=false;}
     leaveArenaAudio();
     setCelebrateView(false);   // 还原第一人称，否则手没了、身体一直显着
     LS.on=false;LS.phase="idle";G.running=false;G.canShoot=false;G.passCatch=null;
@@ -1757,7 +1859,7 @@
   const outcome=Object.freeze({pointsToWin,possessionPoints,shotSucceeded,isOvertime});
   /* hideHud 必须导出:index.js 是另一个 IIFE,直接写 hideLastShotHud() 会 ReferenceError,
    而它正好在 showResult 里 beat.play() 之前,一崩整个结算演出就被跳过。 */
-  const api=Object.freeze({beginLastShot,updateLastShot,updateLastShotCam,exitLastShot,finish,state,outcome,hideHud:hideLastShotHud});
+  const api=Object.freeze({waitingForCall,beginLastShot,updateLastShot,updateLastShotCam,exitLastShot,finish,state,outcome,hideHud:hideLastShotHud});
   Object.assign(global,{updateLastShot,updateLastShotCam,beginLastShot,exitLastShot});
   global.AIBALastShotSequence=api;
   runtime.register("mode:last-shot:sequence",api);

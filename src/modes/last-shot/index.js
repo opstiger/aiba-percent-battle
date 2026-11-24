@@ -90,7 +90,7 @@
       <div style="display:flex;gap:6px;flex-wrap:wrap">${list.map(c=>{
         const on=c.challengeId===cfg.challengeId;
         const isToday=c.challengeId===today.challengeId;
-        const label=c.challengeId==="ls-tmac-35s"?"🔥 麦迪35秒13分":c.title;
+        const label=c.challengeId==="ls-tmac-35s"?"🔥 麦迪35秒13分":(c.challengeId==="ls-offball"?"🎥 5v5实战·弱侧12秒":c.title);
         return `<button class="btn sm" style="flex:1;min-width:92px;${on?"border-color:#ffd23f;color:#ffd23f":""}"
           onclick="AIBALastShot.pickStory('${c.challengeId}')">${label}${isToday?" ·今日":""}</button>`;
       }).join("")}</div></div>`;
@@ -102,6 +102,7 @@
     const today=cfgApi.dailyChallenge();
     const isToday=cfg.challengeId===today.challengeId;
     G.mode="lastshot";G.state="diff";
+    const needsAim=cfg.offball&&!global.AIBAVisionAim?.active();
     const story=cfg.introText.map(t=>`<div>${t}</div>`).join("");
     showPanel(`<h1 class="title" style="font-size:24px">${cfg.title}</h1>
       <div class="sub">${cfg.subtitle}</div>
@@ -116,7 +117,7 @@
       ${typeof global.visionModeMarkup==="function"?global.visionModeMarkup():""}
       ${used||!isToday?"":`<button class="btn red" onclick="hidePanel();beginLastShot(false)">开始今日挑战 · 仅此一次</button>`}
       ${!used&&!isToday?`<div class="card" style="font-size:11px;color:#9ab">这不是今日剧情 —— 正式挑战只能打 <b>${today.title}</b>，这一关可以随便练。</div>`:""}
-      ${cfg.practiceEnabled?`<button class="btn sm" onclick="hidePanel();beginLastShot(true)">练习模式 · 不计成绩</button>`:""}
+      ${cfg.practiceEnabled?`<button class="btn sm" onclick="hidePanel();beginLastShot(true)" ${needsAim?"disabled":""}>${needsAim?"先开启上方「体感瞄准」":"练习模式 · 不计成绩"}</button>`:""}
       <button class="btn sm" onclick="exitLastShot();showMenu()">返回封面</button>`);
   }
 
@@ -125,6 +126,8 @@
      err = 力度 - 理想力度：负=蓄力不足(出手太早)，正=蓄力过头(出手太晚)。
      zone 是当前难度的甜区半宽，误差落在甜区内说明手感没问题，是被干扰吃掉的。 */
   function missAdvice(reason,diag){
+    if(reason==="intercepted")return{t:"传球被断",d:"防守人还够得到这条传球线。等他转头，横移到空位再举手。"};
+    if(reason==="offball-timeout")return{t:"回合时间耗尽",d:"摆脱后尽早举手，给接球瞄准留一点时间。"};
     if(reason==="timeout")return{t:"没能在比赛钟走完前出手",d:"接球就投——这一攻只有两秒出手窗口，犹豫等于放弃。"};
     /* 罚球刚好追平：不是打铁,是进加时,别用"最后一投偏出"糊弄过去 */
     if(reason==="overtime")return{t:"追平了,但比赛还没结束",d:"这一攻拿到的分刚好抹平分差——进加时。要直接带走比赛,还差一分。"};
@@ -181,7 +184,7 @@
     else if(typeof boo==="function")boo();
 
     if(practice){
-      showResultPanel(`<h1 class="title" style="font-size:22px">${made?"练习绝杀命中":"练习未命中"}</h1>
+      showResultPanel(`<h1 class="title" style="font-size:22px">${made?"练习绝杀命中":(reason==="intercepted"?"传球被断":(reason==="offball-timeout"?"回合时间耗尽":"练习未命中"))}</h1>
         <div class="sub">练习模式 · 不计成绩</div>
         ${made?`<div class="card">就是这个感觉。正式挑战每天只有一次。</div>`
           :(()=>{const a=missAdvice(reason,diag);
@@ -234,7 +237,7 @@
       unit:"分",
       tone:made?"good":(reason==="overtime"?"flat":"bad"),
       seconds:practice?1.8:2.6,
-      note:practice?(made?"练习命中 · 保持这个节奏":"练习结束 · 看看出手时机"):(made?"绝杀命中 · 比赛结束":(reason==="overtime"?"追平 · 比赛进入加时":"最后一投偏出")),
+      note:reason==="intercepted"?"传球被断":practice?(made?"练习命中 · 保持这个节奏":"练习结束 · 看看出手时机"):(made?"绝杀命中 · 比赛结束":(reason==="overtime"?"追平 · 比赛进入加时":"最后一投偏出")),
       onDone:()=>renderResult(cfg,made,reason,practice,diag,pts)
     });
   }
@@ -243,6 +246,9 @@
   // 包装 sequence 导出的 beginLastShot,把每日闸门挂在开赛之前(项目既定的 wrap 全局函数模式)
   const rawBegin=global.beginLastShot;
   global.beginLastShot=function(practice){
+    if(practice&&cfgApi.pickedChallenge().offball&&!global.AIBAVisionAim?.active()){
+      openLastShot();toast("请先开启第三种操作「体感瞄准」","#ffd23f");return;
+    }
     if(!onBegin(practice))return;
     rawBegin(practice);
   };

@@ -13,12 +13,14 @@
     button.classList.toggle("ready",!global.BOOT_GATE_ACTIVE&&(PAUSE.on||pauseableState()));
   }
   function pauseModeLabel(){
+    if(G.mode==="lastshot")return global.AIBALastShotSequence.state().cfg?.title||"绝杀时刻";
     if(G.mode==="battle")return "百分大战";
     if(G.mode==="rackrush")return G.rush&&global.isRackRushSpeed(G.rush)?"百分竞速":"投篮机挑战";
     if(G.practice)return "练习模式";
     return "三分大赛";
   }
   function pauseScoreLine(){
+    if(G.mode==="lastshot")return [$("hudTimer").textContent,"秒"].join(" ");
     if(G.mode==="battle")return `你 ${Math.min(G.score||0,BATTLE_TARGET)} : ${Math.min(G.battleOppScore||0,BATTLE_TARGET)} ${G.battleOpp?G.battleOpp.n:"对手"}`;
     if(G.mode==="rackrush"&&G.rush)return `${G.rush.total||0} 分 · ${global.isRackRushSpeed(G.rush)?global.formatRackRushClock(G.rush.elapsed||0):("L"+((G.rush.level||0)+1))}`;
     if(G.practice)return "热身中";
@@ -81,7 +83,13 @@
   function restartPausedMode(){
     if(!PAUSE.on)return;
     const mode=PAUSE.mode,variant=PAUSE.rushVariant||"classic",spot=PAUSE.rushSpot,practice=PAUSE.practice;
-    PAUSE.on=false;global.hidePanel();clearLiveObjectsForMenu();updatePauseButton();
+    const sameDrill=mode==="lastshot"&&global.AIBALastShotSequence.state().practice;
+    PAUSE.on=false;global.hidePanel();clearLiveObjectsForMenu({preserveVision:sameDrill});updatePauseButton();
+    if(mode==="lastshot"){
+      if(global.AIBALastShotSequence.state().practice)global.beginLastShot(true);
+      else global.openLastShot();
+      return;
+    }
     if(mode==="battle"){global.startBattle();return;}
     if(mode==="rackrush"){global.startRackRush(variant,spot);return;}
     if(practice){global.startPractice();return;}

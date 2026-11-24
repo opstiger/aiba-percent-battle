@@ -305,7 +305,21 @@
     }
   };
 
-  const CHALLENGES=[LAST_SHOT_98,GAME_SEVEN,CORNER_BURIED,TMAC_35S];
+  const OFFBALL={
+    ...GAME_SEVEN,challengeId:"ls-offball",title:"弱侧的十二秒",subtitle:"抢七 · 五对五体感实战",
+    offball:true,playerCut:null,gameClock:12,
+    introText:["第四节还剩十二秒，你们落后两分。控卫在右侧持球。",
+      "横移拉开防守，双手举过肩要球。接球后放低双手，转头瞄篮，再起手投篮。"],
+    timeoutDialogue:"教练说，盯你的后卫一回头就切出去。",
+    teammateDialogue:"留意从侧翼上来的队友，贴着他的掩护跑。",
+    choreography:{...GAME_SEVEN.choreography,
+      ally0:{...GAME_SEVEN.choreography.ally0,path:[
+        wp(0,3.8,-2.4),wp(1.4,5.6,-3.6),wp(3,4.7,-4.4),wp(4.6,3.8,-3.6),
+        wp(6.1,5.5,-2.8),wp(8,4.2,-4),wp(10,3.4,-3.3),wp(12,4.4,-2.5)]},
+      foe0:{...GAME_SEVEN.choreography.foe0,path:[wp(0,.45,-1.38)]}}
+  };
+  const DAILY=[LAST_SHOT_98,GAME_SEVEN,CORNER_BURIED,TMAC_35S];
+  const CHALLENGES=[...DAILY,OFFBALL];
 
   /* 每日挑战按 UTC 日期轮转:全球同一天拿到同一关,避免时区导致的关卡不一致。
      MVP 只有一关,取模后恒定;加关后自动开始轮换。 */
@@ -316,7 +330,7 @@
   function dailyChallenge(now){
     const key=challengeDateKey(now);
     const days=Math.floor(Date.parse(key+"T00:00:00Z")/86400000);
-    return CHALLENGES[((days%CHALLENGES.length)+CHALLENGES.length)%CHALLENGES.length];
+    return DAILY[((days%DAILY.length)+DAILY.length)%DAILY.length];
   }
   function msUntilReset(now){
     const t=now?new Date(now):new Date();

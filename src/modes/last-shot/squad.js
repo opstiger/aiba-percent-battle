@@ -747,6 +747,22 @@ function foeKit(allyJersey){
   function updateOnBall(actor,dt,playerPos,st){
     if(!playerPos)return actor.speed||0;
     const gapNow=Math.hypot(actor.pos.x-playerPos.x,actor.pos.z-playerPos.z);
+    if(st.offball&&!st.passing&&!st.inHand){
+      const play=st.offball,screen=play.screen,mate=squad.actors.ally2.pos;
+      const screenPlanted=!!(screen&&st.t<screen.until&&Math.hypot(mate.x-screen.x,mate.z-screen.z)<.72);
+      if(screen)screen.planted=screenPlanted;
+      const hitScreen=screenPlanted&&Math.hypot(mate.x-actor.pos.x,mate.z-actor.pos.z)<1.32;
+      if(hitScreen&&st.t>=(play.screenSnagUntil||0)-.15)play.screenSnagUntil=st.t+.85;
+      const snagged=st.t<(play.screenSnagUntil||0);
+      // Realistic human reaction delay: 0.24s normal, 0.44s when glancing away at another player -> rapid cuts shake him!
+      const lag=play.glancing?.44:.24;
+      const seen=(global.AIBAOffball&&global.AIBAOffball.playerTrailAt(play,(st.t||0)-lag))||playerPos;
+      const target=markTarget(seen,1.22);
+      actor.onBallPhase=snagged?"screen":(play.glancing?"glance":"track");
+      const spd=snagged?.45:(play.glancing?.78:2.85);
+      const acc=snagged?3.2:(play.glancing?4.8:6.8);
+      return steerTo(actor,target.x,target.z,dt,spd,acc);
+    }
     if(!st.passing&&!st.inHand){
       actor.onBallPhase="help";
       // 协防倾向：待在原协防位，只把身体侧对，不扑
@@ -927,12 +943,22 @@ function foeKit(allyJersey){
     if(!squad)return;
     const chore=squad.cfg.choreography,actors=squad.actors;
     const src=phase||{};
-    _phase.passing=!!src.passing;_phase.inHand=!!src.inHand;_phase.chargeT=src.chargeT||0;_phase.t=t;
+    _phase.passing=!!src.passing;_phase.inHand=!!src.inHand;_phase.chargeT=src.chargeT||0;_phase.t=t;_phase.offball=src.offball;
     const st=_phase;
     /* 进攻方走编排路点；防守方改成延迟追踪。顺序很重要：先把进攻方落位并记录轨迹，
        防守方才能读到"进攻人 0.22 秒前的位置"。 */
     ALLY_IDS.forEach(id=>{
       const actor=actors[id],plan=chore[id];if(!plan)return;
+      if(id==="ally2"&&st.offball?.screen){
+        const screen=st.offball.screen;
+        const active=t<screen.until;
+        const target=active?screen:samplePath(plan.path,t);
+        actor.speed=steerTo(actor,target.x,target.z,dt,active?4.4:3.8,10);
+        actor.screening=active&&Math.hypot(actor.pos.x-screen.x,actor.pos.z-screen.z)<.72;
+        recordTrail(actor,t);
+        return;
+      }
+      if(id==="ally2")actor.screening=false;
       const p=samplePath(plan.path,t);if(!p)return;
       /* 速度必须取纯路径位移。用 actor.pos 差分会把上一帧 separate() 的推挤
          算成跑动，摆腿频率就会忽快忽慢。 */
@@ -968,11 +994,23 @@ function foeKit(allyJersey){
     separate(playerPos,dt);
     IDS.forEach(id=>{
       const actor=actors[id],plan=chore[id];if(!plan)return;
-      // 防守人看着自己盯的人,进攻人看篮筐;盯你的那个始终转向你,压迫感来自这里。
+      // 防守人看着自己盯的人,进攻人看篮筐;盯你的那个在 glance 时回头看场上其他球员,压迫感与机会一目了然。
       let look=HOOP;
-      if(plan.marks==="you"&&playerPos)look=playerPos;
-      else if(plan.marks&&actors[plan.marks])look=actors[plan.marks].pos;
+      if(plan.marks==="you"&&playerPos){
+        const gTgt=(st.offball&&st.offball.glanceTarget&&actors[st.offball.glanceTarget])?actors[st.offball.glanceTarget].pos:actors.ally0.pos;
+        look=actor.onBallPhase==="glance"?gTgt:playerPos;
+      }else if(actor.screening&&actors.foe0){
+        look=actors.foe0.pos;
+      }else if(plan.marks&&actors[plan.marks])look=actors[plan.marks].pos;
       poseRunner(actor,actor.speed||0,dt,look);
+      if(actor.screening){
+        // Real basketball off-ball screen stance: wide braced knees + forearms crossed across core
+        const guy=actor.guy;
+        guy.legs[0].rotation.x=-.14;guy.legs[1].rotation.x=-.14;
+        guy.knees[0].rotation.x=.42;guy.knees[1].rotation.x=.42;
+        guy.arms[0].rotation.set(-.58,0,.44);guy.arms[1].rotation.set(-.58,0,-.44);
+        guy.elbows[0].rotation.set(-1.15,0,0);guy.elbows[1].rotation.set(-1.15,0,0);
+      }
       if(actor.ball&&actor.ball.visible)poseDribble(actor,dt,clamp((actor.speed||0)/3.6,0,1));
       if(actor.contestJump!=null)poseContestJump(actor);
       else if((actor.pressure||0)>0||(actor.handsUp||0)>0)poseContestHands(actor,Math.max(actor.pressure||0,actor.handsUp||0));

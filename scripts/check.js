@@ -8,7 +8,7 @@ const childProcess=require("child_process");
 
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
-const snapshot="block-3pt-kingv2.46.8-modular.html";
+const snapshot="block-3pt-kingv2.47.0-modular.html";
 const requiredFiles=[
   entry,
   snapshot,
@@ -161,7 +161,7 @@ if(!entryHtml.includes('<script src="src/modes/percent-battle/spots.js"></script
 for(const file of ["opponent","results","index"]){
   if(!entryHtml.includes(`<script src="src/modes/percent-battle/${file}.js"></script>`))fail(`next Percent Battle ${file} module missing`);
 }
-const lastShotModules=["config","squad","sequence","index"];
+const lastShotModules=["config","offball","squad","sequence","index"];
 for(const file of lastShotModules){
   if(!entryHtml.includes(`<script src="src/modes/last-shot/${file}.js"></script>`))fail(`next Last Shot ${file} module missing`);
 }
@@ -504,9 +504,9 @@ for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"]
 if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js"></script>'))fail("Percent Battle opponent cache version missing");
 if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js"></script>')>entryHtml.indexOf('<script src="src/game-flow.js"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
-for(const token of ["v2.46.8 MODULAR","MODULAR / v2.46.8"])
+for(const token of ["v2.47.0 MODULAR","MODULAR / v2.47.0"])
   if(!entryHtml.includes(token))fail("visible version token missing "+token);
-if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.46.8";'))fail("GAME_VERSION must be v2.46.8");
+if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.47.0";'))fail("GAME_VERSION must be v2.47.0");
 /* GAME_VERSION 会随成绩上报(见 percent-battle/state.js 的 version 字段)。以前靠手工让
    game-config.js 的 ?v= 跟着发版号走；现在 v 是内容 hash，改常量就会换 v，上面已校验不过期。 */
 const playerMeterGradient='<linearGradient id="ppGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#2e8bff"/><stop offset="55%" stop-color="#39d3ff"/><stop offset="78%" stop-color="#ffd23f"/><stop offset="100%" stop-color="#ff4040"/></linearGradient>';

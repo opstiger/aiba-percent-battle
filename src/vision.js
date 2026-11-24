@@ -589,6 +589,18 @@ function syncVisionOwnedPower(step){
   if(!VISION.ownsCharge||!G.charging||!step||step.phase!=="charging")return;
   const fill=$("pFill");if(fill)fill.style.height=Math.round(G.power)+"%";
 }
+// Read only fresh measurements from the existing front-camera inference.
+function visionOffballSample(){
+  if(!VISION.enabled||!VISION.aimMode||VISION.orientationBlocked||
+     performance.now()-VISION.lastPoseAt>360)return null;
+  const lm=VISION.lastPose,l=visionGoodPoint(lm,11,.55),r=visionGoodPoint(lm,12,.55);
+  if(!l||!r||Math.abs(l.x-r.x)<.075)return null;
+  const a=visionGoodPoint(lm,15,.5),b=visionGoodPoint(lm,16,.5);
+  const width=Math.abs(l.x-r.x),line=(l.y+r.y)*.5;
+  return {at:VISION.lastPoseAt,x:(l.x+r.x)*.5,width,
+    raised:!!(a&&b&&Math.max(a.y,b.y)<line-width*.22),
+    lowered:!!(a&&b&&Math.min(a.y,b.y)>line+width*.15)};
+}
 function visionCadence(){
   const phase=VISION.machine.phase,setup=G.state==="menu"||G.state==="diff",active=visionGameActive();
   const penalty=VISION.inferAvg>34?1.5:(VISION.inferAvg>23?1.25:1);
@@ -597,6 +609,8 @@ function visionCadence(){
     drawMs=82;poseMs=46;mode="gesture";
   }else if(active&&phase==="armed"){
     drawMs=88;poseMs=54;mode="gesture";
+  }else if(G.state==="lastshot"&&window.AIBALastShotSequence?.waitingForCall()){
+    drawMs=132;poseMs=80;mode="offball";
   }else if(active){
     drawMs=132;poseMs=118;mode="ready";
   }else if(setup){
@@ -722,7 +736,8 @@ function visionFrame(now){
     const drawHands=[];
     drawVisionPose(drawPose,drawHands,sample,step.phase);
     const blindCharge=step.phase==="charging"&&VISION.liveControl&&typeof curShot==="function"&&barHiddenFor(curShot());
-    visionSetUI(step.phase,visionPhaseLabel(step,sample),blindCharge?0:step.progress);
+    const offball=G.state==="lastshot"&&window.AIBALastShotSequence?.waitingForCall();
+    visionSetUI(step.phase,offball?"横移摆脱 · 双手举过肩要球":visionPhaseLabel(step,sample),blindCharge?0:step.progress);
     if(visionGameActive()){
       const hint=$("hint");
       if(hint)hint.textContent=step.phase==="armed"?"双手保持在髋线下方":(step.phase==="charging"?"任一只手快速越过上方出手线":(step.phase==="release"?"出手!":"双手进入下方蓄力区 0.12 秒"));
