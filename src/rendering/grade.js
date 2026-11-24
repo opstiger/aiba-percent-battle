@@ -232,6 +232,7 @@
   });
 
   const compMat=new THREE.ShaderMaterial({
+    defines:FULL&&!COARSE&&!WEAK?{DESKTOP_FILM:1}:{},
     uniforms:{
       tScene:{value:null},tBlur:{value:null},tDepth:{value:null},tFocus:{value:null},
       tVenueAir:{value:null},useVenueAir:{value:0},airStart:{value:15},airEnd:{value:30},
@@ -364,7 +365,20 @@
           }
         }
 
+        #ifdef DESKTOP_FILM
+        // Feather the threshold by luminance so colored lights retain their hue.
+        float haloLum=luma(blur);
+        float knee=.09;
+        float transition=clamp(haloLum-bloomThreshold+knee,0.0,2.0*knee);
+        float bright=max(haloLum-bloomThreshold,transition*transition/(4.0*knee));
+        col+=blur*(bright/max(haloLum,.001))*bloomStrength;
+        // Broad local contrast only across midtones. Limit the gain at silhouettes.
+        float localLum=luma(col);
+        float middle=smoothstep(.08,.32,localLum)*(1.0-smoothstep(.62,.90,localLum));
+        col*=1.0+middle*clamp((localLum-haloLum)*.38,-.075,.085);
+        #else
         col+=max(blur-bloomThreshold,0.0)*bloomStrength;
+        #endif
         if(useVenueAir>0.5){
           // 4-tap tent filter prevents 4x4 block jaggedness along distant tree-to-sky depth discontinuities.
           vec2 airOff=texelSize*1.25;
@@ -470,6 +484,15 @@
           col+=(gHash-.5)*grainAmp*(.45+.55*mid);
         }
 
+        #ifdef DESKTOP_FILM
+        // Shape the display-space midtones, then roll off the brightest channel
+        // with one gain for RGB to preserve the color of jerseys and rim lights.
+        float displayLum=clamp(luma(col),0.0,1.0);
+        col*=1.0+.24*(displayLum-.35)*(1.0-displayLum);
+        float peak=max(col.r,max(col.g,col.b));
+        float shoulder=max(peak-.78,0.0);
+        col*=1.0-(shoulder-shoulder/(1.0+2.5*shoulder))/max(.0001,peak);
+        #endif
         vec2 d=(vUv-0.5)*vec2(aspect,1.0);
         col*=1.0-vigStrength*smoothstep(vigInner,vigOuter,length(d)/0.72);
 
@@ -551,8 +574,9 @@
 
   function lowMeadowFocus(weather){
     if(!weather?.court||camera.userData.firstPerson||camera.position.y>2.25)return 0;
+    if(camera.userData.meadowTele&&!camera.userData.meadowTeleIntro)return 0;
     const height=camera.position.y-weather.court.heightAt(camera.position.x,camera.position.z);
-    if(height<.08||height>=1.24)return 0;
+    if(height<.08||height>=1.36)return 0;
     camera.getWorldDirection(focusDirection);
     if(Math.abs(focusDirection.y)>.48)return 0;
     const hoop=focusOffset.copy(HOOP).sub(camera.position).dot(focusDirection);
@@ -561,10 +585,12 @@
     focusOffset.y+=1.05;
     const playerDepth=player.g.visible?focusOffset.sub(camera.position).dot(focusDirection):0;
     const protectedDepth=playerDepth>.35?Math.min(hoop,playerDepth):hoop;
-    const end=Math.min(3.65,protectedDepth-.63);
+    const maxEnd=camera.userData.meadowTeleIntro?4.3:3.65;
+    const end=Math.min(maxEnd,protectedDepth-.63);
     if(end<.66)return 0;
     foregroundRange.set(Math.min(1.04,end*.43),end);
-    return .93*(1-THREE.MathUtils.smoothstep(height,.55,1.24));
+    const topH=camera.userData.meadowTeleIntro?1.36:1.24;
+    return (camera.userData.meadowTeleIntro?.76:.93)*(1-THREE.MathUtils.smoothstep(height,.55,topH));
   }
 
   function drawFoliageDepth(forest){
@@ -659,7 +685,9 @@
       u.sunScreen.value.set(focusOffset.x*.5+.5,focusOffset.y*.5+.5,facing);
     }else u.sunScreen.value.set(.5,.2,0);
     // In rainforest, volumetric Tyndall shafts fill the court; in flowerCourt, valley mist starts behind the court (18..36m) so spectators stay crisp.
-    u.airStart.value=forest?3:18;u.airEnd.value=forest?21:36;
+    // Under telephoto compression, shift valley mist slightly deeper so the court, hoop & colossal golden snow peak stay crisp.
+    const teleMeadow=!!(weather&&camera.userData.meadowTele);
+    u.airStart.value=forest?3:(teleMeadow?30:18);u.airEnd.value=forest?21:(teleMeadow?74:36);
     u.tScene.value=rtScene.texture;u.tBlur.value=(rtB||rtScene).texture;
     u.tDepth.value=rtScene.depthTexture||null;
     u.tFocus.value=lens;u.useDepth.value=lens?1:0;

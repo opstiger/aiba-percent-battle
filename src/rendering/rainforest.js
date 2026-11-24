@@ -39,7 +39,7 @@
   }
 
   function texture(file){
-    const tex=new THREE.TextureLoader().load(file);
+    const tex=loadVenueTexture(file);
     tex.encoding=THREE.sRGBEncoding;tex.wrapS=tex.wrapT=THREE.RepeatWrapping;
     tex.anisotropy=Math.min(6,renderer.capabilities.getMaxAnisotropy());
     return tex;

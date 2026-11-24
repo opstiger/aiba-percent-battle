@@ -334,12 +334,15 @@ function pregameBuildShots(opts){
     {actor:showcaseActor,action:showcaseAction,cam:"lowHeroArc",dur:showcaseAction==="dance"?rnd(2.15,2.35):rnd(1.95,2.15),side:1,group:false},
     {actor:hero,action:"dance",cam:"finaleDualCrane",dur:rnd(2.20,2.40),side:-1,group:actors.length>1}
   ];
+  if(typeof currentScenePreset==="string"&&currentScenePreset==="flowerCourt"&&window.AIBAMeadowIntro){
+    plan.unshift({actor:hero,action:"shoot",cam:"meadowHitchcock",dur:3.3,side:1,group:false,speedRamp:false});
+  }
   let t=0;const usedClips=[];
   for(let i=0;i<plan.length;i++){
     const item=plan[i],actor=item.actor||hero;
     const seg={
       start:t,dur:item.dur,actor,action:item.action,cam:item.cam,
-      side:item.side,seed:rnd(-0.75,0.75),group:!!item.group,speedRamp:true
+      side:item.side,seed:rnd(-0.75,0.75),group:!!item.group,speedRamp:item.speedRamp!==false
     };
     if(seg.action==="dance"){
       ensurePregameDanceClip(seg,actor,usedClips);
@@ -687,6 +690,21 @@ function pregameOrbitPhase(rawU){
 }
 function pregameUpdateCamera(seg,rawU,u,dt){
   if(dt===undefined){dt=u;u=rawU;}
+  if(seg&&seg.cam==="meadowHitchcock"&&window.AIBAMeadowIntro&&typeof AIBAMeadowIntro.sample==="function"){
+    const actor=seg.actor||PREGAME.actors[0];
+    const pPos=actor&&actor.base?actor.base:P.pos;
+    const sample=AIBAMeadowIntro.sample(clamp(rawU*0.86,0,0.86),{playerPos:pPos});
+    rig.pos.copy(sample.pos);rig.look.copy(sample.look);
+    if(typeof camera!=="undefined"&&camera&&typeof camera.updateProjectionMatrix==="function"){
+      if(Math.abs(sample.fov-camera.fov)>0.02){camera.fov=sample.fov;camera.updateProjectionMatrix();}
+      if(camera.userData){camera.userData.meadowTele=sample.tele;camera.userData.meadowTeleIntro=sample.introFlag;}
+    }
+    seg._justStarted=false;
+    return;
+  }
+  if(typeof camera!=="undefined"&&camera&&camera.userData&&camera.userData.meadowTeleIntro){
+    camera.userData.meadowTele=false;camera.userData.meadowTeleIntro=false;
+  }
   const focus=pregameFocus(seg),actor=seg.actor||PREGAME.actors[0],guy=actor.guy;
   const face=guy.g.rotation.y||faceTo(actor.base,HOOP);
   /* 镜头始终放在球员正面偏侧(朝向球员与球场中心/聚光灯),绝不跑到篮架背后拍空场 */
@@ -811,6 +829,10 @@ function finishPreGameShow(){
   if(typeof camera!=="undefined"&&camera&&typeof camera.updateProjectionMatrix==="function"&&camera.fov!==50){
     camera.fov=50;camera.updateProjectionMatrix();
   }
+  if(typeof camera!=="undefined"&&camera&&camera.userData){
+    camera.userData.meadowTele=false;camera.userData.meadowTeleIntro=false;
+  }
+  if(window.AIBACameraFov&&typeof AIBACameraFov.apply==="function")AIBACameraFov.apply();
   PREGAME.on=false;PREGAME.t=0;PREGAME.idx=0;PREGAME.shots=[];PREGAME.actors=[];PREGAME.snaps=[];PREGAME.cb=null;PREGAME.poseCache.clear();hidePregameChalk();
   $("vsBanner").style.display="none";pregameSkipButton(false);
   P.jump=0;P.eyeDip=0;P.walking=false;G.state=prev;G.moving=false;G.glideCam=false;

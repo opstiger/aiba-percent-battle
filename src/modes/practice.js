@@ -30,9 +30,15 @@
        热身本来就该和正式一致,不然练出来的手感换到正式局就偏了。 */
     if(typeof calibrateTilt==="function")calibrateTilt();
     G.state="cinematic";rig.pos.set(0,9,6);rig.look.copy(HOOP);
-    glideTo(shotEye(G.seq[0]),HOOP.clone().add(V3(0,0.15,0)),1.4,()=>{
+    const readyPractice=()=>{
       G.state="round";applyCamMode();readyBall();toast("热身 · 按住蓄力,顶点出手!","#ffd23f");
-    });
+    };
+    const isMeadow=typeof global.currentScenePreset==="string"&&global.currentScenePreset==="flowerCourt";
+    if(isMeadow&&!global.__flowFreeze&&global.AIBAMeadowIntro&&typeof global.AIBAMeadowIntro.start==="function"){
+      global.AIBAMeadowIntro.start({dur:3.2,endPos:shotEye(G.seq[0]),endLook:HOOP.clone().add(V3(0,0.15,0))},readyPractice);
+    }else{
+      glideTo(shotEye(G.seq[0]),HOOP.clone().add(V3(0,0.15,0)),1.4,readyPractice);
+    }
   }
   function endPractice(){
     G.state="roundend";

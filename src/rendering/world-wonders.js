@@ -474,11 +474,10 @@
       return -0.022+blend*(wave+cy+my);
     };
     // 真实月球风化层反照率与凹凸法线感贴图（无缝平铺，消除塑料感）
-    const tl=new THREE.TextureLoader();
-    const regAlbedo=tl.load("assets/lunar/regolith_albedo.jpg");
+    const regAlbedo=loadVenueTexture("assets/lunar/regolith_albedo.jpg");
     regAlbedo.wrapS=regAlbedo.wrapT=THREE.RepeatWrapping;regAlbedo.repeat.set(14,14);
     if(THREE.sRGBEncoding)regAlbedo.encoding=THREE.sRGBEncoding;
-    const regBump=tl.load("assets/lunar/regolith_bump.jpg");
+    const regBump=loadVenueTexture("assets/lunar/regolith_bump.jpg");
     regBump.wrapS=regBump.wrapT=THREE.RepeatWrapping;regBump.repeat.set(14,14);
 
     const tGeo=new THREE.PlaneGeometry(230,230,96,96);tGeo.rotateX(-Math.PI/2);
@@ -633,7 +632,7 @@
     stars.name="lunarStars";stars.renderOrder=-10;stars.frustumCulled=false;s.root.add(stars);
 
     // 4. 远处挂在漆黑宇宙中的蓝色地球（支持真实「月面日全食 · 地球红环」演进：地球遮住太阳时，大气折射出炽热红金光环！）
-    const earthTex=new THREE.TextureLoader().load("assets/lunar/earth.jpg");
+    const earthTex=loadVenueTexture("assets/lunar/earth.jpg");
     earthTex.wrapS=THREE.RepeatWrapping;
     if(THREE.sRGBEncoding)earthTex.encoding=THREE.sRGBEncoding;
     const earthMat=new THREE.ShaderMaterial({
@@ -2092,7 +2091,7 @@
     }
 
     function terrainTexture(file){
-      const map=new THREE.TextureLoader().load("assets/meadow/"+file);
+      const map=loadVenueTexture("assets/meadow/"+file);
       map.wrapS=map.wrapT=THREE.RepeatWrapping;
       map.encoding=THREE.sRGBEncoding;map.anisotropy=Math.min(4,renderer.capabilities.getMaxAnisotropy());
       return map;
@@ -2389,10 +2388,11 @@
       const radius=far?290:166,depth=far?143:123;
       // Bearing and relief describe a connected skyline. A wide shoulder and an off-centre
       // summit anchor the court-facing massif, with lower ridges continuing around the meadow.
+      // Lower the far ring slightly in the front corridor (-0.52..+0.52) so the sculpted hero Bogda golden snow massif commands the skyline cleanly.
       const skyline=far?[
         [-Math.PI,48],[-2.85,59],[-2.62,67],[-2.25,50],[-2.02,62],[-1.75,50],[-1.39,66],
-        [-1.05,53],[-.84,61],[-.70,70],[-.58,81],[-.49,74],[-.40,82],[-.28,105],
-        [-.15,124],[-.076,109],[.018,92],[.13,86],[.23,90],[.34,78],[.54,60],
+        [-1.05,53],[-.84,61],[-.70,68],[-.58,72],[-.45,56],[-.28,50],
+        [-.15,48],[-.04,40],[.08,42],[.23,52],[.38,56],[.54,60],
         [.67,63],[.79,74],[.93,77],[1.12,63],[1.42,72],[1.72,54],[2.04,68],[2.38,54],[2.75,67],[Math.PI,48]
       ]:[
         [-Math.PI,27],[-2.77,35],[-2.37,27],[-2.05,37],[-1.74,29],[-1.38,39],
@@ -2447,6 +2447,264 @@
       geo.setAttribute("rockExposure",new THREE.Float32BufferAttribute(exposure,3));
       const mesh=new THREE.Mesh(geo,material);
       mesh.name=far?"alpineFarSnowPeaks":"alpineNearRidges";s.root.add(mesh);
+    }
+
+    function goldenSnowMassif(s,rock){
+      // Monumental Xinjiang Bogda-inspired "日照金山" (Alpenglow Golden Snow Peak) jagged alpine wall.
+      // Uses a high-detail ridged-multifractal alpine ridge mesh (not smooth cones!) with authentic Bogda tri-spires,
+      // knife-edge granite arêtes, recessed glacial cirques, and a clean open saddle behind the wooden hoop (a = 0)
+      // so the hoop silhouette NEVER overlaps the peak while telephoto compression fills the sky with blazing golden snow.
+      const cols=s.mobile?76:128,rows=s.mobile?22:34;
+      const aMin=-0.68,aMax=0.68;
+      // [bearing rad, summit height m] — primary colossal Bogda tri-peak on left (-0.26..-0.14), open sky saddle behind hoop (0.0), east horn (+0.24).
+      const skyline=[
+        [-0.68,38],[-0.56,52],[-0.44,64],[-0.35,71],[-0.295,86],[-0.255,79],
+        [-0.215,96],[-0.182,102],[-0.152,88],[-0.118,75],[-0.075,54],[-0.030,42],
+        [0.025,40],[0.085,48],[0.145,62],[0.195,77],[0.242,88],[0.295,74],
+        [0.365,68],[0.460,55],[0.570,46],[0.680,36]
+      ];
+      const positions=[],uvs=[],meta=[],indices=[];
+      const ridgeH=[],angles=[];
+      let seg=0;
+      for(let i=0;i<=cols;i++){
+        const u=i/cols,a=THREE.MathUtils.lerp(aMin,aMax,u);
+        while(seg<skyline.length-2&&a>skyline[seg+1][0])seg++;
+        const [a0,h0]=skyline[seg],[a1,h1]=skyline[seg+1];
+        const f=(a-a0)/Math.max(1e-5,a1-a0);
+        // Sharp piecewise-linear ridge crest + jagged alpine crag serrations (zero rounded hills!).
+        const saw1=1-Math.abs(Math.sin(a*34+0.6));
+        const saw2=1-Math.abs(Math.sin(a*73-1.2));
+        const crag=(saw1*3.8+saw2*1.9-2.8)*smooth(Math.abs(a),0.05,0.14)*(1-smooth(Math.abs(a),0.45,0.68));
+        ridgeH.push(THREE.MathUtils.lerp(h0,h1,f)+crag);
+        angles.push(a);
+      }
+      const rFront=268,rDepth=96;
+      for(let row=0;row<=rows;row++){
+        const t=row/rows;
+        for(let i=0;i<=cols;i++){
+          const a=angles[i],peakY=ridgeH[i];
+          // Crest sits slightly toward the front-middle so the court-facing wall rises steeply and dramatically.
+          const crest=0.58+0.04*Math.sin(a*19+0.4);
+          const slope=t<crest?Math.pow(t/crest,1.22):Math.pow((1-t)/(1-crest),1.38);
+          // Multi-octave ridged-multifractal granite ribs & glacial couloirs radiating down from the serrated summit!
+          const drift=0.12*Math.sin(a*24+t*5.5);
+          const r1=1-Math.abs(Math.sin(a*42+t*6.8+drift*9));
+          const r2=1-Math.abs(Math.sin(a*88-t*11.5+1.3*Math.sin(a*17+t*4)));
+          const r3=1-Math.abs(Math.sin(a*165+t*19.0));
+          const ribSharp=Math.pow(r1,1.75)*0.58+Math.pow(r2,1.65)*0.28+Math.pow(r3,1.5)*0.14;
+          const cirque=1-ribSharp;
+          const wallEnv=Math.sin(Math.PI*t);
+          // Project crisp rocky arete buttresses forward toward the court so raking sunlight carves blazing 3D facets!
+          const buttress=(ribSharp-0.42)*(s.mobile?14.5:21.5)*wallEnv*(0.55+0.45*smooth(peakY,42,98));
+          const r=rFront+t*rDepth-buttress+8.5*Math.sin(a*7+0.8);
+          const relief=(ribSharp-0.46)*(s.mobile?0.17:0.22)*wallEnv;
+          const edgeTaper=1-smooth(Math.abs(a),0.52,0.68);
+          const y=-8+(peakY+8)*(slope+relief)*edgeTaper-8*(1-edgeTaper);
+          const x=Math.sin(a)*r,z=COURT.midZ-Math.cos(a)*r;
+          positions.push(x,y,z);
+          uvs.push(a*9.5+t*0.35,(y+10)/26);
+          const alt=smooth(y,26,96);
+          // Snow packs deep in glacial cirques & upper ridges, while steep convex granite ribs expose jagged dark rock!
+          const snowPocket=THREE.MathUtils.clamp(alt*(0.42+0.68*cirque+0.26*smooth(y,56,94)),0,1);
+          const alpenglowMask=smooth(y,38,88);
+          meta.push(snowPocket,ribSharp,alt,alpenglowMask);
+          if(row<rows&&i<cols){
+            const k=row*(cols+1)+i;
+            indices.push(k,k+1,k+cols+1,k+1,k+cols+2,k+cols+1);
+          }
+        }
+      }
+
+      const geo=new THREE.BufferGeometry();
+      geo.setIndex(indices);
+      geo.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+      geo.setAttribute("uv",new THREE.Float32BufferAttribute(uvs,2));
+      geo.setAttribute("aPeakMeta",new THREE.Float32BufferAttribute(meta,4));
+      geo.computeVertexNormals();
+
+      const mat=new THREE.MeshBasicMaterial({map:rock,side:THREE.DoubleSide,fog:false});
+      mat.onBeforeCompile=shader=>{
+        Object.assign(shader.uniforms,s.meadow.uniforms);
+        shader.vertexShader="attribute vec4 aPeakMeta;\nvarying vec4 vPeakMeta;\nvarying vec3 vPeakNormal,vPeakWorld;\n"+
+          shader.vertexShader.replace("#include <begin_vertex>","#include <begin_vertex>\nvPeakMeta=aPeakMeta;vPeakNormal=normal;vPeakWorld=position;");
+        shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+AIBAMeadowWeather.skyGLSL+`
+          varying vec4 vPeakMeta;
+          varying vec3 vPeakNormal,vPeakWorld;
+        `+shader.fragmentShader.replace("#include <map_fragment>",`
+          vec3 rockCoarse=mapTexelToLinear(texture2D(map,vUv*0.65)).rgb;
+          vec3 rockDetail=mapTexelToLinear(texture2D(map,vUv*1.95+vec2(vUv.y*0.28,0.0))).rgb;
+          vec3 rockStrata=mapTexelToLinear(texture2D(map,vec2(vUv.x*2.6,vUv.y*0.72))).rgb;
+          vec3 lum=vec3(.22,.70,.08);
+          float macroG=dot(rockCoarse,lum),fineG=dot(rockDetail,lum),strataG=dot(rockStrata,lum);
+          // Sculpted rock-face micro-normal perturbation creates crisp photographic crags and faceted cliff ridges.
+          float hC=macroG*0.55+fineG*0.30+strataG*0.15;
+          float hX=dot(mapTexelToLinear(texture2D(map,vUv*1.95+vec2(0.014,0.0))).rgb,lum);
+          float hY=dot(mapTexelToLinear(texture2D(map,vUv*1.95+vec2(0.0,0.014))).rgb,lum);
+          vec3 nrm=normalize(vPeakNormal+vec3((fineG-hX)*1.65,(fineG-hY)*1.15,(macroG-0.30)*0.45));
+
+          // Authentic Tian Shan rock-and-glacier balance: dark slate/granite cliff strata cutting through luminous alpine snow!
+          float steepCliff=1.0-smoothstep(0.16,0.62,nrm.y);
+          float snowField=vPeakMeta.x+(macroG-0.28)*0.38+(strataG-0.28)*0.24-vPeakMeta.y*0.26-steepCliff*0.18+smoothstep(0.56,0.92,vPeakMeta.z)*0.38;
+          float snowMask=smoothstep(0.22,0.50,snowField);
+          vec3 graniteBase=vec3(0.18,0.21,0.27)*(0.45+1.35*macroG+0.55*fineG+0.35*strataG);
+          vec3 snowBase=vec3(0.90,0.93,0.97)*(0.80+0.26*hC);
+          vec3 surf=mix(graniteBase,snowBase,snowMask);
+
+          // True Xinjiang "日照金山" Alpenglow: sharp raking golden-amber sunlight on left-facing knife ridges vs deep glacial cobalt shadows!
+          vec3 sunDir=normalize(meadowSun);
+          vec3 alpenSun=normalize(mix(sunDir,normalize(vec3(-0.78,0.20,0.59)),0.48));
+          float face=dot(nrm,alpenSun);
+          float litCrest=smoothstep(-0.04,0.22,face+(macroG-0.30)*0.16);
+          float razorRim=pow(clamp(1.0-abs(face-0.06)*2.4,0.0,1.0),2.0)*vPeakMeta.w;
+
+          // Noble sunlit champagne-gold snow in bright daylight -> blazing molten coral-gold "日照金山" at sunset/golden hour!
+          float goldenPhase=clamp(mix(0.32,1.0,meadowSky.y)*(0.50+0.50*meadowSky.x),0.16,1.0);
+          vec3 shadowSnow=mix(vec3(0.22,0.36,0.62),vec3(0.15,0.26,0.52),meadowSky.y);
+          vec3 shadowRock=mix(vec3(0.08,0.12,0.22),vec3(0.06,0.10,0.20),meadowSky.y);
+          vec3 shadedFace=mix(shadowRock,shadowSnow,snowMask)*(0.70+0.40*max(0.0,nrm.y));
+          // Subtle sky bounce in shaded snow couloirs keeps glacier detail readable.
+          shadedFace+=vec3(0.05,0.09,0.17)*snowMask*(1.0-vPeakMeta.y);
+
+          vec3 dayLit=surf*vec3(1.06,0.99,0.88);
+          // Blazing molten gold-to-amber gradient climbing to the summit tip ("日照金山" signature!).
+          vec3 goldSnow=mix(vec3(1.32,0.74,0.26),vec3(1.62,0.58,0.15),vPeakMeta.w*0.72+0.28*meadowSky.y);
+          vec3 goldRock=vec3(0.68,0.36,0.16)*(0.58+1.05*macroG+0.45*strataG);
+          vec3 goldLit=mix(goldRock,goldSnow,snowMask)*(0.86+0.32*fineG);
+          goldLit+=vec3(1.25,0.58,0.14)*razorRim*0.54;
+
+          vec3 litFace=mix(dayLit,goldLit,goldenPhase*(0.38+0.62*vPeakMeta.w));
+          vec3 col=mix(shadedFace,litFace,litCrest);
+          col=mix(col,col*vec3(0.76,0.86,1.05)+vec3(0.015,0.025,0.045),(1.0-meadowSky.x)*0.36*(1.0-vPeakMeta.w*0.42));
+
+          // Delicate low-foot valley mist ("薄云缠脚，金顶破空") tucked below y=34m so the towering golden massif stays 100% unobstructed!
+          vec2 cUV=vPeakWorld.xz*1.45+vec2(meadowClock*1.4,-meadowClock*0.55);
+          float cA=cloudDensity(cUV*0.55);
+          float cB=cloudDensity(cUV*1.55+vec2(vPeakWorld.y*2.0,17.0));
+          float lowMist=exp(-pow((vPeakWorld.y-16.0)/11.5,2.0))*smoothstep(40.0,18.0,vPeakWorld.y);
+          float mistOpacity=clamp(lowMist*smoothstep(0.36,0.76,cA*0.6+cB*0.4)*mix(0.48,0.22,meadowSky.x),0.0,0.46);
+          vec3 mistCol=mix(vec3(0.42,0.50,0.62),mix(vec3(0.92,0.90,0.86),vec3(1.0,0.74,0.46),meadowSky.y),smoothstep(0.24,0.82,cB));
+
+          vec3 path=vPeakWorld-cameraPosition;
+          float dist=length(path);
+          vec3 ray=path/max(0.001,dist);
+          vec3 skyCol=alpineSky(ray,cameraPosition);
+          float hazeAmt=smoothstep(210.0,760.0,dist)*mix(0.16,0.08,meadowSky.x)*(1.0-vPeakMeta.w*0.50);
+          vec3 rockOut=mix(col*(1.0-meadowStorm.y*0.76),skyCol,hazeAmt);
+          diffuseColor.rgb=mix(rockOut,mistCol,mistOpacity);
+        `);
+      };
+      const mesh=new THREE.Mesh(geo,mat);
+      mesh.name="alpineGoldenMassif";
+      mesh.frustumCulled=false;
+      s.root.add(mesh);
+
+      // Delicate golden wind-blown summit banner cloud ("峰顶旗云") streaming off the primary golden peak tip.
+      const mainA=-0.182,mainR=316;
+      const mx=Math.sin(mainA)*mainR,mz=COURT.midZ-Math.cos(mainA)*mainR;
+      const bGeo=new THREE.PlaneGeometry(54,12,12,2);
+      const bMat=new THREE.ShaderMaterial({
+        transparent:true,depthWrite:false,side:THREE.DoubleSide,fog:false,
+        uniforms:{meadowClock:s.meadow.uniforms.meadowClock,meadowSky:s.meadow.uniforms.meadowSky,meadowStorm:s.meadow.uniforms.meadowStorm},
+        vertexShader:`
+          uniform float meadowClock;
+          varying vec2 vUv;
+          void main(){
+            vUv=uv;
+            vec3 p=position;
+            float tail=uv.x;
+            p.y+=sin(tail*4.6-meadowClock*1.15)*2.4*tail-tail*tail*4.2;
+            p.z+=cos(tail*3.8-meadowClock*0.9)*2.0*tail;
+            gl_Position=projectionMatrix*modelViewMatrix*vec4(p,1.0);
+          }`,
+        fragmentShader:`
+          uniform float meadowClock;
+          uniform vec4 meadowSky;
+          uniform vec2 meadowStorm;
+          varying vec2 vUv;
+          void main(){
+            float along=smoothstep(0.0,0.14,vUv.x)*(1.0-smoothstep(0.26,1.0,vUv.x));
+            float across=1.0-smoothstep(0.06,0.48,abs(vUv.y-0.5));
+            float wisp=0.65+0.35*sin(vUv.x*16.0-meadowClock*1.4+vUv.y*6.0);
+            float a=along*across*wisp*mix(0.18,0.34,meadowSky.x)*(1.0-meadowStorm.y*0.8);
+            vec3 c=mix(vec3(0.96,0.93,0.88),vec3(1.0,0.68,0.34),clamp(meadowSky.y*0.90+0.20,0.0,1.0));
+            gl_FragColor=vec4(c,a);
+          }`
+      });
+      const banner=new THREE.Mesh(bGeo,bMat);
+      banner.name="alpineSummitBanner";
+      banner.position.set(mx+24,99,mz+6);
+      banner.rotation.y=-0.20;
+      banner.frustumCulled=false;
+      s.root.add(banner);
+    }
+
+    function meadowParallaxFence(s){
+      // Weathered Xinjiang split-rail timber pasture fence tucked along the outer south-southwest & south-southeast meadow berm.
+      // Completely clear of the court, all rack sightlines, and menuOrbit (y = 8m), providing crisp Queenstown-style
+      // foreground motion parallax during the low telephoto arrival sweep!
+      const p=[],n=[],c=[],idx=[];
+      const woodBase=linear(0x6d5c4c),woodLight=linear(0x8f7d68),col=new THREE.Color();
+      function addBox(cx,cy,cz,sx,sy,sz,ry,rz,tint){
+        const base=p.length/3;
+        const hx=sx*0.5,hy=sy*0.5,hz=sz*0.5;
+        const corners=[
+          [-hx,-hy,-hz],[hx,-hy,-hz],[hx,hy,-hz],[-hx,hy,-hz],
+          [-hx,-hy,hz],[hx,-hy,hz],[hx,hy,hz],[-hx,hy,hz]
+        ];
+        const cyr=Math.cos(ry),syr=Math.sin(ry),czr=Math.cos(rz),szr=Math.sin(rz);
+        const faces=[
+          [[4,5,6,7],[0,0,1]],[[1,0,3,2],[0,0,-1]],
+          [[0,4,7,3],[-1,0,0]],[[5,1,2,6],[1,0,0]],
+          [[3,7,6,2],[0,1,0]],[[0,1,5,4],[0,-1,0]]
+        ];
+        let vOffset=base;
+        for(const [f,fn] of faces){
+          col.copy(woodBase).lerp(woodLight,tint*(0.72+0.28*Math.max(0,fn[1])));
+          const nx1=fn[0]*czr-fn[1]*szr,ny1=fn[0]*szr+fn[1]*czr,nz1=fn[2];
+          const rnx=nx1*cyr+nz1*syr,rnz=-nx1*syr+nz1*cyr;
+          for(const ci of f){
+            const [vx,vy,vz]=corners[ci];
+            const x1=vx*czr-vy*szr,y1=vx*szr+vy*czr,z1=vz;
+            const rx=x1*cyr+z1*syr,rz2=-x1*syr+z1*cyr;
+            p.push(cx+rx,cy+y1,cz+rz2);
+            n.push(rnx,ny1,rnz);
+            c.push(col.r,col.g,col.b);
+          }
+          idx.push(vOffset,vOffset+1,vOffset+2,vOffset,vOffset+2,vOffset+3);
+          vOffset+=4;
+        }
+      }
+      const segments=[
+        // South-southwest berm fence line (2.2–4.0m in front of the Queenstown arrival sweep, completely clear of all sidelines & spectators!).
+        [[-13.4,10.9],[-11.2,10.5],[-9.1,10.6],[-7.9,11.1]],
+        // South-southeast berm fence line (natural pasture balance).
+        [[8.8,14.5],[11.4,13.8],[14.0,13.4]]
+      ];
+      for(const seg of segments){
+        for(let i=0;i<seg.length;i++){
+          const [px,pz]=seg[i],py=elevation(px,pz);
+          const tilt=(i%2?1:-1)*0.04;
+          addBox(px,py+0.44,pz,0.12,0.96,0.12,i*0.5,tilt,0.35+(i%3)*0.22);
+          if(i<seg.length-1){
+            const [qx,qz]=seg[i+1],qy=elevation(qx,qz);
+            const mx=(px+qx)*0.5,mz=(pz+qz)*0.5,my=(py+qy)*0.5;
+            const dx=qx-px,dz=qz-pz,len=Math.hypot(dx,dz)+0.16;
+            const yaw=-Math.atan2(dz,dx),slope=Math.atan2(qy-py,len);
+            addBox(mx,my+0.70,mz,len,0.085,0.06,yaw,slope,0.68);
+            addBox(mx,my+0.36,mz,len,0.08,0.055,yaw,slope,0.48);
+          }
+        }
+      }
+      const geo=new THREE.BufferGeometry();
+      geo.setIndex(idx);
+      geo.setAttribute("position",new THREE.Float32BufferAttribute(p,3));
+      geo.setAttribute("normal",new THREE.Float32BufferAttribute(n,3));
+      geo.setAttribute("color",new THREE.Float32BufferAttribute(c,3));
+      const mat=new THREE.MeshLambertMaterial({vertexColors:true});
+      const mesh=new THREE.Mesh(geo,mat);
+      mesh.name="meadowParallaxFence";
+      mesh.castShadow=!s.mobile;mesh.receiveShadow=true;
+      s.root.add(mesh);
     }
 
     function spruceAtlas(){
@@ -2748,12 +3006,12 @@
             vFurNormal=normalize(normal);
           `);
         shader.fragmentShader=AIBAMeadowWeather.cloudGLSL+spruceShadowGLSL+meadowPaletteGLSL+
-          "uniform sampler2D grassDetail;\nuniform sampler2D courtChalk;\nvarying float vShellFrac,vFurHeight,vFurEdge,vFurHorizon,vFurGust;\nvarying vec3 vFurWorld,vFurNormal;\nvarying vec2 vFurWind;\n"+
+          "uniform sampler2D grassDetail;\nuniform sampler2D courtChalk;\nuniform vec2 meadowFurDist;\nvarying float vShellFrac,vFurHeight,vFurEdge,vFurHorizon,vFurGust;\nvarying vec3 vFurWorld,vFurNormal;\nvarying vec2 vFurWind;\n"+
           shader.fragmentShader.replace("#include <color_fragment>",`
             #include <color_fragment>
             vec2 m=vFurWorld.xz;
             float camDist=length(cameraPosition.xz-m);
-            float distFade=1.0-smoothstep(18.0,28.5,camDist);
+            float distFade=1.0-smoothstep(meadowFurDist.x,meadowFurDist.y,camDist);
             float fadeMask=vFurEdge*distFade;
             if(fadeMask<0.015)discard;
 
@@ -3533,7 +3791,7 @@
     function applyMeadowLayers(s){
       if(!s||!s.meadow)return;
       const L=s.meadowLayers||(s.meadowLayers=parseMeadowLayers());
-      const baseNames=["alpineMeadowGround","alpineNearRidges","alpineFarSnowPeaks","alpineCloudSky","alpineMossyBoulders"];
+      const baseNames=["alpineMeadowGround","alpineNearRidges","alpineFarSnowPeaks","alpineGoldenMassif","alpineSummitBanner","alpineCloudSky","alpineMossyBoulders","meadowParallaxFence"];
       for(const n of baseNames){
         const o=s.root.getObjectByName(n);
         if(o)o.visible=!!L.base;
@@ -3678,8 +3936,13 @@
       // Long shadows, from the same direction the cloud and mountain shaders use.
       sun.position.copy(weather.uniforms.meadowSun.value).multiplyScalar(49);
       sun.color.copy(weather.wetColor).lerp(weather.sunColor,clear).lerp(weather.warmColor,gold);
+      const isTele=typeof camera!=="undefined"&&camera&&(camera.userData?.meadowTele||camera.fov<40);
+      if(weather.uniforms.meadowFurDist){
+        const teleK=isTele?THREE.MathUtils.clamp((44-(camera.fov||28))/20,0,1):0;
+        weather.uniforms.meadowFurDist.value.set(18+12*teleK,28.5+17.5*teleK);
+      }
       scene.fog.color.copy(weather.coolFog).lerp(weather.clearingFog,clear);
-      scene.fog.near=28+16*clear;scene.fog.far=275-45*rain+195*clear;
+      scene.fog.near=(28+16*clear)+(isTele?16:0);scene.fog.far=(275-45*rain+195*clear)+(isTele?95:0);
       const data=document.documentElement.dataset;
       if(data.environmentPhase!==weather.stage)data.environmentPhase=weather.stage;
       const count=String(drifts.count);
@@ -3750,6 +4013,7 @@
       s.meadow.meadowPaletteGLSL=meadowPaletteGLSL;
       s.meadow.uniforms.meadowPressure={value:new THREE.Vector4()};
       s.meadow.uniforms.meadowTreeMap={value:null};
+      s.meadow.uniforms.meadowFurDist={value:new THREE.Vector2(18.0,28.5)};
       ground(s);
       const rock=terrainTexture("alpine-rock.jpg");
       const mountain=new THREE.MeshBasicMaterial({map:rock,side:THREE.DoubleSide,fog:false});
@@ -3835,6 +4099,7 @@
         `);
       };
       mountainRange(s,true,mountain);mountainRange(s,false,mountain);
+      goldenSnowMassif(s,rock);meadowParallaxFence(s);
       spruceForest(s);meadowGrass(s);meadowRocks(s,rock);meadowShrubs(s);
       s.meadow.specShadows=spectatorShadows(s);
       s.meadow.livestock=pastureLivestock(s);

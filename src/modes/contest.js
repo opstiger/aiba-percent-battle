@@ -90,7 +90,12 @@
     P.pos.copy(base);P.face=faceTo(base,HOOP);P.walking=false;P.jump=0;P.eyeDip=0;
     G.state="cinematic";
     const eye=shotEye(first);rig.pos.set(0,11,7);rig.look.copy(HOOP);
-    glideTo(eye,HOOP.clone().add(V3(0,.15,0)),1.15,()=>countdown(3));
+    const isMeadow=typeof global.currentScenePreset==="string"&&global.currentScenePreset==="flowerCourt";
+    if(isMeadow&&!global.__flowFreeze&&global.AIBAMeadowIntro&&typeof global.AIBAMeadowIntro.start==="function"){
+      global.AIBAMeadowIntro.start({dur:3.2,endPos:eye,endLook:HOOP.clone().add(V3(0,.15,0))},()=>countdown(3));
+    }else{
+      glideTo(eye,HOOP.clone().add(V3(0,.15,0)),1.15,()=>countdown(3));
+    }
   }
   function countdown(n){
     if(G.state!=="cinematic")return;

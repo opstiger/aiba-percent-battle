@@ -31,8 +31,8 @@ function releaseCameraFov(owner){
   applyCameraFovStack();return true;
 }
 /* 机位 5:转播过肩。排在自定义视角(3、4)之后编号,这样已保存的自定义机位编号不变 */
-const CAM_SHOULDER=5,CAM_MEADOW_LOW=6;
-const CAM={mode:0,names:CAM_BASE_NAMES.concat(["自定义视角 1","自定义视角 2","转播过肩","草甸低机位"])};
+const CAM_SHOULDER=5,CAM_MEADOW_LOW=6,CAM_MEADOW_TELE=7;
+const CAM={mode:0,names:CAM_BASE_NAMES.concat(["自定义视角 1","自定义视角 2","转播过肩","草甸低机位","天山长焦"])};
 function cameraInPlay(){
   return G.state==="round"||G.state==="tiebreak"||G.state==="battle"||G.state==="rackrush"||
     G.state==="rushintro"||G.state==="rushbetween"||G.state==="pregame"||G.state==="lastshot"||
@@ -78,13 +78,13 @@ function activeCustomCameraView(mode){
 function availableCameraModes(){
   if(typeof window!=="undefined"&&window.AIBAVisionAim&&window.AIBAVisionAim.active())return [0,1];
   const modes=[0,1,2,CAM_SHOULDER];
-  if(currentScenePreset==="flowerCourt")modes.push(CAM_MEADOW_LOW);
+  if(currentScenePreset==="flowerCourt")modes.push(CAM_MEADOW_LOW,CAM_MEADOW_TELE);
   customCameraSlots.forEach((v,i)=>{if(v||cameraEditor&&cameraEditor.slot===i)modes.push(3+i);});
   return modes;
 }
 function cameraModeLabel(mode){
   const i=customCameraSlotIndex(mode);
-  if(mode===CAM_SHOULDER||mode===CAM_MEADOW_LOW)return CAM.names[mode];
+  if(mode===CAM_SHOULDER||mode===CAM_MEADOW_LOW||mode===CAM_MEADOW_TELE)return CAM.names[mode];
   return i>=0?"自定义视角 "+(i+1):(CAM_BASE_NAMES[mode]||CAM_BASE_NAMES[1]);
 }
 function setCameraIcon(){
@@ -258,6 +258,13 @@ function applyCamMode(){
   passer.g.visible=inPlay&&!!support;
   oppPasser.g.visible=inPlay&&G.mode==="battle";
   $("camBtn").style.display=inPlay?"block":"none";
+  if(CAM.mode!==CAM_MEADOW_TELE||currentScenePreset!=="flowerCourt"){
+    releaseCameraFov("meadowTele");
+    if(typeof camera!=="undefined"&&camera&&camera.userData&&!meadowIntro.on){
+      camera.userData.meadowTele=false;
+      camera.userData.meadowTeleIntro=false;
+    }
+  }
   camSnap=true; // 切换机位时下一帧硬切,避免跨场平滑造成大幅扫镜
   benchVis();
 }
@@ -380,8 +387,15 @@ function updPlayCam(dt){
   const aimYaw=aimOn&&typeof window.AIBAVisionAim.yawRad==="function"?window.AIBAVisionAim.yawRad():0;
   if(aimOn&&CAM.mode!==0&&CAM.mode!==1){CAM.mode=1;setCameraIcon();applyCamMode();}
   const isContest=G.mode==="contest";
-  if(CAM.mode===CAM_MEADOW_LOW&&currentScenePreset!=="flowerCourt"){
+  if((CAM.mode===CAM_MEADOW_LOW||CAM.mode===CAM_MEADOW_TELE)&&currentScenePreset!=="flowerCourt"){
     CAM.mode=1;setCameraIcon();applyCamMode();
+  }
+  if(CAM.mode!==CAM_MEADOW_TELE){
+    if(cameraFovStack.has("meadowTele"))releaseCameraFov("meadowTele");
+    if(typeof camera!=="undefined"&&camera&&camera.userData&&!meadowIntro.on){
+      camera.userData.meadowTele=false;
+      camera.userData.meadowTeleIntro=false;
+    }
   }
   if(CAM.mode===0){
     // 第一人称:略微后拉抬高(身体网格在本视角隐藏,不会入画);
@@ -453,6 +467,45 @@ function updPlayCam(dt){
     camTarget.look.copy(P.pos).lerp(HOOP,.36);
     camTarget.look.y=1.75+P.jump*.14;
     dampRig(dt,6.6);
+  }else if(CAM.mode===CAM_MEADOW_TELE){
+    // Experimental Xinjiang "天山长焦" telephoto compression camera: pulls far back with narrow FOV (~24-26 deg desktop)
+    // so the player & hoop keep their normal readable screen scale while the colossal Golden Snow Peak looms 2.3x larger right behind them.
+    const dx=HOOP.x-P.pos.x,dz=HOOP.z-P.pos.z;
+    const distance=Math.max(1,Math.hypot(dx,dz));
+    const ux=dx/distance,uz=dz/distance,rx=-uz,rz=ux;
+    const smooth=THREE.MathUtils.smoothstep;
+    let flightBreath=0,ballLift=0;
+    if(typeof balls!=="undefined"&&balls.length){
+      const fb=balls[balls.length-1];
+      if(fb&&fb.mesh&&(fb.phase==="fly"||(fb.phase==="path"&&fb.t<fb.tf))){
+        flightBreath=smooth(fb.t||0,.04,.42)*(1-smooth(fb.t||0,.72,1.18));
+        ballLift=clamp((fb.mesh.position.y-HOOP.y)*.22,0,.75);
+      }
+    }
+    const baseFov=fovForAspect(camera.aspect||1);
+    const ratio=(camera.aspect||1)<0.85?2.25:2.58;
+    const teleBase=clamp(2*Math.atan(Math.tan(baseFov*Math.PI/360)/ratio)*180/Math.PI,24.5,38.0);
+    const teleFov=clamp(teleBase-flightBreath*1.65,23.0,38.0);
+    // Keep subject height locked during subtle shot-flight Hitchcock breath.
+    const baseBack=12.0;
+    const back=baseBack*(Math.tan(teleBase*Math.PI/360)/Math.tan(teleFov*Math.PI/360));
+    // Gentle right-shoulder offset frames the player & hoop cleanly on the right-center while the Golden Snow Peak fills the left skyline.
+    const side=1.62*(1-2*smooth(P.pos.x,2.6,5.8))*(1-0.65*smooth(Math.abs(P.pos.x),6.0,7.2));
+    const x=P.pos.x-ux*back+rx*side,z=P.pos.z-uz*back+rz*side;
+    const field=environmentRoot.userData.placeState?.meadow?.court;
+    const groundY=field?.heightAt?field.heightAt(x,z):0;
+    camTarget.pos.set(x,groundY+1.24+P.jump*0.08,z);
+    camTarget.look.copy(P.pos).lerp(HOOP,.50);
+    camTarget.look.x-=rx*0.46;
+    camTarget.look.z-=rz*0.46;
+    camTarget.look.y=2.84+P.jump*.10+ballLift*0.45;
+    requestCameraFov("meadowTele",teleFov,25);
+    if(camera&&camera.userData){
+      camera.userData.meadowTele=true;
+      camera.userData.meadowTeleIntro=false;
+    }
+    // Smooth lateral tracking during rack walks creates Queenstown foreground-vs-mountain motion parallax.
+    dampRig(dt,G.moving||P.walking?3.1:5.4);
   }else if(CAM.mode>=3&&CAM.mode<3+CUSTOM_CAMERA_COUNT&&activeCustomCameraView(CAM.mode)){
     updateCustomCamera(dt);
   }else{
@@ -537,6 +590,171 @@ function updateCosmicCamera(ball,dt,interactive=true){
 
   cosmicGroundFX.sample(age,impact,currentScenePreset,ball.mesh);
 }
+
+/* 新疆草甸开场运镜（皇后镇低机位长焦横移视差 + 希区柯克推拉变焦）：
+   在真实游戏场景中实时运行，前段贴草掠过近景木栅栏与野草（近掠远不动），
+   后段按 d(t)·tan(FOV(t)/2) = const 锁住球员体量，把远处日照金山拉到眼前，随后丝滑交还稳定投篮机位。 */
+const meadowIntro={
+  on:false,t:0,dur:3.4,cb:null,endPos:null,endLook:null,endFov:null,skipEl:null,keyHandler:null,prevPlayerVis:true
+};
+function meadowIntroSkipUI(show){
+  if(typeof document==="undefined")return;
+  if(show&&!meadowIntro.skipEl){
+    const b=meadowIntro.skipEl=document.createElement("button");
+    b.id="meadowIntroSkip";b.type="button";b.className="btn sm";b.textContent="跳过 ≫";
+    b.style.cssText="position:fixed;right:calc(14px + env(safe-area-inset-right,0px));bottom:calc(22px + env(safe-area-inset-bottom,0px));z-index:62;pointer-events:auto;opacity:.86;margin:0";
+    const skip=e=>{e.preventDefault();e.stopPropagation();if(meadowIntro.on)stopMeadowIntro(true);};
+    b.addEventListener("pointerdown",skip);b.addEventListener("click",skip);
+    document.body.appendChild(b);
+  }
+  if(meadowIntro.skipEl)meadowIntro.skipEl.style.display=show?"block":"none";
+  if(show&&!meadowIntro.keyHandler){
+    meadowIntro.keyHandler=e=>{
+      if(!meadowIntro.on)return;
+      if(e.code==="Space"||e.code==="Escape"||e.code==="Enter"){e.preventDefault();stopMeadowIntro(true);}
+    };
+    window.addEventListener("keydown",meadowIntro.keyHandler);
+  }else if(!show&&meadowIntro.keyHandler){
+    window.removeEventListener("keydown",meadowIntro.keyHandler);
+    meadowIntro.keyHandler=null;
+  }
+}
+function sampleMeadowIntroPose(u,opts){
+  opts=opts||{};
+  const smooth=THREE.MathUtils.smoothstep,mix=THREE.MathUtils.lerp;
+  const pPos=opts.playerPos||P.pos;
+  const field=typeof environmentRoot!=="undefined"?environmentRoot?.userData?.placeState?.meadow?.court:null;
+  const hAt=(x,z)=>(field&&typeof field.heightAt==="function"?field.heightAt(x,z):0);
+  const dx=HOOP.x-pPos.x,dz=HOOP.z-pPos.z;
+  const distPH=Math.max(1,Math.hypot(dx,dz));
+  const ux=dx/distPH,uz=dz/distPH,rx=-uz,rz=ux;
+  const anchor=V3(pPos.x+dx*0.18,1.88,pPos.z+dz*0.18);
+  const baseFov=fovForAspect((typeof camera!=="undefined"&&camera&&camera.aspect)||1.6);
+  const portrait=((typeof camera!=="undefined"&&camera&&camera.aspect)||1.6)<0.85;
+  const fovWide=clamp(baseFov*(portrait?0.86:0.94),46,72);
+  const fovTele=clamp(portrait?35.5:26.5,24.5,38);
+  const fovSweepStart=clamp(portrait?36.5:27.5,25.0,40);
+
+  // Act 1 (0.00 -> 0.46): Queenstown low-angle lateral telephoto glide past south-west timber pasture fence & tall wildgrass.
+  // Act 2 (0.46 -> 0.86): Classic Hitchcock Dolly-Zoom (pull back while zooming narrow, d*tan(fov/2) = const -> Golden Snow Peak surges!).
+  // Act 3 (0.86 -> 1.00): Brief monumental hold + silky settle into the player's stable shooting view.
+  const d0=5.15;
+  const sideHitch=1.55;
+  const hitchPos=(fovDeg)=>{
+    const d=d0*(Math.tan(fovWide*Math.PI/360)/Math.tan(fovDeg*Math.PI/360));
+    const px=anchor.x-ux*d+rx*sideHitch,pz=anchor.z-uz*d+rz*sideHitch;
+    return V3(px,hAt(px,pz)+1.20,pz);
+  };
+  const hitchStart=hitchPos(fovWide);
+  const hitchEnd=hitchPos(fovTele);
+  const pos=V3(),look=V3();
+  let fov=fovTele,introFlag=true;
+
+  if(u<0.46){
+    const k=smooth(u,0.0,0.46);
+    // Curve smoothly past the weathered pasture fence (x:-13..-8, z:10.5) with zero spectators in front of the lens:
+    // close timber rails & wildflowers whip past at ~120x angular speed while the colossal Golden Peak stays rock-steady!
+    const sx=-9.8,sz=13.2;
+    const cx=-4.2,cz=9.8;
+    const inv=1-k;
+    const x=inv*inv*sx+2*inv*k*cx+k*k*hitchStart.x;
+    const z=inv*inv*sz+2*inv*k*cz+k*k*hitchStart.z;
+    const y=hAt(x,z)+mix(1.12,1.20,k);
+    pos.set(x,y,z);
+    // Keep gaze sweeping smoothly across player + hoop toward the colossal Golden Snow Peak (keeping its blazing summit cleanly inside the top sky!).
+    look.set(
+      mix(pPos.x-1.8,anchor.x+dx*0.30-rx*0.42,k),
+      mix(3.05,2.45,k),
+      mix(pPos.z-5.6,anchor.z+dz*0.30-rz*0.42,k)
+    );
+    fov=mix(fovSweepStart,fovWide,smooth(k,0.34,1.0));
+  }else if(u<0.86){
+    const k=smooth(u,0.46,0.86);
+    // Exact Hitchcock Vertigo dolly-zoom: fov narrows while distance increases proportionally to keep subject screen height constant!
+    fov=mix(fovWide,fovTele,k);
+    pos.copy(hitchPos(fov));
+    look.set(
+      anchor.x+dx*mix(0.30,0.38,k)-rx*mix(0.42,0.50,k),
+      mix(2.45,2.92,k),
+      anchor.z+dz*mix(0.30,0.38,k)-rz*mix(0.42,0.50,k)
+    );
+  }else{
+    const k=smooth(u,0.88,1.0);
+    const keepTele=CAM.mode===CAM_MEADOW_TELE;
+    const targetPos=keepTele||!opts.endPos?hitchEnd:opts.endPos;
+    const targetLook=keepTele||!opts.endLook?V3(anchor.x+dx*0.38-rx*0.50,2.92,anchor.z+dz*0.38-rz*0.50):opts.endLook;
+    const targetFov=keepTele||opts.endFov==null?fovTele:opts.endFov;
+    pos.copy(hitchEnd).lerp(targetPos,k);
+    look.set(anchor.x+dx*0.38-rx*0.50,2.92,anchor.z+dz*0.38-rz*0.50).lerp(targetLook,k);
+    fov=mix(fovTele,targetFov,k);
+    if(k>0.75&&!keepTele)introFlag=false;
+  }
+  return {pos,look,fov,tele:fov<44,introFlag};
+}
+function startMeadowIntro(opts,done){
+  if(typeof opts==="function"){done=opts;opts={};}
+  opts=opts||{};
+  meadowIntro.on=true;meadowIntro.t=0;meadowIntro.dur=Number(opts.dur)||3.4;
+  meadowIntro.cb=typeof done==="function"?done:null;
+  meadowIntro.endPos=opts.endPos?opts.endPos.clone():null;
+  meadowIntro.endLook=opts.endLook?opts.endLook.clone():null;
+  meadowIntro.endFov=opts.endFov!=null?Number(opts.endFov):fovForAspect((typeof camera!=="undefined"&&camera&&camera.aspect)||1.6);
+  if(typeof player!=="undefined"&&player&&player.g){
+    meadowIntro.prevPlayerVis=player.g.visible;
+    player.g.visible=true;
+    player.g.position.set(P.pos.x,0,P.pos.z);
+    player.g.rotation.y=P.face;
+  }
+  if(typeof hands!=="undefined"&&hands)hands.visible=false;
+  const s0=sampleMeadowIntroPose(0,{endPos:meadowIntro.endPos,endLook:meadowIntro.endLook,endFov:meadowIntro.endFov});
+  rig.pos.copy(s0.pos);rig.look.copy(s0.look);camSnap=true;
+  requestCameraFov("meadowIntro",s0.fov,35);
+  if(typeof camera!=="undefined"&&camera&&camera.userData){
+    camera.userData.meadowTele=true;
+    camera.userData.meadowTeleIntro=true;
+  }
+  if(opts.showSkip!==false)meadowIntroSkipUI(true);
+  return true;
+}
+function stopMeadowIntro(runCb){
+  if(!meadowIntro.on)return;
+  const cb=meadowIntro.cb;
+  meadowIntro.on=false;meadowIntro.t=0;meadowIntro.cb=null;
+  meadowIntroSkipUI(false);
+  releaseCameraFov("meadowIntro");
+  if(typeof camera!=="undefined"&&camera&&camera.userData){
+    camera.userData.meadowTele=(CAM.mode===CAM_MEADOW_TELE&&currentScenePreset==="flowerCourt");
+    camera.userData.meadowTeleIntro=false;
+  }
+  if(meadowIntro.endPos&&meadowIntro.endLook&&CAM.mode!==CAM_MEADOW_TELE){
+    rig.pos.copy(meadowIntro.endPos);rig.look.copy(meadowIntro.endLook);camSnap=true;
+  }
+  if(runCb&&cb)cb();
+}
+function updateMeadowIntro(dt){
+  if(!meadowIntro.on)return false;
+  if(currentScenePreset!=="flowerCourt"){stopMeadowIntro(true);return false;}
+  meadowIntro.t+=Math.max(0,dt||0.016);
+  const u=clamp(meadowIntro.t/Math.max(0.1,meadowIntro.dur),0,1);
+  const sample=sampleMeadowIntroPose(u,{endPos:meadowIntro.endPos,endLook:meadowIntro.endLook,endFov:meadowIntro.endFov});
+  rig.pos.copy(sample.pos);rig.look.copy(sample.look);camSnap=true;
+  requestCameraFov("meadowIntro",sample.fov,35);
+  if(typeof camera!=="undefined"&&camera&&camera.userData){
+    camera.userData.meadowTele=sample.tele;
+    camera.userData.meadowTeleIntro=sample.introFlag;
+  }
+  if(u>=1){stopMeadowIntro(true);return false;}
+  return true;
+}
+function applyMeadowIntroAt(u,opts){
+  const s=sampleMeadowIntroPose(clamp(Number(u)||0,0,1),opts||{});
+  rig.pos.copy(s.pos);rig.look.copy(s.look);
+  camera.position.copy(s.pos);camera.lookAt(s.look);
+  requestCameraFov("meadowIntro",s.fov,35);
+  if(camera&&camera.userData){camera.userData.meadowTele=s.tele;camera.userData.meadowTeleIntro=s.introFlag;}
+  camera.updateMatrixWorld();
+  return s;
+}
 /* CameraDirector：所有镜头的唯一调度入口。镜头优先级固定为
    调试编辑器 > 回放/胜利/英雄演出 > 过场接管 > 模式专属镜头 > 常规跟随。
    具体镜头仍由各演出模块提供，这里只决定本帧谁拥有 rig，避免 game-loop
@@ -557,7 +775,12 @@ function updateCameraDirector(dt){
   if(winCine.on){updWinCine(dt);return "win";}
   if(cosmic){updateCosmicCamera(cosmicBall,dt);return "cosmic";}
   if(hero.on){updHero(dt);if(hero.on)return "hero";}
+  if(meadowIntro.on){if(updateMeadowIntro(dt))return "meadowIntro";}
   if(G.cutAway||G.battleCut||G.state==="pregame")return "takeover";
+  if(cameraFovStack.has("meadowTele")&&(currentScenePreset!=="flowerCourt"||CAM.mode!==CAM_MEADOW_TELE||!["round","tiebreak","battle","rackrush","bootshot","resultbeat","lastshot"].includes(G.state))){
+    releaseCameraFov("meadowTele");
+    if(camera&&camera.userData&&!meadowIntro.on){camera.userData.meadowTele=false;camera.userData.meadowTeleIntro=false;}
+  }
   if(G.state==="aishow"){updShowCam();return "show";}
   if(["menu","diff","intro","roundend","sim","bracket","champion","runnerup","eliminated","battleend","rushend","lsend"].includes(G.state)){
     const a=G.tNow*0.1;
@@ -595,6 +818,7 @@ function ballWorldPos(out){
 window.AIBA.runtime.register("rendering:camera",Object.freeze({
   P,CAM,faceTo,cycleCam,setCameraMode,applyCamMode,eyePos,autoFrameCam,updPlayCam,updateCameraDirector,ballWorldPos,
   requestCameraFov,releaseCameraFov,applyCameraFovStack,
+  startMeadowIntro,stopMeadowIntro,sampleMeadowIntroPose,applyMeadowIntroAt,
   customCameraSlots,availableCameraModes,customCameraSettingsMarkup,beginCustomCameraEdit,saveEditing,cancelEditing,
   useCustomCameraSlot,clearCustomCameraSlot,
   isEditing:()=>!!cameraEditor,updateEditor:()=>!!cameraEditor&&updateCustomCamera(0)
@@ -611,3 +835,7 @@ window.AIBACamera=Object.freeze({
   isEditing:()=>!!cameraEditor,updateEditor:()=>!!cameraEditor&&updateCustomCamera(0)
 });
 window.AIBACameraFov=Object.freeze({request:requestCameraFov,release:releaseCameraFov,apply:applyCameraFovStack});
+window.AIBAMeadowIntro=Object.freeze({
+  start:startMeadowIntro,stop:stopMeadowIntro,sample:sampleMeadowIntroPose,applyAt:applyMeadowIntroAt,
+  isActive:()=>!!meadowIntro.on,release:()=>{releaseCameraFov("meadowIntro");if(camera&&camera.userData){camera.userData.meadowTele=CAM.mode===CAM_MEADOW_TELE&&currentScenePreset==="flowerCourt";camera.userData.meadowTeleIntro=false;}}
+});
