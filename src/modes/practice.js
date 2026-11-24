@@ -35,7 +35,7 @@
     };
     const isMeadow=typeof global.currentScenePreset==="string"&&global.currentScenePreset==="flowerCourt";
     if(isMeadow&&!global.__flowFreeze&&global.AIBAMeadowIntro&&typeof global.AIBAMeadowIntro.start==="function"){
-      global.AIBAMeadowIntro.start({dur:3.2,endPos:shotEye(G.seq[0]),endLook:HOOP.clone().add(V3(0,0.15,0))},readyPractice);
+      global.AIBAMeadowIntro.start({dur:5.4,endPos:shotEye(G.seq[0]),endLook:HOOP.clone().add(V3(0,0.15,0))},readyPractice);
     }else{
       glideTo(shotEye(G.seq[0]),HOOP.clone().add(V3(0,0.15,0)),1.4,readyPractice);
     }

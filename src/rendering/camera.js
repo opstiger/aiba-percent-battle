@@ -468,44 +468,63 @@ function updPlayCam(dt){
     camTarget.look.y=1.75+P.jump*.14;
     dampRig(dt,6.6);
   }else if(CAM.mode===CAM_MEADOW_TELE){
-    // Experimental Xinjiang "天山长焦" telephoto compression camera: pulls far back with narrow FOV (~24-26 deg desktop)
-    // so the player & hoop keep their normal readable screen scale while the colossal Golden Snow Peak looms 2.3x larger right behind them.
+    // Upgraded Xinjiang "天山长焦" telephoto compression shooting camera:
+    // Elevated athletic broadcast height (~1.95m), smart North-Mountain-Corridor framing across all 5 racks
+    // (zero bench spectators / fence posts blocking corners, every rack frames player + hoop + colossal Golden Snow Peak),
+    // and dynamic shot-arc vertical tracking so high-arcing shots stay cleanly inside the frame.
     const dx=HOOP.x-P.pos.x,dz=HOOP.z-P.pos.z;
     const distance=Math.max(1,Math.hypot(dx,dz));
-    const ux=dx/distance,uz=dz/distance,rx=-uz,rz=ux;
+    const ux=dx/distance,uz=dz/distance;
     const smooth=THREE.MathUtils.smoothstep;
     let flightBreath=0,ballLift=0;
     if(typeof balls!=="undefined"&&balls.length){
       const fb=balls[balls.length-1];
       if(fb&&fb.mesh&&(fb.phase==="fly"||(fb.phase==="path"&&fb.t<fb.tf))){
-        flightBreath=smooth(fb.t||0,.04,.42)*(1-smooth(fb.t||0,.72,1.18));
-        ballLift=clamp((fb.mesh.position.y-HOOP.y)*.22,0,.75);
+        flightBreath=smooth(fb.t||0,.04,.42)*(1-smooth(fb.t||0,.78,1.28));
+        ballLift=clamp((fb.mesh.position.y-HOOP.y)*.42,0,1.45);
       }
     }
-    const baseFov=fovForAspect(camera.aspect||1);
-    const ratio=(camera.aspect||1)<0.85?2.25:2.58;
-    const teleBase=clamp(2*Math.atan(Math.tan(baseFov*Math.PI/360)/ratio)*180/Math.PI,24.5,38.0);
-    const teleFov=clamp(teleBase-flightBreath*1.65,23.0,38.0);
-    // Keep subject height locked during subtle shot-flight Hitchcock breath.
-    const baseBack=12.0;
+    const aspect=camera.aspect||1;
+    const portrait=aspect<0.85;
+    const cornerK=smooth(Math.abs(P.pos.x),2.6,6.6);
+    // Keep the telephoto camera cleanly inside the open south meadow corridor (|x| <= 9.35m, inside the |x|>=10m
+    // sideline spectator & bench ring!) while pulling deeper south at corners so ALL 5 racks frame
+    // player + wooden hoop + colossal Xinjiang Golden Snow Peak with ZERO foreground obstructions!
+    const northBlend=cornerK*0.72;
+    let vx=ux*(1-northBlend),vz=uz*(1-northBlend)-northBlend;
+    const vLen=Math.hypot(vx,vz)||1;
+    vx/=vLen;vz/=vLen;
+    const rx=-vz,rz=vx;
+
+    const baseFov=fovForAspect(aspect);
+    const deskFov=clamp(2*Math.atan(Math.tan(baseFov*Math.PI/360)/2.85)*180/Math.PI,22.5,27.0);
+    const portFov=THREE.MathUtils.lerp(30.5,46.0,cornerK*cornerK);
+    const teleBase=portrait?portFov:deskFov;
+    const teleFov=clamp(teleBase-flightBreath*1.4,21.0,46.5);
+    // Deeper pullback at corners keeps the horizontal angle between corner player & hoop tight inside narrow portrait screens!
+    const baseBack=portrait?THREE.MathUtils.lerp(13.8,16.8,cornerK):THREE.MathUtils.lerp(14.2,16.2,cornerK);
     const back=baseBack*(Math.tan(teleBase*Math.PI/360)/Math.tan(teleFov*Math.PI/360));
-    // Gentle right-shoulder offset frames the player & hoop cleanly on the right-center while the Golden Snow Peak fills the left skyline.
-    const side=1.62*(1-2*smooth(P.pos.x,2.6,5.8))*(1-0.65*smooth(Math.abs(P.pos.x),6.0,7.2));
-    const x=P.pos.x-ux*back+rx*side,z=P.pos.z-uz*back+rz*side;
+    const side=1.35*(1-cornerK)*(1-2*smooth(P.pos.x,2.6,5.8));
+    const rawX=P.pos.x-vx*back+rx*side;
+    const x=clamp(rawX,-9.35,9.35);
+    const z=P.pos.z-vz*back+rz*side;
     const field=environmentRoot.userData.placeState?.meadow?.court;
     const groundY=field?.heightAt?field.heightAt(x,z):0;
-    camTarget.pos.set(x,groundY+1.24+P.jump*0.08,z);
-    camTarget.look.copy(P.pos).lerp(HOOP,.50);
-    camTarget.look.x-=rx*0.46;
-    camTarget.look.z-=rz*0.46;
-    camTarget.look.y=2.84+P.jump*.10+ballLift*0.45;
+    const camHeight=THREE.MathUtils.lerp(1.92,2.24,cornerK)+P.jump*0.10;
+    camTarget.pos.set(x,groundY+camHeight,z);
+    // Center gaze cleanly between player and hoop so both stay comfortably framed with soaring Golden Snow Peak above.
+    const lookK=THREE.MathUtils.lerp(0.46,0.45,cornerK);
+    camTarget.look.copy(P.pos).lerp(HOOP,lookK);
+    camTarget.look.x-=rx*(0.32*(1-cornerK));
+    camTarget.look.z-=rz*(0.32*(1-cornerK));
+    camTarget.look.y=THREE.MathUtils.lerp(2.78,2.62,cornerK)+P.jump*0.12+ballLift;
     requestCameraFov("meadowTele",teleFov,25);
     if(camera&&camera.userData){
       camera.userData.meadowTele=true;
       camera.userData.meadowTeleIntro=false;
     }
     // Smooth lateral tracking during rack walks creates Queenstown foreground-vs-mountain motion parallax.
-    dampRig(dt,G.moving||P.walking?3.1:5.4);
+    dampRig(dt,G.moving||P.walking?3.0:5.6);
   }else if(CAM.mode>=3&&CAM.mode<3+CUSTOM_CAMERA_COUNT&&activeCustomCameraView(CAM.mode)){
     updateCustomCamera(dt);
   }else{
@@ -595,7 +614,7 @@ function updateCosmicCamera(ball,dt,interactive=true){
    在真实游戏场景中实时运行，前段贴草掠过近景木栅栏与野草（近掠远不动），
    后段按 d(t)·tan(FOV(t)/2) = const 锁住球员体量，把远处日照金山拉到眼前，随后丝滑交还稳定投篮机位。 */
 const meadowIntro={
-  on:false,t:0,dur:3.4,cb:null,endPos:null,endLook:null,endFov:null,skipEl:null,keyHandler:null,prevPlayerVis:true
+  on:false,t:0,dur:5.4,cb:null,endPos:null,endLook:null,endFov:null,skipEl:null,keyHandler:null,prevPlayerVis:true
 };
 function meadowIntroSkipUI(show){
   if(typeof document==="undefined")return;
@@ -628,68 +647,85 @@ function sampleMeadowIntroPose(u,opts){
   const dx=HOOP.x-pPos.x,dz=HOOP.z-pPos.z;
   const distPH=Math.max(1,Math.hypot(dx,dz));
   const ux=dx/distPH,uz=dz/distPH,rx=-uz,rz=ux;
-  const anchor=V3(pPos.x+dx*0.18,1.88,pPos.z+dz*0.18);
-  const baseFov=fovForAspect((typeof camera!=="undefined"&&camera&&camera.aspect)||1.6);
-  const portrait=((typeof camera!=="undefined"&&camera&&camera.aspect)||1.6)<0.85;
-  const fovWide=clamp(baseFov*(portrait?0.86:0.94),46,72);
-  const fovTele=clamp(portrait?35.5:26.5,24.5,38);
-  const fovSweepStart=clamp(portrait?36.5:27.5,25.0,40);
+  const aspect=(typeof camera!=="undefined"&&camera&&camera.aspect)||1.6;
+  const portrait=aspect<0.85;
+  // Wide -> extreme telephoto (~4.0x Vertigo ratio!) so the Hitchcock dolly-zoom is slow, hypnotic, and unmistakable on both mobile & desktop!
+  const fovWide=portrait?86.0:74.0;
+  const fovTele=portrait?26.5:22.0;
 
-  // Act 1 (0.00 -> 0.46): Queenstown low-angle lateral telephoto glide past south-west timber pasture fence & tall wildgrass.
-  // Act 2 (0.46 -> 0.86): Classic Hitchcock Dolly-Zoom (pull back while zooming narrow, d*tan(fov/2) = const -> Golden Snow Peak surges!).
-  // Act 3 (0.86 -> 1.00): Brief monumental hold + silky settle into the player's stable shooting view.
-  const d0=5.15;
-  const sideHitch=1.55;
-  const hitchPos=(fovDeg)=>{
-    const d=d0*(Math.tan(fovWide*Math.PI/360)/Math.tan(fovDeg*Math.PI/360));
-    const px=anchor.x-ux*d+rx*sideHitch,pz=anchor.z-uz*d+rz*sideHitch;
-    return V3(px,hAt(px,pz)+1.20,pz);
+  // Exact Hitchcock Vertigo lock anchored STRICTLY on the player's own position pPos!
+  // Holding d(t) * tan(fov(t)/2) === CONST keeps the player's screen height 100% locked while the hoop & colossal
+  // Xinjiang Golden Snow Peak surge ~4x larger right behind their shoulder!
+  const d0=portrait?3.55:3.65;
+  const sideFrac=0.22; // Keep side angle constant as d grows so the player stays anchored at the exact same horizontal screen position!
+  const hitchPos=(fovDeg,tZoom)=>{
+    const scale=Math.tan(fovWide*Math.PI/360)/Math.tan(fovDeg*Math.PI/360);
+    const d=d0*scale;
+    const side=d*sideFrac;
+    const px=pPos.x-ux*d+rx*side,pz=pPos.z-uz*d+rz*side;
+    const y=hAt(px,pz)+mix(1.78,2.04,tZoom);
+    return V3(px,y,pz);
   };
-  const hitchStart=hitchPos(fovWide);
-  const hitchEnd=hitchPos(fovTele);
+  const hitchLook=(tZoom)=>V3(
+    pPos.x+dx*mix(0.32,0.44,tZoom)-rx*mix(0.24,0.34,tZoom),
+    mix(2.26,2.86,tZoom),
+    pPos.z+dz*mix(0.32,0.44,tZoom)-rz*mix(0.24,0.34,tZoom)
+  );
+
+  const hitchStart=hitchPos(fovWide,0);
+  const hitchEnd=hitchPos(fovTele,1);
+  const lookStart=hitchLook(0);
+  const lookEnd=hitchLook(1);
   const pos=V3(),look=V3();
   let fov=fovTele,introFlag=true;
 
-  if(u<0.46){
-    const k=smooth(u,0.0,0.46);
-    // Curve smoothly past the weathered pasture fence (x:-13..-8, z:10.5) with zero spectators in front of the lens:
-    // close timber rails & wildflowers whip past at ~120x angular speed while the colossal Golden Peak stays rock-steady!
-    const sx=-9.8,sz=13.2;
-    const cx=-4.2,cz=9.8;
+  // Phase 1 (0.00 -> 0.24, ~1.3s): Clean Queenstown lateral glide at steady wide lens (NO FOV bounce!) sweeping past foreground grass into Hitchcock start.
+  // Phase 2 (0.24 -> 0.82, ~3.15s): Pure, uninterrupted, hypnotic 4x Hitchcock Vertigo Dolly-Zoom!
+  // Phase 3 (0.82 -> 0.90, ~0.43s): Monumental beat hold at max telephoto compression.
+  // Phase 4 (0.90 -> 1.00, ~0.54s): Silky ease into the active gameplay camera.
+  if(u<0.24){
+    const k=smooth(u,0.0,0.24);
+    const sx=pPos.x-ux*5.8-rx*6.4,sz=pPos.z-uz*5.8-rz*6.4;
+    const cx=pPos.x-ux*4.4-rx*2.2,cz=pPos.z-uz*4.4-rz*2.2;
     const inv=1-k;
     const x=inv*inv*sx+2*inv*k*cx+k*k*hitchStart.x;
     const z=inv*inv*sz+2*inv*k*cz+k*k*hitchStart.z;
-    const y=hAt(x,z)+mix(1.12,1.20,k);
-    pos.set(x,y,z);
-    // Keep gaze sweeping smoothly across player + hoop toward the colossal Golden Snow Peak (keeping its blazing summit cleanly inside the top sky!).
+    pos.set(x,hAt(x,z)+mix(1.62,1.78,k),z);
     look.set(
-      mix(pPos.x-1.8,anchor.x+dx*0.30-rx*0.42,k),
-      mix(3.05,2.45,k),
-      mix(pPos.z-5.6,anchor.z+dz*0.30-rz*0.42,k)
+      mix(pPos.x+dx*0.18-rx*0.85,lookStart.x,k),
+      mix(2.38,lookStart.y,k),
+      mix(pPos.z+dz*0.18-rz*0.85,lookStart.z,k)
     );
-    fov=mix(fovSweepStart,fovWide,smooth(k,0.34,1.0));
-  }else if(u<0.86){
-    const k=smooth(u,0.46,0.86);
-    // Exact Hitchcock Vertigo dolly-zoom: fov narrows while distance increases proportionally to keep subject screen height constant!
-    fov=mix(fovWide,fovTele,k);
-    pos.copy(hitchPos(fov));
-    look.set(
-      anchor.x+dx*mix(0.30,0.38,k)-rx*mix(0.42,0.50,k),
-      mix(2.45,2.92,k),
-      anchor.z+dz*mix(0.30,0.38,k)-rz*mix(0.42,0.50,k)
-    );
+    fov=fovWide;
+    introFlag=false;
+  }else if(u<0.82){
+    const lin=clamp((u-0.24)/0.58,0,1);
+    // Smooth perceptual zoom-rate curve (exponential FOV interpolation feels linear in optical magnification, never rushing the end!).
+    const k=smooth(lin,0,1);
+    const tanW=Math.tan(fovWide*Math.PI/360),tanT=Math.tan(fovTele*Math.PI/360);
+    const tanCur=tanW*Math.pow(tanT/tanW,k);
+    fov=2*Math.atan(tanCur)*180/Math.PI;
+    pos.copy(hitchPos(fov,k));
+    look.copy(hitchLook(k));
+    introFlag=false;
+  }else if(u<0.90){
+    // Hold at peak 4x telephoto compression so the eye absorbs the towering Golden Snow Peak!
+    fov=fovTele;
+    pos.copy(hitchEnd);
+    look.copy(lookEnd);
+    introFlag=false;
   }else{
-    const k=smooth(u,0.88,1.0);
+    const k=smooth(u,0.90,1.0);
     const keepTele=CAM.mode===CAM_MEADOW_TELE;
     const targetPos=keepTele||!opts.endPos?hitchEnd:opts.endPos;
-    const targetLook=keepTele||!opts.endLook?V3(anchor.x+dx*0.38-rx*0.50,2.92,anchor.z+dz*0.38-rz*0.50):opts.endLook;
+    const targetLook=keepTele||!opts.endLook?lookEnd:opts.endLook;
     const targetFov=keepTele||opts.endFov==null?fovTele:opts.endFov;
     pos.copy(hitchEnd).lerp(targetPos,k);
-    look.set(anchor.x+dx*0.38-rx*0.50,2.92,anchor.z+dz*0.38-rz*0.50).lerp(targetLook,k);
+    look.copy(lookEnd).lerp(targetLook,k);
     fov=mix(fovTele,targetFov,k);
-    if(k>0.75&&!keepTele)introFlag=false;
+    introFlag=false;
   }
-  return {pos,look,fov,tele:fov<44,introFlag};
+  return {pos,look,fov,tele:fov<46,introFlag};
 }
 function startMeadowIntro(opts,done){
   if(typeof opts==="function"){done=opts;opts={};}

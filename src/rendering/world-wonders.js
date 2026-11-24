@@ -2454,14 +2454,15 @@
       // Uses a high-detail ridged-multifractal alpine ridge mesh (not smooth cones!) with authentic Bogda tri-spires,
       // knife-edge granite arêtes, recessed glacial cirques, and a clean open saddle behind the wooden hoop (a = 0)
       // so the hoop silhouette NEVER overlaps the peak while telephoto compression fills the sky with blazing golden snow.
-      const cols=s.mobile?76:128,rows=s.mobile?22:34;
-      const aMin=-0.68,aMax=0.68;
-      // [bearing rad, summit height m] — primary colossal Bogda tri-peak on left (-0.26..-0.14), open sky saddle behind hoop (0.0), east horn (+0.24).
+      const cols=s.mobile?92:148,rows=s.mobile?24:36;
+      const aMin=-0.96,aMax=0.96;
+      // [bearing rad, summit height m] — wide Xinjiang Bogda tri-peak massif covering both center & corner-rack sightlines,
+      // with a clean open sky saddle behind the wooden hoop (a = 0) so the hoop silhouette never overlaps a peak.
       const skyline=[
-        [-0.68,38],[-0.56,52],[-0.44,64],[-0.35,71],[-0.295,86],[-0.255,79],
-        [-0.215,96],[-0.182,102],[-0.152,88],[-0.118,75],[-0.075,54],[-0.030,42],
-        [0.025,40],[0.085,48],[0.145,62],[0.195,77],[0.242,88],[0.295,74],
-        [0.365,68],[0.460,55],[0.570,46],[0.680,36]
+        [-0.96,38],[-0.82,56],[-0.68,74],[-0.56,88],[-0.46,78],[-0.37,70],
+        [-0.295,88],[-0.255,81],[-0.215,98],[-0.180,104],[-0.148,89],[-0.112,74],
+        [-0.072,52],[-0.028,40],[0.028,39],[0.085,48],[0.145,64],[0.195,79],
+        [0.242,91],[0.295,76],[0.380,72],[0.485,86],[0.590,74],[0.720,62],[0.840,50],[0.960,36]
       ];
       const positions=[],uvs=[],meta=[],indices=[];
       const ridgeH=[],angles=[];
@@ -2474,7 +2475,7 @@
         // Sharp piecewise-linear ridge crest + jagged alpine crag serrations (zero rounded hills!).
         const saw1=1-Math.abs(Math.sin(a*34+0.6));
         const saw2=1-Math.abs(Math.sin(a*73-1.2));
-        const crag=(saw1*3.8+saw2*1.9-2.8)*smooth(Math.abs(a),0.05,0.14)*(1-smooth(Math.abs(a),0.45,0.68));
+        const crag=(saw1*3.8+saw2*1.9-2.8)*smooth(Math.abs(a),0.05,0.14)*(1-smooth(Math.abs(a),0.72,0.96));
         ridgeH.push(THREE.MathUtils.lerp(h0,h1,f)+crag);
         angles.push(a);
       }
@@ -2498,7 +2499,7 @@
           const buttress=(ribSharp-0.42)*(s.mobile?14.5:21.5)*wallEnv*(0.55+0.45*smooth(peakY,42,98));
           const r=rFront+t*rDepth-buttress+8.5*Math.sin(a*7+0.8);
           const relief=(ribSharp-0.46)*(s.mobile?0.17:0.22)*wallEnv;
-          const edgeTaper=1-smooth(Math.abs(a),0.52,0.68);
+          const edgeTaper=1-smooth(Math.abs(a),0.78,0.96);
           const y=-8+(peakY+8)*(slope+relief)*edgeTaper-8*(1-edgeTaper);
           const x=Math.sin(a)*r,z=COURT.midZ-Math.cos(a)*r;
           positions.push(x,y,z);
@@ -2557,9 +2558,9 @@
           float litCrest=smoothstep(-0.04,0.22,face+(macroG-0.30)*0.16);
           float razorRim=pow(clamp(1.0-abs(face-0.06)*2.4,0.0,1.0),2.0)*vPeakMeta.w;
 
-          // Noble sunlit champagne-gold snow in bright daylight -> blazing molten coral-gold "日照金山" at sunset/golden hour!
-          float goldenPhase=clamp(mix(0.32,1.0,meadowSky.y)*(0.50+0.50*meadowSky.x),0.16,1.0);
-          vec3 shadowSnow=mix(vec3(0.22,0.36,0.62),vec3(0.15,0.26,0.52),meadowSky.y);
+          // Dramatic cloud-break sunlit gold crest even on opening arrival (progress=0) -> blazing full molten gold "日照金山" at sunset!
+          float goldenPhase=clamp(mix(0.46,1.0,meadowSky.y)*(0.66+0.34*meadowSky.x),0.32,1.0);
+          vec3 shadowSnow=mix(vec3(0.20,0.34,0.60),vec3(0.14,0.25,0.52),meadowSky.y);
           vec3 shadowRock=mix(vec3(0.08,0.12,0.22),vec3(0.06,0.10,0.20),meadowSky.y);
           vec3 shadedFace=mix(shadowRock,shadowSnow,snowMask)*(0.70+0.40*max(0.0,nrm.y));
           // Subtle sky bounce in shaded snow couloirs keeps glacier detail readable.
@@ -2572,23 +2573,23 @@
           vec3 goldLit=mix(goldRock,goldSnow,snowMask)*(0.86+0.32*fineG);
           goldLit+=vec3(1.25,0.58,0.14)*razorRim*0.54;
 
-          vec3 litFace=mix(dayLit,goldLit,goldenPhase*(0.38+0.62*vPeakMeta.w));
+          vec3 litFace=mix(dayLit,goldLit,goldenPhase*(0.42+0.58*vPeakMeta.w));
           vec3 col=mix(shadedFace,litFace,litCrest);
-          col=mix(col,col*vec3(0.76,0.86,1.05)+vec3(0.015,0.025,0.045),(1.0-meadowSky.x)*0.36*(1.0-vPeakMeta.w*0.42));
+          col=mix(col,col*vec3(0.84,0.90,1.04)+vec3(0.012,0.020,0.036),(1.0-meadowSky.x)*0.22*(1.0-vPeakMeta.w*0.55));
 
-          // Delicate low-foot valley mist ("薄云缠脚，金顶破空") tucked below y=34m so the towering golden massif stays 100% unobstructed!
+          // Delicate low-foot valley mist ("薄云缠脚，金顶破空") tucked below y=30m so the towering golden massif stays 100% crisp even at game start!
           vec2 cUV=vPeakWorld.xz*1.45+vec2(meadowClock*1.4,-meadowClock*0.55);
           float cA=cloudDensity(cUV*0.55);
           float cB=cloudDensity(cUV*1.55+vec2(vPeakWorld.y*2.0,17.0));
-          float lowMist=exp(-pow((vPeakWorld.y-16.0)/11.5,2.0))*smoothstep(40.0,18.0,vPeakWorld.y);
-          float mistOpacity=clamp(lowMist*smoothstep(0.36,0.76,cA*0.6+cB*0.4)*mix(0.48,0.22,meadowSky.x),0.0,0.46);
+          float lowMist=exp(-pow((vPeakWorld.y-15.0)/10.0,2.0))*smoothstep(36.0,16.0,vPeakWorld.y);
+          float mistOpacity=clamp(lowMist*smoothstep(0.38,0.78,cA*0.6+cB*0.4)*mix(0.34,0.18,meadowSky.x),0.0,0.34);
           vec3 mistCol=mix(vec3(0.42,0.50,0.62),mix(vec3(0.92,0.90,0.86),vec3(1.0,0.74,0.46),meadowSky.y),smoothstep(0.24,0.82,cB));
 
           vec3 path=vPeakWorld-cameraPosition;
           float dist=length(path);
           vec3 ray=path/max(0.001,dist);
           vec3 skyCol=alpineSky(ray,cameraPosition);
-          float hazeAmt=smoothstep(210.0,760.0,dist)*mix(0.16,0.08,meadowSky.x)*(1.0-vPeakMeta.w*0.50);
+          float hazeAmt=smoothstep(230.0,820.0,dist)*mix(0.11,0.06,meadowSky.x)*(1.0-vPeakMeta.w*0.55);
           vec3 rockOut=mix(col*(1.0-meadowStorm.y*0.76),skyCol,hazeAmt);
           diffuseColor.rgb=mix(rockOut,mistCol,mistOpacity);
         `);

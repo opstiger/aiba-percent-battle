@@ -471,13 +471,13 @@
           topCol+=vec3(.16,.13,.08)*sunFacing*topGrad*(.4+.6*meadowSky.x);
           float coreThick=smoothstep(.35,.90,density);
           vec3 cloudCol=mix(bellyCol,topCol,smoothstep(.12,.84,topGrad*(1.0-coreThick*.24)));
-          float weatherVis=mix(.92,.34,meadowSky.x)*(1.0-meadowSky.y*.48);
-          // Open a clear high-altitude sky window over the front Xinjiang golden snow massif corridor ("云海托金顶")
-          // so waist clouds drift dramatically around the foothills while the blazing golden summits pierce clean blue sky!
+          float weatherVis=mix(.78,.32,meadowSky.x)*(1.0-meadowSky.y*.48);
+          // Open a clear high-altitude sky window over the wide Xinjiang golden snow massif corridor ("云海托金顶")
+          // even at opening progress=0 so the Hitchcock arrival zoom always showcases a crisp, towering mountain wall!
           float frontAz=atan(vWorld.x,max(1.0,4.745-vWorld.z));
-          float heroCorridor=1.0-smoothstep(0.32,0.62,abs(frontAz));
-          float summitClear=1.0-heroCorridor*smoothstep(34.0,66.0,vWorld.y)*mix(0.45,0.96,clamp(meadowSky.x+meadowSky.y*0.5,0.0,1.0));
-          float alpha=clamp(pow(density,1.15)*weatherVis*vMeta.y*summitClear,0.0,.90);
+          float heroCorridor=1.0-smoothstep(0.65,1.02,abs(frontAz));
+          float summitClear=1.0-heroCorridor*smoothstep(26.0,52.0,vWorld.y)*mix(0.80,0.98,clamp(meadowSky.x+meadowSky.y*0.5,0.0,1.0));
+          float alpha=clamp(pow(density,1.15)*weatherVis*vMeta.y*summitClear,0.0,.86);
           gl_FragColor=vec4(cloudCol,alpha);
           #include <tonemapping_fragment>
           #include <encodings_fragment>

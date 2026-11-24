@@ -335,7 +335,7 @@ function pregameBuildShots(opts){
     {actor:hero,action:"dance",cam:"finaleDualCrane",dur:rnd(2.20,2.40),side:-1,group:actors.length>1}
   ];
   if(typeof currentScenePreset==="string"&&currentScenePreset==="flowerCourt"&&window.AIBAMeadowIntro){
-    plan.unshift({actor:hero,action:"shoot",cam:"meadowHitchcock",dur:3.3,side:1,group:false,speedRamp:false});
+    plan.unshift({actor:hero,action:"shoot",cam:"meadowHitchcock",dur:5.2,side:1,group:false,speedRamp:false});
   }
   let t=0;const usedClips=[];
   for(let i=0;i<plan.length;i++){
@@ -693,7 +693,7 @@ function pregameUpdateCamera(seg,rawU,u,dt){
   if(seg&&seg.cam==="meadowHitchcock"&&window.AIBAMeadowIntro&&typeof AIBAMeadowIntro.sample==="function"){
     const actor=seg.actor||PREGAME.actors[0];
     const pPos=actor&&actor.base?actor.base:P.pos;
-    const sample=AIBAMeadowIntro.sample(clamp(rawU*0.86,0,0.86),{playerPos:pPos});
+    const sample=AIBAMeadowIntro.sample(clamp(rawU*0.90,0,0.90),{playerPos:pPos});
     rig.pos.copy(sample.pos);rig.look.copy(sample.look);
     if(typeof camera!=="undefined"&&camera&&typeof camera.updateProjectionMatrix==="function"){
       if(Math.abs(sample.fov-camera.fov)>0.02){camera.fov=sample.fov;camera.updateProjectionMatrix();}
