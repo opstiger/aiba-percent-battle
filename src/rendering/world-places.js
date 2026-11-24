@@ -423,36 +423,37 @@
     };
     const stoneSlabGeo=makeStoneSlabGeo();
 
-    const rigGrp=new THREE.Group();rigGrp.name="placeHoop:lunarCrater";
-    const up=new THREE.Vector3(0,1,0);
-    const addBox=(w,h,d,x,y,z,mat=tiMain,rx=0,ry=0,rz=0)=>{
-      const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
-      m.position.set(x,y,z);if(rx||ry||rz)m.rotation.set(rx,ry,rz);
-      m.castShadow=true;m.receiveShadow=true;rigGrp.add(m);return m;
-    };
-    const addCyl=(rt,rb,h,seg,x,y,z,mat=tiSilver,rx=0,ry=0,rz=0)=>{
-      const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg),mat);
-      m.position.set(x,y,z);if(rx||ry||rz)m.rotation.set(rx,ry,rz);
-      m.castShadow=true;m.receiveShadow=true;rigGrp.add(m);return m;
-    };
-    const addBeam=(ax,ay,az,bx,by,bz,w,d,mat=tiMain)=>{
-      const a=new THREE.Vector3(ax,ay,az),b=new THREE.Vector3(bx,by,bz);
-      const delta=b.clone().sub(a),len=delta.length();
-      const m=new THREE.Mesh(new THREE.BoxGeometry(w,len,d),mat);
-      m.position.copy(a).add(b).multiplyScalar(0.5);
-      m.quaternion.setFromUnitVectors(up,delta.normalize());
-      m.castShadow=true;m.receiveShadow=true;rigGrp.add(m);return m;
-    };
-    const addRodBeam=(ax,ay,az,bx,by,bz,rad,mat=tiSilver)=>{
-      const a=new THREE.Vector3(ax,ay,az),b=new THREE.Vector3(bx,by,bz);
-      const delta=b.clone().sub(a),len=delta.length();
-      const m=new THREE.Mesh(new THREE.CylinderGeometry(rad,rad,len,10),mat);
-      m.position.copy(a).add(b).multiplyScalar(0.5);
-      m.quaternion.setFromUnitVectors(up,delta.normalize());
-      m.castShadow=true;m.receiveShadow=true;rigGrp.add(m);return m;
-    };
-
+    const supports=new THREE.Group();supports.name="placeHoop:lunarCrater";
     hoopSupports().forEach(([z,dir])=>{
+      const rigGrp=new THREE.Group();
+      const up=new THREE.Vector3(0,1,0);
+      const addBox=(w,h,d,x,y,z,mat=tiMain,rx=0,ry=0,rz=0)=>{
+        const m=new THREE.Mesh(new THREE.BoxGeometry(w,h,d),mat);
+        m.position.set(x,y,z);if(rx||ry||rz)m.rotation.set(rx,ry,rz);
+        m.castShadow=true;m.receiveShadow=true;rigGrp.add(m);return m;
+      };
+      const addCyl=(rt,rb,h,seg,x,y,z,mat=tiSilver,rx=0,ry=0,rz=0)=>{
+        const m=new THREE.Mesh(new THREE.CylinderGeometry(rt,rb,h,seg),mat);
+        m.position.set(x,y,z);if(rx||ry||rz)m.rotation.set(rx,ry,rz);
+        m.castShadow=true;m.receiveShadow=true;rigGrp.add(m);return m;
+      };
+      const addBeam=(ax,ay,az,bx,by,bz,w,d,mat=tiMain)=>{
+        const a=new THREE.Vector3(ax,ay,az),b=new THREE.Vector3(bx,by,bz);
+        const delta=b.clone().sub(a),len=delta.length();
+        const m=new THREE.Mesh(new THREE.BoxGeometry(w,len,d),mat);
+        m.position.copy(a).add(b).multiplyScalar(0.5);
+        m.quaternion.setFromUnitVectors(up,delta.normalize());
+        m.castShadow=true;m.receiveShadow=true;rigGrp.add(m);return m;
+      };
+      const addRodBeam=(ax,ay,az,bx,by,bz,rad,mat=tiSilver)=>{
+        const a=new THREE.Vector3(ax,ay,az),b=new THREE.Vector3(bx,by,bz);
+        const delta=b.clone().sub(a),len=delta.length();
+        const m=new THREE.Mesh(new THREE.CylinderGeometry(rad,rad,len,10),mat);
+        m.position.copy(a).add(b).multiplyScalar(0.5);
+        m.quaternion.setFromUnitVectors(up,delta.normalize());
+        m.castShadow=true;m.receiveShadow=true;rigGrp.add(m);return m;
+      };
+
       const base=z-dir*1.55;
       // 1. 硬核工业月岩压舱笼底座 + 重型液压千斤顶驻地支腿 (Industrial Rock-Ballast Cage Base)
       addBox(.96,.12,1.08,0,.06,base,gunmetal);               // 重型钢底盘
@@ -587,8 +588,9 @@
       addBox(.40,.025,.13,0,4.33,z-dir*.02,hazardMat);
       addCyl(.020,.020,.035,8,-.11,4.28,z+dir*.045,cyanLamp,Math.PI/2,0,0);
       addCyl(.020,.020,.035,8,.11,4.28,z+dir*.045,amberLamp,Math.PI/2,0,0);
+      supports.add(AIBAModelDetail.batchFixedHardware(rigGrp));
     });
-    root.add(rigGrp);
+    root.add(supports);
     if(typeof setHoopRimTheme==="function")setHoopRimTheme("lunarCrater");
     setPlaceHoops(true,true);
   }

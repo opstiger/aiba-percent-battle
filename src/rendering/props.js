@@ -546,7 +546,7 @@ function buildVenueEquipment(root,name,theme){
         bolt(x,y+h+.040,z);
       }
     }
-    return skin;
+    return AIBAModelDetail.batchFixedHardware(skin);
   }
   const frame=new THREE.MeshStandardMaterial({color:theme.frame,roughness:moon?.36:.71,metalness:theme.metalness});
   const body=new THREE.MeshStandardMaterial({color:theme.body,roughness:moon?.38:.81,metalness:theme.metalness});

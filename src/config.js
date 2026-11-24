@@ -31,7 +31,7 @@
     beachSunset:{name:"夕阳 · 西海岸",type:"outdoor",weather:"sunny",progression:"sunsetToNight",desc:"开放海滨旧街场，日落后酒店与路灯渐次点亮"},
     arcticSnow:{name:"极光 · 雪原冰湖",type:"outdoor",weather:"none",progression:"none",desc:"扫雪硬场与冰湖林线，静夜极光在头顶缓慢舒展"},
     spanishQuarter:{name:"红土 · 西班牙老街",type:"outdoor",weather:"sunny",progression:"none",desc:"陶土红街场嵌入老城住宅，百叶窗、阳台与巷口都是生活"},
-    lunarCrater:{name:"静海 · 月球陨石坑",type:"outdoor",weather:"none",progression:"lunarEclipse",desc:"随投篮推进基地苏醒、1/6G宇航员蹦跳围观、晶石浮岩升空，终局迎来地球遮日「红环日全食」奇观"},
+    lunarCrater:{name:"静海 · 月球陨石坑",type:"outdoor",weather:"none",progression:"lunarEclipse",desc:"在静海投篮，唤醒月壤中的晶群。探月器将载着访客降落，远处的地球渐渐遮住太阳。"},
     tokyoRooftop:{name:"东京 · 摩天楼顶夜场",type:"outdoor",weather:"none",progression:"none",desc:"300米高空摩天楼顶夜景球场，透明玻璃护栏外直面东京铁塔与璀璨灯海"}
   });
 

@@ -1060,6 +1060,10 @@
     addPart(new THREE.SphereGeometry(0.28,8,6),gwBeaconMat,9.2,2.55,0.2,0,0,0,gateway);
     addPart(new THREE.SphereGeometry(0.28,8,6),gwAmberMat,-9.2,2.55,0.2,0,0,0,gateway);
     gateway.position.set(-10,18.2,-64);
+    // These rigid parts share a transform. Keep the separately animated joints and board intact.
+    gateway.remove(sbMesh);
+    for(const group of [outpost,solarPivot,dishPivot,rover,roverDish,derrick,gateway])AIBAModelDetail.batch(group);
+    gateway.add(sbMesh);
     s.root.add(gateway);
 
     // 深空微流星光迹
@@ -1141,8 +1145,17 @@
         glintPos.push(cx+sh.position.x,cy+sh.position.y+(isChunk?0.12:sy*0.42),cz+sh.position.z);
         glintSeed.push(s.r()*6.283,0.6+s.r()*1.2,(idx+k)%3);
       }
-      crystalGrp.add(cl);
+      // Bake the fixed clusters in four spatial sectors, retaining their original materials.
+      const sector=(cx>0?1:0)+(cz>0?2:0);
+      while(crystalGrp.children.length<=sector)crystalGrp.add(new THREE.Group());
+      for(const piece of cl.children.slice()){
+        piece.position.add(cl.position);crystalGrp.children[sector].add(piece);
+      }
     });
+    for(const sector of crystalGrp.children){
+      AIBAModelDetail.batch(sector);
+      for(const mesh of sector.children){mesh.castShadow=false;mesh.receiveShadow=false;}
+    }
     s.root.add(crystalGrp);
     const glintGeo=new THREE.BufferGeometry();
     glintGeo.setAttribute("position",new THREE.Float32BufferAttribute(glintPos,3));
@@ -1208,141 +1221,12 @@
     }
     s.root.add(floatGrp);
 
-    // 11B. 塞尔达「卢比兔 / 金币精灵 (Blupee)」神性发光月宫灵兔：
-    // 通体冰青与淡金半透明菲涅尔神性流光、5簇飘逸灵毛颈环、猫头鹰式灵纹面盘与双分叉神鹿灵角、修长发光耳与灵火尾，在远处山脊自主漫游、留下发光灵粒拖尾并周期施展「闪现魔法」！
-    const rabbit=new THREE.Group();rabbit.name="lunarJadeRabbit";
-    const blupeeWaypoints=[
-      {x:14.8,z:-23.8,yaw:-0.58},
-      {x:8.4,z:-25.4,yaw:-0.25},
-      {x:19.6,z:-21.2,yaw:-0.88},
-      {x:-14.6,z:-24.2,yaw:0.55},
-      {x:-19.4,z:-20.6,yaw:0.86},
-      {x:16.8,z:-18.4,yaw:-1.02}
-    ];
-    const rx0=blupeeWaypoints[0].x,rz0=blupeeWaypoints[0].z,ry0=terrainY(rx0,rz0);
-    const blupeeMat=new THREE.ShaderMaterial({
-      transparent:true,depthWrite:true,blending:THREE.NormalBlending,fog:false,
-      uniforms:{uTime:{value:0},uEclipse:{value:0},uBlinkFlash:{value:0}},
-      vertexShader:`varying vec3 vN,vV,vLocal;
-        void main(){
-          vLocal=position;
-          vec4 wp=modelMatrix*vec4(position,1.0);
-          vN=normalize(mat3(modelMatrix)*normal);
-          vV=normalize(cameraPosition-wp.xyz);
-          gl_Position=projectionMatrix*viewMatrix*wp;
-        }`,
-      fragmentShader:`uniform float uTime,uEclipse,uBlinkFlash;
-        varying vec3 vN,vV,vLocal;
-        void main(){
-          float ndv=clamp(abs(dot(normalize(vN),normalize(vV))),0.0,1.0);
-          float fres=pow(1.0-ndv,2.15);
-          float pulse=0.5+0.5*sin(uTime*3.2-vLocal.y*5.5+vLocal.z*3.0);
-          // 塞尔达卢比兔幽蓝半透明灵核 + 边缘璀璨冰青/流金菲涅尔神光（层次分明绝不过曝发白！）
-          vec3 coreCol=mix(vec3(0.04,0.22,0.48),vec3(0.09,0.42,0.72),pulse);
-          vec3 rimCol=mix(vec3(0.32,0.94,1.0),vec3(1.0,0.88,0.46),0.32+0.35*pulse+0.25*uEclipse);
-          vec3 flashCol=vec3(0.75,0.98,1.0);
-          vec3 col=mix(coreCol,rimCol,clamp(fres*1.32,0.0,1.0));
-          col*=(0.95+0.35*uEclipse+0.15*pulse);
-          col=mix(col,flashCol*1.65,clamp(uBlinkFlash,0.0,1.0));
-          float alpha=clamp(0.54+0.44*fres+uBlinkFlash*0.35,0.0,1.0);
-          gl_FragColor=vec4(col,alpha);
-        }`
-    });
-    const blupeeGoldMat=new THREE.ShaderMaterial({
-      transparent:true,depthWrite:true,blending:THREE.NormalBlending,fog:false,
-      uniforms:{uTime:blupeeMat.uniforms.uTime,uBlinkFlash:blupeeMat.uniforms.uBlinkFlash},
-      vertexShader:`varying vec3 vN,vV;
-        void main(){
-          vec4 wp=modelMatrix*vec4(position,1.0);
-          vN=normalize(mat3(modelMatrix)*normal);
-          vV=normalize(cameraPosition-wp.xyz);
-          gl_Position=projectionMatrix*viewMatrix*wp;
-        }`,
-      fragmentShader:`uniform float uTime,uBlinkFlash;varying vec3 vN,vV;
-        void main(){
-          float ndv=clamp(abs(dot(normalize(vN),normalize(vV))),0.0,1.0);
-          float fres=pow(1.0-ndv,1.65);
-          vec3 baseCol=mix(vec3(0.14,0.58,0.86),vec3(0.45,0.88,1.0),0.5+0.5*sin(uTime*3.5));
-          vec3 tipGold=vec3(1.0,0.86,0.38);
-          vec3 col=mix(baseCol,tipGold,clamp(fres*1.25+0.18,0.0,1.0))+vec3(uBlinkFlash*0.8);
-          gl_FragColor=vec4(col,clamp(0.68+0.30*fres,0.0,1.0));
-        }`
-    });
-    const blupeeEyeMat=new THREE.MeshBasicMaterial({color:0xffbe2e});
-    const rabBody=new THREE.Group();rabbit.scale.setScalar(1.28);rabbit.add(rabBody);
-    // 1. 灵兔流线弓背胸腔与修长腰腹（塞尔达卢比兔神骏体态）
-    const rChest=new THREE.Mesh(new THREE.SphereGeometry(0.32,16,14),blupeeMat);
-    rChest.scale.set(0.84,0.96,1.24);rChest.position.set(0,0.48,0.16);rChest.rotation.x=-0.18;rabBody.add(rChest);
-    const rSpine=new THREE.Mesh(new THREE.SphereGeometry(0.30,16,12),blupeeMat);
-    rSpine.scale.set(0.82,0.88,1.35);rSpine.position.set(0,0.46,-0.12);rSpine.rotation.x=0.14;rabBody.add(rSpine);
-    const rHaunch=new THREE.Mesh(new THREE.SphereGeometry(0.34,16,12),blupeeMat);
-    rHaunch.scale.set(0.96,1.02,1.12);rHaunch.position.set(0,0.38,-0.36);rabBody.add(rHaunch);
-    // 2. 卢比兔标志性「五簇神性灵毛颈环 (5-Plume Spirit Ruff)」
-    const plumeGeo=new THREE.ConeGeometry(0.13,0.44,8);plumeGeo.scale(1.0,1.0,0.46);plumeGeo.translate(0,0.18,0);
-    for(const [px,py,pz,rx,ry,rz,sc] of [
-      [0,0.52,0.34,0.85,0,0,1.12],
-      [-0.20,0.56,0.24,0.45,-0.52,0.65,0.98],
-      [0.20,0.56,0.24,0.45,0.52,-0.65,0.98],
-      [-0.24,0.66,0.10,-0.25,-0.45,0.95,0.88],
-      [0.24,0.66,0.10,-0.25,0.45,-0.95,0.88]
-    ]){
-      const pl=new THREE.Mesh(plumeGeo,blupeeGoldMat);
-      pl.position.set(px,py,pz);pl.rotation.set(rx,ry,rz);pl.scale.setScalar(sc);
-      rabBody.add(pl);
-    }
-    // 3. 上扬多层灵火神尾 (Upturned Multi-Plume Spirit Tail)
-    const rTailGrp=new THREE.Group();rTailGrp.position.set(0,0.42,-0.62);rabBody.add(rTailGrp);
-    for(const [tx,ty,tz,rx,rz,sc] of [[0,0,0,-0.68,0,1.15],[-0.08,-0.02,-0.04,-0.58,0.35,0.82],[0.08,-0.02,-0.04,-0.58,-0.35,0.82]]){
-      const tm=new THREE.Mesh(plumeGeo,blupeeGoldMat);
-      tm.position.set(tx,ty,tz);tm.rotation.set(rx,0,rz);tm.scale.setScalar(sc);
-      rTailGrp.add(tm);
-    }
-    // 4. 四条可动修长灵足（前肢轻盈支撑 + 后肢蓄力飞跃）
-    const fLegGeo=new THREE.CylinderGeometry(0.046,0.032,0.42,8);fLegGeo.translate(0,-0.20,0);
-    const hLegGeo=new THREE.CylinderGeometry(0.068,0.038,0.46,8);hLegGeo.translate(0,-0.22,0);
-    const pawGeo=new THREE.SphereGeometry(0.056,8,6);pawGeo.scale(0.85,0.55,1.45);
-    const rForeL=new THREE.Group();rForeL.position.set(-0.14,0.38,0.26);rabBody.add(rForeL);
-    const rForeR=new THREE.Group();rForeR.position.set(0.14,0.38,0.26);rabBody.add(rForeR);
-    for(const fl of [rForeL,rForeR]){
-      fl.add(new THREE.Mesh(fLegGeo,blupeeMat));
-      const pw=new THREE.Mesh(pawGeo,blupeeGoldMat);pw.position.set(0,-0.40,0.04);fl.add(pw);
-    }
-    const rHindL=new THREE.Group();rHindL.position.set(-0.18,0.36,-0.36);rabBody.add(rHindL);
-    const rHindR=new THREE.Group();rHindR.position.set(0.18,0.36,-0.36);rabBody.add(rHindR);
-    for(const hl of [rHindL,rHindR]){
-      hl.add(new THREE.Mesh(hLegGeo,blupeeMat));
-      const pw=new THREE.Mesh(pawGeo,blupeeGoldMat);pw.position.set(0,-0.42,0.08);hl.add(pw);
-    }
-    // 5. 卢比兔神性面盘 + 鎏金灵眸 + 双分叉神鹿灵角眉羽 (Owl Facial Disc & Twin Branched Spirit Antler Crests)
-    const rabHead=new THREE.Group();rabHead.position.set(0,0.82,0.34);rabBody.add(rabHead);
-    const rHeadMesh=new THREE.Mesh(new THREE.SphereGeometry(0.23,14,12),blupeeMat);
-    rHeadMesh.scale.set(0.92,0.94,1.12);rabHead.add(rHeadMesh);
-    const faceDisc=new THREE.Mesh(new THREE.CylinderGeometry(0.20,0.18,0.06,12),blupeeGoldMat);
-    faceDisc.rotation.x=Math.PI*0.5;faceDisc.scale.set(1.08,1.0,0.88);faceDisc.position.set(0,0.02,0.19);rabHead.add(faceDisc);
-    for(const sx of [-0.095,0.095]){
-      const eye=new THREE.Mesh(new THREE.SphereGeometry(0.038,8,8),blupeeEyeMat);
-      eye.position.set(sx,0.04,0.22);rabHead.add(eye);
-      // 分叉神鹿灵角眉羽
-      const crest=new THREE.Group();crest.position.set(sx*0.85,0.11,0.19);rabHead.add(crest);
-      const mainPlume=new THREE.Mesh(plumeGeo,blupeeGoldMat);
-      mainPlume.scale.set(0.52,0.95,0.45);mainPlume.rotation.set(-0.48,0,sx<0?0.42:-0.42);crest.add(mainPlume);
-      const subPlume=new THREE.Mesh(plumeGeo,blupeeGoldMat);
-      subPlume.scale.set(0.38,0.68,0.38);subPlume.position.set(sx*0.45,0.12,-0.04);subPlume.rotation.set(-0.62,0,sx<0?0.78:-0.78);crest.add(subPlume);
-    }
-    // 6. 一对超长半透明神性兔耳
-    const earGeo=new THREE.ConeGeometry(0.072,0.78,10);earGeo.scale(1.0,1.0,0.38);earGeo.translate(0,0.39,0);
-    const earL=new THREE.Group();earL.position.set(-0.09,0.18,-0.04);rabHead.add(earL);
-    const earR=new THREE.Group();earR.position.set(0.09,0.18,-0.04);rabHead.add(earR);
-    for(const [ear,sd] of [[earL,-1],[earR,1]]){
-      ear.add(new THREE.Mesh(earGeo,blupeeMat));
-      const inner=new THREE.Mesh(earGeo,blupeeGoldMat);
-      inner.scale.set(0.56,0.86,0.55);inner.position.z=0.018;ear.add(inner);
-      ear.rotation.set(-0.32,0,sd*0.24);
-    }
-    // 7. 卢比兔神性双层灵光光环（冰青外晕 + 暖金内魄）
+    const hare=AIBALunarHare.create(),rabbit=hare.group;
+    const rx0=-3.6,rz0=-12.7,ry0=terrainY(rx0,rz0);
+    // The halo and motes appear only during the encounter.
     const rabHaloMat=new THREE.ShaderMaterial({
       transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,
-      uniforms:{uGlow:{value:0.42},uTime:blupeeMat.uniforms.uTime},
+      uniforms:{uGlow:{value:0.42},uTime:{value:0}},
       vertexShader:`varying vec2 vUv;void main(){vUv=uv;vec4 mv=viewMatrix*modelMatrix*vec4(0.,0.,0.,1.);mv.xy+=position.xy;gl_Position=projectionMatrix*mv;}`,
       fragmentShader:`uniform float uGlow,uTime;varying vec2 vUv;void main(){
         vec2 p=vUv*2.-1.;float r=length(p);if(r>1.)discard;
@@ -1354,9 +1238,9 @@
       }`
     });
     const rabHalo=new THREE.Mesh(new THREE.PlaneGeometry(3.4,3.4),rabHaloMat);
-    rabHalo.position.set(0,0.58,0);rabBody.add(rabHalo);
+    rabHalo.position.set(0,0.58,0);hare.body.add(rabHalo);
     rabbit.position.set(rx0,ry0,rz0);
-    rabbit.rotation.y=blupeeWaypoints[0].yaw;
+    rabbit.visible=false;
     s.root.add(rabbit);
 
     // 8. 卢比兔移动与闪现魔法的 140 颗发光灵粒拖尾 (Blupee Magic Spirit Motes & Blink Burst)
@@ -1396,30 +1280,27 @@
     });
     const blupeeTrailMesh=new THREE.Points(bpGeo,bpMat);
     blupeeTrailMesh.name="lunarBlupeeSpiritTrail";blupeeTrailMesh.frustumCulled=false;blupeeTrailMesh.renderOrder=8;
-    s.root.add(blupeeTrailMesh);
+    blupeeTrailMesh.visible=false;s.root.add(blupeeTrailMesh);
     const jadeRabbit={
-      group:rabbit,body:rabBody,head:rabHead,earL,earR,
-      foreL:rForeL,foreR:rForeR,hindL:rHindL,hindR:rHindR,tail:rTailGrp,
-      blupeeMat,blupeeGoldMat,haloMat:rabHaloMat,
-      waypoints:blupeeWaypoints,wpIdx:0,targetWpIdx:1,
-      x:rx0,y0:ry0,z:rz0,yaw:blupeeWaypoints[0].yaw,
-      state:"roam",stateT:1.2,roamU:0,hopPhase:0,hopT:0,
-      blinkPhase:0,blinkFlash:0,emitAcc:0,
+      ...hare,haloMat:rabHaloMat,x:rx0,y0:ry0,z:rz0,yaw:.55,
+      state:"hidden",age:0,stateT:0,duration:0,hops:0,earBeat:0,curious:0,
       trail:{mesh:blupeeTrailMesh,geo:bpGeo,pos:bpPos,data:bpData,items:bpItems,cursor:0}
     };
 
     // 12. 大规模 1/6G 悬空发光晶石微粒与微碎石场（覆盖篮筐光晕 + 篮球飞行轨迹走廊，像水墨萤火虫一样随篮球划过空气与砸框产生黏滞阻尼冲击波！）
-    const swarmN=s.mobile?380:920;
-    const swPos=new Float32Array(swarmN*3),swSize=new Float32Array(swarmN),swGlow=new Float32Array(swarmN),swKind=new Float32Array(swarmN);
+    const swarmN=s.mobile?620:1280;
+    const shardCount=s.mobile?72:144;
+    const shardStride=Math.floor(swarmN/shardCount);
+    const swPos=new Float32Array(swarmN*3),swSize=new Float32Array(swarmN),swOrbit=new Float32Array(swarmN*2),swWake=new Float32Array(swarmN*4),swKind=new Float32Array(swarmN);
     const swItems=[];
     for(let i=0;i<swarmN;i++){
       let hx,hy,hz;
-      const u=i/swarmN;
+      const u=(i+.5)/swarmN;
       if(u<0.52){
         // 52% 环绕玄武岩石板篮筐的 3.8m 发光晶尘云
         const near=u<0.30;
-        const rad=near?(0.36+Math.pow(s.r(),1.15)*2.15):(1.85+s.r()*3.4);
-        const th=s.r()*Math.PI*2,el=(s.r()-0.44)*(near?1.65:2.5);
+        const rad=near?(0.56+Math.pow(s.r(),1.15)*2.95):(2.45+s.r()*4.7);
+        const th=s.r()*Math.PI*2,el=(s.r()-0.36)*(near?2.4:4.7);
         hx=HOOP.x+Math.cos(th)*rad;
         hy=Math.max(0.55,HOOP.y+0.15+el);
         hz=HOOP.z+Math.sin(th)*rad*0.88;
@@ -1442,25 +1323,34 @@
       swItems.push({
         hx,hy,hz,dx:0,dy:0,dz:0,vx:0,vy:0,vz:0,
         sx:Math.cos(sa)*Math.cos(sb),sy:Math.sin(sb),sz:Math.sin(sa)*Math.cos(sb),
-        phase:s.r()*Math.PI*2,rate:0.32+s.r()*0.48,size:sz,kind:kd,excited:0
+        phase:s.r()*Math.PI*2,rate:0.32+s.r()*0.48,size:sz,kind:kd,excited:0,
+        perspectiveScale:1-.43*THREE.MathUtils.smoothstep(hz-HOOP.z,5,12)
       });
       swPos[i*3]=hx;swPos[i*3+1]=hy;swPos[i*3+2]=hz;
-      swSize[i]=sz;swGlow[i]=0;swKind[i]=kd;
+      swSize[i]=sz;swKind[i]=kd;swOrbit[i*2]=swItems[i].rate;swOrbit[i*2+1]=swItems[i].phase;
     }
     const swGeo=new THREE.BufferGeometry();
     swGeo.setAttribute("position",new THREE.BufferAttribute(swPos,3));
     swGeo.setAttribute("aSize",new THREE.BufferAttribute(swSize,1));
-    swGeo.setAttribute("aGlow",new THREE.BufferAttribute(swGlow,1));
+    swGeo.setAttribute("aOrbit",new THREE.BufferAttribute(swOrbit,2));
+    swGeo.setAttribute("aWake",new THREE.BufferAttribute(swWake,4).setUsage(THREE.DynamicDrawUsage));
     swGeo.setAttribute("aKind",new THREE.BufferAttribute(swKind,1));
     const swMat=new THREE.ShaderMaterial({
       transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,
-      vertexShader:`attribute float aSize,aGlow,aKind;varying float vGlow,vKind;
+      uniforms:{uClock:{value:0},uReveal:{value:0},uBrightness:{value:1}},
+      vertexShader:`attribute float aSize,aKind;attribute vec2 aOrbit;attribute vec4 aWake;
+        uniform float uClock,uReveal,uBrightness;varying float vGlow,vKind;
         void main(){
-          vGlow=aGlow;vKind=aKind;
-          vec4 mv=modelViewMatrix*vec4(position,1.0);
+          float rate=aOrbit.x,phase=aOrbit.y,tt=uClock*rate+phase;
+          float reveal=smoothstep(rate*.48,min(1.,rate*.48+.61),uReveal);
+          vec3 drift=vec3(sin(tt*.76)*.32,sin(tt*.98+phase)*.24,cos(tt*.68-phase)*.30);
+          vec3 p=position+drift+aWake.xyz;p.y=max(.28,p.y)*(.10+.90*reveal);
+          float tw=.34+.66*pow(.5+.5*sin(uClock*(1.4+rate)+phase*7.),1.7);
+          vGlow=reveal*uBrightness*(tw+aWake.w*.96);vKind=aKind;
+          vec4 mv=modelViewMatrix*vec4(p,1.0);
           float dist=max(1.0,-mv.z);
           gl_Position=projectionMatrix*mv;
-          gl_PointSize=clamp(aSize*(42.0+28.0*min(1.5,aGlow))/max(1.2,dist),1.8,14.5)*step(0.01,aGlow);
+          gl_PointSize=clamp(aSize*(42.0+28.0*min(1.5,vGlow))/max(1.2,dist),1.8,14.5)*step(0.01,vGlow);
         }`,
       fragmentShader:`varying float vGlow,vKind;
         void main(){
@@ -1481,14 +1371,14 @@
     });
     const hoopSwarmMesh=new THREE.Points(swGeo,swMat);
     hoopSwarmMesh.name="lunarHoopRegolithDust";hoopSwarmMesh.frustumCulled=false;hoopSwarmMesh.renderOrder=7;
-    s.root.add(hoopSwarmMesh);
+    hoopSwarmMesh.visible=false;s.root.add(hoopSwarmMesh);
 
-    // 12B. 36 颗 3D 实体悬空多面晶石碎片与微碎石 (3D Faceted Mini-Crystals & Micro-Pebbles)，同样受篮球轨迹尾流与砸框冲击波驱动翻滚！
-    const shardCount=s.mobile?18:36;
+    // Sample every region of the field for physical facets, including the flight corridor.
+
     const shardGeo=new THREE.OctahedronGeometry(0.048,0);
     const shardMat=new THREE.MeshStandardMaterial({
-      color:0xaeeeff,emissive:0x38b6ff,emissiveIntensity:0.65,
-      roughness:0.22,metalness:0.18,flatShading:true
+      color:0xb9ceda,emissive:0x17485f,emissiveIntensity:.24,
+      roughness:.26,metalness:.35,flatShading:true
     });
     const shardInst=new THREE.InstancedMesh(shardGeo,shardMat,shardCount);
     shardInst.name="lunarFloatingCrystalShards";shardInst.frustumCulled=false;
@@ -1498,8 +1388,8 @@
       shardCol.setHex(shardPalette[i%shardPalette.length]);
       shardInst.setColorAt(i,shardCol);
     }
-    s.root.add(shardInst);
-    const hoopSwarm={mesh:hoopSwarmMesh,geo:swGeo,pos:swPos,glow:swGlow,items:swItems,shardInst,shardMat,shardDummy,shardCount};
+    shardInst.visible=false;shardInst.instanceMatrix.setUsage(THREE.DynamicDrawUsage);s.root.add(shardInst);
+    const hoopSwarm={mesh:hoopSwarmMesh,geo:swGeo,offsets:swWake,items:swItems,shardInst,shardMat,shardDummy,shardCount,shardStride,wake:0};
 
     // 13. 3A 级高精度阿波罗/阿尔忒弥斯舱外宇航员 (3A Articulated EVA Astronauts)
     // 分段式硬壳胸甲、波纹腰环、双氧气瓶 PLSS 背包+通讯鞭状天线、胸前遥测控制盒 (DCM)、双层镀金遮阳头盔+两侧探照灯、折叠肘/膝关节，以及「巡线漫步/驻足勘探/抬头看球/偶发失重高跳」非重复 AI！
@@ -1515,21 +1405,7 @@
     const ledCyanMat=new THREE.MeshBasicMaterial({color:0x5ce8ff});
     const ledAmberMat=new THREE.MeshBasicMaterial({color:0xffb838});
     const astronauts=[];
-    const astroDefs=[
-      {
-        homeX:-10.4,homeZ:-3.6,farX:-17.5,farZ:-8.5,yaw:1.18,seed:1.3,stripeMat:suitRed,
-        waypoints:[[-10.4,-3.6],[-11.6,-0.8],[-9.8,1.8],[-12.0,-5.4]]
-      },
-      {
-        homeX:10.6,homeZ:-2.2,farX:18.0,farZ:-7.2,yaw:-1.24,seed:3.7,stripeMat:suitBlue,
-        waypoints:[[10.6,-2.2],[11.8,1.2],[9.9,-5.2],[12.2,-1.0]]
-      },
-      {
-        homeX:-9.6,homeZ:7.6,farX:-16.8,farZ:11.2,yaw:2.25,seed:6.1,stripeMat:suitRed,
-        waypoints:[[-9.6,7.6],[-11.2,5.0],[-8.5,9.6],[-11.8,8.4]]
-      }
-    ];
-    for(const def of astroDefs){
+    for(const stripeMat of [suitRed,suitBlue,suitRed]){
       const ag=new THREE.Group();
       const body=new THREE.Group();body.position.y=0.94;ag.add(body);
       // 1. 分段式硬壳胸甲 (HUT) + 指挥官红/蓝肩带 + 波纹腰环 + 髋部裤甲
@@ -1538,7 +1414,7 @@
       const shoulderBar=new THREE.Mesh(new THREE.CylinderGeometry(0.11,0.11,0.68,12),suitWhite);
       shoulderBar.rotation.z=Math.PI*0.5;shoulderBar.position.set(0,0.29,0);body.add(shoulderBar);
       for(const sd of [-1,1]){
-        const stripe=new THREE.Mesh(new THREE.CylinderGeometry(0.114,0.114,0.08,12),def.stripeMat);
+        const stripe=new THREE.Mesh(new THREE.CylinderGeometry(0.114,0.114,0.08,12),stripeMat);
         stripe.rotation.z=Math.PI*0.5;stripe.position.set(sd*0.24,0.29,0);body.add(stripe);
       }
       const waistBellows=new THREE.Mesh(new THREE.CylinderGeometry(0.23,0.23,0.14,14),suitJoint);
@@ -1580,10 +1456,10 @@
       const head=new THREE.Group();head.position.set(0,0.54,0);body.add(head);
       const outerHood=new THREE.Mesh(new THREE.SphereGeometry(0.245,16,14),suitWhite);
       outerHood.scale.set(0.96,1.02,1.04);head.add(outerHood);
-      const innerBubble=new THREE.Mesh(new THREE.SphereGeometry(0.215,14,12),visorInner);
-      innerBubble.position.set(0,-0.01,0.035);head.add(innerBubble);
-      const goldShield=new THREE.Mesh(new THREE.SphereGeometry(0.232,16,14,0,Math.PI,0.22,Math.PI*0.58),visorGold);
-      goldShield.rotation.y=-Math.PI*0.5;goldShield.position.set(0,0.01,0.035);head.add(goldShield);
+      const innerBubble=new THREE.Mesh(new THREE.SphereGeometry(.236,20,14),visorInner);
+      innerBubble.scale.set(.95,.79,.56);innerBubble.position.set(0,.011,.147);head.add(innerBubble);
+      const goldShield=new THREE.Mesh(new THREE.SphereGeometry(.224,24,16),visorGold);
+      goldShield.scale.set(.96,.75,.56);goldShield.position.set(0,.017,.167);head.add(goldShield);
       const visorBrow=new THREE.Mesh(new THREE.BoxGeometry(0.32,0.045,0.18),suitWhite);
       visorBrow.position.set(0,0.19,0.08);head.add(visorBrow);
       for(const sd of [-1,1]){
@@ -1608,7 +1484,7 @@
         foreArm.add(elbowJoint);
         const lowerArm=new THREE.Mesh(new THREE.CylinderGeometry(0.080,0.072,0.26,10),suitWhite);
         lowerArm.position.set(0,-0.13,0);foreArm.add(lowerArm);
-        const wristRing=new THREE.Mesh(new THREE.TorusGeometry(0.068,0.015,6,12),def.stripeMat);
+        const wristRing=new THREE.Mesh(new THREE.TorusGeometry(0.068,0.015,6,12),stripeMat);
         wristRing.rotation.x=Math.PI*0.5;wristRing.position.set(0,-0.25,0);foreArm.add(wristRing);
         const glove=new THREE.Mesh(new THREE.SphereGeometry(0.078,10,8),suitJoint);
         glove.scale.set(0.88,1.18,1.02);glove.position.set(0,-0.32,0.02);foreArm.add(glove);
@@ -1621,7 +1497,7 @@
       for(const [leg,sd] of [[legL,-1],[legR,1]]){
         const thigh=new THREE.Mesh(new THREE.CylinderGeometry(0.112,0.098,0.30,10),suitWhite);
         thigh.position.y=-0.15;leg.add(thigh);
-        const thighStripe=new THREE.Mesh(new THREE.CylinderGeometry(0.108,0.105,0.055,10),def.stripeMat);
+        const thighStripe=new THREE.Mesh(new THREE.CylinderGeometry(0.108,0.105,0.055,10),stripeMat);
         thighStripe.position.y=-0.20;leg.add(thighStripe);
         const shin=new THREE.Group();shin.position.set(0,-0.30,0);leg.add(shin);
         if(sd<0)shinL=shin;else shinR=shin;
@@ -1635,28 +1511,21 @@
         bootSole.position.set(0,-0.345,0.048);shin.add(bootSole);
       }
 
-      // 7. 宇航员高空失重跳跃落地时的 1/6G 环形月尘圈
-      const jumpRingMat=new THREE.MeshBasicMaterial({color:0xc8ccd4,transparent:true,opacity:0,side:THREE.DoubleSide,depthWrite:false});
-      const jumpRing=new THREE.Mesh(new THREE.RingGeometry(0.28,0.68,18),jumpRingMat);
-      jumpRing.rotation.x=-Math.PI*0.5;jumpRing.position.set(def.farX,terrainY(def.farX,def.farZ)+0.05,def.farZ);
-      astroGrp.add(jumpRing);
-
-      ag.position.set(def.farX,terrainY(def.farX,def.farZ),def.farZ);
-      ag.rotation.y=def.yaw;
+      bindLunarSuit(ag,[body,head,armL,armR,foreArmL,foreArmR,legL,legR,shinL,shinR]);
+      ag.visible=false;
+      const cameraRig=new THREE.Group();cameraRig.position.set(0,-.35,.045);foreArmR.add(cameraRig);
+      addPart(new THREE.BoxGeometry(.235,.16,.112),outGun,0,0,0,0,0,0,cameraRig);
+      addPart(new THREE.CylinderGeometry(.062,.073,.115,14),outSil,0,0,.10,Math.PI/2,0,0,cameraRig);
+      addPart(new THREE.CylinderGeometry(.052,.052,.012,14),outSolar,0,0,.16,Math.PI/2,0,0,cameraRig);
+      const flash=addPart(new THREE.SphereGeometry(.043,8,6),beaconAmber,.081,.058,.063,0,0,0,cameraRig);
+      flash.visible=false;cameraRig.visible=false;
       astroGrp.add(ag);
       astronauts.push({
-        ...def,group:ag,body,head,
+        group:ag,body,head,cameraRig,flash,aim:new THREE.Vector3(),
         armL,armR,foreArmL,foreArmR,
         legL,legR,shinL,shinR,
-        jumpRing,jumpRingMat,ringLife:0,
-        // 非重复生命感 AI 状态机 ("idleWatch" | "stroll" | "inspect" | "highBound")
-        mode:"idleWatch",modeT:1.8+def.seed*0.7,modeDur:3.5,
-        wpIdx:0,nextWpIdx:1,
-        curX:def.homeX,curZ:def.homeZ,
-        fromX:def.homeX,fromZ:def.homeZ,
-        toX:def.homeX,toZ:def.homeZ,
-        curYaw:def.yaw,jumpPeak:2.65,
-        celebrateT:0
+        mode:"aboard",modeT:0,modeDur:0,curYaw:0,photoIndex:0,
+        celebrateT:0,leap:0
       });
     }
     s.root.add(astroGrp);
@@ -1683,13 +1552,28 @@
 
     // 15. 轨道补给着陆器垂直反推降落 + 采矿塔 1/6G 尘柱 + 日全食篮筐工业补光灯
     const lander=new THREE.Group();lander.name="lunarSupplyLander";
-    const lx=22.5,lz=-34.0,ly0=terrainY(lx,lz);
-    addPart(new THREE.CylinderGeometry(1.1,1.45,1.4,8),outGold,0,1.45,0,0,0,0,lander);
-    addPart(new THREE.CylinderGeometry(0.95,1.15,1.1,8),outTi,0,2.55,0,0,0,0,lander);
+    const lx=5.2,lz=-19.8,ly0=terrainY(lx,lz);
+    // Leave the near facet open. The sealed hatch becomes the actual boarding ramp.
+    for(const [top,bottom,height,y,mat] of [[1.30,1.48,1.38,1.55,outGold],[1.16,1.30,1.04,2.76,outTi]]){
+      addPart(new THREE.CylinderGeometry(top,bottom,height,7,1,true,Math.PI/8,Math.PI*1.75),mat,0,y,0,0,0,0,lander);
+    }
+    addPart(new THREE.CylinderGeometry(1.46,1.4,.16,8),outGun,0,.85,0,0,Math.PI/8,0,lander);
+    addPart(new THREE.CylinderGeometry(1.15,1.19,.14,8),outSil,0,3.28,0,0,Math.PI/8,0,lander);
+    addPart(new THREE.BoxGeometry(2.16,2.38,.18),outGun,0,2.06,-.4,0,0,0,lander);
+    for(const side of [-1,1]){
+      addPart(new THREE.BoxGeometry(.11,2.28,.14),outSil,side*.59,2.04,1.14,0,0,0,lander);
+      addPart(new THREE.BoxGeometry(.34,.30,.08),outGun,side*.87,2.64,.94,0,side*.65,0,lander);
+      addPart(new THREE.BoxGeometry(.24,.19,.09),outSolar,side*.88,2.64,.97,0,side*.65,0,lander);
+    }
+    addPart(new THREE.BoxGeometry(1.24,.12,.19),outGold,0,3.17,1.04,0,0,0,lander);
+    const hatch=new THREE.Group();hatch.position.set(0,.92,1.26);lander.add(hatch);
+    addPart(new THREE.BoxGeometry(1.08,2.28,.11),outTi,0,1.14,0,0,0,0,hatch);
+    for(let i=0;i<7;i++)addPart(new THREE.BoxGeometry(.94,.046,.044),outGun,0,.22+i*.30,-.072,0,0,0,hatch);
+    for(const side of [-1,1])addPart(new THREE.BoxGeometry(.052,2.25,.13),outGold,side*.526,1.14,0,0,0,0,hatch);
     for(const a of [0.78,2.35,3.92,5.50]){
       const leg=new THREE.Mesh(new THREE.CylinderGeometry(0.06,0.08,1.8,8),outSil);
       leg.position.set(Math.cos(a)*1.45,0.75,Math.sin(a)*1.45);
-      leg.rotation.set(Math.sin(a)*0.45,0,-Math.cos(a)*0.45);
+      leg.rotation.set(-Math.sin(a)*.53,0,Math.cos(a)*.53);
       lander.add(leg);
       addPart(new THREE.CylinderGeometry(0.22,0.28,0.08,10),outGun,Math.cos(a)*1.95,0.04,Math.sin(a)*1.95,0,0,0,lander);
     }
@@ -1701,6 +1585,7 @@
     dustRing.rotation.x=-Math.PI/2;dustRing.position.set(lx,ly0+0.12,lz);
     s.root.add(dustRing);
     lander.position.set(lx,ly0+36,lz);lander.visible=false;
+    AIBAModelDetail.batch(hatch);
     s.root.add(lander);
 
     // 采矿塔 1/6G 钻探尘柱
@@ -1726,7 +1611,7 @@
       progress:0,progressVel:0,targetProgress:0,eclipseAmount:0,stage:"apolloDay",
       crystalMats,glintMat,floatingRocks,jadeRabbit,
       hoopSwarm,astronauts,drones,droneHotMat,
-      lander,landerHome:{x:lx,y:ly0,z:lz},flameMat,dustRing,dustRingMat,
+      lander,hatch,missionTime:-1,makes:0,contacts:0,hareVisit:Math.random()<.32,landerHome:{x:lx,y:ly0,z:lz},flameMat,dustRing,dustRingMat,
       derrickPlume,plumeMat,lunarHoopLight
     };
   }
@@ -3332,12 +3217,13 @@
   function applyLunarHoopImpulse(w,ox,oy,oz,strength,radius){
     if(!w)return;
     const rad=radius||5.2,str=Math.max(0.5,strength||3.6);
-    if(w.hoopSwarm&&w.hoopSwarm.items){
+    if(w.hoopSwarm?.wake>0){
       for(const f of w.hoopSwarm.items){
         const px=f.hx+f.dx,py=f.hy+f.dy,pz=f.hz+f.dz;
         const rx=px-ox,ry=py-oy,rz=pz-oz;
-        const d=Math.hypot(rx,ry,rz);
-        if(d>rad)continue;
+        const d2=rx*rx+ry*ry+rz*rz;
+        if(d2>rad*rad)continue;
+        const d=Math.sqrt(d2);
         const inv=d>0.04?1/d:0;
         const nx=d>0.04?rx*inv:f.sx,ny=d>0.04?ry*inv:f.sy,nz=d>0.04?rz*inv:f.sz;
         const fall=Math.exp(-d/(rad*0.48)),kick=str*fall;
@@ -3382,6 +3268,171 @@
     }
   }
 
+  // A suit part is rigidly attached to one joint. Preserve the original surface and triangle
+  // indices; draw the articulated suit once per material instead of once per seam or fitting.
+  function bindLunarSuit(root,joints){
+    root.updateMatrixWorld(true);
+    const byMaterial=new Map(),sources=[];
+    const positions=[],normals=[],uvs=[],indices=[],weights=[],jointIndices=[];
+    function collect(node,joint){
+      const next=joints.indexOf(node);
+      if(next!==-1)joint=next;
+      if(node.isMesh){
+        const geo=node.geometry.clone().applyMatrix4(node.matrixWorld);
+        const offset=positions.length/3;
+        positions.push(...geo.attributes.position.array);normals.push(...geo.attributes.normal.array);
+        uvs.push(...geo.attributes.uv.array);
+        const count=geo.attributes.position.count;
+        for(let i=0;i<count;i++){jointIndices.push(joint,0,0,0);weights.push(1,0,0,0);}
+        let group=byMaterial.get(node.material);
+        if(!group){group=[];byMaterial.set(node.material,group);}
+        for(let i=0,n=geo.index?geo.index.count:count;i<n;i++)group.push(offset+(geo.index?geo.index.getX(i):i));
+        sources.push(node);geo.dispose();
+      }
+      for(const child of node.children)collect(child,joint);
+    }
+    collect(root,0);
+    for(const node of sources){node.parent.remove(node);node.geometry.dispose();}
+    const skin=new THREE.BufferGeometry();
+    skin.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+    skin.setAttribute("normal",new THREE.Float32BufferAttribute(normals,3));
+    skin.setAttribute("uv",new THREE.Float32BufferAttribute(uvs,2));
+    skin.setAttribute("skinWeight",new THREE.Float32BufferAttribute(weights,4));
+    skin.setAttribute("skinIndex",new THREE.Uint16BufferAttribute(jointIndices,4));
+    const materials=[];
+    for(const [mat,group] of byMaterial){
+      skin.addGroup(indices.length,group.length,materials.length);
+      indices.push(...group);mat.skinning=true;materials.push(mat);
+    }
+    skin.setIndex(indices);
+    skin.boundingSphere=new THREE.Sphere(new THREE.Vector3(0,1,0),1.9);
+    const skeleton=new THREE.Skeleton(joints);
+    const suit=new THREE.SkinnedMesh(skin,materials);suit.name="lunarEvaSuit";suit.castShadow=true;suit.receiveShadow=true;
+    root.add(suit);suit.bind(skeleton);
+    skin.addEventListener("dispose",()=>skeleton.dispose());
+  }
+
+  // The three crew members share a hatch, then disperse behind the baseline to watch the game.
+  // Solve the glove against the visor or camera grip in torso space. Keep each elbow outboard.
+  const wristAim=new THREE.Vector3(),elbowOut=new THREE.Vector3(),boneDir=new THREE.Vector3();
+  const wristDir=new THREE.Vector3(),restDir=new THREE.Vector3(),upperQ=new THREE.Quaternion(),localQ=new THREE.Quaternion();
+  const gloveOffset=new THREE.Vector3(0,-.32,.02);
+  function lunarWrist(arm,fore,x,y,z,side,weight){
+    wristAim.set(x,y,z).sub(arm.position);
+    const upper=fore.position.length(),lower=gloveOffset.length();
+    const d=THREE.MathUtils.clamp(wristAim.length(),.04,upper+lower-.0001);
+    wristAim.normalize();
+    const along=(upper*upper-lower*lower+d*d)/(2*d);
+    elbowOut.set(side,-.26,-.12);
+    elbowOut.addScaledVector(wristAim,-elbowOut.dot(wristAim)).normalize();
+    boneDir.copy(wristAim).multiplyScalar(along).addScaledVector(elbowOut,Math.sqrt(Math.max(0,upper*upper-along*along)));
+    wristDir.copy(wristAim).multiplyScalar(d).sub(boneDir).normalize();
+    upperQ.setFromUnitVectors(restDir.copy(fore.position).normalize(),boneDir.normalize());
+    wristDir.applyQuaternion(localQ.copy(upperQ).invert());
+    localQ.setFromUnitVectors(restDir.copy(gloveOffset).normalize(),wristDir);
+    arm.quaternion.slerp(upperQ,weight);fore.quaternion.slerp(localQ,weight);
+  }
+  const crewStations=[[3.8,-13.6],[8.4,-10.2],[-4.6,-14.2]];
+  const crewPhotos=["court","portrait","selfie"];
+  function updateLunarCrew(w,a,index,mission,t,dt,ball){
+    const local=mission-7.65-index*2.48;
+    if(local<0)return;
+    const smooth=THREE.MathUtils.smoothstep,lerp=THREE.MathUtils.lerp;
+    const [sx,sz]=crewStations[index],home=w.landerHome;
+    a.group.visible=true;
+    const walkTime=3+Math.hypot(sx-home.x,sz-home.z-3.35)/1.9;
+    const onSite=local-2.8-walkTime;
+    let x=home.x,z=home.z,y=home.y,walk=0,stepPhase=0;
+    let yaw=0,torso=0,lPitch=0,rPitch=0,lRoll=-.19,rRoll=.19,lElbow=-.4,rElbow=-.4;
+    let headPitch=0,headYaw=0,photo=0,salute=0;
+    const playerPos=typeof P!=="undefined"&&P.pos?P.pos:HOOP;
+    if(local<2.8){
+      a.mode="egress";
+      const along=local/2.8;
+      z+=lerp(.45,3.35,along);
+      y=lerp(home.y+.95,w.terrainY(x,z),THREE.MathUtils.clamp((z-home.z-1.26)/2.09,0,1));
+      walk=.7;stepPhase=along*Math.PI*5;torso=.14;
+    }else if(onSite<0){
+      a.mode="approach";
+      const u=(local-2.8)/walkTime;
+      const ease=smooth(u,0,1);
+      x=lerp(home.x,sx,ease);z=lerp(home.z+3.35,sz,ease);
+      y=w.terrainY(x,z);yaw=Math.atan2(sx-home.x,sz-home.z-3.35);
+      walk=Math.sin(Math.PI*u);stepPhase=ease*walkTime*4.1;torso=.09*walk;
+    }else{
+      x=sx;z=sz;y=w.terrainY(x,z);
+      a.celebrateT=Math.max(0,a.celebrateT-dt);
+      if(a.mode==="approach"||a.mode==="egress"||a.mode==="aboard"||a.mode==="idleWatch"){
+        a.mode="wonder";a.modeT=0;a.modeDur=2.2+index*.34;a.photoIndex=index;
+      }else a.modeT+=dt;
+      if(a.modeT>=a.modeDur){
+        a.modeT=0;
+        if(a.mode==="wonder"){a.mode="salute";a.modeDur=2.3;}
+        else if(a.mode==="salute"||a.mode==="watch"){
+          a.mode=crewPhotos[a.photoIndex%3];a.photoIndex++;
+          a.modeDur=3.5+Math.random()*1.4;
+        }else{a.mode="watch";a.modeDur=2.1+Math.random()*4;}
+      }
+      const u=a.modeT/a.modeDur;
+      const hold=smooth(u,0,.22)*(1-smooth(u,.8,1));
+      const subject=ball||playerPos;
+      const aim=a.aim;
+      aim.set(subject.x,ball?subject.y:playerPos.y+1.6,subject.z);
+      if(a.mode==="court")aim.set(HOOP.x,HOOP.y,HOOP.z);
+      if(a.mode==="portrait")aim.set(playerPos.x,playerPos.y+1.45,playerPos.z);
+      yaw=Math.atan2(aim.x-x,aim.z-z);
+      headPitch=-Math.atan2(aim.y-y-1.5,Math.max(1,Math.hypot(aim.x-x,aim.z-z)));
+      if(a.mode==="wonder"){
+        torso=-.22*hold;lRoll-=.65*hold;rRoll+=.55*hold;headPitch-=.20*hold;
+      }else if(a.mode==="salute"){
+        salute=hold;
+      }else if(a.mode==="watch"){
+        const reaction=Math.sin(Math.PI*Math.min(1,a.celebrateT/1.55));
+        torso=-.16*reaction;lPitch=-.6*reaction;lRoll-=.65*reaction;
+      }else{
+        photo=hold;
+        if(a.mode==="selfie"){
+          // Face away from the hoop so the court is behind the crew member in the photograph.
+          yaw=Math.atan2(x-HOOP.x,z-HOOP.z);
+          rPitch=-1.72*hold;rElbow=-.40+.25*hold;rRoll=.19+.28*hold;
+          lRoll-=1.92*hold;lElbow-=1.12*hold;
+          headYaw=.29*hold;headPitch=-.12*hold;
+        }else{
+          rPitch=-1.76*hold;rElbow-=1.02*hold;rRoll-=.23*hold;
+          lPitch=-1.18*hold;lElbow-=.91*hold;lRoll+=.65*hold;
+        }
+      }
+    }
+    const stride=Math.sin(stepPhase)*walk;
+    const brace=cosmicGroundFX.response(x,z);
+    if(a.leap>0){
+      a.leap=Math.max(0,a.leap-dt);
+      const phase=1-a.leap/2.6;
+      y+=4*phase*(1-phase)*2.55;
+      lRoll-=Math.sin(phase*Math.PI);rRoll+=Math.sin(phase*Math.PI);
+    }
+    a.group.position.set(x+Math.sign(x)*.30*brace,y+.10*Math.abs(stride),z);
+    const turn=Math.atan2(Math.sin(yaw-a.curYaw),Math.cos(yaw-a.curYaw));
+    a.curYaw+=turn*Math.min(1,dt*4.5);a.group.rotation.y=a.curYaw;
+    a.body.rotation.set(torso-.42*brace,0,stride*.043);
+    a.head.rotation.set(THREE.MathUtils.clamp(headPitch,-.58,.36),headYaw,0);
+    a.legL.rotation.x=.54*stride;a.legR.rotation.x=-.54*stride;
+    a.shinL.rotation.x=.09+Math.max(0,-stride)*.64;a.shinR.rotation.x=.09+Math.max(0,stride)*.64;
+    a.armL.rotation.set(lPitch-.33*stride-1.12*brace,0,lRoll);a.armR.rotation.set(rPitch+.33*stride,0,rRoll);
+    a.foreArmL.rotation.set(lElbow,0,0);a.foreArmR.rotation.set(rElbow,0,0);
+    if(salute)lunarWrist(a.armR,a.foreArmR,.19,.68,.15,1,salute);
+    if(photo&&a.mode!=="selfie"){
+      lunarWrist(a.armR,a.foreArmR,.105,.53,.36,1,photo);
+      lunarWrist(a.armL,a.foreArmL,-.04,.47,.39,-1,photo);
+    }
+    a.cameraRig.visible=photo>.03;
+    if(a.cameraRig.visible){
+      if(a.mode==="selfie")a.head.getWorldPosition(a.aim);
+      a.cameraRig.lookAt(a.aim);
+      a.flash.visible=a.modeT/a.modeDur>.53&&a.modeT/a.modeDur<.575;
+    }
+  }
+
   function activeLunarWonder(){
     const env=(typeof environmentRoot!=="undefined"&&environmentRoot)||window.environmentRoot;
     const w=env?.userData?.placeState?.wonder;
@@ -3392,38 +3443,24 @@
     if(typeof currentScenePreset!=="undefined"&&currentScenePreset!=="lunarCrater")return;
     const w=activeLunarWonder();
     if(!w)return;
+    if(kind!=="made")w.contacts++;
     const mult=kind==="made"?1.45:kind==="rim"?1.25:0.98;
     applyLunarHoopImpulse(w,x,y,z,(strength||3.4)*mult,kind==="made"?5.6:4.6);
   }
 
-  function lunarCelebrate(){
+  function lunarCelebrate(cosmic=false){
     if(typeof currentScenePreset!=="undefined"&&currentScenePreset!=="lunarCrater")return;
     const w=activeLunarWonder();
     if(!w||!w.astronauts)return;
-    w.astronauts.forEach((a,idx)=>{
-      a.celebrateT=3.2;
-      // 进球时随机触发 1~2 名宇航员直接进入 2.7m~3.1m 超高失重飞跃！
-      if(idx!==1&&a.mode!=="highBound"){
-        a.mode="highBound";
-        a.modeT=0;
-        a.modeDur=3.15;
-        a.fromX=a.curX;a.fromZ=a.curZ;
-        a.nextWpIdx=(a.wpIdx+1)%a.waypoints.length;
-        a.toX=a.waypoints[a.nextWpIdx][0];
-        a.toZ=a.waypoints[a.nextWpIdx][1];
-        a.jumpPeak=2.65+(idx%2)*0.42;
-      }
-    });
-    if(w.jadeRabbit){
-      const jr=w.jadeRabbit;
-      jr.hopT=1.8;
-      if(jr.state!=="blink"){
-        jr.state="blink";
-        jr.stateT=0;
-        jr.targetWpIdx=(jr.wpIdx+2)%jr.waypoints.length;
-        emitBlupeeParticles(jr,jr.x,jr.y0,jr.z,28,2.2);
+    w.makes++;
+    if(w.hareVisit&&w.makes>=3&&w.missionTime>=15&&w.jadeRabbit.state==="hidden")w.jadeRabbit.state="invited";
+    for(const a of w.astronauts){
+      if(a.group.visible&&a.mode!=="egress"&&a.mode!=="approach"){
+        a.celebrateT=1.55;
+        if(cosmic)a.leap=2.6;
       }
     }
+    if(w.jadeRabbit.group.visible)w.jadeRabbit.curious=1.25;
     if(w.drones)for(const dr of w.drones)dr.flashT=1.8;
   }
 
@@ -3437,19 +3474,19 @@
     const w=place?.wonder;
     if(!w||w.kind!=="lunar")return;
     w.progress=0;w.progressVel=0;w.targetProgress=0;w.eclipseAmount=0;w.stage="apolloDay";
-    if(w.hoopSwarm)for(const f of w.hoopSwarm.items){f.dx=f.dy=f.dz=f.vx=f.vy=f.vz=f.excited=0;}
-    if(w.astronauts){
-      for(const a of w.astronauts){
-        a.celebrateT=0;a.mode="idleWatch";a.modeT=1.5+a.seed*0.5;a.modeDur=3.5;
-        a.wpIdx=0;a.curX=a.homeX;a.curZ=a.homeZ;a.fromX=a.homeX;a.fromZ=a.homeZ;a.toX=a.homeX;a.toZ=a.homeZ;
-      }
+    w.makes=0;w.contacts=0;w.missionTime=-1;w.hareVisit=Math.random()<.32;
+    const hs=w.hoopSwarm;
+    hs.wake=0;hs.offsets.fill(0);hs.geo.attributes.aWake.needsUpdate=true;hs.mesh.visible=hs.shardInst.visible=false;
+    for(const f of hs.items)f.dx=f.dy=f.dz=f.vx=f.vy=f.vz=f.excited=0;
+    for(const a of w.astronauts){
+      a.group.visible=a.cameraRig.visible=a.flash.visible=false;
+      a.mode="aboard";a.modeT=0;a.celebrateT=0;a.leap=0;a.curYaw=0;
     }
-    if(w.jadeRabbit){
-      const jr=w.jadeRabbit;
-      jr.wpIdx=0;jr.targetWpIdx=1;
-      jr.x=jr.waypoints[0].x;jr.z=jr.waypoints[0].z;jr.y0=w.terrainY?w.terrainY(jr.x,jr.z):jr.y0;
-      jr.state="roam";jr.stateT=0;jr.blinkFlash=0;
-    }
+    const jr=w.jadeRabbit;
+    jr.group.visible=jr.trail.mesh.visible=false;jr.state="hidden";jr.curious=0;
+    jr.trail.cursor=0;
+    for(const it of jr.trail.items)it.life=0;
+    jr.trail.data.fill(0);jr.trail.geo.attributes.aData.needsUpdate=true;
     if(w.drones)for(const dr of w.drones){dr.dx=dr.dy=dr.dz=dr.vx=dr.vy=dr.vz=dr.flashT=0;}
     update(place,0,0);
   }
@@ -3546,109 +3583,88 @@
         }
       }
 
-      // B3. 塞尔达「卢比兔 / 金币精灵 (Blupee)」神性灵兔：远山脊自主漫游、灵粒拖尾与周期「闪现魔法」！
-      if(w.jadeRabbit&&w.terrainY){
-        const jr=w.jadeRabbit,dtSim=Math.min(0.05,Math.max(0.001,step||1/60));
-        if(jr.hopT>0)jr.hopT=Math.max(0,jr.hopT-dtSim);
-        jr.stateT+=dtSim;
-        let hopY=0,stride=0,visibleScale=1.28;
-
-        if(jr.state==="lookout"){
-          // 警觉驻足眺望：轻盈呼吸、转头观察球场、不对称灵耳微颤
-          jr.blinkFlash=Math.max(0,jr.blinkFlash-dtSim*2.8);
-          if(jr.stateT>3.2){
+      // A rare visitor notices repeated baskets, listens, bounds a short distance and dissolves.
+      const jr=w.jadeRabbit;
+      if(jr.state==="invited"){
+        jr.state="arrive";jr.flank=Math.random()<.5?-1:1;jr.gaze=0;jr.stateT=0;jr.age=0;jr.hops=0;jr.earBeat=0;jr.curious=0;jr.nextBlink=1.3+Math.random()*2;
+        jr.bankSide=Math.random()<.5?-1:1;jr.x=jr.bankSide*(3.1+Math.random()*.65);
+        jr.z=-10.4-Math.random()*.65;jr.y0=w.terrainY(jr.x,jr.z);
+        jr.yaw=Math.atan2(-jr.x,HOOP.z-jr.z)+jr.flank*.85;
+        jr.group.visible=jr.trail.mesh.visible=true;
+        emitBlupeeParticles(jr,jr.x,jr.y0,jr.z,18,1.2);
+      }
+      if(jr.group.visible||jr.trail.mesh.visible){
+        const dtSim=step;
+        jr.stateT+=step;jr.age+=step;jr.curious=Math.max(0,jr.curious-step);
+        let lift=0,stretch=0,scale=1,look=0,flight=0,compress=0;
+        const listen=()=>{
+          jr.state="listen";jr.stateT=0;jr.duration=1.5+Math.random()*3.1;
+          jr.earBeat=.25+Math.random()*.6;
+        };
+        if(jr.state==="arrive"){
+          scale=THREE.MathUtils.smoothstep(jr.stateT,0,.86);
+          if(jr.stateT>=.86)listen();
+        }else if(jr.state==="listen"){
+          look=Math.sin(Math.PI*Math.min(1,jr.stateT/jr.duration))*.42;
+          const flying=typeof balls!=="undefined"&&balls.length?balls[balls.length-1].mesh:null;
+          const focus=flying?.visible?flying.position:(typeof P!=="undefined"&&P.pos?P.pos:HOOP);
+          const bearing=Math.atan2(focus.x-jr.x,focus.z-jr.z);
+          const delta=Math.atan2(Math.sin(bearing-jr.yaw),Math.cos(bearing-jr.yaw));
+          jr.gaze+=(THREE.MathUtils.clamp(delta,-.72,.72)-jr.gaze)*Math.min(1,step*7);
+          jr.yaw+=(delta+jr.flank*.68)*Math.min(1,step*2);
+          if(jr.stateT>jr.duration&&jr.curious===0){
             jr.stateT=0;
-            // 每隔一次驻足切换为「山脊轻跃漫游」或「闪现魔法 (Blink Teleport)」
-            const doBlink=((jr.wpIdx+Math.floor(t))%2===0);
-            if(doBlink){
-              jr.state="blink";
-              jr.targetWpIdx=(jr.wpIdx+2)%jr.waypoints.length;
-              emitBlupeeParticles(jr,jr.x,jr.y0,jr.z,32,2.4);
-            }else{
-              jr.state="roam";
-              jr.targetWpIdx=(jr.wpIdx+1)%jr.waypoints.length;
+            if(jr.age>12||jr.hops>=3){jr.state="leave";emitBlupeeParticles(jr,jr.x,jr.y0,jr.z,26,1.5);}
+            else{
+              jr.state="bound";jr.hops++;jr.duration=.64+Math.random()*.24;
+              jr.fromX=jr.x;jr.fromZ=jr.z;
+              const reach=.85+Math.random()*1.45;
+              if(Math.abs(jr.x+jr.flank*reach)>5.8||Math.abs(jr.x+jr.flank*reach)<2.2)jr.flank*=-1;
+              jr.toX=jr.x+jr.flank*reach;
+              jr.toZ=THREE.MathUtils.clamp(jr.z+(Math.random()-.4)*1.6,-11.45,-10.05);
+              jr.takeoffYaw=Math.atan2(jr.toX-jr.x,jr.toZ-jr.z);
             }
           }
-        }else if(jr.state==="roam"){
-          // 沿环形山脊 1/6G 灵动跳跃漫游，一路洒落冰青与流金灵粒
-          const wp0=jr.waypoints[jr.wpIdx],wp1=jr.waypoints[jr.targetWpIdx];
-          const dur=3.8;
-          const u=Math.min(1,jr.stateT/dur);
-          jr.x=THREE.MathUtils.lerp(wp0.x,wp1.x,u);
-          jr.z=THREE.MathUtils.lerp(wp0.z,wp1.z,u);
+        }else if(jr.state==="bound"){
+          const u=Math.min(1,jr.stateT/jr.duration);
+          flight=THREE.MathUtils.clamp((u-.22)/.64,0,1);
+          compress=Math.sin(Math.PI*Math.min(1,u/.22))*.10+Math.sin(Math.PI*Math.max(0,(u-.86)/.14))*.072;
+          lift=4*flight*(1-flight)*(.42+.09*jr.hops);
+          stretch=lift*.10-compress;
+          jr.x=THREE.MathUtils.lerp(jr.fromX,jr.toX,flight);
+          jr.z=THREE.MathUtils.lerp(jr.fromZ,jr.toZ,flight);
+          jr.yaw+=Math.atan2(Math.sin(jr.takeoffYaw-jr.yaw),Math.cos(jr.takeoffYaw-jr.yaw))*Math.min(1,step*12);
           jr.y0=w.terrainY(jr.x,jr.z);
-          const moveYaw=Math.atan2(wp1.x-wp0.x,wp1.z-wp0.z);
-          jr.yaw=THREE.MathUtils.lerp(jr.yaw,moveYaw,0.15);
-          const hopWave=Math.abs(Math.sin(u*Math.PI*3.0));
-          hopY=hopWave*0.64;
-          stride=Math.sin(u*Math.PI*6.0);
-          jr.emitAcc+=dtSim*26.0;
-          if(jr.emitAcc>=1){
-            const nEmit=Math.min(4,jr.emitAcc|0);
-            jr.emitAcc-=nEmit;
-            emitBlupeeParticles(jr,jr.x,jr.y0+hopY*0.6,jr.z,nEmit,0.75);
-          }
-          if(u>=1){
-            jr.wpIdx=jr.targetWpIdx;
-            jr.yaw=jr.waypoints[jr.wpIdx].yaw;
-            jr.state="lookout";
-            jr.stateT=0;
-          }
-        }else if(jr.state==="blink"){
-          // 塞尔达卢比兔「闪现魔法」：0..0.38s 聚光化作灵光消散 -> 0.38..0.78s 远方山脊闪现凝形并爆开灵环！
-          if(jr.stateT<0.38){
-            const u=jr.stateT/0.38;
-            jr.blinkFlash=u*1.65;
-            hopY=u*0.75;
-            visibleScale=1.28*(1.0-u*0.86);
-          }else if(jr.stateT<0.82){
-            if(jr.wpIdx!==jr.targetWpIdx){
-              jr.wpIdx=jr.targetWpIdx;
-              const wp=jr.waypoints[jr.wpIdx];
-              jr.x=wp.x;jr.z=wp.z;jr.y0=w.terrainY(jr.x,jr.z);jr.yaw=wp.yaw;
-              emitBlupeeParticles(jr,jr.x,jr.y0+0.4,jr.z,36,2.6);
-            }
-            const u=(jr.stateT-0.38)/0.44;
-            jr.blinkFlash=(1.0-u)*1.55;
-            hopY=(1.0-u)*0.45;
-            visibleScale=1.28*(0.2+0.8*THREE.MathUtils.smoothstep(u,0,1));
-          }else{
-            jr.blinkFlash=0;
-            jr.state="lookout";
-            jr.stateT=0;
-          }
+          if(u>=1){if(Math.random()<.42)jr.flank*=-1;emitBlupeeParticles(jr,jr.x,jr.y0,jr.z,5,.55);listen();}
+        }else if(jr.state==="leave"){
+          const exit=THREE.MathUtils.clamp(jr.stateT/.7,0,1);
+          scale=1-THREE.MathUtils.smoothstep(exit,.25,1);lift=Math.sin(exit*Math.PI)*.62;
+          jr.x+=Math.sin(jr.yaw)*step*2.1;jr.z+=Math.cos(jr.yaw)*step*2.1;jr.y0=w.terrainY(jr.x,jr.z);
+          if(jr.stateT>=.7){jr.group.visible=false;jr.state="afterglow";jr.stateT=0;}
+        }else if(jr.state==="afterglow"&&jr.stateT>2.4){
+          jr.trail.mesh.visible=false;jr.state="gone";
         }
-
         const startled=cosmicGroundFX.response(jr.x,jr.z);
-        const totalHop=hopY+startled*0.75;
-        jr.group.scale.setScalar(visibleScale);
-        jr.group.position.set(jr.x+Math.sign(jr.x)*startled*0.52,jr.y0+totalHop,jr.z);
-        jr.group.rotation.y=jr.yaw;
-        jr.body.rotation.x=-totalHop*0.28+stride*0.12;
-        jr.head.rotation.y=Math.sin(t*0.85)*0.28;
-        jr.head.rotation.x=-0.06-totalHop*0.16+Math.cos(t*1.3)*0.08;
-        if(jr.foreL&&jr.foreR&&jr.hindL&&jr.hindR){
-          jr.foreL.rotation.x=-totalHop*0.65+stride*0.48;
-          jr.foreR.rotation.x=-totalHop*0.55-stride*0.48;
-          jr.hindL.rotation.x=totalHop*0.82-stride*0.52;
-          jr.hindR.rotation.x=totalHop*0.74+stride*0.52;
-        }
-        if(jr.tail)jr.tail.rotation.y=Math.sin(t*3.8)*0.22;
-        const twitchL=Math.pow(Math.max(0,Math.sin(t*2.9)),6)*0.26;
-        const twitchR=Math.pow(Math.max(0,Math.sin(t*2.3+1.4)),6)*0.24;
-        jr.earL.rotation.z=-0.24-twitchL-totalHop*0.16;
-        jr.earR.rotation.z=0.24+twitchR+totalHop*0.16;
-
-        jr.blupeeMat.uniforms.uTime.value=t;
-        jr.blupeeMat.uniforms.uEclipse.value=eclipse;
-        jr.blupeeMat.uniforms.uBlinkFlash.value=jr.blinkFlash;
-        const glowAmt=0.58+0.42*eclipse+0.14*Math.sin(t*2.2)+jr.blinkFlash*0.65;
-        jr.haloMat.uniforms.uGlow.value=glowAmt*0.62;
-
-        // 持续喷洒少量环境灵火微粒 + 更新 140 颗灵粒轨迹
-        if(jr.state==="lookout"&&Math.sin(t*17.3)>0.92){
-          emitBlupeeParticles(jr,jr.x,jr.y0+0.25,jr.z,1,0.38);
-        }
+        jr.group.scale.setScalar(1.14*scale);
+        jr.group.position.set(jr.x,jr.y0+lift+startled*.6-compress*.5,jr.z);jr.group.rotation.y=jr.yaw;
+        const breath=jr.state==="listen"?.012*Math.sin(jr.age*3.4):0;
+        jr.body.scale.set(1-stretch*.4,1+stretch+breath,1-stretch*.4);
+        const blink=THREE.MathUtils.clamp((jr.age-jr.nextBlink)/.19,0,1);
+        for(const eye of jr.eyes)eye.scale.y=1-.94*Math.sin(Math.PI*blink);
+        if(blink===1)jr.nextBlink=jr.age+1.9+Math.random()*3.6;
+        jr.body.rotation.x=jr.state==="bound"?-.21*Math.sin(flight*Math.PI*2):-.025*look;
+        if(jr.state!=="listen")jr.gaze*=Math.exp(-step*6);
+        jr.head.rotation.set(-look*.16-jr.curious*.12+compress,jr.gaze+look*.11,jr.flank*look*.14);
+        const flick=jr.state==="listen"?Math.exp(-Math.pow((jr.stateT-jr.earBeat)*9,2)):0;
+        jr.earL.rotation.set(-.09-lift*.75,look*.25,.16+flick*.36);
+        jr.earR.rotation.set(-.40-lift*.52+jr.curious*.16,-look*.34,-.39-look*.20);
+        jr.foreL.rotation.x=-lift*(1.04+.56*flight);
+        jr.foreR.rotation.x=-lift*(.75+.48*flight);
+        jr.hindL.rotation.x=lift*(1.95-3.15*flight);
+        jr.hindR.rotation.x=lift*(1.62-2.9*flight);
+        jr.tail.rotation.x=lift*.25;
+        jr.coat.uniforms.uTuck.value=lift*1.32+compress*2.1;jr.coat.uniforms.uEclipse.value=eclipse;jr.haloMat.uniforms.uTime.value=t;
+        jr.haloMat.uniforms.uGlow.value=scale*(.31+.15*eclipse);
         const tr=jr.trail;
         if(tr){
           for(let i=0;i<tr.items.length;i++){
@@ -3674,10 +3690,13 @@
         }
       }
 
-      // B4. 大规模 920 颗悬空发光晶尘 + 36 颗 3D 切面微晶石（篮球飞行轨迹尾流 & 砸框冲击波双重驱动！）
-      if(w.hoopSwarm){
+      // Wake the suspended field on repeated makes or contact with the hoop hardware.
+      const swarmAwake=w.makes>=2||w.contacts>=4;
+      if(swarmAwake){
         const hs=w.hoopSwarm,dtSim=Math.min(0.05,Math.max(0.001,step||1/60));
-        const visAmt=0.36+THREE.MathUtils.smoothstep(p,0.08,0.75)*0.68;
+        hs.wake=Math.min(1,hs.wake+step/2.8);
+        hs.mesh.visible=hs.shardInst.visible=hs.wake>0;
+        const visAmt=.63+THREE.MathUtils.smoothstep(p,.08,.75)*.53;
         const activeBalls=(typeof balls!=="undefined"&&Array.isArray(balls))?balls:null;
         const bPts=[];
         if(activeBalls){
@@ -3696,15 +3715,30 @@
           }
         }
         const drag=Math.exp(-2.65*dtSim),springK=0.46;
-        const sd=hs.shardDummy;
+        const sd=hs.shardDummy,uniforms=hs.mesh.material.uniforms;
+        uniforms.uClock.value=t;uniforms.uReveal.value=hs.wake;uniforms.uBrightness.value=visAmt;
+        let offsetsChanged=false;
         for(let i=0;i<hs.items.length;i++){
-          const f=hs.items[i],tt=t*f.rate+f.phase;
-          const ix=Math.sin(tt*0.76)*0.32,iy=Math.sin(tt*0.98+f.phase)*0.24,iz=Math.cos(tt*0.68-f.phase)*0.30;
+          const f=hs.items[i];
+          const shard=i%hs.shardStride===0&&i/hs.shardStride<hs.shardCount;
+          // The widest ambient orbit is .32 m. Reject outside the wake before evaluating trig.
+          let nearby=false;
           for(let bi=0;bi<bPts.length;bi++){
             const bp=bPts[bi];
-            const rx=(f.hx+ix+f.dx)-bp.x,ry=(f.hy+iy+f.dy)-bp.y,rz=(f.hz+iz+f.dz)-bp.z;
-            const d=Math.hypot(rx,ry,rz);
-            if(d<2.85&&d>0.02){
+            if(Math.abs(f.hx+f.dx-bp.x)<3.18&&Math.abs(f.hz+f.dz-bp.z)<3.18){
+              nearby=true;break;
+            }
+          }
+          if(!shard&&!nearby&&!f.vx&&!f.vy&&!f.vz&&!f.excited&&!f.dx&&!f.dy&&!f.dz)continue;
+          const tt=t*f.rate+f.phase;
+          const ix=Math.sin(tt*.76)*.32,iy=Math.sin(tt*.98+f.phase)*.24,iz=Math.cos(tt*.68-f.phase)*.30;
+          const reveal=THREE.MathUtils.smoothstep(hs.wake,f.rate*.48,Math.min(1,f.rate*.48+.61));
+          for(let bi=0;bi<bPts.length;bi++){
+            const bp=bPts[bi];
+            const rx=(f.hx+ix+f.dx)-bp.x,ry=(f.hy+iy+f.dy)*(.1+.9*reveal)-bp.y,rz=(f.hz+iz+f.dz)-bp.z;
+            const d2=rx*rx+ry*ry+rz*rz;
+            if(d2<2.85*2.85&&d2>.0004){
+              const d=Math.sqrt(d2);
               const fall=Math.exp(-d*0.76),nx=rx/d,ny=ry/d,nz=rz/d;
               const cx=ny*f.sz-nz*f.sy,cy=nz*f.sx-nx*f.sz,cz=nx*f.sy-ny*f.sx;
               const wake=16.5*fall*dtSim;
@@ -3720,230 +3754,56 @@
           f.vz=(f.vz-f.dz*springK*dtSim)*drag;
           f.dx+=f.vx*dtSim;f.dy+=f.vy*dtSim;f.dz+=f.vz*dtSim;
           f.excited=Math.max(0,f.excited-dtSim*0.38);
-          const px=f.hx+ix+f.dx,py=Math.max(0.28,f.hy+iy+f.dy),pz=f.hz+iz+f.dz;
-          hs.pos[i*3]=px;hs.pos[i*3+1]=py;hs.pos[i*3+2]=pz;
-          const tw=0.34+0.66*Math.pow(Math.max(0,Math.sin(t*(1.4+f.rate)+f.phase*7)*0.5+0.5),1.7);
-          hs.glow[i]=visAmt*(tw+f.excited*0.96);
-
-          // 前 shardCount 个粒子同步驱动 3D 切面悬空晶石碎片的位移与失重翻滚
-          if(sd&&i<hs.shardCount){
-            sd.position.set(px,py,pz);
+          if(f.excited===0&&Math.abs(f.dx)+Math.abs(f.dy)+Math.abs(f.dz)+Math.abs(f.vx)+Math.abs(f.vy)+Math.abs(f.vz)<.00001){
+            f.dx=f.dy=f.dz=f.vx=f.vy=f.vz=0;
+          }
+          const j=i*4;
+          if(f.dx||f.dy||f.dz||f.excited||hs.offsets[j]||hs.offsets[j+1]||hs.offsets[j+2]||hs.offsets[j+3]){
+            hs.offsets[j]=f.dx;hs.offsets[j+1]=f.dy;hs.offsets[j+2]=f.dz;hs.offsets[j+3]=f.excited;offsetsChanged=true;
+          }
+          if(shard){
+            const px=f.hx+ix+f.dx,pz=f.hz+iz+f.dz,liftedY=Math.max(.28,f.hy+iy+f.dy)*(.1+.9*reveal);
+            sd.position.set(px,liftedY,pz);
             const spinRate=1.0+f.excited*3.5;
             sd.rotation.set(t*0.8*spinRate+f.phase,t*1.1*spinRate+i,t*0.65*spinRate);
-            const sc=f.size*(0.75+0.35*visAmt+f.excited*0.32);
+            const sc=reveal*f.size*(.95+.32*visAmt+f.excited*.32)*(1+.85*(i%7)/6)*f.perspectiveScale;
             sd.scale.set(sc,sc*1.35,sc*0.85);
             sd.updateMatrix();
-            hs.shardInst.setMatrixAt(i,sd.matrix);
+            hs.shardInst.setMatrixAt(i/hs.shardStride,sd.matrix);
           }
         }
-        hs.geo.attributes.position.needsUpdate=true;
-        hs.geo.attributes.aGlow.needsUpdate=true;
+        if(offsetsChanged)hs.geo.attributes.aWake.needsUpdate=true;
         if(hs.shardInst){
           hs.shardInst.instanceMatrix.needsUpdate=true;
-          hs.shardMat.emissiveIntensity=0.45+0.65*eclipse;
+          hs.shardMat.emissiveIntensity=.24+.46*eclipse;
         }
       }
 
-      // C1. 3A 级阿波罗宇航员非重复生命感 AI（驻足看球/低重力巡线漫步/蹲身勘察矿石/偶发 2.5m~3.1m 超高失重飞跃！）
-      if(w.astronauts&&w.terrainY){
-        const approach=THREE.MathUtils.smoothstep(p,0.10,0.48);
-        const dtSim=Math.min(0.05,Math.max(0.001,step||1/60));
-        let focusBall=null;
-        if(typeof balls!=="undefined"&&Array.isArray(balls)){
+      // Start one descent per visit. Its clock keeps running between baskets, including in practice.
+      if(w.missionTime<0&&(p>=.24||w.makes>=3))w.missionTime=0;
+      if(w.missionTime>=0)w.missionTime+=step;
+      const mission=w.missionTime;
+      w.lander.visible=mission>=0;
+      if(w.lander.visible){
+        const landing=THREE.MathUtils.clamp(mission/5.8,0,1);
+        const altitude=36*(1-landing)*(1-landing);
+        w.lander.position.y=w.landerHome.y+altitude;
+        w.flameMat.opacity=landing<1?(.56+.18*Math.sin(t*32))*(1-THREE.MathUtils.smoothstep(landing,.92,1)):0;
+        const dust=THREE.MathUtils.smoothstep(landing,.60,.96)*(1-THREE.MathUtils.smoothstep(mission,5.8,8.5));
+        w.dustRing.visible=dust>.001;w.dustRingMat.opacity=.43*dust;
+        w.dustRing.scale.setScalar(1+3.8*THREE.MathUtils.smoothstep(mission,3.5,8.5));
+        w.hatch.rotation.x=1.988*THREE.MathUtils.smoothstep(mission,6,7.65);
+      }else{
+        w.hatch.rotation.x=0;w.dustRing.visible=false;
+      }
+      if(mission>=7.65){
+        let ball=null;
+        if(typeof balls!=="undefined"){
           for(let bi=balls.length-1;bi>=0;bi--){
-            if(balls[bi]?.mesh?.visible){focusBall=balls[bi].mesh.position;break;}
+            if(balls[bi].mesh?.visible){ball=balls[bi].mesh.position;break;}
           }
         }
-        for(let idx=0;idx<w.astronauts.length;idx++){
-          const a=w.astronauts[idx];
-          if(a.celebrateT>0)a.celebrateT=Math.max(0,a.celebrateT-dtSim);
-          const cel=a.celebrateT>0?Math.min(1,a.celebrateT/0.6):0;
-
-          a.modeT+=dtSim;
-          if(a.modeT>=a.modeDur){
-            a.modeT=0;
-            // 用哈希伪随机挑选下一个动作：绝不原地机械重复跳！大部分时间驻足观赛、巡线漫步或勘探，偶尔才来一次超高失重飞跃
-            const h=Math.abs(Math.sin(t*1.37+a.seed*17.3+idx*5.1));
-            if(a.mode==="highBound"||a.mode==="stroll"){
-              a.wpIdx=a.nextWpIdx;
-              a.curX=a.toX;a.curZ=a.toZ;
-              a.mode=h<0.65?"idleWatch":"inspect";
-              a.modeDur=3.4+h*3.2;
-            }else if(h<0.44){
-              // 低重力慢步巡线移动至下一个场边观察点
-              a.mode="stroll";
-              a.fromX=a.curX;a.fromZ=a.curZ;
-              a.nextWpIdx=(a.wpIdx+1)%a.waypoints.length;
-              a.toX=a.waypoints[a.nextWpIdx][0];
-              a.toZ=a.waypoints[a.nextWpIdx][1];
-              a.modeDur=3.8+h*1.8;
-            }else if(h<0.74){
-              // 驻足观察球场/抬头看红环地球/挥手致意
-              a.mode="idleWatch";
-              a.modeDur=3.6+h*2.8;
-            }else if(h<0.86){
-              // 屈膝俯身检查胸前 DCM 仪表或月面晶石
-              a.mode="inspect";
-              a.modeDur=2.9+h*1.5;
-            }else{
-              // 偶发 1/6G 失重高空大跳（跃起 2.4m~3.1m 高，在空中慢动作太空漫步蹬腿并跨越到新位置！）
-              a.mode="highBound";
-              a.fromX=a.curX;a.fromZ=a.curZ;
-              a.nextWpIdx=(a.wpIdx+1)%a.waypoints.length;
-              a.toX=a.waypoints[a.nextWpIdx][0];
-              a.toZ=a.waypoints[a.nextWpIdx][1];
-              a.jumpPeak=2.35+(h-0.86)*5.2;
-              a.modeDur=3.2;
-            }
-          }
-
-          let hopH=0,crouch=0,airPhase=0;
-          let thighL=0,thighR=0,kneeL=0.08,kneeR=0.08;
-          let shPitchL=0,shPitchR=0,shRollL=-0.22,shRollR=0.22,elbL=-0.38,elbR=-0.38;
-          let torsoPitch=0,torsoRoll=0;
-          let targetYaw=Math.atan2(-a.curX,(HOOP.z+3.5)-a.curZ);
-
-          if(a.mode==="idleWatch"){
-            // 自然站立呼吸 + 重心微移 + 偶尔单手调试胸前 DCM 仪表或挥手
-            const br=Math.sin(t*1.6+a.seed);
-            crouch=0.015*(0.5+0.5*br);
-            torsoRoll=Math.sin(t*0.75+a.seed)*0.035;
-            thighL=-0.04;thighR=0.04;kneeL=0.10;kneeR=0.10;
-            const checkInstrument=Math.sin(t*0.48+a.seed*3.1)>0.35;
-            if(checkInstrument&&cel<0.05){
-              shPitchR=-0.62;shRollR=-0.18;elbR=-1.12+Math.sin(t*3.2)*0.08;
-            }
-          }else if(a.mode==="inspect"){
-            // 屈膝下蹲勘察月面发光晶石或调校设备
-            const u=a.modeT/Math.max(0.1,a.modeDur);
-            const env=Math.sin(Math.min(1,u*3.2)*Math.PI*0.5)*Math.sin(Math.min(1,(1-u)*3.2)*Math.PI*0.5);
-            crouch=0.24*env;
-            torsoPitch=0.38*env;
-            thighL=-0.62*env;thighR=-0.48*env;
-            kneeL=1.18*env;kneeR=0.98*env;
-            shPitchL=-0.55*env;shPitchR=-0.72*env;
-            elbL=-0.65*env;elbR=-0.85*env;
-          }else if(a.mode==="stroll"){
-            // 1/6G 低重力轻盈跨步漫游（微幅离地 0.14m，自然交替摆臂与屈膝迈步）
-            const u=THREE.MathUtils.clamp(a.modeT/Math.max(0.1,a.modeDur),0,1);
-            const sm=u*u*(3-2*u);
-            a.curX=THREE.MathUtils.lerp(a.fromX,a.toX,sm);
-            a.curZ=THREE.MathUtils.lerp(a.fromZ,a.toZ,sm);
-            if(Math.hypot(a.toX-a.fromX,a.toZ-a.fromZ)>0.2){
-              targetYaw=Math.atan2(a.toX-a.fromX,a.toZ-a.fromZ);
-            }
-            const gPhase=u*Math.PI*4.0;
-            const sWave=Math.sin(gPhase);
-            hopH=Math.abs(sWave)*0.15;
-            torsoPitch=0.08;
-            torsoRoll=sWave*0.05;
-            thighL=sWave*0.46;thighR=-sWave*0.46;
-            kneeL=0.15+Math.max(0,-sWave)*0.55;
-            kneeR=0.15+Math.max(0,sWave)*0.55;
-            shPitchL=-sWave*0.34;shPitchR=sWave*0.34;
-            elbL=-0.45-Math.max(0,sWave)*0.25;
-            elbR=-0.45-Math.max(0,-sWave)*0.25;
-          }else if(a.mode==="highBound"){
-            // 1/6G 超高失重飞跃：0..0.14 蓄力深蹲 -> 0.14..0.88 跃起 2.4m~3.1m 高空慢动作滞空太空步 -> 0.88..1.0 缓冲落地激起月尘圈！
-            const u=THREE.MathUtils.clamp(a.modeT/Math.max(0.1,a.modeDur),0,1);
-            if(u<0.14){
-              const cu=Math.sin((u/0.14)*Math.PI);
-              crouch=0.25*cu;
-              torsoPitch=0.35*cu;
-              thighL=-0.68*cu;thighR=-0.68*cu;
-              kneeL=1.28*cu;kneeR=1.28*cu;
-              shPitchL=0.42*cu;shPitchR=0.42*cu;
-            }else if(u<0.88){
-              const au=(u-0.14)/0.74;
-              airPhase=Math.sin(au*Math.PI);
-              hopH=airPhase*a.jumpPeak;
-              a.curX=THREE.MathUtils.lerp(a.fromX,a.toX,au);
-              a.curZ=THREE.MathUtils.lerp(a.fromZ,a.toZ,au);
-              // 滞空失重慢动作交替蹬腿 + 双臂张开维持角动量平衡
-              const pedal=Math.sin(au*Math.PI*2.4+a.seed);
-              torsoPitch=-0.12*airPhase+Math.cos(au*Math.PI)*0.14;
-              torsoRoll=Math.sin(au*Math.PI*1.5)*0.09*airPhase;
-              thighL=(-0.38+pedal*0.36)*airPhase;
-              thighR=(-0.38-pedal*0.36)*airPhase;
-              kneeL=0.55+(0.5-0.5*pedal)*0.58;
-              kneeR=0.55+(0.5+0.5*pedal)*0.58;
-              shRollL=-0.28-0.78*airPhase;
-              shRollR=0.28+0.78*airPhase;
-              shPitchL=(-0.42-pedal*0.25)*airPhase;
-              shPitchR=(-0.42+pedal*0.25)*airPhase;
-              elbL=-0.52-0.25*airPhase;
-              elbR=-0.52-0.25*airPhase;
-            }else{
-              if(a.ringLife<=0.01){
-                a.ringLife=1.0;
-                const gy=w.terrainY(a.toX,a.toZ);
-                a.jumpRing.position.set(a.toX,gy+0.05,a.toZ);
-              }
-              const lu=Math.sin(((u-0.88)/0.12)*Math.PI);
-              crouch=0.22*lu;
-              torsoPitch=0.28*lu;
-              thighL=-0.58*lu;thighR=-0.58*lu;
-              kneeL=1.15*lu;kneeR=1.15*lu;
-            }
-          }
-
-          // 进球欢呼叠加：高举双手挥舞
-          if(cel>0.01){
-            const wave=Math.sin(t*7.2+a.seed);
-            shRollL=-1.45-wave*0.32;
-            shRollR=1.45-wave*0.32;
-            shPitchL=-0.55;shPitchR=-0.55;
-            elbL=-0.45+wave*0.25;elbR=-0.45-wave*0.25;
-          }
-
-          const ax=THREE.MathUtils.lerp(a.farX,a.curX,approach);
-          const az=THREE.MathUtils.lerp(a.farZ,a.curZ,approach);
-          const groundY=w.terrainY(ax,az);
-          const brace=cosmicGroundFX.response(ax,az);
-          a.group.position.set(ax+Math.sign(ax)*.38*brace,groundY+hopH-crouch,az);
-
-          // 平滑转向目标朝向
-          let dYaw=((targetYaw-a.curYaw+Math.PI*3)%(Math.PI*2))-Math.PI;
-          a.curYaw+=dYaw*Math.min(1,dtSim*4.2);
-          a.group.rotation.y=a.curYaw;
-
-          // 头部自然追踪飞行中的篮球或仰望地球红环/空间站
-          let headYaw=Math.sin(t*0.65+a.seed)*0.22;
-          let headPitch=Math.sin(t*0.45+a.seed*1.7)*0.10-0.06;
-          if(focusBall){
-            const bYaw=Math.atan2(focusBall.x-ax,focusBall.z-az);
-            let relYaw=((bYaw-a.curYaw+Math.PI*3)%(Math.PI*2))-Math.PI;
-            headYaw=THREE.MathUtils.clamp(relYaw,-0.58,0.58);
-            const bDist=Math.hypot(focusBall.x-ax,focusBall.z-az);
-            headPitch=THREE.MathUtils.clamp(-Math.atan2(focusBall.y-(groundY+1.5),Math.max(1,bDist)),-0.48,0.25);
-          }else if(a.mode==="inspect"){
-            headPitch=0.36;
-          }
-          a.head.rotation.y=headYaw;
-          a.head.rotation.x=headPitch;
-
-          a.body.rotation.x=torsoPitch-.48*brace;
-          a.body.rotation.z=torsoRoll;
-          a.armL.rotation.set(shPitchL-1.55*brace,0,shRollL);
-          a.armR.rotation.set(shPitchR,0,shRollR);
-          if(a.foreArmL)a.foreArmL.rotation.x=elbL;
-          if(a.foreArmR)a.foreArmR.rotation.x=elbR;
-          a.legL.rotation.x=thighL;
-          a.legR.rotation.x=thighR;
-          if(a.shinL)a.shinL.rotation.x=kneeL;
-          if(a.shinR)a.shinR.rotation.x=kneeR;
-
-          // 更新高跳落地的月尘冲击环
-          if(a.ringLife>0){
-            a.ringLife=Math.max(0,a.ringLife-dtSim*0.95);
-            const rProg=1.0-a.ringLife;
-            a.jumpRingMat.opacity=Math.sin(a.ringLife*Math.PI)*0.38;
-            const rs=0.75+rProg*2.4;
-            a.jumpRing.scale.set(rs,rs,1);
-          }else{
-            a.jumpRingMat.opacity=0;
-          }
-        }
+        w.astronauts.forEach((a,index)=>updateLunarCrew(w,a,index,mission,t,step,ball));
       }
 
       // C2. 6 台好奇跟球并带阻尼闪避的工业巡检无人机
@@ -3978,21 +3838,6 @@
         }
       }
 
-      // A. 轨道补给着陆器垂直反推降落 + 采矿塔 1/6G 尘柱
-      if(w.lander&&w.landerHome){
-        const landT=THREE.MathUtils.smoothstep(p,0.38,0.72);
-        w.lander.visible=p>0.34;
-        if(w.lander.visible){
-          const alt=Math.pow(1-landT,1.8)*36;
-          w.lander.position.set(w.landerHome.x,w.landerHome.y+alt,w.landerHome.z);
-          const firing=landT>0.02&&landT<0.97;
-          w.flameMat.opacity=firing?(0.55+0.35*Math.sin(t*32)):0;
-          const touch=THREE.MathUtils.smoothstep(landT,0.72,1.0)*(1-THREE.MathUtils.smoothstep(p,0.78,0.92));
-          w.dustRingMat.opacity=touch*0.42;
-          const rs=1+touch*3.6;
-          w.dustRing.scale.set(rs,rs,1);
-        }
-      }
       if(w.derrickPlume&&w.plumeMat){
         const plumeOn=THREE.MathUtils.smoothstep(p,0.22,0.45);
         w.plumeMat.opacity=plumeOn*(0.11+0.05*Math.sin(t*1.9));

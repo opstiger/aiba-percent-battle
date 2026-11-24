@@ -540,6 +540,7 @@ function madeShotSound(b){
 }
 function madeBall(b){
   b.made=true;
+  if(!b.opp&&!b.silent)globalThis.AIBAWorldWonders?.lunarCelebrate(b.cosmic===true);
   triggerStreetCrowdReaction("make",b.val);
   if(G.practice){
     pulseNet(1,b.netDir);madeShotSound(b);cheerSound(false);G.cheer=Math.min(1,G.cheer+0.4);
@@ -707,7 +708,6 @@ function physicsBallEvent(b,e){
       if(b.cosmic)fx?.impact("cosmic",e);
       if(globalThis.AIBARainforest?.impulse)globalThis.AIBARainforest.impulse(HOOP.x,HOOP.y,HOOP.z,4.2,"made");
       if(globalThis.AIBAWorldWonders?.lunarImpulse)globalThis.AIBAWorldWonders.lunarImpulse(HOOP.x,HOOP.y,HOOP.z,4.2,"made");
-      if(globalThis.AIBAWorldWonders?.lunarCelebrate)globalThis.AIBAWorldWonders.lunarCelebrate();
       if(globalThis.AIBAMeadowCourt?.triggerHoopPetals)globalThis.AIBAMeadowCourt.triggerHoopPetals("made",3.6);
       if(b.opp){oppScore(b);b.made=true;}
       else if(b.silent)silentBallMade(b);

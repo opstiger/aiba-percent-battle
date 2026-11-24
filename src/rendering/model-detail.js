@@ -46,10 +46,10 @@
   }
   /* Keep actual profile vertices when static pieces are merged, unlike box rebaking.
      One draw per material; deliberately only used on non-animated groups we own. */
-  function batch(g){
+  function batch(g,include){
     const buckets=new Map();
     g.children.slice().forEach(o=>{
-      if(!o.isMesh||o.children.length||Array.isArray(o.material))return;
+      if(!o.isMesh||o.children.length||Array.isArray(o.material)||(include&&!include(o)))return;
       o.updateMatrix();let geo=o.geometry.index?o.geometry.toNonIndexed():o.geometry.clone();geo.applyMatrix4(o.matrix);
       const list=buckets.get(o.material)||[];list.push(geo);buckets.set(o.material,list);
       g.remove(o);o.geometry.dispose();
@@ -66,6 +66,10 @@
       geos.forEach(g=>g.dispose());result.computeBoundingSphere();
       const mesh=new THREE.Mesh(result,mat);mesh.castShadow=true;mesh.receiveShadow=true;g.add(mesh);
     });return g;
+  }
+  function batchFixedHardware(group){
+    // Retain named parts, light cones and pieces with distinct shadow behavior as independent meshes.
+    return batch(group,o=>!o.name&&o.castShadow&&o.receiveShadow&&!o.material.transparent&&!o.material.vertexColors);
   }
   function profile(mesh,bottom,top,depthBottom=bottom,depthTop=top){
     if(!enabled)return mesh;
@@ -472,6 +476,6 @@
     return parts;
   }
 
-  global.AIBAModelDetail=Object.freeze({enabled,revision:"model-detail-03",profile,rack,pedestal,net,hoopHardware,box,prism,batch,railParts,pressRow,stdMat,
+  global.AIBAModelDetail=Object.freeze({enabled,revision:"model-detail-03",profile,rack,pedestal,net,hoopHardware,box,prism,batch,batchFixedHardware,railParts,pressRow,stdMat,
     RACK_SLOTS,RACK_SLOT_DX,RACK_SLOT_DROP,rackSlotLocal});
 })(window);
