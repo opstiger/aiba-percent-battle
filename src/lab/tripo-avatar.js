@@ -26,7 +26,9 @@
        握拳手只有食指链,游戏要量掌心方向,所以补了一根不带权重的 HandMiddle1 */
     cat1:{file:"cat1.glb",yaw:0},
     /* husky:哈士奇(凯尔特人),混元生成 → 1.5 万面 → Mixamo 绑骨;哈士奇没有现成的 run,跑动借用猫的 20 帧 run(骨名一致) */
-    husky:{file:"husky.glb",yaw:0}
+    husky:{file:"husky.glb",yaw:0},
+    /* nvidia23:混元 5 万面减至 1.8 万面 → Mixamo 绑骨(33 骨 + 补齐 HandMiddle1 → 35 骨),自带 Slow Run 原地跑动循环 */
+    nvidia23:{file:"nvidia23.glb",yaw:0}
   };
   const QS=new URLSearchParams(location.search),FORCE=QS.get("tripo")==="1";
   if(QS.get("tripo")==="0")return;

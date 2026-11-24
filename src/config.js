@@ -51,6 +51,7 @@
     {id:"star30b",n:"30 号 · 勇士(粉发)",t:"写实模型 · 蒙皮骨骼",r:95,col:[0xf4f4f0,0x1d428a],num:30,skin:0xa87851,hair:0xd04a6a,hairStyle:"short",beard:0x15110f,beardStyle:"stubble",shoe:0xf4f4ef,headband:false,wrist:0x1d428a,sleeve:0xf4f4f0,shortsColor:0xf4f4f0},
     {id:"cat1",n:"1 号 · 猫吉祥物",t:"写实模型 · 蒙皮骨骼",r:95,col:[0x4b2a85,0xce1141],num:1,skin:0x8a8fb0,hair:0x4b4f78,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xf4f4f0,headband:false,wrist:null,sleeve:null,shortsColor:0xf4f4f0},
     {id:"husky",n:"5 号 · 哈士奇(凯尔特人)",t:"写实模型 · 蒙皮骨骼",r:95,col:[0x007a33,0xf4f4f0],num:5,skin:0x8a8d90,hair:0x3a3d40,hairStyle:"buzz",beard:false,beardStyle:"none",shoe:0xf4f4f0,headband:false,wrist:null,sleeve:null,shortsColor:0x007a33},
+    {id:"nvidia23",n:"23 号 · 老黄(NVIDIA)",t:"写实模型 · 蒙皮骨骼",r:96,col:[0xb91c1c,0x76b900],num:23,skin:0xc69672,hair:0x7a7e84,hairStyle:"short",beard:false,beardStyle:"none",shoe:0xc8102e,headband:false,wrist:0x111111,sleeve:null,shortsColor:0xb91c1c},
     {id:"nova24",n:"N-24 夜航者",t:"VOXEL PRO 原型 · 双层战衣",r:94,col:[0x11151c,0xf4c542],accent:0x6ff3ff,num:24,
      skin:0x8d5524,shoe:0xf0f2ed,headband:false,wrist:0xf4c542,sleeve:0x0a0d12,hair:0x101010,hairStyle:"cornrows",beard:false,
      visualProfile:"voxel-pro-01",body:{h:1.02,w:.98}},
@@ -166,6 +167,7 @@
     star30b:{flow:1},
     cat1:{flow:1},
     husky:{flow:1},
+    nvidia23:{flow:1},
     allen:{kick:.18,lean:0,turn:0.0,release:.01,setPoint:-.02,drift:0,jump:1.0,fade:0,hold:0.8},
     "sue-bird":{kick:.18,lean:0,turn:0.0,release:-.01,setPoint:-.02,drift:0,jump:0.88,fade:0,hold:0.5},
     /* 库里 / 汤普森:几乎不踢腿。两个人是全表最小值,和麦迪拉开一个数量级 */

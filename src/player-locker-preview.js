@@ -13,7 +13,8 @@
     star3:{file:"star3.glb",yaw:0},
     star30b:{file:"star30b.glb",yaw:0},
     cat1:{file:"cat1.glb",yaw:0},
-    husky:{file:"husky.glb",yaw:0}
+    husky:{file:"husky.glb",yaw:0},
+    nvidia23:{file:"nvidia23.glb",yaw:0}
   });
   const DANCE_BONES=["Hips","Spine","Spine1","Spine2","Neck","Head","LeftShoulder","LeftArm","LeftForeArm","LeftHand","RightShoulder","RightArm","RightForeArm","RightHand","LeftUpLeg","LeftLeg","LeftFoot","LeftToeBase","RightUpLeg","RightLeg","RightFoot","RightToeBase"];
   const tripoRigCache=new Map();
