@@ -44,6 +44,7 @@
   const SHOT_AIR={
     star30:{hip:.10,chest:.15,lean:.055,roll:.025},
     star8:{hip:.18,chest:.23,lean:.145,roll:.045},
+    nvidia23:{hip:.18,chest:.23,lean:.145,roll:.045},
     star1:{hip:.10,chest:.17,lean:.083,roll:.021},
     // 15 号跟随汤普森的主骨架胸腔，写实层只补轻微开髋。
     star15:{hip:.045,chest:0,lean:0,roll:0}

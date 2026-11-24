@@ -167,7 +167,7 @@
     star30b:{flow:1},
     cat1:{flow:1},
     husky:{flow:1},
-    nvidia23:{flow:1},
+    nvidia23:{flow:1,followHold:.44,releaseArmAngle:57,releaseElbowFlex:20},
     allen:{kick:.18,lean:0,turn:0.0,release:.01,setPoint:-.02,drift:0,jump:1.0,fade:0,hold:0.8},
     "sue-bird":{kick:.18,lean:0,turn:0.0,release:-.01,setPoint:-.02,drift:0,jump:0.88,fade:0,hold:0.5},
     /* 库里 / 汤普森:几乎不踢腿。两个人是全表最小值,和麦迪拉开一个数量级 */
