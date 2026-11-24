@@ -335,7 +335,7 @@ function pregameBuildShots(opts){
     {actor:hero,action:"dance",cam:"finaleDualCrane",dur:rnd(2.20,2.40),side:-1,group:actors.length>1}
   ];
   if(typeof currentScenePreset==="string"&&currentScenePreset==="flowerCourt"&&window.AIBAMeadowIntro){
-    plan.unshift({actor:hero,action:"shoot",cam:"meadowHitchcock",dur:5.2,side:1,group:false,speedRamp:false});
+    plan.unshift({actor:hero,action:"hitchcock",cam:"meadowHitchcock",dur:5.2,side:1,group:false,speedRamp:false});
   }
   let t=0;const usedClips=[];
   for(let i=0;i<plan.length;i++){
@@ -475,6 +475,17 @@ function pregameAnimate(actor,action,u,seg){
   if(ball)ball.visible=false;
   if(action==="shoot"){
     updatePregameWarmupShot(actor,guy,ball,u,seg);
+  }else if(action==="hitchcock"){
+    // Grounded, calm athletic stance holding the basketball facing the hoop so the player stays rock-solid
+    // as the Vertigo focal anchor while the Tian Shan Golden Peak surges 4x closer behind them!
+    const breath=Math.sin(t*2.4)*0.018;
+    guy.g.rotation.x=0.04+breath*0.35;
+    guy.arms[0].rotation.x=-0.92+breath;guy.arms[1].rotation.x=-0.92+breath;
+    guy.arms[0].rotation.z=-0.16;guy.arms[1].rotation.z=0.16;
+    guy.elbows.forEach(e=>e.rotation.x=-1.18);
+    guy.legs.forEach(l=>l.rotation.x=-0.06);
+    guy.knees.forEach(k=>k.rotation.x=0.14);
+    if(ball){ball.material=matBall;pregameHoldBall(guy,ball);}
   }else if(action==="stretch"){
     const sway=Math.sin(u*Math.PI*2);
     guy.g.rotation.x=0.05+0.14*Math.max(0,sway);
@@ -607,6 +618,7 @@ function pregameSyncBallAfterPose(actor,action,u,seg){
     }
     return;
   }
+  if(action==="hitchcock"){ball.material=matBall;pregameHoldBall(guy,ball);return;}
   if(action!=="dunk"){ball.visible=false;return;}
   const timing=PREGAME_DUNK_TIMING;
   ball.material=matBall;
@@ -693,15 +705,22 @@ function pregameUpdateCamera(seg,rawU,u,dt){
   if(seg&&seg.cam==="meadowHitchcock"&&window.AIBAMeadowIntro&&typeof AIBAMeadowIntro.sample==="function"){
     const actor=seg.actor||PREGAME.actors[0];
     const pPos=actor&&actor.base?actor.base:P.pos;
-    const sample=AIBAMeadowIntro.sample(clamp(rawU*0.90,0,0.90),{playerPos:pPos});
+    const sample=AIBAMeadowIntro.sample(clamp(rawU*0.91,0,0.91),{playerPos:pPos});
     rig.pos.copy(sample.pos);rig.look.copy(sample.look);
-    if(typeof camera!=="undefined"&&camera&&typeof camera.updateProjectionMatrix==="function"){
+    // CRITICAL: Push FOV via AIBACameraFov stack (priority 60) so game-loop's AIBACameraFov.apply()
+    // preserves the exact Hitchcock dolly-zoom FOV on every rendered frame instead of resetting it to 90°!
+    if(window.AIBACameraFov&&typeof AIBACameraFov.request==="function"){
+      AIBACameraFov.request("meadowIntro",sample.fov,60);
+    }else if(typeof camera!=="undefined"&&camera&&typeof camera.updateProjectionMatrix==="function"){
       if(Math.abs(sample.fov-camera.fov)>0.02){camera.fov=sample.fov;camera.updateProjectionMatrix();}
-      if(camera.userData){camera.userData.meadowTele=sample.tele;camera.userData.meadowTeleIntro=sample.introFlag;}
+    }
+    if(typeof camera!=="undefined"&&camera&&camera.userData){
+      camera.userData.meadowTele=sample.tele;camera.userData.meadowTeleIntro=sample.introFlag;
     }
     seg._justStarted=false;
     return;
   }
+  if(window.AIBACameraFov&&typeof AIBACameraFov.release==="function")AIBACameraFov.release("meadowIntro");
   if(typeof camera!=="undefined"&&camera&&camera.userData&&camera.userData.meadowTeleIntro){
     camera.userData.meadowTele=false;camera.userData.meadowTeleIntro=false;
   }
@@ -826,6 +845,7 @@ function finishPreGameShow(){
   const cb=PREGAME.cb,prev=PREGAME.prevState;
   PREGAME.snaps.forEach(pregameRestoreGuy);
   PREGAME.actors.forEach(a=>{a.guy.pregameLift=0;a.guy.pregameDance=null;});
+  if(window.AIBACameraFov&&typeof AIBACameraFov.release==="function")AIBACameraFov.release("meadowIntro");
   if(typeof camera!=="undefined"&&camera&&typeof camera.updateProjectionMatrix==="function"&&camera.fov!==50){
     camera.fov=50;camera.updateProjectionMatrix();
   }
@@ -855,6 +875,11 @@ function updPreGameShow(dt){
   hidePregameChalk();
   PREGAME.actors.forEach(a=>{
     a.guy.pregameDance=null;
+    if(seg.cam==="meadowHitchcock"&&a!==seg.actor){
+      a.guy.g.visible=false;
+      const ob=pregameBallFor(a.guy);if(ob)ob.visible=false;
+      return;
+    }
     if(seg.group||a===seg.actor)pregameAnimate(a,seg.action,u,seg);
     else pregameIdle(a,PREGAME.t,seg);
     pregameSmoothPose(a.guy,dt);

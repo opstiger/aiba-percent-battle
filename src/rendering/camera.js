@@ -649,88 +649,96 @@ function sampleMeadowIntroPose(u,opts){
   const ux=dx/distPH,uz=dz/distPH,rx=-uz,rz=ux;
   const aspect=(typeof camera!=="undefined"&&camera&&camera.aspect)||1.6;
   const portrait=aspect<0.85;
-  // Wide -> extreme telephoto (~4.0x Vertigo ratio!) so the Hitchcock dolly-zoom is slow, hypnotic, and unmistakable on both mobile & desktop!
+  // Dramatic ~4.0x Vertigo zoom ratio (mobile 86° -> 25.5°, desktop 74° -> 21.5°).
   const fovWide=portrait?86.0:74.0;
-  const fovTele=portrait?26.5:22.0;
+  const fovTele=portrait?25.5:21.5;
 
-  // Exact Hitchcock Vertigo lock anchored STRICTLY on the player's own position pPos!
-  // Holding d(t) * tan(fov(t)/2) === CONST keeps the player's screen height 100% locked while the hoop & colossal
-  // Xinjiang Golden Snow Peak surge ~4x larger right behind their shoulder!
-  const d0=portrait?3.55:3.65;
-  const sideFrac=0.22; // Keep side angle constant as d grows so the player stays anchored at the exact same horizontal screen position!
-  const hitchPos=(fovDeg,tZoom)=>{
-    const scale=Math.tan(fovWide*Math.PI/360)/Math.tan(fovDeg*Math.PI/360);
-    const d=d0*scale;
-    const side=d*sideFrac;
-    const px=pPos.x-ux*d+rx*side,pz=pPos.z-uz*d+rz*side;
-    const y=hAt(px,pz)+mix(1.78,2.04,tZoom);
-    return V3(px,y,pz);
+  // TRUE ZERO-DRIFT CINEMA HITCHCOCK VERTIGO LINEAR ALGEBRA:
+  // Anchor on the player's chest S, move camera strictly along a FIXED unit ray `backDir` by
+  // R(t) = R0 * tan(fovWide/2) / tan(fov(t)/2), and steer `lookDir(fov)` by the exact inverse
+  // perspective offset (-camRight * ndcX * tanHalfH - camUp * ndcY * tanHalfV)!
+  // Result: the player's screen X, screen Y, AND pixel height stay 100.00% PIXEL-FROZEN
+  // (<1% drift!) for the entire 3.65s zoom while the hoop & colossal Golden Snow Peak surge ~4x larger!
+  const playerBaseY=hAt(pPos.x,pPos.z);
+  const S=V3(pPos.x,playerBaseY+1.45,pPos.z);
+  // Almost-level back ray (y = +0.038 -> cam y rises gently 1.58m -> 2.02m) keeps the towering Golden Snow Peak
+  // summit tip completely inside the top of the frame even at max 4x telephoto compression!
+  const backDir=V3(-ux*0.96+rx*0.23,0.038,-uz*0.96+rz*0.23).normalize();
+  const fwdDir=backDir.clone().negate();
+  const camRight=V3().crossVectors(fwdDir,V3(0,1,0)).normalize();
+  const camUp=V3().crossVectors(camRight,fwdDir).normalize();
+  const R0=portrait?3.55:4.35;
+  // Desired frozen screen coordinates of the player's upper torso (lower-left-center so hoop & Golden Peak soar cleanly above!)
+  const ndcX=portrait?-0.16:-0.14;
+  const ndcY=portrait?-0.22:-0.20;
+  const tanWide0=Math.tan(fovWide*Math.PI/360);
+  const lookDir0=fwdDir.clone().addScaledVector(camRight,-ndcX*tanWide0*aspect).addScaledVector(camUp,-ndcY*tanWide0).normalize();
+  const cos0=Math.max(0.5,lookDir0.dot(fwdDir));
+
+  const hitchState=(fovDeg)=>{
+    const tanHalfV=Math.tan(fovDeg*Math.PI/360);
+    const tanHalfH=tanHalfV*aspect;
+    // Exact inverse perspective offset keeps S projected at (ndcX, ndcY) identically at EVERY FOV!
+    const lookDir=fwdDir.clone()
+      .addScaledVector(camRight,-ndcX*tanHalfH)
+      .addScaledVector(camUp,-ndcY*tanHalfV)
+      .normalize();
+    const cosCur=Math.max(0.5,lookDir.dot(fwdDir));
+    const scale=(tanWide0/tanHalfV)*(cos0/cosCur);
+    const R=R0*scale;
+    const p=S.clone().addScaledVector(backDir,R);
+    const minGround=hAt(p.x,p.z)+0.85;
+    if(p.y<minGround)p.y=minGround;
+    const l=p.clone().addScaledVector(lookDir,24);
+    return {p,l,lookDir};
   };
-  const hitchLook=(tZoom)=>V3(
-    pPos.x+dx*mix(0.32,0.44,tZoom)-rx*mix(0.24,0.34,tZoom),
-    mix(2.26,2.86,tZoom),
-    pPos.z+dz*mix(0.32,0.44,tZoom)-rz*mix(0.24,0.34,tZoom)
-  );
 
-  const hitchStart=hitchPos(fovWide,0);
-  const hitchEnd=hitchPos(fovTele,1);
-  const lookStart=hitchLook(0);
-  const lookEnd=hitchLook(1);
+  const hStart=hitchState(fovWide);
+  const hEnd=hitchState(fovTele);
   const pos=V3(),look=V3();
-  let fov=fovTele,introFlag=true;
+  let fov=fovTele,introFlag=false;
 
-  // Phase 1 (0.00 -> 0.24, ~1.3s): Clean Queenstown lateral glide at steady wide lens (NO FOV bounce!) sweeping past foreground grass into Hitchcock start.
-  // Phase 2 (0.24 -> 0.82, ~3.15s): Pure, uninterrupted, hypnotic 4x Hitchcock Vertigo Dolly-Zoom!
-  // Phase 3 (0.82 -> 0.90, ~0.43s): Monumental beat hold at max telephoto compression.
-  // Phase 4 (0.90 -> 1.00, ~0.54s): Silky ease into the active gameplay camera.
-  if(u<0.24){
-    const k=smooth(u,0.0,0.24);
-    const sx=pPos.x-ux*5.8-rx*6.4,sz=pPos.z-uz*5.8-rz*6.4;
-    const cx=pPos.x-ux*4.4-rx*2.2,cz=pPos.z-uz*4.4-rz*2.2;
-    const inv=1-k;
-    const x=inv*inv*sx+2*inv*k*cx+k*k*hitchStart.x;
-    const z=inv*inv*sz+2*inv*k*cz+k*k*hitchStart.z;
-    pos.set(x,hAt(x,z)+mix(1.62,1.78,k),z);
-    look.set(
-      mix(pPos.x+dx*0.18-rx*0.85,lookStart.x,k),
-      mix(2.38,lookStart.y,k),
-      mix(pPos.z+dz*0.18-rz*0.85,lookStart.z,k)
-    );
+  // Phase 1 (0.00 -> 0.14, ~0.75s): Short, crisp lateral glide into Hitchcock lock point at steady wide lens.
+  // Phase 2 (0.14 -> 0.82, ~3.65s): Pure, uninterrupted, 100% zero-drift 4x Hitchcock Vertigo Dolly-Zoom!
+  // Phase 3 (0.82 -> 0.91, ~0.50s): Monumental hold at peak telephoto compression so the eye absorbs the giant mountain wall.
+  // Phase 4 (0.91 -> 1.00, ~0.50s): Smooth handoff into active gameplay camera.
+  if(u<0.14){
+    const k=smooth(u,0.0,0.14);
+    const sPos=hStart.p.clone().addScaledVector(V3(rx,0,rz),-3.2);
+    sPos.y=Math.max(hStart.p.y-0.08,hAt(sPos.x,sPos.z)+1.55);
+    pos.lerpVectors(sPos,hStart.p,k);
+    const sLook=sPos.clone().addScaledVector(hStart.lookDir,24);
+    look.lerpVectors(sLook,hStart.l,k);
     fov=fovWide;
-    introFlag=false;
   }else if(u<0.82){
-    const lin=clamp((u-0.24)/0.58,0,1);
-    // Smooth perceptual zoom-rate curve (exponential FOV interpolation feels linear in optical magnification, never rushing the end!).
+    const lin=clamp((u-0.14)/0.68,0,1);
     const k=smooth(lin,0,1);
     const tanW=Math.tan(fovWide*Math.PI/360),tanT=Math.tan(fovTele*Math.PI/360);
     const tanCur=tanW*Math.pow(tanT/tanW,k);
     fov=2*Math.atan(tanCur)*180/Math.PI;
-    pos.copy(hitchPos(fov,k));
-    look.copy(hitchLook(k));
-    introFlag=false;
-  }else if(u<0.90){
-    // Hold at peak 4x telephoto compression so the eye absorbs the towering Golden Snow Peak!
+    const st=hitchState(fov);
+    pos.copy(st.p);
+    look.copy(st.l);
+  }else if(u<0.91){
     fov=fovTele;
-    pos.copy(hitchEnd);
-    look.copy(lookEnd);
-    introFlag=false;
+    pos.copy(hEnd.p);
+    look.copy(hEnd.l);
   }else{
-    const k=smooth(u,0.90,1.0);
+    const k=smooth(u,0.91,1.0);
     const keepTele=CAM.mode===CAM_MEADOW_TELE;
-    const targetPos=keepTele||!opts.endPos?hitchEnd:opts.endPos;
-    const targetLook=keepTele||!opts.endLook?lookEnd:opts.endLook;
+    const targetPos=keepTele||!opts.endPos?hEnd.p:opts.endPos;
+    const targetLook=keepTele||!opts.endLook?hEnd.l:opts.endLook;
     const targetFov=keepTele||opts.endFov==null?fovTele:opts.endFov;
-    pos.copy(hitchEnd).lerp(targetPos,k);
-    look.copy(lookEnd).lerp(targetLook,k);
+    pos.copy(hEnd.p).lerp(targetPos,k);
+    look.copy(hEnd.l).lerp(targetLook,k);
     fov=mix(fovTele,targetFov,k);
-    introFlag=false;
   }
-  return {pos,look,fov,tele:fov<46,introFlag};
+  return {pos,look,fov,tele:fov<48,introFlag};
 }
 function startMeadowIntro(opts,done){
   if(typeof opts==="function"){done=opts;opts={};}
   opts=opts||{};
-  meadowIntro.on=true;meadowIntro.t=0;meadowIntro.dur=Number(opts.dur)||3.4;
+  meadowIntro.on=true;meadowIntro.t=0;meadowIntro.dur=Number(opts.dur)||5.4;
   meadowIntro.cb=typeof done==="function"?done:null;
   meadowIntro.endPos=opts.endPos?opts.endPos.clone():null;
   meadowIntro.endLook=opts.endLook?opts.endLook.clone():null;

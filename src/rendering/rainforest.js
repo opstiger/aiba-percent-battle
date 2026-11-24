@@ -2022,11 +2022,16 @@
   }
 
   function buildHoopFireflies(s,uniforms){
-    // Interactive firefly swarm clustered densely around the hoop with viscous damped "ink-in-water" shockwave physics.
-    const r=s.r,count=s.mobile?110:260;
+    // Interactive firefly swarm clustered densely around the hoop with viscous damped "ink-in-water" shockwave physics,
+    // plus a romantic 10-second stillness easter egg: if the player waits quietly for 10s without shooting or hitting the rim,
+    // fireflies slowly drift in and perch brightly across the rim, timber backboard, and the basketball in the player's hands —
+    // then scatter dreamily back home when the next shot flies!
+    const r=s.r,count=s.mobile?120:280;
     const pos=new Float32Array(count*3),sizeArr=new Float32Array(count),glowArr=new Float32Array(count),hueArr=new Float32Array(count);
     const items=[];
     const hx0=HOOP.x,hy0=HOOP.y+.15,hz0=HOOP.z;
+    const rimCount=Math.floor(count*.36);
+    const boardCount=Math.floor(count*.40);
     for(let i=0;i<count;i++){
       const inRimHalo=i<count*.58;
       const rad=inRimHalo?(.32+Math.pow(r(),1.25)*1.75):(1.6+r()*3.0);
@@ -2039,10 +2044,50 @@
       const sx=Math.cos(sa)*Math.cos(sb),sy=Math.sin(sb),sz=Math.sin(sa)*Math.cos(sb);
       const wake=i<count*.10?r()*.16:(.14+Math.pow(r(),.85)*.86);
       const szScale=.82+r()*1.35,hue=r();
+
+      // Deterministic romantic perch assignment: 36% rim & net, 40% backboard edges/face, 24% held basketball surface.
+      let perchType="ball",px=0,py=0,pz=0;
+      if(i<rimCount){
+        perchType="rim";
+        const u=(i+.5)/Math.max(1,rimCount);
+        const a=u*TAU+r()*.18;
+        const onNet=i%5===0;
+        const rr=onNet?(.215-(r()*.055)):(.235+(r()-.5)*.024);
+        px=HOOP.x+Math.cos(a)*rr;
+        py=onNet?(HOOP.y-.04-r()*.26):(HOOP.y+.024+(r()-.5)*.022);
+        pz=HOOP.z+Math.sin(a)*rr;
+      }else if(i<rimCount+boardCount){
+        perchType="board";
+        const bi=i-rimCount;
+        const onTopEdge=bi%4===0;
+        const onFrame=bi%4===1;
+        const bx=(r()-.5)*1.76;
+        if(onTopEdge){
+          px=HOOP.x+bx;py=HOOP.y+1.10+(r()-.5)*.05;pz=HOOP.z-.35+(r()-.5)*.04;
+        }else if(onFrame){
+          const side=bi%2?1:-1;
+          px=HOOP.x+side*(.87+(r()-.5)*.04);py=HOOP.y+.06+r()*1.04;pz=HOOP.z-.34+(r()-.5)*.04;
+        }else{
+          px=HOOP.x+(r()-.5)*1.58;py=HOOP.y+.10+r()*.96;pz=HOOP.z-.31+r()*.05;
+        }
+      }else{
+        perchType="ball";
+        // Uniform spherical shell right on/just above the basketball surface (r ≈ 0.135m..0.175m) so it glows vividly in hand!
+        const u=r()*2-1,phi=r()*TAU,sRad=Math.sqrt(Math.max(0,1-u*u));
+        const br=.135+r()*.045;
+        px=sRad*Math.cos(phi)*br;
+        py=u*br+.01;
+        pz=sRad*Math.sin(phi)*br;
+      }
+      const perchDelay=r()*.36;
+      const perchSpeed=.75+r()*.55;
+
       items.push({
         hx,hy,hz,dx:0,dy:0,dz:0,vx:0,vy:0,vz:0,
         sx,sy,sz,phase:r()*TAU,rate:.45+r()*.55,blinkRate:1.3+r()*1.5,
-        wake,size:szScale,hue,excited:0
+        wake,size:szScale,hue,excited:0,
+        perchType,px,py,pz,perchDelay,perchSpeed,perch:0,
+        curX:hx,curY:hy,curZ:hz
       });
       pos[i*3]=hx;pos[i*3+1]=hy;pos[i*3+2]=hz;
       sizeArr[i]=szScale;glowArr[i]=0;hueArr[i]=hue;
@@ -2060,9 +2105,9 @@
         void main(){
           vGlow=aGlow;vHue=aHue;
           vec4 mv=modelViewMatrix*vec4(position,1.0);
-          float dist=max(.9,-mv.z);
+          float dist=max(.45,-mv.z);
           gl_Position=projectionMatrix*mv;
-          gl_PointSize=clamp(aSize*(74.0+36.0*min(1.4,aGlow))/max(1.2,dist),2.0,28.0)*step(.01,aGlow);
+          gl_PointSize=clamp(aSize*(56.0+22.0*min(1.5,aGlow))/max(1.15,dist),1.8,22.0)*step(.01,aGlow);
         }`,
       fragmentShader:`
         varying float vGlow,vHue;
@@ -2071,32 +2116,43 @@
           vec2 p=gl_PointCoord*2.0-1.0;
           float r2=dot(p,p);
           if(r2>1.0)discard;
-          float core=exp(-r2*13.0);
-          float halo=exp(-r2*3.1)*.62;
-          vec3 lime=vec3(.80,1.0,.30),gold=vec3(1.0,.91,.38);
-          vec3 col=mix(mix(lime,gold,vHue),vec3(1.0,1.0,.90),core*.72);
-          float a=clamp((core+halo)*min(1.35,vGlow),0.0,1.0);
-          gl_FragColor=vec4(col*a*1.25,a);
+          float core=exp(-r2*18.0);
+          float halo=exp(-r2*3.8)*.52;
+          vec3 lime=vec3(.82,1.0,.28),gold=vec3(1.0,.90,.34);
+          vec3 col=mix(mix(lime,gold,vHue),vec3(1.0,1.0,.94),core*.72);
+          float a=clamp((core+halo)*min(1.45,vGlow),0.0,1.0);
+          gl_FragColor=vec4(col*a*1.12,a);
         }`
     });
     const mesh=new THREE.Points(geo,mat);
     mesh.name="rainforestHoopFireflies";mesh.frustumCulled=false;mesh.renderOrder=7;mesh.visible=false;
     s.root.add(mesh);
     // Warm bioluminescent point light near the hoop so the timber backboard & rim catch firefly glow at night
-    const hoopLight=new THREE.PointLight(0xbfff4a,0,12,1.8);
+    const hoopLight=new THREE.PointLight(0xbfff4a,0,13,1.75);
     hoopLight.name="rainforestHoopFireflyLight";
     hoopLight.position.set(HOOP.x,HOOP.y+.35,HOOP.z+.45);
     s.root.add(hoopLight);
-    return {mesh,geo,pos,glowArr,items,hoopLight,scatterEnergy:0};
+    // Warm bioluminescent point light tracking the player's held basketball when fireflies gather on it
+    const ballLight=new THREE.PointLight(0xc8ff54,0,5.2,1.8);
+    ballLight.name="rainforestBallFireflyLight";
+    ballLight.position.set(0,1.4,0);
+    s.root.add(ballLight);
+    return {
+      mesh,geo,pos,glowArr,items,hoopLight,ballLight,scatterEnergy:0,
+      stillTime:0,perchBlend:0,hadFlyingBalls:false,ballPos:new THREE.Vector3(0,1.35,0)
+    };
   }
 
   function applyFireflyImpulse(hf,ox,oy,oz,strength,radius){
     if(!hf||!hf.items)return;
     const rad=radius||3.6,str=Math.max(.4,strength||3.2);
     hf.scatterEnergy=Math.min(1,hf.scatterEnergy+str*.16);
+    hf.stillTime=0;
     for(let i=0;i<hf.items.length;i++){
       const f=hf.items[i];
-      const px=f.hx+f.dx,py=f.hy+f.dy,pz=f.hz+f.dz;
+      const px=f.curX!=null?f.curX:(f.hx+f.dx);
+      const py=f.curY!=null?f.curY:(f.hy+f.dy);
+      const pz=f.curZ!=null?f.curZ:(f.hz+f.dz);
       const rx=px-ox,ry=py-oy,rz=pz-oz;
       const dist=Math.hypot(rx,ry,rz);
       if(dist>rad)continue;
@@ -2110,8 +2166,75 @@
       f.vx+=(nx*.76+cx*.52)*kick;
       f.vy+=(ny*.72+cy*.48+.14)*kick;
       f.vz+=(nz*.76+cz*.52)*kick;
-      f.excited=Math.min(1.2,f.excited+fall*.95);
+      f.excited=Math.min(1.35,f.excited+fall*1.05);
+      // Release perched fireflies smoothly back toward their original home offsets so they billow outward cleanly
+      if(f.perch>.02){
+        f.dx=Math.max(-3.6,Math.min(3.6,px-f.hx));
+        f.dy=Math.max(-2.6,Math.min(2.6,py-f.hy));
+        f.dz=Math.max(-3.6,Math.min(3.6,pz-f.hz));
+        f.perch=0;
+      }
     }
+  }
+
+  function scatterPerchedFireflies(hf,bx,by,bz){
+    if(!hf||!hf.items)return;
+    hf.stillTime=0;
+    hf.scatterEnergy=Math.min(1,hf.scatterEnergy+.85);
+    for(let i=0;i<hf.items.length;i++){
+      const f=hf.items[i];
+      if(f.perch<.02)continue;
+      const px=f.curX,py=f.curY,pz=f.curZ;
+      if(f.perchType==="ball"){
+        // Burst gracefully off the launched basketball in a swirling bioluminescent puff, then return home to the hoop clearing.
+        const rx=px-bx,ry=py-by,rz=pz-bz;
+        const d=Math.max(.04,Math.hypot(rx,ry,rz));
+        const nx=rx/d,ny=ry/d,nz=rz/d;
+        const cx=ny*f.sz-nz*f.sy,cy=nz*f.sx-nx*f.sz,cz=nx*f.sy-ny*f.sx;
+        f.dx=px-f.hx;f.dy=py-f.hy;f.dz=pz-f.hz;
+        f.vx+=(nx*1.8+cx*2.1)*1.35;
+        f.vy+=(ny*1.5+cy*1.4+.9)*1.25;
+        f.vz+=(nz*1.8+cz*2.1)*1.35;
+        f.excited=1.25;
+        f.perch=0;
+      }else{
+        // Rim & backboard fireflies lift gently off their perch on shot launch and drift/scatter back home!
+        const ox=HOOP.x,oy=HOOP.y+.35,oz=HOOP.z;
+        const rx=px-ox,ry=py-oy,rz=pz-oz;
+        const d=Math.max(.08,Math.hypot(rx,ry,rz));
+        const nx=rx/d,ny=ry/d,nz=rz/d;
+        const cx=ny*f.sz-nz*f.sy,cy=nz*f.sx-nx*f.sz,cz=nx*f.sy-ny*f.sx;
+        f.dx=px-f.hx;f.dy=py-f.hy;f.dz=pz-f.hz;
+        f.vx+=(nx*1.25+cx*1.65)*1.15;
+        f.vy+=(ny*1.05+cy*1.15+.45)*1.05;
+        f.vz+=(nz*1.25+cz*1.65)*1.15;
+        f.excited=Math.min(1.25,f.excited+.85);
+        f.perch=0;
+      }
+    }
+  }
+
+  function sampleHeldBallPos(out){
+    try{
+      if(typeof CAM!=="undefined"&&CAM&&CAM.mode===0&&typeof handBall!=="undefined"&&handBall&&handBall.visible){
+        handBall.getWorldPosition(out);
+        return true;
+      }
+      if(typeof ballWorldPos==="function"&&typeof player!=="undefined"&&player?.g?.visible){
+        ballWorldPos(out);
+        return true;
+      }
+      if(typeof pBall!=="undefined"&&pBall&&pBall.visible){
+        pBall.getWorldPosition(out);
+        return true;
+      }
+      if(typeof P!=="undefined"&&P?.pos){
+        out.set(P.pos.x,1.35,P.pos.z);
+        return true;
+      }
+    }catch(e){}
+    out.set(0,1.35,-2.0);
+    return false;
   }
 
   function updateHoopFireflies(hf,t,dt,ffAmount){
@@ -2120,25 +2243,50 @@
     hf.mesh.visible=active;
     if(!active){
       hf.hoopLight.intensity=0;
+      if(hf.ballLight)hf.ballLight.intensity=0;
+      hf.stillTime=0;hf.perchBlend=0;
       return;
     }
     const step=Math.min(.05,Math.max(.001,dt||1/60));
-    // Check live flying basketballs passing near the hoop for continuous fluid slipstream wake push
+    // Check live flying basketballs (both for shot-release detection & continuous fluid slipstream wake near hoop)
     const activeBalls=(typeof balls!=="undefined"&&Array.isArray(balls))?balls:null;
     const bPts=[];
+    let anyFlying=false;
     if(activeBalls){
       for(let bi=0;bi<activeBalls.length;bi++){
         const b=activeBalls[bi],mp=b?.mesh?.position;
         if(!mp||!b.mesh.visible)continue;
+        if(b.phase==="fly"||b.phase==="path"||b.phase==="rim"||b.phase==="net"||b.phase==="drop"){
+          anyFlying=true;
+        }
         if(Math.hypot(mp.x-HOOP.x,mp.y-HOOP.y,mp.z-HOOP.z)<5.2)bPts.push(mp);
       }
     }
+    const hasBallPos=sampleHeldBallPos(hf.ballPos);
+    const isWalking=!!(typeof P!=="undefined"&&P?.walking);
+    const inLivePlay=typeof G==="undefined"||!G||["round","tiebreak","battle","rackrush","lastshot","practice"].includes(G.state);
+
+    // The moment the player shoots while fireflies have gathered, scatter them off the ball/rim/board back to home!
+    if(anyFlying&&!hf.hadFlyingBalls&&hf.perchBlend>.04){
+      scatterPerchedFireflies(hf,hf.ballPos.x,hf.ballPos.y,hf.ballPos.z);
+    }
+    hf.hadFlyingBalls=anyFlying;
+
+    // 10-second romantic stillness accumulation: if player does not shoot/hit rim/walk for 10s, fireflies slowly gather!
+    if(anyFlying||isWalking||!inLivePlay){
+      hf.stillTime=0;
+    }else if(ffAmount>.12){
+      hf.stillTime=Math.min(30,hf.stillTime+step);
+    }
+    const targetGather=smoothstep(hf.stillTime,9.8,16.5);
+    hf.perchBlend+=(targetGather-hf.perchBlend)*(1-Math.exp(-step*(targetGather>hf.perchBlend?.9:4.5)));
+
     // Overdamped viscous fluid parameters ("像水里的墨水一样被弹开，然后又缓缓聚回来"):
-    // High fluid drag (3.45) brakes outward burst softly in mid-air; gentle restoring spring (0.58) regathers dreamily over ~3.5s.
     const drag=Math.exp(-3.45*step);
     const springK=.58;
     const {items,pos,glowArr}=hf;
-    let avgDisp=0;
+    const bx=hf.ballPos.x,by=hf.ballPos.y,bz=hf.ballPos.z;
+    let avgDisp=0,ballPerchSum=0,hoopPerchSum=0;
     for(let i=0;i<items.length;i++){
       const f=items[i];
       // Natural slow organic hover around home position
@@ -2146,11 +2294,22 @@
       const idleX=Math.sin(tt*.82)*.26+Math.cos(tt*1.43+f.phase)*.10;
       const idleY=Math.sin(tt*1.05+f.phase)*.18+Math.cos(tt*.57)*.09;
       const idleZ=Math.cos(tt*.74-f.phase)*.24+Math.sin(tt*1.29)*.10;
+
+      // Staggered romantic perch progression after 10 seconds of stillness
+      const fTarget=smoothstep(hf.stillTime,9.6+f.perchDelay*5.2,14.8+f.perchDelay*5.8);
+      if(fTarget>f.perch){
+        f.perch=Math.min(fTarget,f.perch+step*.24*f.perchSpeed);
+      }else{
+        f.perch=Math.max(0,f.perch-step*1.65);
+      }
+      const pEase=f.perch*f.perch*(3-2*f.perch);
+      if(f.perchType==="ball")ballPerchSum+=pEase;
+      else hoopPerchSum+=pEase;
+
       // Continuous fluid wake push from any basketball flying close to this firefly
       for(let bi=0;bi<bPts.length;bi++){
         const bp=bPts[bi];
-        const px=f.hx+idleX+f.dx,py=f.hy+idleY+f.dy,pz=f.hz+idleZ+f.dz;
-        const rx=px-bp.x,ry=py-bp.y,rz=pz-bp.z;
+        const rx=f.curX-bp.x,ry=f.curY-bp.y,rz=f.curZ-bp.z;
         const d=Math.hypot(rx,ry,rz);
         if(d<2.15&&d>.02){
           const fall=Math.exp(-d*.95),nx=rx/d,ny=ry/d,nz=rz/d;
@@ -2159,7 +2318,7 @@
           f.vx+=(nx*.70+cx*.55)*wake;
           f.vy+=(ny*.68+cy*.48)*wake;
           f.vz+=(nz*.70+cz*.55)*wake;
-          f.excited=Math.min(1.15,f.excited+fall*step*3.2);
+          f.excited=Math.min(1.25,f.excited+fall*step*3.2);
         }
       }
       // Overdamped ink-in-water spring-damper integration
@@ -2167,26 +2326,54 @@
       f.vy=(f.vy-f.dy*springK*step)*drag;
       f.vz=(f.vz-f.dz*springK*step)*drag;
       f.dx+=f.vx*step;f.dy+=f.vy*step;f.dz+=f.vz*step;
-      // Soft max displacement clamp so fireflies stay within the hoop clearing
+      // Soft max displacement clamp (allow wide travel smoothly as ball-perched fireflies return home after a shot!)
+      const maxDisp=f.perchType==="ball"?14.0:4.2;
       const dLen=Math.hypot(f.dx,f.dy,f.dz);
-      if(dLen>3.8){const sc=3.8/dLen;f.dx*=sc;f.dy*=sc;f.dz*=sc;}
-      avgDisp+=dLen;
+      if(dLen>maxDisp){const sc=maxDisp/dLen;f.dx*=sc;f.dy*=sc;f.dz*=sc;}
+      avgDisp+=Math.min(3.8,dLen);
       f.excited=Math.max(0,f.excited-step*.48);
 
-      pos[i*3]=f.hx+idleX+f.dx;
-      pos[i*3+1]=Math.max(.25,f.hy+idleY+f.dy);
-      pos[i*3+2]=f.hz+idleZ+f.dz;
+      const homeX=f.hx+idleX+f.dx;
+      const homeY=Math.max(.25,f.hy+idleY+f.dy);
+      const homeZ=f.hz+idleZ+f.dz;
+
+      // Compute perch destination (rim ring, timber backboard, or player's held basketball!)
+      const tx=f.perchType==="ball"?(bx+f.px):f.px;
+      const ty=f.perchType==="ball"?(by+f.py):f.py;
+      const tz=f.perchType==="ball"?(bz+f.pz):f.pz;
+      // Gentle living curve & whisper-soft perched breathing tremor
+      const arc=Math.sin(pEase*Math.PI)*.42;
+      const tremor=(1-pEase*.88);
+      const cxPos=lerp(homeX,tx+idleX*.07,pEase)+f.sx*arc*tremor;
+      const cyPos=lerp(homeY,ty+idleY*.06,pEase)+Math.abs(f.sy)*arc*.8;
+      const czPos=lerp(homeZ,tz+idleZ*.07,pEase)+f.sz*arc*tremor;
+
+      f.curX=cxPos;f.curY=Math.max(.22,cyPos);f.curZ=czPos;
+      pos[i*3]=f.curX;
+      pos[i*3+1]=f.curY;
+      pos[i*3+2]=f.curZ;
 
       const wake=smoothstep(ffAmount,f.wake*.78,Math.min(1,f.wake*.78+.22));
-      const blink=.24+.76*Math.pow(Math.max(0,Math.sin(t*f.blinkRate+f.phase*11)*.5+.5),1.65);
-      glowArr[i]=wake*(blink+f.excited*.85);
+      const blinkWave=Math.pow(Math.max(0,Math.sin(t*f.blinkRate+f.phase*11)*.5+.5),1.65);
+      // Perched fireflies glow extra bright & steady (warm bioluminescent bloom on rim, board & basketball!)
+      const blink=lerp(.24+.76*blinkWave,.82+.48*blinkWave,pEase);
+      const perchBoost=1+pEase*1.05;
+      glowArr[i]=wake*(blink*perchBoost+f.excited*.85);
     }
     hf.geo.attributes.position.needsUpdate=true;
     hf.geo.attributes.aGlow.needsUpdate=true;
     hf.scatterEnergy=Math.max(0,hf.scatterEnergy-step*.55);
-    // Warm firefly glow on the hoop softens slightly when the swarm scatters outward, then blooms back as they regather
+
+    const hoopPerchAvg=hoopPerchSum/Math.max(1,items.length*.76);
+    const ballPerchAvg=ballPerchSum/Math.max(1,items.length*.24);
     const densityFactor=Math.max(.35,1-(avgDisp/items.length)*.28);
-    hf.hoopLight.intensity=ffAmount*(1.15+.25*Math.sin(t*2.1))*densityFactor+hf.scatterEnergy*.35*ffAmount;
+    // Warm firefly glow on the hoop blooms richly when perched on the rim & backboard!
+    hf.hoopLight.intensity=ffAmount*((1.15+.25*Math.sin(t*2.1))*densityFactor+hoopPerchAvg*1.65)+hf.scatterEnergy*.35*ffAmount;
+    // Warm firefly glow illuminates the basketball in your hands when perched!
+    if(hf.ballLight){
+      hf.ballLight.position.set(bx,by+.08,bz);
+      hf.ballLight.intensity=hasBallPos?ffAmount*ballPerchAvg*(1.55+.22*Math.sin(t*2.7)):0;
+    }
   }
 
   function smoothDampVal(cur,target,obj,velKey,smoothTime,maxSpeed,dt){
@@ -2273,8 +2460,15 @@
     if(!rf)return;
     rf.progress=0;rf.progressVel=0;rf.targetProgress=0;rf.stage="afternoon";
     if(rf.hoopFireflies){
-      for(const f of rf.hoopFireflies.items){f.dx=f.dy=f.dz=f.vx=f.vy=f.vz=f.excited=0;}
+      for(const f of rf.hoopFireflies.items){
+        f.dx=f.dy=f.dz=f.vx=f.vy=f.vz=f.excited=f.perch=0;
+        f.curX=f.hx;f.curY=f.hy;f.curZ=f.hz;
+      }
       rf.hoopFireflies.scatterEnergy=0;
+      rf.hoopFireflies.stillTime=0;
+      rf.hoopFireflies.perchBlend=0;
+      rf.hoopFireflies.hadFlyingBalls=false;
+      if(rf.hoopFireflies.ballLight)rf.hoopFireflies.ballLight.intensity=0;
     }
     updateCycle(rf,0,0);
   }
@@ -2342,5 +2536,23 @@
     updateHoopFireflies(rf.hoopFireflies,s.time,dt,firefly);
   }
 
-  global.AIBARainforest=Object.freeze({build,update,reset,impulse,fireflyTrailMix,light});
+  function fireflyPerchState(){
+    const rf=activeRainforestState();
+    const hf=rf?.hoopFireflies;
+    if(!hf)return null;
+    return {
+      stillTime:hf.stillTime,perchBlend:hf.perchBlend,
+      hoopLight:hf.hoopLight?.intensity||0,ballLight:hf.ballLight?.intensity||0,
+      ballPos:hf.ballPos?hf.ballPos.toArray():null
+    };
+  }
+  function setFireflyStillness(sec){
+    const rf=activeRainforestState();
+    const hf=rf?.hoopFireflies;
+    if(!hf)return false;
+    hf.stillTime=Math.max(0,Number(sec)||0);
+    return true;
+  }
+
+  global.AIBARainforest=Object.freeze({build,update,reset,impulse,fireflyTrailMix,fireflyPerchState,setFireflyStillness,light});
 })(window);
