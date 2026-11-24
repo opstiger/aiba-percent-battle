@@ -14,6 +14,17 @@
     if(G.state!=="battle"||G.battleOver||(winCine&&winCine.on))return;
     const score=win?G.score:G.battleOppScore;
     if(!(score>=BATTLE_TARGET))return;
+    if(win&&ball?.cosmic&&ball.groundImpact&&cosmicShotInFlight()){
+      // Freeze the match result on the basket, then finish the ground follow-through.
+      const clock=G.battleClock;
+      battle.stopBattleClock();
+      G.battleOver=true;G.running=false;G.canShoot=false;G.charging=false;
+      battle.cancelOppPass?.(true);
+      ball.afterCosmicView=()=>{
+        if(G.state==="battle"&&G.battleOver&&G.battleClock===clock)startWinCine(win,ball);
+      };
+      return;
+    }
     startWinCine(win,ball);
   }
   function renderBattleResult(win){

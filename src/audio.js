@@ -620,6 +620,7 @@ function setPauseAudioDuck(on){
   const next=!!on;
   if(pauseDuck===next)return;
   pauseDuck=next;
+  if(next)stopCosmicWind();
   applyBusDuck(.14);
   setCrowdHeat(crowdHeat);   // 顺带按新系数重算人群总线并刷新外部音量
 }
@@ -1465,6 +1466,57 @@ function noiseBus(bus,dur,vol,hp,lp){
   const lo=AC.createBiquadFilter();lo.type="lowpass";lo.frequency.value=lp||9000;
   const g=AC.createGain();g.gain.value=vol||0.1;
   n.connect(hi);hi.connect(lo);lo.connect(g);g.connect(bus||sfxBus||master);n.start();
+}
+/* Match the sampled flight, so changes in frame rate or replay speed stay in sync. */
+let cosmicWind=null;
+function stopCosmicWind(){
+  if(!cosmicWind)return;
+  const {source,gain}=cosmicWind,t=AC.currentTime;
+  gain.gain.cancelScheduledValues(t);
+  gain.gain.setTargetAtTime(.0001,t,.025);
+  source.stop(t+.14);
+  cosmicWind=null;
+}
+function updateCosmicWind(speed,side){
+  if(!AC||MUTED||pauseDuck||AC.state!=="running"||speed<=0){stopCosmicWind();return;}
+  const t=AC.currentTime;
+  if(!cosmicWind){
+    const source=AC.createBufferSource(),filter=AC.createBiquadFilter(),gain=AC.createGain();
+    const pan=AC.createStereoPanner?AC.createStereoPanner():null;
+    source.buffer=noiseBusBuffer(1.5);
+    source.loop=true;filter.type="bandpass";filter.Q.value=.62;gain.gain.value=.0001;
+    source.connect(filter);filter.connect(gain);
+    if(pan){gain.connect(pan);pan.connect(sfxBus||master);}
+    else gain.connect(sfxBus||master);
+    source.start(t);
+    cosmicWind={source,filter,gain,pan};
+  }
+  const {filter,gain,pan}=cosmicWind;
+  filter.frequency.setTargetAtTime(240+speed*1850,t,.045);
+  gain.gain.setTargetAtTime(.014+speed*.31,t,.045);
+  if(pan)pan.pan.setTargetAtTime(side*.38,t,.055);
+}
+function cosmicNoise(dur,freq,endFreq,volume,attack){
+  const t=AC.currentTime,source=AC.createBufferSource(),filter=AC.createBiquadFilter(),gain=AC.createGain();
+  source.buffer=noiseBusBuffer(dur);
+  filter.type="bandpass";filter.Q.value=.75;
+  filter.frequency.setValueAtTime(freq,t);
+  filter.frequency.exponentialRampToValueAtTime(endFreq,t+dur);
+  gain.gain.setValueAtTime(.001,t);
+  gain.gain.linearRampToValueAtTime(volume,t+attack);
+  gain.gain.exponentialRampToValueAtTime(.001,t+dur);
+  source.connect(filter);filter.connect(gain);gain.connect(sfxBus||master);source.start(t);
+}
+function playCosmicCue(cue){
+  if(!AC||MUTED||pauseDuck||AC.state!=="running")return;
+  if(cue==="launch"){
+    cosmicNoise(.58,180,980,.32,.045);
+    blip(58,.39,"sine",.19,120);
+  }else{
+    cosmicNoise(.19,2500,600,.43,.007);
+    cosmicNoise(.85,185,46,.60,.03);
+    blip(86,.48,"sine",.43,34);
+  }
 }
 function rampGain(g,v,d){
   if(!AC||!g)return;

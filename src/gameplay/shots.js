@@ -187,6 +187,17 @@ let overchargeRun=null,overchargeCount=0,cosmicBall=null;
 function cosmicViewEnd(b){
   return b.groundImpact?b.groundImpact.t+.92:b.scoreT+.18;
 }
+const COSMIC_FINAL_FALL_LEAD=.095;
+function cosmicFlightStep(age,dt,impact){
+  if(!impact)return dt;
+  // Spend a few extra screen frames on the last metres through the net.
+  // Split at both boundaries so coarse frames never skip the slow section.
+  const slowStart=AIBABallPhysics.COSMIC_DROP_T-COSMIC_FINAL_FALL_LEAD;
+  const fullSpeed=Math.min(dt,Math.max(0,slowStart-age));
+  const slowSpan=Math.max(0,impact.t-(age+fullSpeed));
+  const slowTime=Math.min(dt-fullSpeed,slowSpan/.21);
+  return dt-slowTime*(1-.21);
+}
 function cosmicShotInFlight(){
   return cosmicBall&&cosmicBall.t<cosmicViewEnd(cosmicBall)&&balls.includes(cosmicBall);
 }
@@ -568,7 +579,7 @@ function madeBall(b){
     const momentumSpoke=!ending&&triggerMakeRunVoice();
     if(big&&!momentumSpoke)toast((b.money?"花球! ":"")+(b.bonus?"最后10秒加成 · ":"")+CHEERS[(Math.random()*CHEERS.length)|0],b.bonus?"#ff8d7a":"#ffd23f");
     if(G.streak>=3){$("hudStreak").style.display="block";$("hudStreak").textContent="🔥 x"+G.streak;}
-    if(ending){window.AIBAHeroMoments?.onSpeedFinish(b);updateRackRushHUD();updJumbo();finishRackRushSpeed();return;}
+    if(ending){window.AIBAHeroMoments?.onSpeedFinish(b);updateRackRushHUD();updJumbo();finishRackRushSpeed(b);return;}
     if(!cfg.final&&!rush.levelCleared&&rush.levelScore>=target){rush.levelCleared=true;rackRushClearFlash();}
     updateRackRushHUD();updJumbo();return;
   }
@@ -708,6 +719,7 @@ function physicsBallEvent(b,e){
       if(b.cosmic&&b.groundImpact&&!b.bounces){
         cosmicGroundFX.land(b.groundImpact,b.mesh);
         b.mesh.visible=false;b.blob.visible=false;
+        b.bounces++;splashMeadowBall(e.x,e.z,e.impulse);break;
       }
       b.bounces++;splashMeadowBall(e.x,e.z,e.impulse);sfx("floor",sBounce);break;
     case "made":
@@ -743,7 +755,12 @@ function updPhysicsBall(b,dt,index){
   const omega=b._pathOmega||(b._pathOmega=new THREE.Vector3());
   omega.set(s.wx,s.wy,s.wz);rotateBallWorld(b,omega,dt,1);
   while(b.evi<b.events.length&&b.events[b.evi].t<=lt)physicsBallEvent(b,b.events[b.evi++]);
-  if(b===cosmicBall&&b.t>=cosmicViewEnd(b))cosmicBall=null;
+  if(b===cosmicBall&&b.t>=cosmicViewEnd(b)){
+    cosmicBall=null;
+    const finish=b.afterCosmicView;
+    b.afterCosmicView=null;
+    finish?.();
+  }
   if(b.t>=b.endT){
     if(b.rushRunId)window.queueRackRushReturn?.(b);
     scene.remove(b.mesh);scene.remove(b.blob);
@@ -754,7 +771,9 @@ function updPhysicsBall(b,dt,index){
 }
 function updBalls(frameDt){
   for(let i=balls.length-1;i>=0;i--){
-    const b=balls[i],dt=frameDt*heroBallRate(b);b.t+=dt;
+    const b=balls[i];
+    const dt=b===cosmicBall?cosmicFlightStep(b.t,frameDt,b.groundImpact):frameDt*heroBallRate(b);
+    b.t+=dt;
     if(b.phase==="path"){
       if(updPhysicsBall(b,dt,i))continue;
     }else if(b.phase==="fly"){

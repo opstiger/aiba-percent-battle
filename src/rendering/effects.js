@@ -91,11 +91,12 @@ window.AIBA.runtime.register("rendering:effects",Object.freeze({
 // The last beat of a cosmic shot is timed from its first simulated floor contact.
 // Both live play and replay sample the same little set of reusable props.
 const cosmicGroundFX=(()=>{
-  let group,wave,dust,print,flecks,bowl,restingBall,vegetation;
+  let group,wave,dust,print,flecks,bowl,cracks,restingBall,vegetation;
+  let activeProfile;
   let liveImpact=null,sampling=false;
-  const pitCut={value:new THREE.Vector3()};
+  const pitCut={value:new THREE.Vector3()},pitShape={value:new THREE.Vector3(1,1,0)};
   const patchedGround=new WeakSet();
-  const duration=5.6,speed=34,reach=48,craterRadius=.51;
+  const duration=5.6,speed=34,reach=48;
   let frontAge=-Infinity;
   const people=[];
   const count=48,pose=new THREE.Object3D();
@@ -117,42 +118,148 @@ const cosmicGroundFX=(()=>{
     const mesh=new THREE.Mesh(geo,mat);
     mesh.rotation.x=-Math.PI/2;group.add(mesh);return mesh;
   }
-  function createBowl(){
-    const rings=9,segments=48,vertices=[],colors=[],indices=[];
-    for(let r=0;r<=rings;r++){
-      const u=r/rings;
+  // radius, X/Z proportions, edge roughness, depth, fracture pattern and debris colors.
+  const groundProfiles={
+    indoor:{radius:.43,x:1.27,z:.83,rough:.28,depth:.19,count:5,length:.69,inside:0x32241f,edge:0x825f40,grain:true},
+    flowerCourt:{radius:.45,x:1.06,z:.90,rough:.37,depth:.21,count:4,length:.29,inside:0x422e20,edge:0x856b3f},
+    rainforest:{radius:.43,x:.93,z:1.11,rough:.36,depth:.22,count:4,length:.36,inside:0x32281e,edge:0x6c593b},
+    lunarCrater:{radius:.46,x:1.13,z:.91,rough:.32,depth:.22,count:6,length:.53,inside:0x464142,edge:0x706760},
+    spanishQuarter:{radius:.44,x:1.12,z:.91,rough:.34,depth:.19,count:5,length:.41,inside:0x583629,edge:0xad7152},
+    arcticSnow:{radius:.43,x:1.06,z:.95,rough:.23,depth:.18,count:6,length:.66,inside:0x556e7b,edge:0xb8cad1},
+    rainyCourt:{radius:.42,x:1.12,z:.92,rough:.28,depth:.18,count:5,length:.48,inside:0x363233,edge:0x777176},
+    hardCourt:{radius:.43,x:1.10,z:.91,rough:.24,depth:.18,count:6,length:.48,inside:0x444344,edge:0x8b8682}
+  };
+  function rimRadius(a,g){
+    return g.radius*(1+g.rough*(.56*Math.sin(a*3+.25)+.30*Math.sin(a*7-1.1)+.26*Math.sin(a*11+.48)));
+  }
+  function createBowl(g){
+    const segments=64,positions=[],colors=[],indices=[],uv=[];
+    const rings=[.001,.32,.66,.86,.98,1.13];
+    const inner=new THREE.Color(g.inside).convertSRGBToLinear();
+    const lip=new THREE.Color(g.edge).convertSRGBToLinear();
+    const tint=new THREE.Color();
+    for(let r=0;r<rings.length;r++){
+      const u=rings[r];
       for(let i=0;i<segments;i++){
-        const a=i*2*Math.PI/segments;
-        const radius=.55*u*(1+.015*Math.cos(a*7));
-        const depth=-.22*(1-u**3);
-        vertices.push(Math.cos(a)*radius,depth,Math.sin(a)*radius);
-        const shade=.57+.38*u+.12*Math.sin(a+.7)*u+.055*Math.sin(a*27+r*12);
-        colors.push(shade,shade,shade);
+        const a=i*2*Math.PI/segments,radius=rimRadius(a,g)*u;
+        const chips=.55+.31*Math.sin(a*9+.7)+.15*Math.sin(a*21);
+        const y=r===rings.length-1?-.022:
+          -g.depth*(1-u**3)+.051*chips*u**4+.014*Math.sin(a*13+r*2.6)*Math.sin(u*Math.PI);
+        const x=Math.cos(a)*radius*g.x,z=Math.sin(a)*radius*g.z;
+        positions.push(x,y,z);
+        uv.push(.5+x/230,.5-z/230);
+        tint.copy(inner).lerp(lip,Math.min(1,u**2)*(.70+.30*chips));
+        tint.multiplyScalar(.91+.09*Math.sin(a*17+r*.71)+.08*Math.sin(a*6-r*3.1));
+        colors.push(tint.r,tint.g,tint.b);
         if(!r)continue;
         const j=r*segments+i,k=r*segments+(i+1)%segments;
         indices.push(j-segments,k-segments,j,j,k-segments,k);
       }
     }
+    if(g.grain){
+      // Torn strips of floorboard retain paint on top and expose wood at the break.
+      const paint=new THREE.Color(0x473554).convertSRGBToLinear();
+      for(let i=0;i<7;i++){
+        const a=(i<4?1:-1)*(Math.PI*.30+(i%4)*.41);
+        const x=Math.cos(a)*rimRadius(a,g)*g.x,z=Math.sin(a)*rimRadius(a,g)*g.z;
+        const sign=Math.sign(z),width=.026+(i%3)*.014,length=.10+(i%3)*.037;
+        const start=positions.length/3;
+        positions.push(x-width,.005,z+.025*sign,x+width,.005,z+.033*sign,
+          x+.43*width,.044,z-.52*length*sign,x-.23*width,-.032,z-length*sign);
+        for(const c of [paint,paint,lip,inner])colors.push(c.r,c.g,c.b);
+        uv.push(0,0,0,0,0,0,0,0);
+        if(sign>0)indices.push(start,start+1,start+2,start,start+2,start+3);
+        else indices.push(start,start+2,start+1,start,start+3,start+2);
+      }
+    }
     const geo=new THREE.BufferGeometry();
-    geo.setAttribute("position",new THREE.Float32BufferAttribute(vertices,3));
+    geo.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+    geo.setAttribute("uv",new THREE.Float32BufferAttribute(uv,2));
     geo.setAttribute("color",new THREE.Float32BufferAttribute(colors,3));
     geo.setIndex(indices);geo.computeVertexNormals();
-    const mat=new THREE.MeshStandardMaterial({vertexColors:true,roughness:.96});
-    const mesh=new THREE.Mesh(geo,mat);mesh.receiveShadow=true;group.add(mesh);
-    return mesh;
+    return geo;
   }
-  function cutFloor(material){
+  function createCracks(g){
+    const positions=[],colors=[];
+    // Offset the path at each step and fade the thinner tips into the surface.
+    const dark=new THREE.Color(g.inside).multiplyScalar(.24).convertSRGBToLinear();
+    const exposed=new THREE.Color(g.edge).multiplyScalar(.78).convertSRGBToLinear();
+    let state=5319;
+    function random(){
+      state=(Math.imul(1664525,state)+1013904223)>>>0;
+      return state/4294967296;
+    }
+    function strip(points,width){
+      for(let i=0;i<points.length;i++){
+        const p=points[i],prev=points[Math.max(0,i-1)],next=points[Math.min(i+1,points.length-1)];
+        const dx=next[0]-prev[0],dz=next[1]-prev[1];
+        const w=width*(.04+.96*(1-i/(points.length-1))**.72)/Math.hypot(dx,dz);
+        // One lit edge next to a broader, dark opening.
+        positions.push(p[0]-dz*w,.004,p[1]+dx*w,p[0],.006,p[1],
+          p[0]+dz*w*.38,.009,p[1]-dx*w*.38);
+        const alpha=1-i/(points.length-1);
+        colors.push(dark.r,dark.g,dark.b,alpha,dark.r,dark.g,dark.b,alpha,
+          exposed.r,exposed.g,exposed.b,alpha*.68);
+      }
+    }
+    const indices=[];
+    function seam(points,width){
+      const start=positions.length/3;
+      strip(points,width);
+      for(let i=0;i<points.length-1;i++){
+        const n=start+i*3;
+        indices.push(n,n+3,n+1,n+1,n+3,n+4,n+1,n+4,n+2,n+2,n+4,n+5);
+      }
+    }
+    for(let i=0;i<g.count;i++){
+      const a=g.grain?(i%2?Math.PI*.52:Math.PI*1.49)+(random()-.5)*.39:
+        i*2*Math.PI/g.count+(random()-.5)*.68;
+      const radius=rimRadius(a,g),len=g.length*(.46+random()*.54);
+      const points=[];
+      for(let j=0;j<=6;j++){
+        const u=j/6,r=radius*.92+u*len;
+        const jitter=j?(random()-.5)*(g.grain?.095:.21)*Math.sin(u*2.4):0;
+        points.push([Math.cos(a)*r*g.x+jitter*Math.sin(a),Math.sin(a)*r*g.z-jitter*Math.cos(a)]);
+      }
+      const width=(g.grain?.010:.021)*(.72+random()*.56);
+      seam(points,width);
+      if(i%3!==1){
+        const p=points[2],fork=a+(i%2?-1:1)*(.43+random()*.45);
+        seam([p,[p[0]+Math.cos(fork)*len*.26,p[1]+Math.sin(fork)*len*.26],
+          [p[0]+Math.cos(fork+.24)*len*.59,p[1]+Math.sin(fork+.24)*len*.59]],width*.60);
+      }
+    }
+    const geo=new THREE.BufferGeometry();
+    geo.setAttribute("position",new THREE.Float32BufferAttribute(positions,3));
+    geo.setAttribute("color",new THREE.Float32BufferAttribute(colors,4));
+    geo.setIndex(indices);
+    return geo;
+  }
+  function cutFloor(material,worldPosition){
     if(!material||patchedGround.has(material))return;
     const compile=material.onBeforeCompile,key=material.customProgramCacheKey.call(material);
     material.onBeforeCompile=function(shader,renderer){
       compile.call(this,shader,renderer);
       shader.uniforms.cosmicPit=pitCut;
-      shader.vertexShader="varying vec2 pitWorld;\n"+shader.vertexShader.replace("#include <project_vertex>",
-        "pitWorld=(modelMatrix*vec4(transformed,1.0)).xz;\n#include <project_vertex>");
-      shader.fragmentShader="varying vec2 pitWorld;\nuniform vec3 cosmicPit;\n"+shader.fragmentShader.replace("#include <clipping_planes_fragment>",
-        "#include <clipping_planes_fragment>\nif(cosmicPit.z>0.0&&distance(pitWorld,cosmicPit.xy)<cosmicPit.z)discard;");
+      shader.uniforms.cosmicPitShape=pitShape;
+      if(!worldPosition){
+        shader.vertexShader="varying vec2 pitWorld;\n"+shader.vertexShader.replace("#include <project_vertex>",
+          "pitWorld=(modelMatrix*vec4(transformed,1.0)).xz;\n#include <project_vertex>");
+      }
+      const varying=worldPosition?"":"varying vec2 pitWorld;\n";
+      shader.fragmentShader=varying+"uniform vec3 cosmicPit, cosmicPitShape;\n"+shader.fragmentShader.replace("#include <clipping_planes_fragment>",`
+        #include <clipping_planes_fragment>
+        if(cosmicPit.z>0.0){
+          vec2 delta=(${worldPosition||"pitWorld"}-cosmicPit.xy)/cosmicPitShape.xy;
+          float radius=length(delta);
+          if(radius<cosmicPit.z*1.5){
+            float a=atan(delta.y,delta.x);
+            float edge=1.0+cosmicPitShape.z*(.56*sin(a*3.0+.25)+.30*sin(a*7.0-1.1)+.26*sin(a*11.0+.48));
+            if(radius<cosmicPit.z*edge)discard;
+          }
+        }`);
     };
-    material.customProgramCacheKey=()=>key+":cosmicPit";
+    material.customProgramCacheKey=()=>key+":cosmicPitShaped";
     material.needsUpdate=true;patchedGround.add(material);
   }
   function prepare(venue){
@@ -162,7 +269,13 @@ const cosmicGroundFX=(()=>{
       cutFloor(print.material);
       print.renderOrder=2;wave.renderOrder=3;
       dust=wave.clone();dust.material=wave.material.clone();dust.renderOrder=2;group.add(dust);
-      bowl=createBowl();
+      bowl=new THREE.Mesh(new THREE.BufferGeometry(),new THREE.MeshStandardMaterial({vertexColors:true,roughness:.96}));
+      bowl.name="cosmicCrater";bowl.receiveShadow=true;
+      cracks=new THREE.Mesh(new THREE.BufferGeometry(),new THREE.MeshBasicMaterial({
+        vertexColors:true,transparent:true,depthWrite:false,side:THREE.DoubleSide
+      }));
+      cracks.name="cosmicCracks";cracks.renderOrder=1;
+      group.add(bowl,cracks);
       restingBall=new THREE.Mesh(ballGeo,matBall);restingBall.name="cosmicRestingBall";
       restingBall.castShadow=true;group.add(restingBall);
       flecks=new THREE.InstancedMesh(new THREE.OctahedronGeometry(1,0),
@@ -176,12 +289,28 @@ const cosmicGroundFX=(()=>{
     flecks.instanceColor.needsUpdate=true;
     const place=environmentRoot.userData.placeState;
     const terrain={lunarCrater:"lunarTerrain",flowerCourt:"alpineMeadowGround",rainforest:"rainforestCourtGround"}[venue];
-    if(terrain)cutFloor(environmentRoot.getObjectByName(terrain)?.material);
-    else cutFloor(courtFloor?.material);
+    const floor=terrain?environmentRoot.getObjectByName(terrain)?.material:courtFloor?.material;
+    cutFloor(floor);
+    const regolith=venue==="lunarCrater"?floor?.bumpMap||null:null;
+    if(bowl.material.bumpMap!==regolith){
+      bowl.material.bumpMap=regolith;
+      bowl.material.bumpScale=.11;
+      bowl.material.needsUpdate=true;
+    }
+    if(venue==="flowerCourt"){
+      cutFloor(environmentRoot.getObjectByName("meadowTurfFurShells")?.material,"vFurWorld.xz");
+      cutFloor(environmentRoot.getObjectByName("alpineSwayingGrass")?.material,"vGrassWorld.xz");
+    }
     scene.traverse(o=>{
       if(o.isMesh&&(o.name==="courtZone"||o.name==="courtLine"||o.name==="courtMark"))cutFloor(o.material);
     });
-    bowl.material.color.setHex(venue==="lunarCrater"?0x515258:venue==="indoor"?0x6c4a34:0x62513b);
+    const profile=groundProfiles[venue]||groundProfiles.hardCourt;
+    if(profile!==activeProfile){
+      activeProfile=profile;
+      bowl.geometry.dispose();bowl.geometry=createBowl(profile);
+      cracks.geometry.dispose();cracks.geometry=createCracks(profile);
+      pitShape.value.set(profile.x,profile.z,profile.rough);
+    }
     vegetation=place?.meadow?.uniforms.meadowPressure.value||place?.rainforest?.uniforms.forestPressure.value;
     people.length=0;
     const crowd=venue==="indoor"?nearCourtCrowd:streetCrowd;
@@ -201,18 +330,20 @@ const cosmicGroundFX=(()=>{
     frontAge=age;
     group.visible=!!impact&&age>-1.15;
     if(!group.visible){if(vegetation)vegetation.w=0;pitCut.value.z=0;return;}
-    const ground=environmentRoot.userData.placeState?.heightAt;
+    const place=environmentRoot.userData.placeState;
+    const ground=place?.heightAt||place?.wonder?.terrainY;
     const y=ground?ground(impact.x,impact.z):0;
-    group.position.set(impact.x,y+.024,impact.z);
+    group.position.set(impact.x,y+.013,impact.z);
     const sunk=THREE.MathUtils.smoothstep(age,-.015,.085);
     const landed=age>=0;
-    pitCut.value.set(impact.x,impact.z,landed?craterRadius:0);
-    bowl.visible=restingBall.visible=landed;
+    pitCut.value.set(impact.x,impact.z,landed?activeProfile.radius:0);
+    bowl.visible=cracks.visible=restingBall.visible=landed;
     if(landed){
       bowl.scale.y=.12+.88*sunk;
+      cracks.material.opacity=.45+.55*sunk;
       restingBall.material=mesh.material;
       restingBall.quaternion.copy(mesh.quaternion);
-      restingBall.position.set(0,AIBABallPhysics.GEOM.ballR-.20*sunk,0);
+      restingBall.position.set(0,AIBABallPhysics.GEOM.ballR-(activeProfile.depth-.021)*sunk,0);
     }
     const before=age<0,phase=clamp(before?(age+1.15)/1.15:age*speed/reach,0,1);
     const radius=before?.4+6.8*phase:.35+reach*phase;
@@ -240,7 +371,7 @@ const cosmicGroundFX=(()=>{
     for(let i=0;i<count;i++){
       const a=i*2.39996,spread=(i*37%23)/23;
       const phase=Math.min(1,age/(.50+.65*spread));
-      const r=.50+spread*.70+(1-(1-phase)**2)*(2.80+spread*6.20);
+      const r=activeProfile.radius*(.65+spread*.49)+(1-(1-phase)**2)*(2.30+spread*4.30);
       pose.position.set(Math.cos(a)*r,.036+4*phase*(1-phase)*(.24+.74*spread),Math.sin(a)*r);
       pose.rotation.set(3*phase+a,a*.2,2*phase-a);
       const size=(.053+.058*spread)*(1-phase*phase);

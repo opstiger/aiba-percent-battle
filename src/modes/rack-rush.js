@@ -435,7 +435,7 @@
     const el=$("countN");el.innerHTML=`<span style="font-size:38px;text-align:center;line-height:1.35;color:#7CFC6B">CLEAR<br><small style="font-size:15px;color:#fff">${rush.levelScore} / ${target} · 总分 ${rush.total}</small></span>`;
     el.style.display="flex";cheerSound(true);setTimeout(()=>{el.style.display="none";startRackRushLevel(rush.level+1);},1450);
   }
-  function finishRackRushSpeed(){
+  function finishRackRushSpeed(ball){
     const rush=G.rush;if(!rush||rush.levelEnding)return;
     rush.levelEnding=true;rush.completed=true;G.running=false;G.canShoot=false;G.buzzed=true;G.state="rushbetween";$("vsBanner").style.display="none";
     G.charging=false;handBall.visible=false;pBall.visible=false;const passing=ctx.getPassing();if(passing){scene.remove(passing.mesh);ctx.setPassing(null);}
@@ -450,7 +450,8 @@
         el.style.display="none";finishRackRushRun(true);
       },withHero?720:950);
     };
-    if(withHero)setTimeout(celebrate,580);
+    if(ball?.cosmic&&ball.groundImpact&&cosmicShotInFlight())ball.afterCosmicView=celebrate;
+    else if(withHero)setTimeout(celebrate,580);
     else celebrate();
   }
   function loadRackRushRuns(variant){

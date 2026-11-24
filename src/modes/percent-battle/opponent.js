@@ -248,6 +248,7 @@
     return mats&&mats.superBallMaterial?mats.superBallMaterial(G.superSkin||0):matGold;
   }
   function oppScore(ball){
+    if(G.battleOver)return;
     if(ball.super)battle.battleConsumeSuperChance(ball);
     else if(battle.battleNoteNormalScore)battle.battleNoteNormalScore();
     const previousMe=G.score,previousOpponent=G.battleOppScore;

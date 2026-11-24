@@ -557,6 +557,7 @@ function beginCosmicView(){
 }
 function endCosmicView(){
   if(!cosmicView)return;
+  stopCosmicWind();
   cosmicGroundFX.endView();
   releaseCameraFov("cosmic");
   for(const [mesh,visible] of cosmicView.roof)mesh.visible=visible;
@@ -573,32 +574,52 @@ function updateCosmicCamera(ball,dt,interactive=true){
   const apex=AIBABallPhysics.COSMIC_APEX_T,drop=AIBABallPhysics.COSMIC_DROP_T;
   const smooth=THREE.MathUtils.smoothstep,mix=THREE.MathUtils.lerp;
   const down=smooth(t,.36,apex-.10),high=smooth(p.y,14,110);
-  const approach=smooth(t,apex+.15,drop+.26);
   hands.visible=false;player.g.visible=true;
   const faceYaw=interactive?(window.AIBAVisionAim?.cinematicYawRad()||0):0;
   cosmicView.yaw+=(faceYaw-cosmicView.yaw)*(1-Math.exp(-dt*6));
   const pan=cosmicView.yaw*high*down;
-  const bearing=.50-.28*down+.32*approach+pan*.8;
-  const pitch=mix(-.13,1.465,down);
-  const distance=mix(3.8,5.8,down)+4.4*smooth(t,apex,apex+1.05);
-  const back=distance*Math.cos(pitch)+12.5*approach**3;
   const impact=ball.groundImpact,age=impact?t-impact.t:-Infinity;
-  const x=age>=0?impact.x:p.x,z=age>=0?impact.z:p.z;
-  const height=age>=0?AIBABallPhysics.GEOM.ballR:p.y;
-  // Level out above the landing site. Only the ball closes the last few metres.
-  const eyeY=Math.hypot(height,13.5*approach)+distance*Math.sin(pitch)+7*Math.sin(Math.PI*approach);
-  rig.pos.set(x+Math.sin(bearing)*back+pan*distance*.24,eyeY,z+Math.cos(bearing)*back);
-
-  const summitFov=Math.max(25,2*Math.atan(.115/camera.aspect)*180/Math.PI);
-  const fov=mix(mix(fovForAspect(camera.aspect),summitFov,down),Math.min(67,fovForAspect(camera.aspect)),approach);
+  const overviewEnd=apex+.95,terminalStart=drop-COSMIC_FINAL_FALL_LEAD;
+  let fov;
+  if(t<overviewEnd){
+    // Keep the downward reveal long enough to read the whole court.
+    const bearing=.50-.28*down+pan*.8;
+    const pitch=mix(-.13,1.465,down);
+    const distance=mix(3.8,5.8,down)+4.4*smooth(t,apex,apex+1.05);
+    const back=distance*Math.cos(pitch);
+    const eyeY=p.y+distance*Math.sin(pitch);
+    rig.pos.set(p.x+Math.sin(bearing)*back,eyeY,p.z+Math.cos(bearing)*back);
+    const summitFov=Math.max(25,2*Math.atan(.115/camera.aspect)*180/Math.PI);
+    fov=mix(fovForAspect(camera.aspect),summitFov,down);
+    const viewPitch=pitch+Math.atan(down*.23*Math.tan(fov*Math.PI/360));
+    rig.look.set(-Math.sin(bearing)*Math.cos(viewPitch),-Math.sin(viewPitch),
+      -Math.cos(bearing)*Math.cos(viewPitch)).multiplyScalar(100).add(rig.pos);
+    cosmicView.shot="overview";
+  }else if(t<terminalStart){
+    // Chase from above and to the side. The orbit accelerates as the court grows below.
+    const dive=clamp((t-overviewEnd)/(terminalStart-overviewEnd),0,1);
+    const bearing=.42+2.25*dive**1.28+pan*.36;
+    const radius=mix(7.4,3.9,dive);
+    rig.pos.set(p.x+Math.sin(bearing)*radius,p.y+mix(8.0,2.9,dive),p.z+Math.cos(bearing)*radius);
+    rig.look.copy(p).y-=mix(1.8,.60,dive);
+    fov=mix(47,63,dive)+(camera.aspect<1?8:0);
+    cosmicView.shot="spiral";
+  }else{
+    // Cut to the court side of the hoop and travel down with the ball.
+    const closing=1-smooth(p.y,3.0,21);
+    const settle=smooth(age,0,.78);
+    const bearing=mix(-.88,-.50,closing)+.36*settle;
+    const radius=mix(4.45,3.15,closing)-.38*settle;
+    const kick=age>=0?.16*Math.sin(44*age)*Math.exp(-age*11):0;
+    const x=age>=0?impact.x:p.x,z=age>=0?impact.z:p.z;
+    const y=age>=0?AIBABallPhysics.GEOM.ballR:p.y;
+    rig.pos.set(x+Math.sin(bearing)*radius,y+mix(2.4,1.0,closing)+.66*settle+kick,
+      z+Math.cos(bearing)*radius);
+    rig.look.set(x,y+.26*closing-.37*settle,z);
+    fov=mix(59,48,closing)+2*settle+(camera.aspect<1?8:0);
+    cosmicView.shot=age<0?"net":"impact";
+  }
   requestCameraFov("cosmic",fov,80);
-  // Compose in screen space throughout the dive. The ball moves from the upper
-  // third toward the landing mark without a late look-at or side-camera blend.
-  const frameY=down*mix(.28,-.16,approach);
-  const aimHeight=Math.hypot(height,17*approach)-17*approach;
-  const viewPitch=Math.atan2(eyeY-aimHeight,back)+Math.atan(frameY*Math.tan(fov*Math.PI/360));
-  rig.look.set(-Math.sin(bearing)*Math.cos(viewPitch),-Math.sin(viewPitch),
-    -Math.cos(bearing)*Math.cos(viewPitch)).multiplyScalar(100).add(rig.pos);
   for(const [mesh,visible] of cosmicView.roof){
     const below=mesh.name==="centerHungScoreboard"?9:20;
     mesh.visible=visible&&rig.pos.y<below;
@@ -607,6 +628,19 @@ function updateCosmicCamera(ball,dt,interactive=true){
     cosmicView.forestReveal.value=down*THREE.MathUtils.smoothstep(rig.pos.y,10,17);
   }
 
+  if(!cosmicView.launched){
+    cosmicView.launched=true;
+    if(t<.27)playCosmicCue("launch");
+  }
+  if(age>=0&&!cosmicView.impacted){
+    cosmicView.impacted=true;
+    stopCosmicWind();
+    playCosmicCue("impact");
+  }
+  // Wind intensity follows the vertical motion and stops at the physical contact.
+  const ascent=Math.sin(Math.PI*clamp(t/apex,0,1));
+  const descent=clamp((t-apex)/(drop-apex),0,1);
+  updateCosmicWind(age>=0?0:Math.max(ascent*.84,descent),Math.sin(Math.atan2(rig.pos.x-p.x,rig.pos.z-p.z)));
   cosmicGroundFX.sample(age,impact,currentScenePreset,ball.mesh);
 }
 
@@ -805,7 +839,7 @@ function applyMeadowIntroAt(u,opts){
    里不断增长的 if/else 互相抢写相机。 */
 function updateCameraDirector(dt){
   const editing=window.AIBACamera&&AIBACamera.isEditing&&AIBACamera.isEditing();
-  const cosmic=cosmicShotInFlight()&&["round","tiebreak","battle","rackrush"].includes(G.state)&&
+  const cosmic=cosmicShotInFlight()&&["round","tiebreak","battle","rackrush","rushbetween"].includes(G.state)&&
     !G.cutAway&&!G.battleCut&&!editing&&!rep.on&&!VICTORY_CINE.on&&!winCine.on;
   const cosmicReplay=rep.on&&rep.clip?.cosmic&&rep.t>=REPLAY_PHOTO_DUR;
   if((!cosmic&&!cosmicReplay)||editing||(cosmicView&&cosmicView.preset!==currentScenePreset))endCosmicView();

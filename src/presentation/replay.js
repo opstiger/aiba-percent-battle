@@ -19,7 +19,7 @@ function startReplay(){
 function startClip(){
   endCosmicView();
   const h=G.highlights[rep.idx];
-  rep.clip=h;rep.t=0;rep.scoredFx=false;
+  rep.clip=h;rep.t=0;rep.scoredFx=false;rep.cosmicShot=null;
   rep.ghost.visible=true;rep.gBlob.visible=true;
   const ballMatExact=(h.mesh&&h.mesh.material)||(h.material)||(h.mat);
   if(ballMatExact){
@@ -65,7 +65,7 @@ function startClip(){
 }
 function updReplay(dt){
   const h=rep.clip;if(!h)return;
-  rep.t+=dt*(h.cosmic?1:.42); // 宇宙弧线已有专属演出节奏
+  rep.t+=h.cosmic?cosmicFlightStep(rep.t-REPLAY_PHOTO_DUR,dt,h.groundImpact):dt*.42;
   const photo=rep.t<REPLAY_PHOTO_DUR;
   const t=Math.min(Math.max(0,rep.t-REPLAY_PHOTO_DUR),rep.end);
   // 同步角色姿势:按回放时间映射投篮相位
@@ -116,7 +116,11 @@ function updReplay(dt){
     rep.ghost.visible=!landed;rep.gBlob.visible=!landed;
     if(t<h.tf)AIBACometTrail.emitFire(rep.ghost.position,rep.spin);
     updateCosmicCamera(rep.spin,dt,false);
-    window.AIBASetIcon("repCam","video","宇宙弧线 · 长镜头");
+    if(rep.cosmicShot!==cosmicView.shot){
+      rep.cosmicShot=cosmicView.shot;
+      const labels={overview:"高空全景",spiral:"环绕俯冲",net:"穿网跟拍",impact:"落点跟拍"};
+      window.AIBASetIcon("repCam","video","宇宙弧线 · "+labels[rep.cosmicShot]);
+    }
   }else if(t<cut){
     rig.pos.copy(rep.camA.p);rig.pos.x+=Math.sin(rep.t*0.5)*0.5;rig.pos.y+=Math.sin(rep.t*0.7)*0.15;
     window.AIBASetIcon("repCam","video","机位 1 · "+rep.camA.n);
