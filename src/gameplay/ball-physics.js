@@ -252,13 +252,22 @@
       if(prev&&t-prev.t<.05){prev.t=t;prev.ev.impulse=Math.max(prev.ev.impulse,imp);return false;}
       const ev={type,t,x:s.x,y:s.y,z:s.z,impulse:imp};events.push(ev);last[type]={t,ev};return true;
     };
+    const wind=opts.wind&&opts.wind.length>=3?opts.wind:null;
+    const windX=wind?(Number(wind[0])||0):0,windY=wind?(Number(wind[1])||0):0,windZ=wind?(Number(wind[2])||0):0;
+    const hasWind=!!(windX||windY||windZ);
     let t=0,step=0,prevY=s.y,restT=0,rimRestT=0,wedgeT=0;
     rec(0);
     while(t<maxT){
       step++;t=step*DT;
-      // 对恒定重力精确的积分（与解析抛物线逐点一致，校准才对得上）
-      s.x+=s.vx*DT;s.y+=s.vy*DT-.5*G*DT*DT;s.z+=s.vz*DT;
-      s.vy-=G*DT;
+      // 对恒定重力精确的积分（与解析抛物线逐点一致，校准才对得上）；有鬼影紫雾风场时在空中施加真实弧线偏转
+      if(hasWind&&!state.made&&!state.rimHits&&!state.boardHits&&s.y>r+.25){
+        const gEff=G-windY;
+        s.x+=s.vx*DT+.5*windX*DT*DT;s.y+=s.vy*DT-.5*gEff*DT*DT;s.z+=s.vz*DT+.5*windZ*DT*DT;
+        s.vx+=windX*DT;s.vy-=gEff*DT;s.vz+=windZ*DT;
+      }else{
+        s.x+=s.vx*DT;s.y+=s.vy*DT-.5*G*DT*DT;s.z+=s.vz*DT;
+        s.vy-=G*DT;
+      }
 
       let imp=contactRim(s,tu);
       if(imp>0){
@@ -485,7 +494,7 @@
     EQ_SAMPLES.push([invNorm((i+.5)/EQ_HALF)*sigma,invNorm(Math.min(.999,Math.max(.001,g))),((i+.5)*.7548776662+(sigma>1?.25:0))%1]);
   }
 
-  function depthFor(p0,cal,map,u,noise,k,luck){
+  function depthFor(p0,cal,map,u,noise,k,luck,opts){
     let a=Math.abs(u);const sign=u<0?-1:1;
     if(a>1&&luck!=null){
       const taper=a<=1.8?1:Math.max(0,1-(a-1.8)/.4);             // 1.8 以外 .4 内收掉
@@ -499,10 +508,9 @@
     const straight=Math.pow(clamp((facing-.9)/.1,0,1),2);        // cos25°≈.9 → 0，正对 → 1
     const miss=a>.5?k:1;                                          // 均衡系数只作用在甜区外
     const depth=cal.depth0+sign*shaped*(u<0?map.underM:map.overM)*miss+(Number(noise)||0)*map.jitterM*jitterK;
-    /* 投长封顶。正面（straight→1）封在 maxLongStraightM：再远 0.8~1.4m 是"打中小方框直落进筐"
-       的口袋，正面投长几乎必进（实测扫描见诊断记录）；侧面封在 maxLongM，再远整颗球
-       飞过篮板砸进看台——现实里有，但那是离谱力度，不值得为它把球扔出场馆。 */
-    const cap=map.maxLongM+(map.maxLongStraightM-map.maxLongM)*straight;
+    /* 投长封顶。正面（straight→1）封在 maxLongStraightM；若存在向下风场（需加力克服），放宽封顶让加力能打穿下压风 */
+    const windRelax=opts&&opts.wind&&opts.wind[1]<-0.05?Math.min(1.4,Math.abs(opts.wind[1])*0.9):0;
+    const cap=map.maxLongM+(map.maxLongStraightM-map.maxLongM)*straight+windRelax;
     return Math.min(depth,cal.depth0+cap);
   }
   function velocityFor(p0,tf,cal,depth,lat,map){
@@ -546,7 +554,7 @@
     const tu=Object.assign({},DEFAULT_TUNING,opts.tuning||{}),map=Object.assign({},DEFAULT_MAP,opts.map||{});
     const tf=opts.tf,cal=calibrate(p0,tf),u=Number(opts.u)||0;
     const k=map.equalize?equalize(p0,tf,map,tu):1;
-    let depth=depthFor(p0,cal,map,u,opts.noise,k,opts.luck==null?null:Number(opts.luck));
+    let depth=depthFor(p0,cal,map,u,opts.noise,k,opts.luck==null?null:Number(opts.luck),opts);
     // Only player releases have an absolute meter reading. Preserve the calibrated
     // shooting window and let the outer ends express force over the whole distance.
     const power=opts.power,ideal=opts.ideal;

@@ -361,7 +361,8 @@ function spawnPhysicsBall(shot,err,latErr,zone,isDeep,faceAim,faceYawRad,power,i
   const dist=Math.hypot(HOOP.x-sim.x,HOOP.z-sim.z);
   const tf0=shotFlightTime(0.78+dist*0.062,G.myStar,shot);
   const u=err/Math.max(.5,zone);
-  const lOpts=physicsLaunchOpts({tf:tf0,u,power,ideal,lat:latErr,noise:aibaGauss(),luck:aibaRoll()});
+  const pWind=globalThis.AIBARainforest?.phantomWindForShot?.(sim,HOOP);
+  const lOpts=physicsLaunchOpts({tf:tf0,u,power,ideal,lat:latErr,noise:aibaGauss(),luck:aibaRoll(),wind:pWind?.active?pWind.wind:null});
   const latM=(lOpts.map&&lOpts.map.latMeters)||0.9;
   // ball-physics.js 里 +ang 往 +X(右)偏，而视觉/相机/player.rotation.y 里 +yawRad 往 -X(左)转，故取反并按弧度换算
   if(faceYawRad)lOpts.lat=(latErr-(faceAim||0))-(faceYawRad*dist)/latM;
@@ -428,7 +429,9 @@ function releaseShot(power,shot,automatic=false,meterPower=power){
   /* 真实物理（?physics=real）：上面的 outcome 只是旧判定的参考值，不再生效——
      误差映射成出手速度，结果交给 ball-physics.js 的碰撞模拟。 */
   if(overchargeRun!==G.seq){overchargeRun=G.seq;overchargeCount=0;}
-  const overcharged=!automatic&&meterPower>playerPowerSweetBand().end;
+  const pWindPeek=globalThis.AIBARainforest?.phantomWindForShot?.(P.pos,HOOP);
+  const downwardGhostWind=!!(pWindPeek?.active&&pWindPeek.wy<-0.15);
+  const overcharged=!automatic&&!downwardGhostWind&&meterPower>playerPowerSweetBand().end;
   overchargeCount=overcharged?overchargeCount+1:0;
   const cosmic=overchargeCount===5;
   if(cosmic){overchargeCount=0;toast("宇宙弧线","#a9dfff");}
