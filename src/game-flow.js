@@ -56,7 +56,9 @@ function rookieMeterProgress(){
 }
 
 function barHiddenFor(shot){
-  if(!shot||G.practice)return false;
+  if(!shot)return false;
+  if(globalThis.AIBARainforest?.isPitchDarkBlind?.())return true;
+  if(G.practice)return false;
   if(G.diff==="easy")return rookieMeterProgress()>=0.7;
   if(G.mode==="battle")return G.shotIdx>=BATTLE_BAR_VISIBLE_SHOTS;
   if(G.mode==="rackrush")return rackRushBarHidden();

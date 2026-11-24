@@ -136,7 +136,8 @@ function updPowerUI(){
     hidePlayerPowerUI();
     if(!G.blindToasted){
       G.blindToasted=true;
-      toast(G.diff==="easy"?"新秀挑战升级 · 最后30%隐藏投篮条":(G.mode==="battle"?"前5球热手结束 · 蓄力条隐藏,靠手感出手":(G.mode==="rackrush"?"本关进入手感投篮 · 蓄力条隐藏":"盲投模式!投篮条已隐藏 · 凭手感节奏出手")),"#ffd23f");
+      const darkForest=!!globalThis.AIBARainforest?.isPitchDarkBlind?.();
+      toast(darkForest?"🌑 森林陷入漆黑 · 投篮条消失了…":(G.diff==="easy"?"新秀挑战升级 · 最后30%隐藏投篮条":(G.mode==="battle"?"前5球热手结束 · 蓄力条隐藏,靠手感出手":(G.mode==="rackrush"?"本关进入手感投篮 · 蓄力条隐藏":"盲投模式!投篮条已隐藏 · 凭手感节奏出手"))),darkForest?"#c792ff":"#ffd23f");
     }
     return;
   }
@@ -541,7 +542,10 @@ function madeShotSound(b){
 }
 function madeBall(b){
   b.made=true;
-  if(!b.opp&&!b.silent)globalThis.AIBAWorldWonders?.lunarCelebrate(b.cosmic===true);
+  if(!b.opp&&!b.silent){
+    globalThis.AIBAWorldWonders?.lunarCelebrate(b.cosmic===true);
+    globalThis.AIBARainforest?.onShotResult?.(true);
+  }
   triggerStreetCrowdReaction("make",b.val);
   if(G.practice){
     pulseNet(1,b.netDir);madeShotSound(b);cheerSound(false);G.cheer=Math.min(1,G.cheer+0.4);
@@ -627,6 +631,7 @@ function madeBall(b){
 }
 function missBall(){
   G.streak=0;$("hudStreak").style.display="none";
+  globalThis.AIBARainforest?.onShotResult?.(false);
   triggerStreetCrowdReaction("miss",0);
   if(G.practice){
     const e=G.lastErr||0;

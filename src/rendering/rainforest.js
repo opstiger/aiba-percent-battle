@@ -2376,6 +2376,366 @@
     }
   }
 
+  function buildShadowPhantom(s,uniforms){
+    // Deep-forest purple shadow-spirit easter egg (tribute to Gengar's mischievous spiky-eared grinning silhouette):
+    // Awakens when the rainforest goes pitch-black before fireflies emerge (blind meter phase) and the player misses 3 straight shots!
+    // Looms huge first in billowing purple miasma, then slowly phases in/out, shifts size (big <-> small), and floats eerily between trees.
+    const root=new THREE.Group();
+    root.name="rainforestShadowPhantom";
+    root.visible=false;
+
+    const pUniforms={
+      uTime:uniforms.forestTime,
+      uOpacity:{value:0},
+      uAuraOpacity:{value:0},
+      uFaceOpacity:{value:0},
+      uPulse:{value:0}
+    };
+
+    // 1) Unified Volumetric Smoky Ghost-Silhouette SDF + Colossal Purple Miasma ("巨大的紫色气息 + 半透明的耿鬼身影")
+    // Uses smooth-union (smin) organic SDF so ears, 3-spike crest, arms, and body fuse seamlessly with ZERO cone/sphere seams!
+    const phantomQuadGeo=new THREE.PlaneGeometry(5.6,5.6,1,1);
+    const phantomFrag=`
+      uniform float uTime,uOpacity,uAuraOpacity,uFaceOpacity,uPulse,uBleedScale;
+      varying vec2 vUv;
+
+      float h21(vec2 p){p=fract(p*vec2(127.1,311.7));p+=dot(p,p+34.5);return fract(p.x*p.y);}
+      float n2(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
+        return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y);}
+      float fbm(vec2 p){float v=0.0,a=0.52;for(int i=0;i<4;i++){v+=a*n2(p);p=mat2(.8,-.6,.6,.8)*p*2.03+vec2(4.7,-3.3);a*=0.5;}return v;}
+      float smin(float a,float b,float k){float h=clamp(0.5+0.5*(b-a)/k,0.0,1.0);return mix(b,a,h)-k*h*(1.0-h);}
+      float sdTaperSeg(vec2 p,vec2 a,vec2 b,float ra,float rb){
+        vec2 pa=p-a,ba=b-a;
+        float h=clamp(dot(pa,ba)/dot(ba,ba),0.0,1.0);
+        return length(pa-ba*h)-mix(ra,rb,h);
+      }
+
+      // Organic spiky-eared mischievous shadow-spirit silhouette (smooth-unioned, zero internal seams)
+      float sdPhantom(vec2 p){
+        // Subtle living eerie breathing & ghostly float sway
+        p.x+=sin(p.y*2.4+uTime*1.9)*0.025;
+        vec2 q=vec2(abs(p.x),p.y);
+        // Round chubby shadow torso (slightly wider toward base)
+        vec2 bp=vec2(p.x/(0.78-0.07*clamp(p.y,-1.0,1.0)),(p.y+0.04)/0.72);
+        float body=(length(bp)-1.0)*0.72;
+        // Iconic tall swept-outward pointed triangular ears
+        float ear=sdTaperSeg(q,vec2(0.36,0.44),vec2(0.92,1.18),0.26,0.018);
+        // Spiky 3-tuft forehead crown crest between the ears
+        float spMid=sdTaperSeg(p,vec2(0.0,0.58),vec2(0.0,1.02),0.15,0.014);
+        float spSide=sdTaperSeg(q,vec2(0.18,0.54),vec2(0.32,0.92),0.13,0.014);
+        float crest=smin(spMid,spSide,0.07);
+        // Mischievous stubby outstretched arms gently swaying
+        float armLift=sin(uTime*1.7)*0.05;
+        float arm=sdTaperSeg(q,vec2(0.60,0.04),vec2(1.10,-0.16+armLift),0.22,0.055);
+        // Stout stubby floating shadow legs
+        float leg=sdTaperSeg(q,vec2(0.36,-0.52),vec2(0.50,-0.92),0.21,0.075);
+
+        float d=smin(body,ear,0.14);
+        d=smin(d,crest,0.09);
+        d=smin(d,arm,0.13);
+        d=smin(d,leg,0.11);
+        return d;
+      }
+
+      void main(){
+        if(uAuraOpacity<.005&&uFaceOpacity<.005)discard;
+        vec2 p=(vUv-0.5)*4.6;
+        float r=length(p);
+        if(r>2.3)discard;
+
+        // Billowing animated purple spectral miasma around and rising off the silhouette
+        float ang=atan(p.y,p.x);
+        vec2 swirl=p*0.95+vec2(cos(ang+uTime*0.38)*0.28,sin(ang-uTime*0.46)*0.28-uTime*0.52);
+        float smoke1=fbm(swirl);
+        float smoke2=fbm(p*2.1-vec2(0.0,uTime*0.92)+smoke1*1.15);
+
+        // Soft smoky edge turbulence (stronger at bottom so the shadow body trails off into purple mist)
+        float baseMist=smoothstep(0.15,-0.95,p.y);
+        float dRaw=sdPhantom(p);
+        float d=dRaw+(smoke2-0.48)*(0.065+0.075*baseMist);
+
+        // Colossal purple spectral aura enveloping the silhouette ("巨大的紫色气息")
+        float radialFade=smoothstep(2.30,0.45,r);
+        float auraField=exp(-max(dRaw,0.0)*1.35)*radialFade;
+        float tendrils=auraField*(0.42+0.88*smoke1)*(0.52+0.70*smoke2);
+        vec3 deepViolet=vec3(0.24,0.02,0.54);
+        vec3 ghostPurple=vec3(0.58,0.12,0.98);
+        vec3 spiritMagenta=vec3(0.86,0.34,1.0);
+        vec3 auraCol=mix(deepViolet,ghostPurple,clamp(smoke1*1.25,0.0,1.0));
+        auraCol=mix(auraCol,spiritMagenta,clamp(exp(-max(dRaw,0.0)*3.2)*smoke2*(0.55+0.35*uPulse),0.0,1.0));
+        float auraA=clamp(tendrils*0.86*uAuraOpacity,0.0,0.82);
+
+        // Unified translucent smoky ghost body (ZERO internal seams; glowing spectral rim + semi-transparent dark-violet core)
+        float inside=smoothstep(0.035,-0.045,d);
+        float edgeRim=exp(-abs(d)*11.5)*smoothstep(0.14,-0.02,d);
+        float innerDepth=clamp(-dRaw*1.45,0.0,1.0);
+        vec3 bodyCore=mix(vec3(0.28,0.05,0.52),vec3(0.11,0.015,0.23),innerDepth)*(0.78+0.36*smoke2);
+        vec3 bodyRimCol=mix(vec3(0.68,0.24,1.0),vec3(0.95,0.68,1.0),0.45+0.35*uPulse);
+        vec3 bodyCol=mix(bodyCore,bodyRimCol,clamp(edgeRim*0.95+smoke1*0.18,0.0,1.0));
+        // Semi-transparent body so dark trees subtly ghost through it, dissolving softly at feet
+        float bodyAlpha=clamp((inside*(0.42+0.26*(1.0-innerDepth)+0.32*edgeRim)*(1.0-baseMist*0.24))*uOpacity,0.0,0.84);
+
+        // Fierce slanted crimson eyes + wide wicked crescent grin with crisp dark tooth gaps!
+        vec2 fp=p-vec2(0.0,0.05);
+        vec2 ep=vec2(abs(fp.x)-0.31,fp.y-0.19);
+        float topEdge=smoothstep(0.04,-0.015,ep.y-ep.x*0.58);
+        float botEdge=smoothstep(-0.17,-0.11,ep.y+ep.x*0.14);
+        float outEdge=smoothstep(0.24,0.17,ep.x);
+        float inEdge=smoothstep(-0.23,-0.16,ep.x);
+        float eyeMask=topEdge*botEdge*outEdge*inEdge;
+        float pupilDist=length((ep-vec2(-0.03,-0.045))*vec2(1.45,1.0));
+        float pupilDark=smoothstep(0.042,0.072,pupilDist);
+        float eyeHalo=exp(-dot(ep-vec2(0.0,-0.035),ep-vec2(0.0,-0.035))*28.0)*0.52;
+
+        float gx=fp.x/0.58;
+        float grinTop=-0.06+gx*gx*0.24;
+        float grinBot=-0.31+gx*gx*0.44;
+        float inX=smoothstep(1.03,0.90,abs(gx));
+        float inGrin=smoothstep(grinTop+0.016,grinTop-0.010,fp.y)*smoothstep(grinBot-0.016,grinBot+0.010,fp.y)*inX;
+        float grinOutline=smoothstep(grinTop+0.045,grinTop+0.008,fp.y)*smoothstep(grinBot-0.045,grinBot-0.008,fp.y)*smoothstep(1.08,0.94,abs(gx));
+        float toothGap=smoothstep(0.055,0.125,abs(fract(gx*2.5+0.5)-0.5));
+        float grinGlow=exp(-pow((fp.y-(grinTop+grinBot)*0.5)*7.5,2.0))*inX*0.24;
+
+        vec3 crimson=mix(vec3(0.95,0.03,0.16),vec3(1.0,0.28,0.38),uPulse*0.35)*mix(0.16,1.28,pupilDark);
+        vec3 teethCol=mix(vec3(0.09,0.015,0.16),vec3(0.92,0.86,1.0),toothGap);
+
+        // Layer composition: aura -> translucent smoky body -> glowing eyes & crescent grin
+        vec3 col=auraCol;
+        float a=auraA;
+        if(bodyAlpha>0.004){
+          col=mix(col,bodyCol,clamp(bodyAlpha/(max(a,0.001)+bodyAlpha*0.45),0.0,1.0));
+          a=max(a,bodyAlpha);
+        }
+        // Subtle crimson eye glow & grin glow
+        float faceGlowA=clamp((eyeHalo*0.55+grinGlow*0.40)*uFaceOpacity,0.0,0.75);
+        col+=vec3(0.92,0.06,0.24)*eyeHalo*uFaceOpacity+vec3(0.62,0.24,0.98)*grinGlow*uFaceOpacity;
+        a=max(a,faceGlowA);
+        if(grinOutline>0.01){
+          vec3 mouthCol=mix(vec3(0.07,0.01,0.13),teethCol,inGrin);
+          float mA=grinOutline*0.95*uFaceOpacity;
+          col=mix(col,mouthCol,clamp(mA,0.0,1.0));
+          a=max(a,mA);
+        }
+        if(eyeMask>0.01){
+          float eA=eyeMask*0.98*uFaceOpacity;
+          col=mix(col,crimson,clamp(eA,0.0,1.0));
+          a=max(a,eA);
+        }
+        a=clamp(a*uBleedScale,0.0,0.96);
+        if(a<.005)discard;
+        gl_FragColor=vec4(col,a);
+      }
+    `;
+
+    const mainUniforms={
+      uTime:pUniforms.uTime,uOpacity:pUniforms.uOpacity,uAuraOpacity:pUniforms.uAuraOpacity,
+      uFaceOpacity:pUniforms.uFaceOpacity,uPulse:pUniforms.uPulse,uBleedScale:{value:1.0}
+    };
+    const phantomMat=new THREE.ShaderMaterial({
+      uniforms:mainUniforms,transparent:true,depthWrite:false,side:THREE.DoubleSide,fog:false,
+      vertexShader:`varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+      fragmentShader:phantomFrag
+    });
+    const phantomMesh=new THREE.Mesh(phantomQuadGeo,phantomMat);
+    phantomMesh.name="rainforestPhantomBody";
+    phantomMesh.renderOrder=8;
+    root.add(phantomMesh);
+
+    // Subtle ghostly foliage-bleed pass so the phantom's purple miasma, silhouette & red eyes eerily bleed through thin dark leaves
+    const bleedUniforms={
+      uTime:pUniforms.uTime,uOpacity:pUniforms.uOpacity,uAuraOpacity:pUniforms.uAuraOpacity,
+      uFaceOpacity:pUniforms.uFaceOpacity,uPulse:pUniforms.uPulse,uBleedScale:{value:0.34}
+    };
+    const phantomBleedMat=new THREE.ShaderMaterial({
+      uniforms:bleedUniforms,transparent:true,depthWrite:false,depthTest:false,side:THREE.DoubleSide,fog:false,
+      vertexShader:`varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+      fragmentShader:phantomFrag
+    });
+    const phantomBleed=new THREE.Mesh(phantomQuadGeo,phantomBleedMat);
+    phantomBleed.name="rainforestPhantomBleed";
+    phantomBleed.renderOrder=11;
+    root.add(phantomBleed);
+
+    // Secondary colossal background miasma veil for extra depth & billowing purple fog volume
+    const auraGeo=new THREE.PlaneGeometry(8.8,8.8,1,1);
+    const auraMat=new THREE.ShaderMaterial({
+      uniforms:pUniforms,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,side:THREE.DoubleSide,fog:false,
+      vertexShader:`varying vec2 vUv; void main(){vUv=uv;gl_Position=projectionMatrix*modelViewMatrix*vec4(position,1.0);}`,
+      fragmentShader:`
+        uniform float uTime,uAuraOpacity,uPulse;
+        varying vec2 vUv;
+        float h21(vec2 p){p=fract(p*vec2(127.1,311.7));p+=dot(p,p+34.5);return fract(p.x*p.y);}
+        float n2(vec2 p){vec2 i=floor(p),f=fract(p);f=f*f*(3.0-2.0*f);
+          return mix(mix(h21(i),h21(i+vec2(1,0)),f.x),mix(h21(i+vec2(0,1)),h21(i+vec2(1,1)),f.x),f.y);}
+        float fbm(vec2 p){float v=0.0,a=0.52;for(int i=0;i<4;i++){v+=a*n2(p);p=mat2(.8,-.6,.6,.8)*p*2.04+vec2(5.1,-3.7);a*=0.5;}return v;}
+        void main(){
+          if(uAuraOpacity<.005)discard;
+          vec2 p=vUv*2.0-1.0;
+          float r=length(p);if(r>1.0)discard;
+          float ang=atan(p.y,p.x);
+          float mist=fbm(p*2.4+vec2(cos(ang+uTime*.35)*.32,sin(ang-uTime*.45)*.32-uTime*.48));
+          float wisp=fbm(p*4.4-vec2(0.0,uTime*.82)+mist*1.1);
+          float env=smoothstep(1.0,0.12,r)*(0.45+0.85*mist)*(0.50+0.68*wisp);
+          vec3 col=mix(vec3(0.26,0.02,0.58),vec3(0.68,0.16,1.0),clamp(mist*1.2,0.0,1.0));
+          float a=clamp(env*0.58*uAuraOpacity,0.0,0.72);
+          gl_FragColor=vec4(col*a*1.15,a);
+        }`
+    });
+    const auraMesh=new THREE.Mesh(auraGeo,auraMat);
+    auraMesh.name="rainforestPhantomAura";
+    auraMesh.position.set(0,0.1,-0.6);
+    auraMesh.renderOrder=7;
+    root.add(auraMesh);
+
+    // 4) Swirling Purple Spectral Wisps orbiting the phantom
+    const wCount=s.mobile?44:84;
+    const wPos=new Float32Array(wCount*3),wMeta=new Float32Array(wCount*3);
+    for(let i=0;i<wCount;i++){
+      const ang=s.r()*TAU,rad=1.2+s.r()*2.8,elev=(s.r()-.5)*3.4;
+      wPos[i*3]=Math.cos(ang)*rad;wPos[i*3+1]=elev;wPos[i*3+2]=Math.sin(ang)*rad;
+      wMeta[i*3]=s.r()*TAU;wMeta[i*3+1]=0.7+s.r()*1.4;wMeta[i*3+2]=s.r();
+    }
+    const wGeo=new THREE.BufferGeometry();
+    wGeo.setAttribute("position",new THREE.BufferAttribute(wPos,3));
+    wGeo.setAttribute("aWisp",new THREE.BufferAttribute(wMeta,3));
+    const wMat=new THREE.ShaderMaterial({
+      uniforms:pUniforms,transparent:true,depthWrite:false,blending:THREE.AdditiveBlending,fog:false,
+      vertexShader:`
+        uniform float uTime,uAuraOpacity;
+        attribute vec3 aWisp;
+        varying float vA,vMix;
+        void main(){
+          float ph=aWisp.x,sz=aWisp.y;
+          float ang=uTime*(0.45+0.35*aWisp.z)+ph;
+          vec3 p=position;
+          float c=cos(ang*.5),sn=sin(ang*.5);
+          p.xz=mat2(c,-sn,sn,c)*p.xz;
+          p.y+=mod(uTime*(0.65+0.5*aWisp.z)+ph,3.8)-1.9;
+          vec4 mv=modelViewMatrix*vec4(p,1.0);
+          float dist=max(1.5,-mv.z);
+          gl_Position=projectionMatrix*mv;
+          vA=uAuraOpacity*(0.35+0.65*sin(uTime*2.1+ph*5.0)*.5+.5);
+          vMix=aWisp.z;
+          gl_PointSize=clamp(sz*110.0/dist,2.0,26.0)*step(.01,vA);
+        }`,
+      fragmentShader:`
+        varying float vA,vMix;
+        void main(){
+          if(vA<.01)discard;
+          vec2 p=gl_PointCoord*2.0-1.0;
+          float r2=dot(p,p);if(r2>1.0)discard;
+          float g=exp(-r2*5.5);
+          vec3 col=mix(vec3(0.55,0.12,1.0),vec3(0.92,0.45,1.0),vMix);
+          gl_FragColor=vec4(col*g*vA*1.1,g*vA);
+        }`
+    });
+    const wisps=new THREE.Points(wGeo,wMat);
+    wisps.name="rainforestPhantomWisps";wisps.frustumCulled=false;wisps.renderOrder=8;
+    root.add(wisps);
+
+    // 5) Moving Eerie Purple PointLight illuminating the surrounding dark rainforest trunks!
+    const pLight=new THREE.PointLight(0x9b30ff,0,34,1.5);
+    pLight.name="rainforestPhantomLight";
+    root.add(pLight);
+
+    s.root.add(root);
+    return {
+      root,uniforms:pUniforms,light:pLight,
+      active:false,dismissing:false,t:0,dur:28,
+      nextLaughAt:0.3,laughIdx:0,
+      scale:1,opacity:0,auraOpacity:0,faceOpacity:0
+    };
+  }
+
+  function triggerShadowPhantom(rf){
+    if(!rf||!rf.phantom)return false;
+    const ph=rf.phantom;
+    ph.active=true;ph.dismissing=false;ph.t=0;ph.dur=28;
+    ph.nextLaughAt=0.22;ph.laughIdx=0;
+    ph.root.visible=true;
+    return true;
+  }
+
+  function updateShadowPhantom(rf,t,dt,firefly){
+    const ph=rf?.phantom;
+    if(!ph)return;
+    if(!ph.active){
+      ph.root.visible=false;
+      ph.light.intensity=0;
+      ph.opacity=ph.auraOpacity=ph.faceOpacity=0;
+      return;
+    }
+    const step=Math.min(.05,Math.max(0,dt||0));
+    ph.t+=step;
+    const pt=ph.t;
+    if(firefly>.58||pt>ph.dur)ph.dismissing=true;
+
+    // Master envelope: booming quick emergence (0 -> 1.6s), long haunting presence, smooth dismissal fade
+    const riseEnv=smoothstep(pt,0.0,1.65);
+    const endFade=ph.dismissing?Math.max(0,1-step*.55):1;
+    if(ph.dismissing){
+      ph.dismissK=(ph.dismissK==null?1:ph.dismissK)-step*.38;
+      if(ph.dismissK<=0.01){
+        ph.active=false;ph.dismissing=false;ph.dismissK=1;
+        ph.root.visible=false;ph.light.intensity=0;
+        return;
+      }
+    }else{
+      ph.dismissK=1;
+    }
+    const masterEnv=riseEnv*Math.max(0,Math.min(1,ph.dismissK))*endFade;
+
+    // Act 1 (0 -> 4.6s): Loom HUGE first ("先巨大") in the clearing right behind the dark hoop!
+    // Act 2 (4.6s+): Slowly fade out / fade in ("缓慢消失缓慢出现") + shift big <-> small ("时大时小") + drift slowly between forest trees!
+    const roamK=smoothstep(pt,4.2,6.4);
+    // Slow ghostly fade-in / fade-out wave (period ~8.4s; lingers ominously near-invisible before re-materializing!)
+    const fadeWave=0.5+0.5*Math.cos((pt-4.2)*0.75);
+    const visRoam=smoothstep(fadeWave,0.08,0.84);
+    const vis=lerp(0.96,0.05+0.89*visRoam,roamK)*masterEnv;
+
+    // Shifting size ("先巨大，后时大时小"): 2:1 subharmonic of fadeWave so each re-materialization shifts vividly between small & colossal!
+    const sizeWave=0.5+0.5*Math.cos((pt-4.2)*0.375);
+    const scale=lerp(3.65,lerp(1.45,3.55,sizeWave),roamK)*(0.74+0.26*riseEnv);
+    ph.scale=scale;
+
+    // Slow eerie drifting through the deep dark rainforest trees ("在树林间缓慢漂浮移动")
+    const px=roamK*(Math.sin((pt-4.2)*0.28)*11.5+Math.sin((pt-4.2)*0.11)*2.4);
+    const pz=lerp(-18.8,-17.8+Math.sin((pt-4.2)*0.34)*4.6,roamK);
+    const py=lerp(6.8,4.9+Math.sin(pt*0.52)*1.25+(scale-2.3)*0.48,roamK);
+    ph.root.position.set(px,py,pz);
+    ph.root.scale.setScalar(scale);
+
+    // Watch the player mischievously while gently tilting head as it floats
+    const targetX=(typeof P!=="undefined"&&P?.pos)?P.pos.x:0;
+    const targetZ=(typeof P!=="undefined"&&P?.pos)?P.pos.z:0;
+    ph.root.rotation.y=Math.atan2(targetX-px,targetZ-pz);
+    ph.root.rotation.z=Math.sin(pt*0.64)*0.11;
+
+    // Eerie Cheshire/Gengar fade: body dissolves faster while glowing crimson eyes & wicked grin linger in the dark!
+    const bodyOp=Math.pow(Math.max(0,vis),1.35);
+    const faceOp=Math.pow(Math.max(0,vis),0.56);
+    const auraOp=Math.pow(Math.max(0,vis),0.82)*(0.78+0.22*Math.sin(pt*2.2));
+    ph.opacity=bodyOp;ph.faceOpacity=faceOp;ph.auraOpacity=auraOp;
+    ph.uniforms.uOpacity.value=bodyOp;
+    ph.uniforms.uFaceOpacity.value=faceOp;
+    ph.uniforms.uAuraOpacity.value=auraOp;
+    ph.uniforms.uPulse.value=0.5+0.5*Math.sin(pt*3.1);
+    ph.root.visible=auraOp>.01||faceOp>.01;
+    ph.light.intensity=auraOp*(3.2+scale*.65);
+
+    // Intermittent, eerie, bad-signal echoing near-and-far laugh ("阴森长绵，间断，信号不好，带点回声时远时近的阴险笑声")
+    if(!ph.dismissing&&pt>=ph.nextLaughAt&&(ph.laughIdx===0||vis>.24)){
+      const prox=Math.max(.22,Math.min(1,1-((-pz-16.0)/16.0)*.65));
+      const pan=Math.max(-.82,Math.min(.82,px/15.0));
+      const drift=(Math.cos((pt-4.2)*0.23)>0?1:-1)*0.26;
+      if(typeof global.playRainforestPhantomLaugh==="function"){
+        global.playRainforestPhantomLaugh({initial:ph.laughIdx===0,proximity:prox,pan,panDrift:drift,seed:ph.laughIdx+1});
+      }
+      ph.laughIdx++;
+      ph.nextLaughAt=pt+5.4+((ph.laughIdx*17)%5)*0.48;
+    }
+  }
+
   function smoothDampVal(cur,target,obj,velKey,smoothTime,maxSpeed,dt){
     if(dt<=0)return cur;
     const st=Math.max(.0001,smoothTime),omega=2/st,x=omega*dt;
@@ -2459,6 +2819,11 @@
     const rf=s?.rainforest;
     if(!rf)return;
     rf.progress=0;rf.progressVel=0;rf.targetProgress=0;rf.stage="afternoon";
+    rf.darkMissStreak=0;
+    if(rf.phantom){
+      rf.phantom.active=false;rf.phantom.dismissing=false;rf.phantom.t=0;rf.phantom.dismissK=1;
+      rf.phantom.root.visible=false;rf.phantom.light.intensity=0;
+    }
     if(rf.hoopFireflies){
       for(const f of rf.hoopFireflies.items){
         f.dx=f.dy=f.dz=f.vx=f.vy=f.vz=f.excited=f.perch=0;
@@ -2514,6 +2879,8 @@
     state.insects=forestInsects(s);
     state.forestFireflies=buildForestFireflies(s,uniforms);
     state.hoopFireflies=buildHoopFireflies(s,uniforms);
+    state.phantom=buildShadowPhantom(s,uniforms);
+    state.darkMissStreak=0;
     updateFalling(state.falling,s.time);
     updatePerches(state.perches,s.time);
     updateDeepFlyers(state.deepFlyers,s.time);
@@ -2534,6 +2901,50 @@
     else if(rf.deepFlyers)rf.deepFlyers.forEach(f=>{f.bird.visible=false;});
     if(night<.75)updateForestInsects(rf.insects,s.time);
     updateHoopFireflies(rf.hoopFireflies,s.time,dt,firefly);
+    updateShadowPhantom(rf,s.time,dt,firefly);
+  }
+
+  function isPitchDarkBlind(){
+    if(typeof currentScenePreset!=="undefined"&&currentScenePreset!=="rainforest")return false;
+    const rf=activeRainforestState();
+    if(!rf?.uniforms?.forestCycle)return false;
+    const cyc=rf.uniforms.forestCycle.value;
+    // Active during pitch-black midnight darkness BEFORE the fireflies wake up (p ≈ 0.43..0.61)
+    return cyc.y>=0.45&&cyc.z<0.28;
+  }
+
+  function onShotResult(made){
+    if(typeof currentScenePreset!=="undefined"&&currentScenePreset!=="rainforest")return;
+    const rf=activeRainforestState();
+    if(!rf)return;
+    if(made){
+      rf.darkMissStreak=0;
+      if(rf.phantom&&rf.phantom.active&&rf.phantom.t>3.5)rf.phantom.dismissing=true;
+      return;
+    }
+    if(isPitchDarkBlind()){
+      rf.darkMissStreak=(rf.darkMissStreak||0)+1;
+      if(rf.darkMissStreak>=3&&rf.phantom&&!rf.phantom.active){
+        rf.darkMissStreak=0;
+        triggerShadowPhantom(rf);
+      }
+    }else{
+      rf.darkMissStreak=0;
+    }
+  }
+
+  function phantomState(){
+    const rf=activeRainforestState();
+    const ph=rf?.phantom;
+    if(!ph)return null;
+    return {
+      active:ph.active,t:Number(ph.t.toFixed(2)),scale:Number(ph.scale.toFixed(2)),
+      opacity:Number(ph.opacity.toFixed(2)),faceOpacity:Number(ph.faceOpacity.toFixed(2)),
+      auraOpacity:Number(ph.auraOpacity.toFixed(2)),
+      pos:ph.root.position.toArray().map(v=>Number(v.toFixed(2))),
+      darkMissStreak:rf.darkMissStreak||0,
+      blindDark:isPitchDarkBlind()
+    };
   }
 
   function fireflyPerchState(){
@@ -2554,5 +2965,10 @@
     return true;
   }
 
-  global.AIBARainforest=Object.freeze({build,update,reset,impulse,fireflyTrailMix,fireflyPerchState,setFireflyStillness,light});
+  global.AIBARainforest=Object.freeze({
+    build,update,reset,impulse,fireflyTrailMix,fireflyPerchState,setFireflyStillness,
+    isPitchDarkBlind,onShotResult,phantomState,
+    triggerPhantom:()=>{const rf=activeRainforestState();return rf?triggerShadowPhantom(rf):false;},
+    light
+  });
 })(window);

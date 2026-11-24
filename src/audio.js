@@ -758,6 +758,195 @@ function playMeadowPastureCall(){
     return true;
   }catch(e){return false;}
 }
+let _phantomStaticBuf=null,_phantomCrushCurve=null;
+function phantomStaticBuffer(){
+  if(!AC)return null;
+  if(_phantomStaticBuf&&_phantomStaticBuf.sampleRate===AC.sampleRate)return _phantomStaticBuf;
+  const len=Math.floor(AC.sampleRate*2.4);
+  const buf=AC.createBuffer(1,len,AC.sampleRate),d=buf.getChannelData(0);
+  let s=20261124;
+  const rnd=()=>(s=(Math.imul(s,1664525)+1013904223)>>>0)/4294967296;
+  for(let i=0;i<len;i++){
+    const raw=rnd()*2-1;
+    // Sparse crackle spikes + gritty radio hiss ("信号不好")
+    d[i]=rnd()<.018?raw*1.6:raw*.24;
+  }
+  _phantomStaticBuf=buf;
+  return buf;
+}
+function phantomCrushCurve(){
+  if(_phantomCrushCurve)return _phantomCrushCurve;
+  const n=512,c=new Float32Array(n);
+  for(let i=0;i<n;i++){
+    const x=(i/(n-1))*2-1;
+    // Mild asymmetric radio saturation + subtle step quantization for eerie broken-signal grain
+    const q=Math.round(x*14)/14;
+    c[i]=Math.tanh((x*.62+q*.38)*2.4);
+  }
+  _phantomCrushCurve=c;
+  return c;
+}
+function playRainforestPhantomLaugh(opts){
+  if(!AC||MUTED||AC.state!=="running"||currentScenePreset!=="rainforest")return false;
+  if(typeof PAUSE!=="undefined"&&PAUSE&&PAUSE.on)return false;
+  opts=opts||{};
+  try{
+    const now=AC.currentTime,bus=sfxBus||master;
+    const duck=pauseDuck?PAUSE_DUCK:1;
+    const proximity=Math.max(.18,Math.min(1,opts.proximity==null?.68:Number(opts.proximity)));
+    const panStart=Math.max(-.88,Math.min(.88,Number(opts.pan)||0));
+    const panEnd=Math.max(-.88,Math.min(.88,panStart+(opts.panDrift||0)));
+    const initial=!!opts.initial;
+    const seed=Math.floor(Number(opts.seed)||1);
+    const totalDur=initial?5.4:4.5;
+
+    // Master phantom voice chain: radio bandpass -> subtle glitch shaper -> distance lowpass -> echo feedback -> stereo panner
+    const voiceIn=AC.createGain();
+    voiceIn.gain.value=1;
+    const hp=AC.createBiquadFilter();hp.type="highpass";hp.frequency.setValueAtTime(380,now);
+    const distLp=AC.createBiquadFilter();distLp.type="lowpass";
+    const lpBase=820+proximity*1650;
+    distLp.frequency.setValueAtTime(lpBase,now);
+    // Slow eerie near-and-far timbral swell ("时远时近")
+    distLp.frequency.linearRampToValueAtTime(Math.max(620,lpBase*.62),now+totalDur*.36);
+    distLp.frequency.linearRampToValueAtTime(Math.min(2850,lpBase*1.28),now+totalDur*.68);
+    distLp.frequency.linearRampToValueAtTime(680,now+totalDur);
+
+    const shaper=AC.createWaveShaper();
+    shaper.curve=phantomCrushCurve();
+    shaper.oversample="2x";
+
+    // Bad-signal dropout chopper ("间断、信号不好")
+    const glitchGate=AC.createGain();
+    glitchGate.gain.setValueAtTime(1,now);
+    for(let g=0;g<14;g++){
+      const gt=now+.22+g*.29+((seed*19+g*37)%11)*.017;
+      if(gt>=now+totalDur-.35)break;
+      const drop=((seed+g*7)%3)===0;
+      if(drop){
+        const dur=.038+((g*13)%5)*.012;
+        glitchGate.gain.setValueAtTime(1,gt);
+        glitchGate.gain.linearRampToValueAtTime(.05,gt+.008);
+        glitchGate.gain.setValueAtTime(.05,gt+dur);
+        glitchGate.gain.linearRampToValueAtTime(1,gt+dur+.014);
+      }
+    }
+
+    // Distance volume envelope ("时远时近")
+    const outGain=AC.createGain();
+    const baseVol=(.15+.21*proximity)*duck;
+    outGain.gain.setValueAtTime(.001,now);
+    outGain.gain.linearRampToValueAtTime(baseVol*.85,now+.18);
+    outGain.gain.linearRampToValueAtTime(baseVol*.38,now+totalDur*.38);
+    outGain.gain.linearRampToValueAtTime(baseVol*1.12,now+totalDur*.66);
+    outGain.gain.linearRampToValueAtTime(baseVol*.28,now+totalDur*.92);
+    outGain.gain.linearRampToValueAtTime(.0008,now+totalDur+2.4);
+
+    // Haunted dark forest multi-tap feedback echo ("阴森长绵、带点回声")
+    const delay=AC.createDelay(1.0);
+    delay.delayTime.setValueAtTime(.33+((seed%4)*.025),now);
+    const echoLp=AC.createBiquadFilter();echoLp.type="lowpass";echoLp.frequency.setValueAtTime(1280,now);
+    const echoFb=AC.createGain();echoFb.gain.setValueAtTime(.56,now);
+    const echoWet=AC.createGain();echoWet.gain.setValueAtTime(.62,now);
+    const dryGain=AC.createGain();dryGain.gain.setValueAtTime(.88,now);
+
+    const pan=AC.createStereoPanner?AC.createStereoPanner():null;
+    if(pan){
+      pan.pan.setValueAtTime(panStart,now);
+      pan.pan.linearRampToValueAtTime(panEnd,now+totalDur+1.6);
+    }
+
+    voiceIn.connect(hp);hp.connect(shaper);shaper.connect(glitchGate);glitchGate.connect(distLp);
+    distLp.connect(dryGain);
+    distLp.connect(delay);delay.connect(echoLp);echoLp.connect(echoFb);echoFb.connect(delay);
+    echoLp.connect(echoWet);
+    dryGain.connect(outGain);echoWet.connect(outGain);
+    if(pan){outGain.connect(pan);pan.connect(bus);}else outGain.connect(bus);
+
+    // Dual vocal formant resonators ("桀桀…嘻嘻…哈哈…" hollow sinister goblin/ghost vocal timbre)
+    const f1=AC.createBiquadFilter();f1.type="bandpass";f1.Q.value=5.2;f1.frequency.setValueAtTime(760,now);
+    const f2=AC.createBiquadFilter();f2.type="bandpass";f2.Q.value=6.8;f2.frequency.setValueAtTime(1920,now);
+    const f1G=AC.createGain();f1G.gain.value=1.15;
+    const f2G=AC.createGain();f2G.gain.value=.78;
+    f1.connect(f1G);f1G.connect(voiceIn);
+    f2.connect(f2G);f2G.connect(voiceIn);
+
+    // Staggered eerie laugh syllables: drawn-out sinister giggle -> intermittent pauses -> haunting descending cackle!
+    const syllables=initial?[
+      [0.14,0.44,305,248,820,2100,0.85],
+      [0.76,0.28,278,236,760,1980,0.72],
+      [1.16,0.26,262,218,740,1920,0.78],
+      [1.72,0.52,292,204,840,2180,0.95],
+      [2.44,0.24,238,196,690,1820,0.68],
+      [2.82,0.28,224,182,660,1760,0.74],
+      [3.28,0.88,246,154,620,1640,0.90]
+    ]:[
+      [0.08,0.34,284,236,780,2040,0.80],
+      [0.54,0.24,264,222,740,1940,0.72],
+      [1.14,0.48,296,214,830,2140,0.92],
+      [1.86,0.24,236,198,700,1840,0.66],
+      [2.28,0.78,248,158,630,1660,0.86]
+    ];
+
+    const pitchShift=0.93+((seed%5)*.035);
+    const staticBuf=phantomStaticBuffer();
+    for(const [off,dur,p0,p1,fm1,fm2,amp] of syllables){
+      const st=now+off,en=st+dur;
+      f1.frequency.setValueAtTime(fm1,st);
+      f1.frequency.linearRampToValueAtTime(fm1*.86,en);
+      f2.frequency.setValueAtTime(fm2,st);
+      f2.frequency.linearRampToValueAtTime(fm2*.88,en);
+
+      const oscA=AC.createOscillator(),oscB=AC.createOscillator(),vib=AC.createOscillator(),vibG=AC.createGain();
+      const sEnv=AC.createGain();
+      oscA.type="sawtooth";oscB.type="triangle";
+      oscA.frequency.setValueAtTime(p0*pitchShift,st);
+      oscA.frequency.exponentialRampToValueAtTime(Math.max(90,p1*pitchShift),en);
+      oscB.frequency.setValueAtTime(p0*pitchShift*1.012,st);
+      oscB.frequency.exponentialRampToValueAtTime(Math.max(90,p1*pitchShift*0.992),en);
+      vib.frequency.setValueAtTime(6.1+(off%1)*1.4,st);
+      vibG.gain.setValueAtTime(11.5,st);
+      vib.connect(vibG);vibG.connect(oscA.frequency);vibG.connect(oscB.frequency);
+
+      sEnv.gain.setValueAtTime(.0005,st);
+      sEnv.gain.linearRampToValueAtTime(amp*.36,st+Math.min(.06,dur*.22));
+      sEnv.gain.setValueAtTime(amp*.32,st+dur*.55);
+      sEnv.gain.exponentialRampToValueAtTime(.0008,en);
+
+      oscA.connect(sEnv);oscB.connect(sEnv);
+      sEnv.connect(f1);sEnv.connect(f2);
+      oscA.start(st);oscB.start(st);vib.start(st);
+      oscA.stop(en+.04);oscB.stop(en+.04);vib.stop(en+.04);
+
+      // Breathy ghostly whisper & radio-static crackle layer on each chuckle
+      if(staticBuf){
+        const nSrc=AC.createBufferSource();nSrc.buffer=staticBuf;nSrc.loop=true;
+        const nBp=AC.createBiquadFilter();nBp.type="bandpass";nBp.frequency.setValueAtTime(1650,st);nBp.Q.value=1.8;
+        const nEnv=AC.createGain();
+        nEnv.gain.setValueAtTime(.0005,st);
+        nEnv.gain.linearRampToValueAtTime(amp*.19,st+.04);
+        nEnv.gain.exponentialRampToValueAtTime(.0008,en);
+        nSrc.connect(nBp);nBp.connect(nEnv);nEnv.connect(voiceIn);
+        nSrc.start(st,(off*1.3)%1.5);nSrc.stop(en+.04);
+      }
+    }
+
+    // Initial deep eerie violet sub-drone chill when the giant phantom first materializes out of the dark woods
+    if(initial){
+      const sub=AC.createOscillator(),subG=AC.createGain();
+      sub.type="sine";
+      sub.frequency.setValueAtTime(76,now);
+      sub.frequency.exponentialRampToValueAtTime(42,now+3.2);
+      subG.gain.setValueAtTime(.0008,now);
+      subG.gain.linearRampToValueAtTime(.18*duck,now+.55);
+      subG.gain.exponentialRampToValueAtTime(.0008,now+3.6);
+      sub.connect(subG);subG.connect(bus);
+      sub.start(now);sub.stop(now+3.7);
+    }
+    return true;
+  }catch(e){return false;}
+}
+window.playRainforestPhantomLaugh=playRainforestPhantomLaugh;
 function updateSceneAudio(dt){
   sceneAudioTick-=dt;
   if(sceneAudioTick<=0){sceneAudioTick=.55;syncSceneAmbience();}
