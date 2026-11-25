@@ -1,0 +1,66 @@
+{
+  "verts": 1757,
+  "rows": 224,
+  "framesPerClip": 32,
+  "min": [
+    -0.6553,
+    -0.01,
+    -0.3187
+  ],
+  "max": [
+    0.6887,
+    1.9716,
+    1.0918
+  ],
+  "clips": {
+    "sit_idle": {
+      "index": 0,
+      "startRow": 0,
+      "frames": 32,
+      "dur": 3.2,
+      "posture": "seated"
+    },
+    "sit_fist_pump": {
+      "index": 1,
+      "startRow": 32,
+      "frames": 32,
+      "dur": 2.033,
+      "posture": "seated"
+    },
+    "sit_stand_fist_pump": {
+      "index": 2,
+      "startRow": 64,
+      "frames": 32,
+      "dur": 3.5,
+      "posture": "sit_stand"
+    },
+    "sit_stand_clap": {
+      "index": 3,
+      "startRow": 96,
+      "frames": 32,
+      "dur": 4.9,
+      "posture": "sit_stand"
+    },
+    "stand_idle": {
+      "index": 4,
+      "startRow": 128,
+      "frames": 32,
+      "dur": 9.433,
+      "posture": "standing"
+    },
+    "stand_cheer": {
+      "index": 5,
+      "startRow": 160,
+      "frames": 32,
+      "dur": 2.9,
+      "posture": "standing"
+    },
+    "stand_no": {
+      "index": 6,
+      "startRow": 192,
+      "frames": 32,
+      "dur": 5.0,
+      "posture": "standing"
+    }
+  }
+}

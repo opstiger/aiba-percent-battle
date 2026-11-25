@@ -82,25 +82,40 @@ function jerseyPanelGeometry(){
    这正好对应真实球馆的样子:**脚下是一团模糊的圆影,而不是一条有方向的投影**,
    所以落地感主要由这层无方向的软圆斑承担,把它提到接近满强度。
    灯阵那几层极淡的方向影仍然保留,它们负责"光是从上面多个方向来的"这个读感。 */
-const GROUND_SHADOW_SCALE=(typeof SHADOWS!=="undefined"&&SHADOWS)?.34:1;
+/* 接地接触影强度：即便开了实时方向光阴影，依然保留紧贴鞋底的柔和接触 AO，杜绝人物在地板/草地/泥地/月面“浮起像贴纸” */
+const GROUND_SHADOW_SCALE=(typeof SHADOWS!=="undefined"&&SHADOWS)?.58:1;
 /* 角色自阴影开关。自阴影是最吃 shadow map 分辨率的一项：512 的图上，手臂压在
    躯干上的那条影容易退化成噪点或整片糊黑。真机上用 ?selfshadow=0 单独关掉它
    （地面投影保留），就能一眼看出这一层值不值那点开销。 */
 const SHADOW_RECEIVE=!(typeof location!=="undefined"&&/(\?|&)selfshadow=0(&|#|$)/.test(location.search));
 const GROUND_SHADOWS=[];
-let groundShadowGeo=null,groundShadowMat=null;
+let groundShadowGeo=null,groundShadowMat=null,footShadowMat=null;
+const _footTmpA=new THREE.Vector3(),_footTmpB=new THREE.Vector3();
 function groundShadowAssets(){
   if(groundShadowMat)return;
   const c=document.createElement("canvas");c.width=c.height=64;
   const g2=c.getContext("2d");
   const grd=g2.createRadialGradient(32,32,2,32,32,31);
-  grd.addColorStop(0,"rgba(0,0,0,0.62)");
-  grd.addColorStop(0.55,"rgba(0,0,0,0.28)");
-  grd.addColorStop(1,"rgba(0,0,0,0)");
+  grd.addColorStop(0,"rgba(6,5,4,0.64)");
+  grd.addColorStop(0.45,"rgba(6,5,4,0.32)");
+  grd.addColorStop(0.78,"rgba(6,5,4,0.10)");
+  grd.addColorStop(1,"rgba(6,5,4,0)");
   g2.fillStyle=grd;g2.fillRect(0,0,64,64);
   const tex=new THREE.CanvasTexture(c);
   groundShadowGeo=new THREE.PlaneGeometry(1,1);
   groundShadowMat=new THREE.MeshBasicMaterial({map:tex,transparent:true,depthWrite:false});
+
+  /* 紧贴左右鞋底的独立脚印接触 AO 贴图（中心极暗、边缘紧凑柔化），彻底焊接双鞋与地面 */
+  const fc=document.createElement("canvas");fc.width=fc.height=64;
+  const fg=fc.getContext("2d");
+  const fgrd=fg.createRadialGradient(32,32,3,32,32,30);
+  fgrd.addColorStop(0,"rgba(4,4,3,0.92)");
+  fgrd.addColorStop(0.42,"rgba(4,4,3,0.68)");
+  fgrd.addColorStop(0.76,"rgba(4,4,3,0.22)");
+  fgrd.addColorStop(1,"rgba(4,4,3,0)");
+  fg.fillStyle=fgrd;fg.fillRect(0,0,64,64);
+  const ftex=new THREE.CanvasTexture(fc);
+  footShadowMat=new THREE.MeshBasicMaterial({map:ftex,transparent:true,depthWrite:false});
 }
 function attachGroundShadow(o){
   groundShadowAssets();
@@ -111,8 +126,37 @@ function attachGroundShadow(o){
   m.userData.groundShadowBaseOpacity=m.material.opacity;
   m.rotation.x=-Math.PI/2;m.position.y=0.014;m.renderOrder=-1;
   scene.add(m);
-  o.groundShadow=m;GROUND_SHADOWS.push(o);
+  /* 额外挂两枚逐脚实时跟随的鞋底接触 AO 影（左脚 / 右脚），消除“两脚中间一团黑、鞋底悬空”的贴纸感 */
+  const fL=new THREE.Mesh(groundShadowGeo,footShadowMat.clone());
+  const fR=new THREE.Mesh(groundShadowGeo,footShadowMat.clone());
+  for(const fm of [fL,fR]){
+    fm.rotation.order="YXZ";fm.rotation.x=-Math.PI/2;fm.position.y=0.018;fm.renderOrder=-1;
+    fm.userData.groundShadowBaseOpacity=0.82;
+    scene.add(fm);
+  }
+  o.groundShadow=m;o.footShadows=[fL,fR];GROUND_SHADOWS.push(o);
   return m;
+}
+function resolveFootWorldPos(o,side,out){
+  /* 优先读取写实蒙皮球星(tripoAvatar)真实骨骼 Foot/Toe 中点，精确对齐到鞋掌正下方 */
+  try{
+    const rigs=[window.AIBATripo].concat(window.AIBATripoRivals||[]);
+    for(let r=0;r<rigs.length;r++){
+      const st=rigs[r];
+      if(!st||!st.ready||st.player!==o||!st.B)continue;
+      const bFoot=side===0?st.B.LeftFoot:st.B.RightFoot;
+      const bToe=side===0?st.B.LeftToeBase:st.B.RightToeBase;
+      if(bFoot){
+        bFoot.getWorldPosition(_footTmpA);
+        if(bToe){bToe.getWorldPosition(_footTmpB);out.copy(_footTmpA).lerp(_footTmpB,0.45);}
+        else out.copy(_footTmpA);
+        return true;
+      }
+    }
+  }catch(e){}
+  const node=(o.shoes&&o.shoes[side])||(o.footRoots&&o.footRoots[side])||(o.ankles&&o.ankles[side]);
+  if(node&&node.getWorldPosition){node.getWorldPosition(out);return true;}
+  return false;
 }
 /* 把角色的每个网格标成投影体。castShadow 在 three 里**不沿层级继承**,必须逐个网格设。
    装备、发型、胡子都是创建之后才挂上去的,创建时扫一遍盖不全 —— 所以下面每 15 帧
@@ -136,28 +180,58 @@ function updGroundShadows(){
   if((GROUND_SHADOW_SCALE<1||realOutdoorSunShadow)&&(++_shadowScanTick%15===0))
     for(let i=0;i<GROUND_SHADOWS.length;i++)markShadowCasters(GROUND_SHADOWS[i]);
   for(let i=0;i<GROUND_SHADOWS.length;i++){
-    const o=GROUND_SHADOWS[i],m=o.groundShadow;
+    const o=GROUND_SHADOWS[i],m=o.groundShadow,fs=o.footShadows;
     if(!m)continue;
-    if(!o.g||!o.g.visible||realOutdoorSunShadow){m.visible=false;continue;}
+    if(!o.g||!o.g.visible){
+      m.visible=false;
+      if(fs){fs[0].visible=false;fs[1].visible=false;}
+      continue;
+    }
+    const preset=(typeof currentScenePreset==="string"&&currentScenePreset)||"indoor";
+    /* 鲜花草甸的草壳略高于 y=0，接触影抬高至 y=0.032 防止被草叶完全盖没 */
+    const groundY=preset==="flowerCourt"?0.032:(preset==="rainforest"?0.022:0.016);
     m.visible=true;
     const height=Math.max(0,Number(o.g.position.y)||0);
     const k=1+height*0.85;
     const lightX=typeof sun!=="undefined"&&sun&&Number.isFinite(sun.position.x)?sun.position.x:7;
     const lightZ=typeof sun!=="undefined"&&sun&&Number.isFinite(sun.position.z)?sun.position.z:8;
     const lightLen=Math.hypot(lightX,lightZ)||1;
-    const shadowLength=Math.min(.42,height*.12);
+    const shadowLength=realOutdoorSunShadow?0:Math.min(.42,height*.12);
     const shadowX=-lightX/lightLen*shadowLength;
     const shadowZ=-lightZ/lightLen*shadowLength;
-    m.position.set(o.g.position.x+shadowX,0.014,o.g.position.z+shadowZ);
-    /* 影子纵向比横向多拉开一点，配合光源偏移读出“跳起来了”，但仍保持
-       体素风的软圆轮廓。 */
-    m.scale.set(1.16*k,1.16*(1+height*.98),1);
-    const baseOpacity=Number(m.userData.groundShadowBaseOpacity)||.35;
-    const fade=Math.max(.18,1-height/3.4);
-    m.material.opacity=baseOpacity*(.30+.70*fade);
+    m.position.set(o.g.position.x+shadowX,groundY,o.g.position.z+shadowZ);
+    /* 中央主影改为柔和的躯干漫射环境暗池（室内稍强，户外柔化不抢太阳影） */
+    const contactTight=realOutdoorSunShadow?0.86:1.12;
+    m.scale.set(contactTight*k,contactTight*(1+height*.82),1);
+    const baseOpacity=Number(m.userData.groundShadowBaseOpacity)||.45;
+    const fade=realOutdoorSunShadow?Math.max(0,1-height/1.25):Math.max(.18,1-height/3.4);
+    m.material.opacity=baseOpacity*(realOutdoorSunShadow?0.46*fade:(0.72*(.30+.70*fade)));
     m.userData.groundShadowHeight=height;
     m.userData.groundShadowOpacity=m.material.opacity;
     m.userData.groundShadowOffset=[shadowX,shadowZ];
+
+    /* 逐脚独立接触 AO：精准贴在左右两只球鞋正下方，脚着地极实、离地平滑淡出 */
+    if(fs&&fs.length===2){
+      const yaw=o.g.rotation.y||0;
+      const footDark=preset==="lunarCrater"?0.86:(preset==="rainforest"?0.84:(preset==="flowerCourt"?0.78:0.74));
+      for(let s=0;s<2;s++){
+        const fm=fs[s];
+        if(resolveFootWorldPos(o,s,_footTmpA)){
+          const footLift=Math.max(0,_footTmpA.y-0.06);
+          const fFade=Math.max(0,1-footLift/0.32);
+          fm.visible=fFade>0.02;
+          if(fm.visible){
+            fm.position.set(_footTmpA.x,groundY+0.002,_footTmpA.z);
+            fm.rotation.set(-Math.PI/2,0,yaw);
+            const spread=1+footLift*1.1;
+            fm.scale.set(0.30*spread,0.44*spread,1);
+            fm.material.opacity=footDark*fFade*fFade;
+          }
+        }else{
+          fm.visible=false;
+        }
+      }
+    }
   }
 }
 

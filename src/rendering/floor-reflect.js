@@ -19,8 +19,8 @@
   const coarse=typeof matchMedia==="function"&&matchMedia("(pointer:coarse)").matches;
   const enabled=forced!==null?forced:(!coarse&&(navigator.deviceMemory||4)>2);
 
-  /* 倒影强度。.62 → .31：用户验收"人影太过了，减少 50%"（2026-09-24）。 */
-  const STRENGTH=.31;
+  /* 倒影强度：克制的 NBA 缎面枫木清漆倒影（清晰锚定鞋底与双腿，绝不变成镜面）。 */
+  const STRENGTH=.38;
   const uniforms={
     aibaRefl:{value:null},
     aibaReflRes:{value:new THREE.Vector2(1,1)},
@@ -79,7 +79,16 @@
       if(!o){actors.splice(i,1);continue;}
       tagActor(o);
     }
-    if(typeof scene!=="undefined")scene.traverse(n=>{if(n.isLight)n.layers.enable(LAYER);});
+    /* 写实蒙皮球星(tripoAvatar)与传球手晴子(qingziPasserAvatar)直接挂在 scene 下，必须同样开启第 7 反射图层，
+       否则 NBA 亮面木地板上完全没有写实球员的鞋底/双腿倒影，人物会显得“贴在地板上”。 */
+    if(typeof scene!=="undefined"){
+      scene.traverse(n=>{if(n.isLight)n.layers.enable(LAYER);});
+      for(const c of scene.children){
+        if(c&&(c.name==="tripoAvatar"||c.name==="qingziPasserAvatar"||c.userData?.tripo)){
+          c.traverse(m=>{if(m.isMesh)m.layers.enable(LAYER);});
+        }
+      }
+    }
   }
 
   let rt=null,reflectCam=null,ready=false;
@@ -128,8 +137,14 @@
     uniforms.aibaReflStrength.value=STRENGTH;
     if(IS_COARSE&&((++_reflFrame)&1)===1)return;
     tagAcc+=Number(dt)||0;if(tagAcc>.5){tagAcc=0;tagAll();}
-    // 球每帧补标（新出手的球）
-    try{if(typeof balls!=="undefined")for(const b of balls)if(b.mesh)b.mesh.layers.enable(LAYER);}catch(e){}
+    // 球与新加载的写实蒙皮球星每帧确保已入第 7 反射层
+    try{
+      if(typeof balls!=="undefined")for(const b of balls)if(b.mesh)b.mesh.layers.enable(LAYER);
+      if(window.AIBATripo&&AIBATripo.ready&&AIBATripo.root&&!AIBATripo.root.userData._reflTagged){
+        AIBATripo.root.traverse(m=>{if(m.isMesh)m.layers.enable(LAYER);});
+        AIBATripo.root.userData._reflTagged=true;
+      }
+    }catch(e){}
     camera.updateMatrixWorld();
     reflectCam.projectionMatrix.copy(camera.projectionMatrix);
     reflectCam.projectionMatrixInverse.copy(camera.projectionMatrixInverse);

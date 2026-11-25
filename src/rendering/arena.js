@@ -24,7 +24,7 @@ function bannerTex(txt,bg,fg){
      lower bowl 主层,围绕球场,坡度缓
      upper bowl 上层,更高更陡;四角把相邻两侧连起来 */
 const BOWL_N=3,BOWL_SEG=64;
-const SEAT_PITCH=0.78;                // 座位中心距(米)，适配真实 NBA 大型球馆碗跨度
+const SEAT_PITCH=0.55;                // 紧挨肩并肩 NBA 球馆座位中心距(米)，彻底告别稀松会议室感
 const AISLE_COUNT=6;                  // 每层通道条数
 const AISLE_W=1.05;                   // 通道净宽(米)
 const AISLE_SKEW=0.55;                // 通道中心随行号的斜向偏移(弧度)≈ 半个通道间距
@@ -126,12 +126,14 @@ function buildStands(){
           }
 
           const segLen=Math.hypot(nx-x,nz-z)||1;
-          const n=Math.max(2,Math.round(segLen/SEAT_PITCH));
+          /* 100层与场边低层保持 0.55m 紧挨满座；极远暗部 300 层山顶用 0.86m 省出 ~60 万三角面保手机 60fps */
+          const tierPitch=ti>=2?0.86:SEAT_PITCH;
+          const n=Math.max(2,Math.round(segLen/tierPitch));
           const ux=(nx-x)/segLen,uz=(nz-z)/segLen;
           // 径向朝外的单位向量（相对于球场中心 COURT.midZ）
           const dz=z-COURT.midZ,rLen=Math.hypot(x,dz)||1,outX=x/rLen,outZ=dz/rLen;
           for(let q=0;q<n;q++){
-            const off=(q-(n-1)/2)*SEAT_PITCH;
+            const off=(q-(n-1)/2)*tierPitch;
             const sx=x+ux*off,sz=z+uz*off;
             if(ti<2||(q%2===0)){
               mm.compose(new THREE.Vector3(sx,y+0.18,sz),qRot,new THREE.Vector3(0.40,0.08,0.44));
@@ -139,11 +141,13 @@ function buildStands(){
               mm.compose(new THREE.Vector3(sx+outX*0.17,y+0.44,sz+outZ*0.17),qRot,new THREE.Vector3(0.10,0.44,0.44));
               stepParts.push({color:seatShellColor,matrix:mm.clone(),taperX:0.75,taperZ:0.86});
             }
-            const absent=Math.random()<0.05;
-            seats.push({x:sx+rnd(-.08,.08),
-              y:y+(absent?0.30:0.42)+rnd(-.04,.04),
-              z:sz+rnd(-.08,.08),
-              ph:Math.random()*7,amp:absent?0:rnd(.7,1.3),t:ti,
+            const absent=Math.random()<0.03;
+            const faceRot=Math.atan2(-sx,COURT.midZ-sz);
+            seats.push({x:sx+rnd(-.04,.04),
+              y:y+(absent?0.30:0.42)+rnd(-.03,.03),
+              z:sz+rnd(-.04,.04),
+              rot:faceRot,
+              ph:Math.random()*7,amp:absent?0:rnd(.75,1.35),t:ti,
               zoneLight:zoneL,rowK:k});
           }
         }
@@ -234,30 +238,30 @@ function buildCourtsideRibbon(){
   scScreen.position.set(scX+0.40,0.44,scZ);scScreen.rotation.y=Math.PI/2;
   indoorRoot.add(scScreen);
 
-  // 两侧及近端底线场边 3 排阶梯式 VIP 名人席（紧密排布，含 2/3 排紫金地毯阶梯地台）
+  // 两侧及近端底线场边 3 排阶梯式 VIP 名人席（NBA 紧挨扶手排布，含 2/3 排紫金地毯阶梯地台）
   const pushChair=(cx,cy,cz,rotY)=>{
     const c=Math.cos(rotY),s=Math.sin(rotY);
     const ox=s*0.18,oz=c*0.18;
-    cabParts.push({color:0x24143b,matrix:mat4At(cx,cy+0.42,cz,rotY,0.44,0.08,0.46)});
-    cabParts.push({color:0x1d1030,matrix:mat4At(cx+ox,cy+0.70,cz+oz,rotY,0.44,0.50,0.09),taperZ:0.74});
-    cabParts.push({color:0xfdb927,matrix:mat4At(cx+ox,cy+0.96,cz+oz,rotY,0.42,0.042,0.095)});
-    for(const dx of [-0.18,0.18]){
-      cabParts.push({color:0x323a4a,matrix:mat4At(cx+c*dx,cy+0.21,cz-s*dx,rotY,0.04,0.42,0.42)});
+    cabParts.push({color:0x24143b,matrix:mat4At(cx,cy+0.42,cz,rotY,0.47,0.08,0.46)});
+    cabParts.push({color:0x1d1030,matrix:mat4At(cx+ox,cy+0.70,cz+oz,rotY,0.47,0.50,0.09),taperZ:0.74});
+    cabParts.push({color:0xfdb927,matrix:mat4At(cx+ox,cy+0.96,cz+oz,rotY,0.45,0.042,0.095)});
+    for(const dx of [-0.21,0.21]){
+      cabParts.push({color:0x323a4a,matrix:mat4At(cx+c*dx,cy+0.21,cz-s*dx,rotY,0.036,0.42,0.42)});
     }
   };
   const vipZ0=COURT.nearBaseline+0.95,vipZ1=COURT.farBaseline-1.85;
   const sideRows=[
-    {dist:9.25,y:0.00,step:0.62,skipScorer:true},
-    {dist:10.05,y:0.22,step:0.64,skipScorer:true},
-    {dist:10.82,y:0.46,step:0.66,skipScorer:false}
+    {dist:9.20,y:0.00,step:0.51,skipScorer:true},
+    {dist:9.92,y:0.24,step:0.52,skipScorer:true},
+    {dist:10.64,y:0.50,step:0.53,skipScorer:false}
   ];
   for(const side of [-1,1]){
     // 2/3 排阶梯式 VIP 紫金地毯地台
     const deckLen=vipZ1-vipZ0+0.8,deckMid=(vipZ0+vipZ1)*0.5;
-    cabParts.push({color:0x161222,matrix:mat4At(side*10.05,0.11,deckMid,0,0.78,0.22,deckLen)});
-    cabParts.push({color:0xfdb927,matrix:mat4At(side*9.66,0.215,deckMid,0,0.03,0.02,deckLen)});
-    cabParts.push({color:0x141020,matrix:mat4At(side*10.82,0.23,deckMid,0,0.82,0.46,deckLen)});
-    cabParts.push({color:0x58278a,matrix:mat4At(side*10.41,0.455,deckMid,0,0.03,0.025,deckLen)});
+    cabParts.push({color:0x161222,matrix:mat4At(side*9.92,0.12,deckMid,0,0.74,0.24,deckLen)});
+    cabParts.push({color:0xfdb927,matrix:mat4At(side*9.55,0.235,deckMid,0,0.03,0.02,deckLen)});
+    cabParts.push({color:0x141020,matrix:mat4At(side*10.64,0.25,deckMid,0,0.78,0.50,deckLen)});
+    cabParts.push({color:0x58278a,matrix:mat4At(side*10.25,0.495,deckMid,0,0.03,0.025,deckLen)});
     const rot=side>0?Math.PI/2:-Math.PI/2;
     for(const row of sideRows){
       const cx=side*row.dist;
@@ -267,12 +271,12 @@ function buildCourtsideRibbon(){
       }
     }
   }
-  // 近端底线两侧 VIP 阶梯席（位于摄影记者区后方，朝向 +Z 球场）
+  // 近端底线两侧 VIP 阶梯席（紧挨排布，位于摄影记者区后方，朝向 +Z 球场）
   const baseVipZ=COURT.nearBaseline-4.45;
   for(const side of [-1,1]){
     cabParts.push({color:0x161222,matrix:mat4At(side*5.2,0.08,baseVipZ,0,6.6,0.16,0.84)});
     cabParts.push({color:0xfdb927,matrix:mat4At(side*5.2,0.155,baseVipZ+0.42,0,6.6,0.02,0.03)});
-    for(let x=2.3;x<=8.1;x+=0.68){
+    for(let x=2.15;x<=8.2;x+=0.53){
       pushChair(side*x,0.16,baseVipZ,Math.PI);
     }
   }
@@ -1356,16 +1360,29 @@ function buildCrowd(seats){
   const NT=BOWL_TIERS.length,NC=CROWD_BODY.length;
   const buckets=[];for(let i=0;i<NT*NC;i++)buckets.push([]);
 
+  /* 8 种真实高矮胖瘦体型档案，低成本拉开相邻观众剪影差异 */
+  const BOWL_BODY_TYPES=[
+    [0.82,0.86,0.84], // 娇小
+    [0.88,1.14,0.88], // 高瘦
+    [1.02,1.06,1.00], // 健硕
+    [1.24,1.04,1.20], // 魁梧宽肩
+    [1.18,0.90,1.16], // 壮实矮胖
+    [0.96,0.98,0.96], // 标准
+    [1.08,1.16,1.05], // 高大球迷
+    [0.90,0.92,0.92]  // 精干
+  ];
   seats.forEach((s,i)=>{
     const t=(s.t==null?1:s.t);
-    if(IS_COARSE_JUMBO&&((t>=2&&(i%2)===1)||(t===1&&(i%3)===2)))return;
+    /* 低中层看台(t=0,1)在手机端同样保持满座人挤人，只对极远暗部 300 层轻微抽稀省性能 */
+    if(IS_COARSE_JUMBO&&t>=2&&(i%4)===3)return;
     s.team=i%9===0?-1:(s.x>0?i%6===0?0:1:i%6===0?1:0);
     s.responseStart=-100;s.responseDuration=0;s.responseLinger=0;s.responsePower=0;s.responseSign=0;
 
-    // 独立身材尺寸与造型（0.88~1.12 比例高矮胖瘦差异）
-    s.scaleX=0.88+((i*17)%8)*0.032;
-    s.scaleY=0.90+((i*23)%7)*0.032;
-    s.scaleZ=0.88+((i*31)%8)*0.032;
+    // 明显的高矮肥瘦差异（0.82~1.24 跨度，零额外 Draw Call）
+    const bt=BOWL_BODY_TYPES[(i*7+t*3)%BOWL_BODY_TYPES.length];
+    s.scaleX=bt[0]*(0.96+((i*13)%5)*0.02);
+    s.scaleY=bt[1]*(0.96+((i*19)%5)*0.02);
+    s.scaleZ=bt[2]*(0.96+((i*29)%5)*0.02);
     s.isJersey=(i%3!==0);
     s.hasCap=(i%4===0);
     s.skinColor=SKIN_TONES[(i*11)%SKIN_TONES.length];
@@ -1433,119 +1450,136 @@ function updCrowd(t){
   AIBACrowdLife.update(t);
   _crowdTick++;
   const d=crowd.dummy;
+  /* 每帧从 Mixamo 动作库采样 4 个相位缓存（sit_stand_clap / sit_fist_pump / stand_no），
+     零成本让所有低模/方块看台观众也拥有真实起立鼓掌、坐姿挥拳、摇头叹息的节奏感！ */
+  const D=window.AIBADance;
+  const mixCache=D&&D.ready&&D.clips&&D.clips.sit_stand_clap&&D.clips.sit_fist_pump?new Array(4):null;
+  if(mixCache){
+    for(let k=0;k<4;k++){
+      const pT=t+k*0.42;
+      const sc=D.sample("sit_stand_clap",pT,true);
+      const sp=D.sample("sit_fist_pump",pT*1.15,true);
+      const sn=D.clips.stand_no?D.sample("stand_no",pT,true):null;
+      mixCache[k]={
+        standLift:sc?Math.max(0,(sc.hy||-0.42)+0.42):0.35,
+        clapArmX:sc&&sc.vox?sc.vox[6]:-1.4,
+        clapArmZ:sc&&sc.vox?sc.vox[7]:0.45,
+        pumpArmX:sp&&sp.vox?sp.vox[6]:-1.1,
+        pumpArmZ:sp&&sp.vox?sp.vox[7]:0.35,
+        noHeadY:sn&&sn.vox?sn.vox[4]:Math.sin(pT*6)*0.35
+      };
+    }
+  }
 
   for(let gi=0;gi<crowd.groups.length;gi++){
     const g=crowd.groups[gi];
     const tier=(g.tier==null?1:g.tier);
-    if(IS_COARSE_JUMBO){if((_crowdTick+gi)%3!==0)continue;}
+    if(IS_COARSE_JUMBO){if(tier>=2&&(_crowdTick+gi)%3!==0)continue;else if(tier===1&&(_crowdTick+gi)%2!==0)continue;}
     else if(tier>=2&&(_crowdTick%3)!==0)continue;
 
     for(let i=0;i<g.seats.length;i++){
       const s=g.seats[i];
       const age=t-s.responseStart;
+      const mc=mixCache?mixCache[i&3]:null;
 
       // 进球庆祝两阶段平滑包络：爆发欢呼 → 余温渐退（消除突然静止）
       let cheer=0,disappoint=0,linger=0;
       if(age>=0){
         if(age<s.responseDuration){
-          // 阶段一：进球瞬间爆发起立欢呼
           const frac=age/s.responseDuration;
           const burst=Math.sin(Math.PI*frac);
           if(s.responseSign>0) cheer=burst*s.responsePower;
           else disappoint=burst*s.responsePower;
         }else if(age<s.responseDuration+s.responseLinger){
-          // 阶段二：余温渐退期（持续平滑衰减，伴随持续鼓掌交谈缓缓落座）
           const lingerFrac=(age-s.responseDuration)/s.responseLinger;
           const decay=Math.cos(lingerFrac*Math.PI*0.5);
           linger=decay*s.responsePower;
-          if(s.responseSign>0){
-            cheer=decay*0.32*s.responsePower;
-          }else{
-            disappoint=decay*0.22*s.responsePower;
-          }
+          if(s.responseSign>0)cheer=decay*0.35*s.responsePower;
+          else disappoint=decay*0.25*s.responsePower;
         }
       }
 
-      // 躯干跳跃与重心微动
-      const jump=Math.max(0,Math.sin(t*(6.5+s.amp*2)+s.ph))*0.30*cheer;
-      const breath=Math.sin(t*(0.9+s.amp*0.3)+s.ph)*0.016;
+      /* 周期性自发看台波浪（即便在等待投篮/空闲期，也有 ~12% 死忠挥拳鼓掌，绝不死气沉沉） */
+      const ambientWave=Math.max(0,Math.sin(t*0.55+s.ph*2.3)-0.82)/0.18;
+      const ambientCheer=ambientWave*(s.role===2||s.role===0?0.42:0.18);
+      const effCheer=Math.max(cheer,ambientCheer);
+
+      // 躯干起立高度（结合 Mixamo sit_stand_clap 起身曲线 + 跳跃弹动）
+      const mixLift=mc?mc.standLift*0.72*cheer:0;
+      const jump=Math.max(0,Math.sin(t*(6.5+s.amp*2)+s.ph))*0.22*effCheer+mixLift;
+      const breath=Math.sin(t*(1.05+s.amp*0.3)+s.ph)*0.020;
       const posY=s.y+jump+breath;
 
-      // 根据 6 种正常看台行为计算基础姿态（常态下充满生命力，永不静止）
-      let torsoPitch=0,torsoYaw=Math.sin(s.ph)*0.15,torsoRoll=0;
-      let armL_x=0,armL_z=-0.12,armR_x=0,armR_z=0.12;
+      // 真实朝向球场中心（修复原先未叠加 s.rot 导致侧面看台观众朝向错乱、手臂看不见的问题！）
+      const baseYaw=s.rot!=null?s.rot:0;
+      let torsoPitch=0,torsoYaw=baseYaw+Math.sin(s.ph)*0.12,torsoRoll=0;
+      let armL_x=0,armL_z=-0.14,armR_x=0,armR_z=0.14;
       let headYaw=0,headPitch=0;
 
       if(s.role===0){
-        // 0: 专注看球（身体前倾 8°，头部微微随球场转动）
-        torsoPitch=0.10+Math.sin(t*0.4+s.ph)*0.03;
-        headYaw=Math.sin(t*0.5+s.ph)*0.16;
-        armL_x=-0.35;armL_z=-0.15;armR_x=-0.35;armR_z=0.15;
+        torsoPitch=0.10+Math.sin(t*0.45+s.ph)*0.035;
+        headYaw=Math.sin(t*0.55+s.ph)*0.18;
+        armL_x=-0.38;armL_z=-0.16;armR_x=-0.38;armR_z=0.16;
       }else if(s.role===1){
-        // 1: 邻座热聊（周期性侧身转向邻座交流并点头）
-        const talkWave=Math.sin(t*0.35+s.ph);
-        if(talkWave>0.1){
-          const turnAmt=(talkWave-0.1)*s.talkDir*0.35;
+        const talkWave=Math.sin(t*0.42+s.ph);
+        if(talkWave>0.05){
+          const turnAmt=(talkWave-0.05)*s.talkDir*0.38;
           torsoYaw+=turnAmt;headYaw+=turnAmt*1.4;
-          headPitch=Math.sin(t*3.0)*0.08;
-          if(s.talkDir>0){armR_z=0.38+Math.sin(t*2.2)*0.12;armR_x=-0.25;}
-          else{armL_z=-0.38-Math.sin(t*2.2)*0.12;armL_x=-0.25;}
+          headPitch=Math.sin(t*3.2)*0.09;
+          if(s.talkDir>0){armR_z=0.42+Math.sin(t*2.4)*0.14;armR_x=-0.32;}
+          else{armL_z=-0.42-Math.sin(t*2.4)*0.14;armL_x=-0.32;}
         }
       }else if(s.role===2){
-        // 2: 有节奏鼓掌（双臂胸前有节奏合拍击掌）
-        const clapRate=4.2+s.amp*0.6;
+        const clapRate=4.6+s.amp*0.7;
         const clapWave=Math.sin(t*clapRate+s.ph);
-        armL_x=-0.58;armR_x=-0.58;
-        armL_z=-0.42+clapWave*0.14;armR_z=0.42-clapWave*0.14;
-        headPitch=Math.max(0,clapWave)*0.04;
+        armL_x=-0.68;armR_x=-0.68;
+        armL_z=-0.44+clapWave*0.18;armR_z=0.44-clapWave*0.18;
+        headPitch=Math.max(0,clapWave)*0.05;
       }else if(s.role===3){
-        // 3: 举手机录像（右手举起手机朝向球场拍摄）
-        armR_x=-0.94+Math.sin(t*0.6+s.ph)*0.03;
+        armR_x=-1.02+Math.sin(t*0.7+s.ph)*0.04;
         armR_z=-0.22;
         armL_x=-0.15;armL_z=-0.10;
         headPitch=-0.08;
       }else if(s.role===4){
-        // 4: 抱胸休闲坐姿（双臂交叉在胸前，呼吸微晃）
-        armL_x=-0.44;armL_z=-0.34;
-        armR_x=-0.44;armR_z=0.34;
+        armL_x=-0.46;armL_z=-0.34;
+        armR_x=-0.46;armR_z=0.34;
         torsoPitch=-0.06;
       }else{
-        // 5: 喝饮品润喉（每隔数秒单手抬杯喝水）
-        const sipCycle=(t*0.25+s.ph)%6;
+        const sipCycle=(t*0.28+s.ph)%5.5;
         if(sipCycle<1.8){
           const sipProgress=Math.sin(sipCycle/1.8*Math.PI);
-          armR_x=-1.10*sipProgress;armR_z=-0.16*sipProgress;
+          armR_x=-1.15*sipProgress;armR_z=-0.16*sipProgress;
           headPitch=-0.15*sipProgress;
         }else{
           armR_x=-0.22;armR_z=0.15;armL_x=-0.22;armL_z=-0.15;
         }
       }
 
-      // 叠加进球庆祝（或叹息）动态与余温
-      if(cheer>0.02||linger>0.02){
-        const activeCheer=Math.max(cheer,linger*0.55);
-        // 双臂高举欢呼
-        const cheerArmAngle=0.15+activeCheer*(1.75+0.18*Math.sin(t*8+s.ph));
-        armL_z=-cheerArmAngle;armR_z=cheerArmAngle;
-        armL_x=-activeCheer*0.35;armR_x=-activeCheer*0.35;
-        torsoPitch-=activeCheer*0.12;
+      // 叠加 Mixamo 驱动的进球起立欢呼/坐姿挥拳/打铁摇头叹息
+      if(effCheer>0.02||linger>0.02){
+        const activeCheer=Math.max(effCheer,linger*0.60);
+        const mixArmLift=mc?(Math.abs(mc.clapArmX)*0.35+Math.abs(mc.pumpArmX)*0.25):0.5;
+        const cheerArmAngle=0.22+activeCheer*(1.95+0.24*Math.sin(t*8.5+s.ph)+mixArmLift*0.25);
+        armL_z=-Math.min(2.75,cheerArmAngle);armR_z=Math.min(2.75,cheerArmAngle);
+        armL_x=-activeCheer*0.48;armR_x=-activeCheer*0.48;
+        torsoPitch-=activeCheer*0.14;
         headPitch-=activeCheer*0.22;
-        // 余温期如果还带有击掌兴奋，穿插激动拍手
-        if(linger>0.15){
-          const clapW=Math.sin(t*5.5+s.ph);
-          armL_z=Math.min(armL_z,-0.35+clapW*0.15);
-          armR_z=Math.max(armR_z,0.35-clapW*0.15);
+        if(linger>0.12){
+          const clapW=Math.sin(t*5.8+s.ph);
+          armL_z=Math.min(armL_z,-0.40+clapW*0.18);
+          armR_z=Math.max(armR_z,0.40-clapW*0.18);
         }
       }else if(disappoint>0.02){
-        // 遗憾抱头/叹息垂肩
-        torsoPitch+=disappoint*0.22;
-        headPitch+=disappoint*0.32;
-        armL_x=-disappoint*0.75;armR_x=-disappoint*0.75;
-        armL_z=-0.38-disappoint*0.25;armR_z=0.38+disappoint*0.25;
+        torsoPitch+=disappoint*0.24;
+        headPitch+=disappoint*0.28;
+        headYaw+=(mc?mc.noHeadY:Math.sin(t*7+s.ph)*0.35)*disappoint*1.1;
+        armL_x=-disappoint*0.85;armR_x=-disappoint*0.85;
+        armL_z=-0.42-disappoint*0.32;armR_z=0.42+disappoint*0.32;
       }
 
-      // 设置身体、头部与手臂矩阵（应用个人尺寸比例）
       const sx=s.scaleX,sy=s.scaleY,sz=s.scaleZ;
+      const cosY=Math.cos(torsoYaw),sinY=Math.sin(torsoYaw);
+      const shOff=0.25*sx;
 
       // 1. 身体
       d.position.set(s.x,posY,s.z);
@@ -1561,15 +1595,13 @@ function updCrowd(t){
       d.updateMatrix();
       g.head.setMatrixAt(i,d.matrix);
 
-      // 3. 手臂
+      // 3. 手臂（沿观众自身左右肩向量偏移，确保所有方位看台挥臂都朝球场清晰可见！）
       d.scale.set(sx,sy,sz);
-      // 左臂
-      d.position.set(s.x-0.26*sx,posY+0.25*sy,s.z);
+      d.position.set(s.x-cosY*shOff,posY+0.25*sy,s.z+sinY*shOff);
       d.rotation.set(armL_x,torsoYaw,armL_z);
       d.updateMatrix();
       g.arms.setMatrixAt(i*2,d.matrix);
-      // 右臂
-      d.position.set(s.x+0.26*sx,posY+0.25*sy,s.z);
+      d.position.set(s.x+cosY*shOff,posY+0.25*sy,s.z-sinY*shOff);
       d.rotation.set(armR_x,torsoYaw,armR_z);
       d.updateMatrix();
       g.arms.setMatrixAt(i*2+1,d.matrix);

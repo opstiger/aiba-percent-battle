@@ -82,6 +82,387 @@ const _pendingVIPUpgrades=[];
 const _coloredSpectatorGeoCache=new Map();
 const _spectatorVertexColorMat=new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:true});
 
+/* ---------------- 单 Draw Call GPU VAT 全员写实动画观众系统 ----------------
+   用 1 张 128+96 行的 RGB8 顶点动画纹理(spectator_vat.png) + 1 份轻量低模(spectator_vat.glb)
+   在**单个 InstancedMesh Draw Call** 内同时驱动全部 220+ 紧挨排布的 VIP 坐席观众与场边站立死忠：
+     · 100% 真实 Mixamo 骨骼烘焙动画（坐姿观赛/坐姿挥拳/起立鼓掌/起身挥拳；站立换重心/站立欢呼/站立摇头）
+     · 严格位置防呆：seated_crowd 只采样行 0..127 (sit_idle/sit_fist_pump/sit_stand_*)，
+                     standing_crowd 只采样行 128..223 (stand_idle/stand_cheer/stand_no)，绝不越界！
+     · 零额外 Draw Call 实现 8 种高矮胖瘦体型 + 16 种球衣/卫衣/西装配色 + 长短袖 + 发型/帽冠剪影变化 */
+const _VAT_CLIPS=Object.freeze({
+  sit_idle:           {start:0,   frames:32, dur:3.20, posture:"seated"},
+  sit_fist_pump:      {start:32,  frames:32, dur:2.03, posture:"seated"},
+  sit_stand_fist_pump:{start:64,  frames:32, dur:3.50, posture:"sit_stand"},
+  sit_stand_clap:     {start:96,  frames:32, dur:4.90, posture:"sit_stand"},
+  stand_idle:         {start:128, frames:32, dur:9.43, posture:"standing"},
+  stand_cheer:        {start:160, frames:32, dur:2.90, posture:"standing"},
+  stand_no:           {start:192, frames:32, dur:5.00, posture:"standing"}
+});
+const _VAT_BODY_ARCHETYPES=[
+  [0.84,0.86,0.85], // 娇小
+  [0.88,1.13,0.88], // 高瘦
+  [1.00,1.06,1.04], // 健硕运动
+  [1.10,1.05,1.18], // 魁梧厚实（横向严格 ≤1.10 配合防穿模邻座错配，绝不撞肩）
+  [1.08,0.91,1.16], // 矮壮圆润
+  [0.90,0.89,0.92], // 精干偏矮
+  [1.04,1.15,1.06], // 高大球星体型
+  [0.96,0.99,0.98]  // 标准体型
+];
+/* 广播级提亮服装/肤色/发色表：杜绝低亮度线性转换后发黑成“黑炭剪影” */
+const _VAT_SHIRT_PALETTE=[
+  0xf5b832,0x6e3aa8,0x364056,0xf2f4f8,0x2f5484,0xb8303e,0x2e6e54,0xebe0cc,
+  0x3c6ca4,0x4b5366,0xe0684c,0xd8a634,0x7d2e56,0x627086,0x4e643e,0x4c356e
+];
+const _VAT_PANTS_PALETTE=[0x283042,0x303e58,0x3e4452,0x2c423a,0x423830,0x465064];
+const _VAT_SKIN_PALETTE=[0xf8d2b2,0xf0bc92,0xdfa376,0xc48556,0x9e663f,0x825232];
+const _VAT_HAIR_PALETTE=[0x241c18,0x3d281a,0x7d5a32,0xc4a062,0x5a606c,0x282c36,0x6e3622,0x3b2a52];
+const _VAT_SHOE_PALETTE=[0xf4f6fa,0x363b48,0xc8303c,0xf5b832,0x6a38a0,0x3c6c96];
+
+const _vatCrowd={
+  loading:false,ready:false,failed:false,
+  baseGeo:null,vatTex:null,meta:null,mat:null,
+  mesh:null,people:[],animAttr:null
+};
+
+function canUseVatCrowd(){
+  try{
+    if(typeof renderer!=="undefined"&&renderer&&renderer.capabilities&&renderer.capabilities.maxVertexTextures===0)return false;
+  }catch(e){}
+  return true;
+}
+
+function loadVatCrowdAssets(){
+  if(_vatCrowd.ready||_vatCrowd.loading||_vatCrowd.failed||!canUseVatCrowd())return;
+  _vatCrowd.loading=true;
+  ensureGLTFLoader(()=>{
+    let geoDone=false,texDone=false,metaDone=false;
+    const finish=()=>{
+      if(!geoDone||!texDone||!metaDone)return;
+      const meta=_vatCrowd.meta;
+      const minV=new THREE.Vector3(meta.min[0],meta.min[1],meta.min[2]);
+      const rngV=new THREE.Vector3(meta.max[0]-meta.min[0],meta.max[1]-meta.min[1],meta.max[2]-meta.min[2]);
+      const mat=new THREE.MeshLambertMaterial({color:0xffffff});
+      mat.onBeforeCompile=shader=>{
+        shader.uniforms.uVatTex={value:_vatCrowd.vatTex};
+        shader.uniforms.uVatMin={value:minV};
+        shader.uniforms.uVatRange={value:rngV};
+        shader.uniforms.uVatRows={value:meta.rows||224.0};
+        shader.vertexShader=shader.vertexShader
+          .replace("#include <common>",`#include <common>
+uniform sampler2D uVatTex;
+uniform vec3 uVatMin;
+uniform vec3 uVatRange;
+uniform float uVatRows;
+attribute vec4 aVatAnim;
+attribute vec3 aVatSkin;
+attribute vec3 aVatHair;
+attribute vec3 aVatShirt;
+attribute vec3 aVatPants;
+attribute vec3 aVatAccent;
+varying vec3 vVatColor;`)
+          .replace("#include <begin_vertex>",`
+float _f0 = floor(clamp(aVatAnim.y, 0.0, 31.0));
+float _f1 = min(31.0, _f0 + 1.0);
+float _fr = clamp(aVatAnim.y - _f0, 0.0, 1.0);
+float _v0 = (aVatAnim.x + _f0 + 0.5) / uVatRows;
+float _v1 = (aVatAnim.x + _f1 + 0.5) / uVatRows;
+vec3 _p0 = uVatMin + texture2D(uVatTex, vec2(uv.x, _v0)).rgb * uVatRange;
+vec3 _p1 = uVatMin + texture2D(uVatTex, vec2(uv.x, _v1)).rgb * uVatRange;
+vec3 transformed = mix(_p0, _p1, _fr);
+float _pid = floor((1.0 - uv.y) * 7.0 + 0.01);
+if (_pid > 5.5) {
+  transformed.y += max(0.0, aVatAnim.w) * 0.048;
+}
+vec3 _vc = aVatSkin;
+if (_pid < 0.5) _vc = vec3(0.92, 0.94, 0.97);
+else if (_pid < 1.5) _vc = aVatAccent;
+else if (_pid < 2.5) _vc = aVatPants;
+else if (_pid < 3.5) _vc = aVatShirt;
+else if (_pid < 4.5) _vc = mix(aVatSkin, aVatShirt, aVatAnim.z);
+else if (_pid < 5.5) _vc = aVatSkin;
+else _vc = aVatHair;
+float _ao = clamp(0.76 + transformed.y * 0.17, 0.72, 1.05);
+vVatColor = _vc * _ao;`);
+        shader.fragmentShader=shader.fragmentShader
+          .replace("#include <common>",`#include <common>
+varying vec3 vVatColor;`)
+          .replace("#include <color_fragment>",`#include <color_fragment>
+diffuseColor.rgb *= vVatColor;`)
+          .replace("#include <emissivemap_fragment>",`#include <emissivemap_fragment>
+/* 球馆暖色地板漫反射补光：防止背光面或深色衣肤掉成“全黑黑影”，同时保持自然立体明暗 */
+totalEmissiveRadiance += vVatColor * 0.26;`);
+      };
+      mat.customProgramCacheKey=()=>"aiba_spectator_vat_v2";
+      _vatCrowd.mat=mat;
+      _vatCrowd.ready=true;
+      _vatCrowd.loading=false;
+      rebuildVatCrowdMesh();
+      rebuildSpectatorInstances();
+    };
+    const fail=err=>{console.warn("VAT crowd load failed:",err);_vatCrowd.failed=true;_vatCrowd.loading=false;};
+    new THREE.GLTFLoader().load("assets/models/spectator_vat.glb",gltf=>{
+      let found=null;
+      gltf.scene.traverse(ch=>{if(ch.isMesh&&!found)found=ch;});
+      if(!found)return fail("no mesh in spectator_vat.glb");
+      _vatCrowd.baseGeo=found.geometry;
+      geoDone=true;finish();
+    },undefined,fail);
+    new THREE.TextureLoader().load("assets/models/spectator_vat.png",tex=>{
+      tex.flipY=false;
+      tex.minFilter=THREE.NearestFilter;
+      tex.magFilter=THREE.NearestFilter;
+      tex.generateMipmaps=false;
+      tex.wrapS=THREE.ClampToEdgeWrapping;
+      tex.wrapT=THREE.ClampToEdgeWrapping;
+      _vatCrowd.vatTex=tex;
+      texDone=true;finish();
+    },undefined,fail);
+    fetch("assets/models/spectator_vat.json").then(r=>{if(!r.ok)throw new Error(r.status);return r.json();}).then(j=>{
+      _vatCrowd.meta=j;metaDone=true;finish();
+    }).catch(fail);
+  });
+}
+
+function rebuildVatCrowdMesh(){
+  const root=nearCourtCrowd.root;
+  if(_vatCrowd.mesh){
+    if(_vatCrowd.mesh.parent)_vatCrowd.mesh.parent.remove(_vatCrowd.mesh);
+    if(_vatCrowd.mesh.geometry)_vatCrowd.mesh.geometry.dispose();
+    _vatCrowd.mesh=null;
+  }
+  _vatCrowd.people.length=0;
+  _vatCrowd.animAttr=null;
+  if(!root||!_vatCrowd.ready||!_vatCrowd.baseGeo||!_vatCrowd.mat)return;
+
+  const list=[];
+  for(const p of nearCourtCrowd.people){
+    if(p.vatSpec)list.push(p);
+  }
+  if(!list.length)return;
+
+  const n=list.length;
+  const geo=_vatCrowd.baseGeo.clone();
+  const aAnim=new Float32Array(n*4);
+  const aSkin=new Float32Array(n*3);
+  const aHair=new Float32Array(n*3);
+  const aShirt=new Float32Array(n*3);
+  const aPants=new Float32Array(n*3);
+  const aAccent=new Float32Array(n*3);
+  const col=new THREE.Color();
+
+  const inst=new THREE.InstancedMesh(geo,_vatCrowd.mat,n);
+  inst.name="vatAnimatedSpectatorBatch";
+  inst.frustumCulled=false;
+  inst.castShadow=false;
+  inst.receiveShadow=true;
+
+  const m=new THREE.Matrix4(),q=new THREE.Quaternion(),pos=new THREE.Vector3(),scl=new THREE.Vector3();
+  /* 人物间防穿模碰撞保护：
+     1) 同排相邻坐席：检测两两距离，确保宽肩/标准体型之间肩宽不互插，必要时微缩 scaleX 留出安全间隙；
+     2) 场边站立观众：两两水平距离 < 0.62m 时自动推开分离，绝不重叠！ */
+  const worldPos=new Array(n);
+  for(let i=0;i<n;i++){
+    const p=list[i];
+    const sinR=Math.sin(p.baseRot||0),cosR=Math.cos(p.baseRot||0);
+    const backOff=p.seated?-0.04:0;
+    worldPos[i]=new THREE.Vector3((p.base?p.base.x:p.g.position.x)+sinR*backOff,p.baseY||0,(p.base?p.base.z:p.g.position.z)+cosR*backOff);
+  }
+  for(let i=0;i<n;i++){
+    const pi=list[i],vi=pi.vatSpec,piPos=worldPos[i];
+    for(let j=i+1;j<n;j++){
+      const pj=list[j],vj=pj.vatSpec,pjPos=worldPos[j];
+      if(Math.abs(piPos.y-pjPos.y)>0.16)continue;
+      const dx=pjPos.x-piPos.x,dz=pjPos.z-piPos.z;
+      const dist=Math.hypot(dx,dz);
+      if(pi.seated&&pj.seated){
+        /* 同排坐席肩宽半径约 0.24 * scaleX，确保两者之和 <= 实际座距 - 0.02m */
+        if(dist>0.05&&dist<0.68){
+          const sumR=0.24*(vi.scaleX+vj.scaleX);
+          const maxSum=Math.max(0.36,dist-0.025);
+          if(sumR>maxSum){
+            const shrink=maxSum/sumR;
+            vi.scaleX=Math.max(0.80,vi.scaleX*shrink);
+            vj.scaleX=Math.max(0.80,vj.scaleX*shrink);
+          }
+        }
+      }else if(!pi.seated&&!pj.seated){
+        /* 站立观众硬碰撞分离：最小中心距 0.68m */
+        if(dist>0.001&&dist<0.68){
+          const push=(0.68-dist)*0.5;
+          const nx=dx/dist,nz=dz/dist;
+          piPos.x-=nx*push;piPos.z-=nz*push;
+          pjPos.x+=nx*push;pjPos.z+=nz*push;
+        }
+      }
+    }
+  }
+  for(let i=0;i<n;i++){
+    const p=list[i],vs=p.vatSpec;
+    p.vatIndex=i;
+    p.vatWorldPos=worldPos[i];
+    /* 隐藏旧静态体素/实例化替身，由单 Draw Call GPU VAT 接管全部动作 */
+    if(p.body)p.body.visible=false;
+    if(p.arms)p.arms.forEach(a=>{if(a)a.visible=false;});
+    p.realSpec=null;p.realInst=null;
+
+    /* 初始分配严格符合位置的动作（坐席=sit_idle/偶尔sit_fist_pump；站立=stand_idle） */
+    if(!p.vatClip){
+      p.vatClip=p.seated?(i%7===0?"sit_fist_pump":"sit_idle"):"stand_idle";
+      p.vatT=(p.phase||0)*1.3;
+      p.vatLoop=true;
+      p.vatSpeed=0.88+(i%5)*0.07;
+    }
+    const cd=_VAT_CLIPS[p.vatClip]||_VAT_CLIPS.sit_idle;
+    const fVal=((p.vatT%cd.dur)/cd.dur)*(cd.frames-1);
+    aAnim[i*4]=cd.start;
+    aAnim[i*4+1]=fVal;
+    aAnim[i*4+2]=vs.sleeveMode;
+    aAnim[i*4+3]=vs.hairMorph;
+
+    col.setHex(vs.skin).convertSRGBToLinear();   aSkin[i*3]=col.r;   aSkin[i*3+1]=col.g;   aSkin[i*3+2]=col.b;
+    col.setHex(vs.hair).convertSRGBToLinear();   aHair[i*3]=col.r;   aHair[i*3+1]=col.g;   aHair[i*3+2]=col.b;
+    col.setHex(vs.shirt).convertSRGBToLinear();  aShirt[i*3]=col.r;  aShirt[i*3+1]=col.g;  aShirt[i*3+2]=col.b;
+    col.setHex(vs.pants).convertSRGBToLinear();  aPants[i*3]=col.r;  aPants[i*3+1]=col.g;  aPants[i*3+2]=col.b;
+    col.setHex(vs.shoe).convertSRGBToLinear();   aAccent[i*3]=col.r; aAccent[i*3+1]=col.g; aAccent[i*3+2]=col.b;
+
+    const rotY=(p.baseRot||0)+(p.yawOff||0)+Math.PI;
+    pos.copy(worldPos[i]);
+    q.setFromAxisAngle(_specUp,rotY);
+    scl.set(vs.scaleX,vs.scaleY,vs.scaleZ);
+    m.compose(pos,q,scl);
+    inst.setMatrixAt(i,m);
+  }
+  inst.instanceMatrix.needsUpdate=true;
+
+  const animAttr=new THREE.InstancedBufferAttribute(aAnim,4);
+  animAttr.setUsage(THREE.DynamicDrawUsage);
+  geo.setAttribute("aVatAnim",animAttr);
+  geo.setAttribute("aVatSkin",new THREE.InstancedBufferAttribute(aSkin,3));
+  geo.setAttribute("aVatHair",new THREE.InstancedBufferAttribute(aHair,3));
+  geo.setAttribute("aVatShirt",new THREE.InstancedBufferAttribute(aShirt,3));
+  geo.setAttribute("aVatPants",new THREE.InstancedBufferAttribute(aPants,3));
+  geo.setAttribute("aVatAccent",new THREE.InstancedBufferAttribute(aAccent,3));
+
+  root.add(inst);
+  _vatCrowd.mesh=inst;
+  _vatCrowd.people=list;
+  _vatCrowd.animAttr=animAttr;
+}
+
+function makeVatSpec(idx,cfg){
+  const nIdx=Math.abs(Math.round(Number(idx)||0));
+  /* 宽窄体型按奇偶交替，天然杜绝两个最宽体型肩并肩挤压 */
+  const archIdx=(nIdx%2===0)?((nIdx*3)%4)*2:(((nIdx*3)%4)*2+1);
+  const arch=_VAT_BODY_ARCHETYPES[archIdx%_VAT_BODY_ARCHETYPES.length];
+  const jx=0.97+((nIdx*11)%4)*0.015;
+  const jy=0.96+((nIdx*13)%5)*0.02;
+  const jz=0.96+((nIdx*17)%5)*0.02;
+  let shirtHex=cfg.outfit||_VAT_SHIRT_PALETTE[(nIdx*7)%_VAT_SHIRT_PALETTE.length];
+  const pantsHex=cfg.pants||_VAT_PANTS_PALETTE[(nIdx*3)%_VAT_PANTS_PALETTE.length];
+  const skinHex=cfg.skin||_VAT_SKIN_PALETTE[(nIdx*5)%_VAT_SKIN_PALETTE.length];
+  const hairHex=cfg.capColor||cfg.hair||_VAT_HAIR_PALETTE[(nIdx*9)%_VAT_HAIR_PALETTE.length];
+  const shoeHex=cfg.shoe||_VAT_SHOE_PALETTE[(nIdx*11)%_VAT_SHOE_PALETTE.length];
+  /* 防止深肤色撞深黑上衣导致整个人“黑成一团”：若肤色偏深且上衣偏暗，自动换亮色球衣/白T/湖金/紫金对比 */
+  const lum=hex=>(((hex>>16)&255)*0.299+((hex>>8)&255)*0.587+(hex&255)*0.114)/255;
+  if(lum(skinHex)<0.46&&lum(shirtHex)<0.32){
+    const bright=[0xf5b832,0xf2f4f8,0x6e3aa8,0xe0684c,0xebe0cc,0x3c6ca4];
+    shirtHex=bright[nIdx%bright.length];
+  }
+  return {
+    scaleX:arch[0]*jx,
+    scaleY:arch[1]*jy,
+    scaleZ:arch[2]*jz,
+    shirt:shirtHex,
+    pants:pantsHex,
+    skin:skinHex,
+    hair:hairHex,
+    shoe:shoeHex,
+    sleeveMode:(nIdx%3===0)?0.0:1.0,              // 1/3 短袖球衣露臂，2/3 长袖卫衣/夹克/西装
+    hairMorph:[-0.20,0.0,0.28,0.65,0.92][nIdx%5]  // 寸头 / 普通 / 蓬松 / 鸭舌帽 / 爆炸头轮廓差
+  };
+}
+
+function triggerVatCrowdEvent(kind,points){
+  if(!_vatCrowd.people.length)return;
+  const big=(points||0)>=5||kind==="final"||kind==="streak";
+  const miss=kind==="miss"||kind==="oppMiss";
+  const list=_vatCrowd.people;
+  for(let i=0;i<list.length;i++){
+    const p=list[i];
+    const r=((Math.sin((i+1)*73.17+(crowd.clock||0)*19.3)*43758.5453)%1+1)%1;
+    /* 奇偶邻座错峰触发(+0.22s)，防止相邻观众同一帧挥臂互插，同时让波浪更自然 */
+    p.vatDelay=0.03+r*(big?0.34:0.46)+(i%2)*0.22;
+    if(p.seated){
+      /* 严格位置约束：坐席 VIP 仅在 sit_stand_clap / sit_stand_fist_pump / sit_fist_pump / sit_idle 中切换，绝不跳舞 */
+      if(miss){
+        p.vatNextClip="sit_idle";
+        p.vatNextLoop=true;
+        p.vatNextSpeed=1.35;
+      }else{
+        const standChance=big?0.74:0.56;
+        if(r<standChance){
+          p.vatNextClip=(i%2===0)?"sit_stand_clap":"sit_stand_fist_pump";
+        }else{
+          p.vatNextClip="sit_fist_pump";
+        }
+        p.vatNextLoop=false;
+        p.vatNextSpeed=0.92+(i%5)*0.06;
+      }
+    }else{
+      /* 严格位置约束：场边站立死忠仅在 stand_cheer / stand_no / stand_idle 中切换，绝不坐下或跳舞 */
+      p.vatNextClip=miss?"stand_no":"stand_cheer";
+      p.vatNextLoop=false;
+      p.vatNextSpeed=0.94+(i%4)*0.07;
+    }
+  }
+}
+
+function updateVatCrowd(t,dt){
+  const list=_vatCrowd.people,attr=_vatCrowd.animAttr;
+  if(!list.length||!attr)return;
+  const arr=attr.array;
+  const stepDt=Math.min(0.05,Math.max(0.001,dt||0.016));
+  for(let i=0;i<list.length;i++){
+    const p=list[i];
+    if(p.vatDelay>0){
+      p.vatDelay-=stepDt;
+      if(p.vatDelay<=0&&p.vatNextClip){
+        p.vatClip=p.vatNextClip;
+        p.vatNextClip=null;
+        p.vatT=0;
+        p.vatLoop=!!p.vatNextLoop;
+        p.vatSpeed=p.vatNextSpeed||1;
+      }
+    }
+    const cd=_VAT_CLIPS[p.vatClip]||_VAT_CLIPS.sit_idle;
+    p.vatT=(p.vatT||0)+stepDt*(p.vatSpeed||1);
+    if(p.vatT>=cd.dur){
+      if(p.vatLoop){
+        p.vatT%=cd.dur;
+        /* 空闲期自发活跃：坐席观众每轮结束有 22% 几率来一段坐姿挥拳/偶尔起立鼓掌，站立观众自然切换重心 */
+        if(p.seated&&p.vatClip==="sit_idle"){
+          const wave=Math.sin(t*0.65+p.phase*2.7);
+          if(wave>0.74){
+            p.vatClip=(i%5===0&&wave>0.92)?"sit_stand_fist_pump":"sit_fist_pump";
+            p.vatT=0;p.vatLoop=false;p.vatSpeed=0.95;
+          }
+        }
+      }else{
+        /* 反应动作播完后自然回到对应位置的待机动作（坐席回 sit_idle，站立回 stand_idle） */
+        p.vatClip=p.seated?"sit_idle":"stand_idle";
+        p.vatT=(p.phase||0)%2.0;
+        p.vatLoop=true;
+        p.vatSpeed=0.88+(i%5)*0.06;
+      }
+    }
+    const cur=_VAT_CLIPS[p.vatClip]||_VAT_CLIPS.sit_idle;
+    const u=Math.max(0,Math.min(0.9999,p.vatT/cur.dur));
+    arr[i*4]=cur.start;
+    arr[i*4+1]=u*(cur.frames-1);
+  }
+  attr.needsUpdate=true;
+}
+
 /* ---------------- 写实骨骼观众系统 (spectator_rig.glb + AIBADance 分类动作) ----------------
    严格按位置区分：
      · seated_crowd   (VIP 坐席前排): 仅播放 seated / sit_stand（坐姿握拳、起立鼓掌、起身挥拳），绝不跳舞！
@@ -445,7 +826,7 @@ function rebuildSpectatorInstances(){
 }
 
 function applyModelToVIP(person,cfg,deferBatch){
-  if(!_cachedSpectatorSitMesh||!person.g||person.isHeroRig)return;
+  if(!_cachedSpectatorSitMesh||!person.g||person.isHeroRig||(person.vatSpec&&canUseVatCrowd()&&!_vatCrowd.failed))return;
   if(person.body)person.body.visible=false;
   if(person.arms){
     // 将挂在旧方块手臂上的相机/饮品/手机移到真实人体胸前手部位置，彻底隐藏旧体素手臂避免“四只手”
@@ -490,6 +871,24 @@ function queueSpectatorModelUpgrade(person,cfg){
   }
 }
 function makeCourtsideVIP(parent,cube,cfg){
+  const role=cfg.role;
+  const pose=cfg.pose||"relaxed";
+  if(canUseVatCrowd()&&!_vatCrowd.failed){
+    /* 极速零内存浪费路径：不生成将被隐藏的旧体素网格，直接登记给单 Draw Call GPU VAT */
+    const baseY=cfg.y||0;
+    const yawOff=cfg.yawOff||0;
+    const excitement=cfg.excitement!=null?cfg.excitement:(pose==="chill"?0.22:(pose==="hyper"?1.28:(pose==="intense"?0.95:0.55)));
+    const g=new THREE.Group();
+    g.position.set(cfg.x,baseY,cfg.z);g.rotation.y=cfg.rot+yawOff;
+    parent.add(g);
+    const person={g,body:null,shirtVertCount:0,arms:null,phone:null,sign:null,prop:null,poms:[null,null],
+      kind:role==="fashion"?"filmer":(role==="coach"?"coach":"vip"),vip:true,seated:true,crowdRole:"seated_crowd",role,pose,excitement,basePitch:0,yawOff,
+      base:V3(cfg.x,baseY,cfg.z),baseY,baseRot:cfg.rot,axis:V3(0,0,0),move:0,
+      phase:cfg.phase,amp:cfg.amp||1,team:cfg.x>0?1:0,responseStart:-100,responseDuration:0,responseSign:0,
+      vatSpec:makeVatSpec(cfg.idx||nearCourtCrowd.people.length,cfg)};
+    nearCourtCrowd.people.push(person);
+    return;
+  }
   const g=new THREE.Group();
   const s=cfg.scale||1;
   const skinCol=new THREE.Color(recede(cfg.skin,0.06,0.10));
@@ -498,8 +897,6 @@ function makeCourtsideVIP(parent,cube,cfg){
   const accentCol=new THREE.Color(cfg.accent);
   const pantsCol=new THREE.Color(recede(cfg.pants||0x161a24,0.06,0.14));
   const shoeCol=new THREE.Color(cfg.shoe||0xf2f4f8);
-  const role=cfg.role;
-  const pose=cfg.pose||"relaxed";
 
   // 坐姿腿部姿态分化（chill 翘二郎腿 / intense 前倾蓄力 / relaxed 自然分腿）
   const legs=pose==="chill"?[
@@ -614,8 +1011,13 @@ function makeCourtsideVIP(parent,cube,cfg){
     base:V3(cfg.x,baseY,cfg.z),baseY,baseRot:cfg.rot,axis:V3(0,0,0),move:0,
     phase:cfg.phase,amp:cfg.amp||1,team:cfg.x>0?1:0,responseStart:-100,responseDuration:0,responseSign:0};
   nearCourtCrowd.people.push(person);
-  if(cfg.heroRig&&!phone&&!prop){
-    queueHeroRigUpgrade(person,cfg);
+  if(canUseVatCrowd()&&!_vatCrowd.failed){
+    /* 全部 VIP 坐席观众统一走单 Draw Call GPU VAT 全员真实动画，彻底告别静态雕像与多批次 Draw Call */
+    person.vatSpec=makeVatSpec(cfg.idx||nearCourtCrowd.people.length,cfg);
+    if(person.body)person.body.visible=false;
+    if(person.arms)person.arms.forEach(a=>{if(a)a.visible=false;});
+    if(phone)phone.visible=false;
+    if(prop)prop.visible=false;
   }else if(_cachedSpectatorSitMesh){
     applyModelToVIP(person,cfg);
   }else{
@@ -944,16 +1346,14 @@ function buildCourtsideVIPs(root,cube){
     {role:"coach",outfit:0x222732,accent:0x58278a,pants:0x222732,skin:0xf0c294,hair:0x3a3e48,shoe:0x12141a,scale:0.94,pose:"relaxed"}
   ];
   const vipZ0=COURT.nearBaseline+0.95,vipZ1=COURT.farBaseline-1.85;
-  const sideRows=mobile?[
-    {dist:9.25,y:0.00,step:1.24,skipScorer:true},
-    {dist:10.05,y:0.22,step:1.28,skipScorer:true}
-  ]:[
-    {dist:9.25,y:0.00,step:0.62,skipScorer:true},
-    {dist:10.05,y:0.22,step:0.64,skipScorer:true},
-    {dist:10.82,y:0.46,step:0.66,skipScorer:false}
+  /* 手机端与桌面端统一满座紧挨排布(0.51/0.52/0.53m)，与 arena.js VIP 椅 1:1 严丝合缝！
+     全部 230+ 名 VIP 共用 1 个 GPU VAT Draw Call，不再隔位空座，真正还原 NBA 场边人挤人氛围 */
+  const sideRows=[
+    {dist:9.20,y:0.00,step:0.51,skipScorer:true},
+    {dist:9.92,y:0.24,step:0.52,skipScorer:true},
+    {dist:10.64,y:0.50,step:0.53,skipScorer:false}
   ];
-  let idx=0,heroVipCount=0;
-  const maxHeroVips=mobile?5:10;
+  let idx=0;
   for(const side of [-1,1]){
     const rot=side>0?Math.PI/2:-Math.PI/2;
     for(const row of sideRows){
@@ -961,26 +1361,35 @@ function buildCourtsideVIPs(root,cube){
       for(let cz=vipZ0;cz<=vipZ1;cz+=row.step){
         if(row.skipScorer&&side<0&&Math.abs(cz-scZ)<2.95)continue;
         idx++;
-        if(idx%17===0)continue; // 偶留零星未入座空位更真实
-        const prof=vipProfiles[idx%vipProfiles.length];
-        const yawOff=prof.pose==="social"?((idx%2?1:-1)*0.24):((idx%5-2)*0.045);
-        /* 仅选第一排(row.y===0)中靠近球场视野焦点的非持道具席位升级为 22 骨真动作 VIP */
-        const canHero=row.y===0&&heroVipCount<maxHeroVips&&(prof.role==="vipfan"||prof.role==="star")&&prof.pose!=="chill"&&(idx%(mobile?5:4)===0);
-        if(canHero)heroVipCount++;
-        makeCourtsideVIP(root,cube,{idx,heroRig:canHero,x:cx,y:row.y,z:cz,rot,yawOff,phase:idx*0.77,amp:0.82+(idx%4)*0.11,...prof});
+        if(idx%29===0)continue; // 96.5% 季后赛满座率，只极偶尔留 1 个空位
+        const prof=vipProfiles[(idx*3)%vipProfiles.length];
+        /* 丰富服装/肤色/发型，并加入轻微朝向交谈偏角与肩距微抖动打破“开大会队列感” */
+        const shirtCol=_VAT_SHIRT_PALETTE[(idx*7+row.y*13|0)%_VAT_SHIRT_PALETTE.length];
+        const pantsCol=_VAT_PANTS_PALETTE[(idx*5)%_VAT_PANTS_PALETTE.length];
+        const skinCol=_VAT_SKIN_PALETTE[(idx*11)%_VAT_SKIN_PALETTE.length];
+        const hairCol=_VAT_HAIR_PALETTE[(idx*13)%_VAT_HAIR_PALETTE.length];
+        const shoeCol=_VAT_SHOE_PALETTE[(idx*17)%_VAT_SHOE_PALETTE.length];
+        const yawOff=prof.pose==="social"?((idx%2?1:-1)*0.16):(((idx*7)%9-4)*0.028);
+        const jitterZ=(((idx*19)%7)-3)*0.008;
+        makeCourtsideVIP(root,cube,{idx,x:cx,y:row.y,z:cz+jitterZ,rot,yawOff,phase:idx*0.63,amp:0.82+(idx%4)*0.11,
+          ...prof,outfit:shirtCol,pants:pantsCol,skin:skinCol,hair:hairCol,shoe:shoeCol});
       }
     }
   }
-  // 近端底线 VIP 阶梯席
+  // 近端底线 VIP 阶梯席（同样紧挨 0.53m 满座，手机端不隔位抽稀）
   const baseVipZ=COURT.nearBaseline-4.45;
   for(const side of [-1,1]){
-    for(let x=2.3;x<=8.1;x+=(mobile?1.36:0.68)){
+    for(let x=2.15;x<=8.2;x+=0.53){
       idx++;
-      if(idx%15===0)continue;
-      const prof=vipProfiles[idx%vipProfiles.length];
-      const canHero=heroVipCount<maxHeroVips+2&&(prof.role==="vipfan"||prof.role==="star")&&prof.pose!=="chill"&&(idx%(mobile?5:4)===1);
-      if(canHero)heroVipCount++;
-      makeCourtsideVIP(root,cube,{idx,heroRig:canHero,x:side*x,y:0.16,z:baseVipZ,rot:Math.PI,yawOff:(idx%5-2)*0.05,phase:idx*0.83,amp:0.85+(idx%3)*0.12,...prof});
+      if(idx%27===0)continue;
+      const prof=vipProfiles[(idx*3)%vipProfiles.length];
+      const shirtCol=_VAT_SHIRT_PALETTE[(idx*7)%_VAT_SHIRT_PALETTE.length];
+      const pantsCol=_VAT_PANTS_PALETTE[(idx*5)%_VAT_PANTS_PALETTE.length];
+      const skinCol=_VAT_SKIN_PALETTE[(idx*11)%_VAT_SKIN_PALETTE.length];
+      const hairCol=_VAT_HAIR_PALETTE[(idx*13)%_VAT_HAIR_PALETTE.length];
+      const shoeCol=_VAT_SHOE_PALETTE[(idx*17)%_VAT_SHOE_PALETTE.length];
+      makeCourtsideVIP(root,cube,{idx,x:side*x,y:0.16,z:baseVipZ,rot:Math.PI,yawOff:((idx*5)%7-3)*0.035,phase:idx*0.71,amp:0.85+(idx%3)*0.12,
+        ...prof,outfit:shirtCol,pants:pantsCol,skin:skinCol,hair:hairCol,shoe:shoeCol});
     }
   }
   // 技术台后方 3 位记录员
@@ -990,14 +1399,14 @@ function buildCourtsideVIPs(root,cube){
   }
   // 场边走动与执勤人员：服务员、安保、保洁擦地员、过道走动嘉宾
   const staffConfigs=[
-    {staffRole:"waiter",x:8.62,z:COURT.nearBaseline+3.5,rot:Math.PI/2,walkAxis:V3(0,0,1),walkRange:4.2,walkSpeed:0.82,skin:0xedb48a,phase:0.4},
-    {staffRole:"waiter",x:-8.62,z:COURT.midZ+2.6,rot:-Math.PI/2,walkAxis:V3(0,0,1),walkRange:3.8,walkSpeed:0.76,skin:0xb87848,phase:2.1},
+    {staffRole:"waiter",x:8.36,z:COURT.nearBaseline+3.5,rot:Math.PI/2,walkAxis:V3(0,0,1),walkRange:4.2,walkSpeed:0.82,skin:0xedb48a,phase:0.4},
+    {staffRole:"waiter",x:-8.36,z:COURT.midZ+2.6,rot:-Math.PI/2,walkAxis:V3(0,0,1),walkRange:3.8,walkSpeed:0.76,skin:0xb87848,phase:2.1},
     {staffRole:"waiter",x:11.35,z:COURT.midZ-1.5,rot:Math.PI/2,walkAxis:V3(0,0,1),walkRange:4.8,walkSpeed:0.90,skin:0xf0c294,phase:1.3},
-    {staffRole:"security",x:-8.55,z:COURT.nearBaseline+0.35,rot:-Math.PI*0.75,walkAxis:V3(0,0,1),walkRange:0.65,walkSpeed:0.45,skin:0x824b22,phase:0.8},
-    {staffRole:"security",x:8.55,z:COURT.nearBaseline+0.35,rot:Math.PI*0.75,walkAxis:V3(0,0,1),walkRange:0.65,walkSpeed:0.42,skin:0xda9d6e,phase:1.9},
-    {staffRole:"security",x:8.65,z:COURT.farBaseline-2.2,rot:Math.PI*0.5,walkAxis:V3(0,0,1),walkRange:0.8,walkSpeed:0.48,skin:0x4e2c16,phase:3.1},
+    {staffRole:"security",x:-8.32,z:COURT.nearBaseline+0.35,rot:-Math.PI*0.75,walkAxis:V3(0,0,1),walkRange:0.65,walkSpeed:0.45,skin:0x824b22,phase:0.8},
+    {staffRole:"security",x:8.32,z:COURT.nearBaseline+0.35,rot:Math.PI*0.75,walkAxis:V3(0,0,1),walkRange:0.65,walkSpeed:0.42,skin:0xda9d6e,phase:1.9},
+    {staffRole:"security",x:8.38,z:COURT.farBaseline-2.2,rot:Math.PI*0.5,walkAxis:V3(0,0,1),walkRange:0.8,walkSpeed:0.48,skin:0x4e2c16,phase:3.1},
     {staffRole:"sweeper",x:0,z:COURT.nearBaseline-0.65,rot:0,walkAxis:V3(1,0,0),walkRange:3.6,walkSpeed:0.95,skin:0xda9d6e,phase:0.5},
-    {staffRole:"sweeper",x:8.52,z:COURT.midZ+0.5,rot:Math.PI/2,walkAxis:V3(0,0,1),walkRange:3.6,walkSpeed:0.88,skin:0xedb48a,phase:2.7},
+    {staffRole:"sweeper",x:8.34,z:COURT.midZ+0.5,rot:Math.PI/2,walkAxis:V3(0,0,1),walkRange:3.6,walkSpeed:0.88,skin:0xedb48a,phase:2.7},
     {staffRole:"guest",x:-11.35,z:COURT.nearBaseline+4.0,rot:0,walkAxis:V3(0,0,1),walkRange:4.5,walkSpeed:0.92,outfit:0x58278a,accent:0xfdb927,skin:0xf6cdab,phase:1.1},
     {staffRole:"guest",x:0,z:COURT.nearBaseline-5.2,rot:Math.PI/2,walkAxis:V3(1,0,0),walkRange:6.4,walkSpeed:0.86,outfit:0x1b202e,accent:0xf2ae29,skin:0xb87848,phase:3.4}
   ];
@@ -1051,8 +1460,18 @@ function buildNearCourtCrowd(){
     const created=nearCourtCrowd.people[nearCourtCrowd.people.length-1];
     if(created){
       created.crowdRole="standing_crowd";
-      /* 场边无手持道具的站立死忠(hype/calm)升级为 22 骨写实站立观众，只播放 standing 动作 */
-      if((s[2]==="hype"||s[2]==="calm")&&heroStandCount<maxHeroStand){
+      /* 场边无手持道具的站立死忠(hype/calm)同样并入单 Draw Call GPU VAT 写实站立观众，只播放 standing 动作 */
+      if((s[2]==="hype"||s[2]==="calm")&&canUseVatCrowd()&&!_vatCrowd.failed){
+        created.vatSpec=makeVatSpec(400+i,{
+          skin:skinPalette[i%4],
+          hair:hairPalette[(i*2)%5],
+          outfit:shirtPalette[(i*3)%9],
+          pants:pantsPalette[(i+1)%6],
+          shoe:shoePalette[(i*5)%5]
+        });
+        if(created.body)created.body.visible=false;
+        if(created.arms)created.arms.forEach(a=>{if(a)a.visible=false;});
+      }else if((s[2]==="hype"||s[2]==="calm")&&heroStandCount<maxHeroStand){
         heroStandCount++;
         queueHeroRigUpgrade(created,{
           idx:200+i,
@@ -1067,6 +1486,8 @@ function buildNearCourtCrowd(){
     }
   });
   buildCourtsideVIPs(root,cube);
+  if(_vatCrowd.ready)rebuildVatCrowdMesh();
+  else loadVatCrowdAssets();
   if(_cachedSpectatorSitMesh)rebuildSpectatorInstances();
 }
 function triggerNearCourtCrowdReaction(kind,points){
@@ -1076,6 +1497,8 @@ function triggerNearCourtCrowdReaction(kind,points){
   else nearCourtCrowd.reaction=Math.max(nearCourtCrowd.reaction,big?1:.76);
   nearCourtCrowd.last=kind||"make";
   const scorer=kind==="oppMake"||kind==="oppMiss"?1:0,miss=kind==="miss"||kind==="oppMiss";
+  /* 同步触发单 Draw Call GPU VAT 全部 230+ VIP 与场边站立观众的波浪式反应 */
+  triggerVatCrowdEvent(kind,points);
   /* 场边站立传球手晴子同步响应玩家进球/打铁（仅使用 standing 动作） */
   try{
     if(window.AIBAPasserAvatar&&typeof window.AIBAPasserAvatar.react==="function"&&(kind==="make"||kind==="miss"||kind==="final"||!kind)){
@@ -1114,8 +1537,10 @@ function triggerNearCourtCrowdReaction(kind,points){
 }
 function updNearCourtCrowd(t,dt){
   if(!nearCourtCrowd.root)return;
+  updateVatCrowd(t,dt);
   const hit=nearCourtCrowd.reaction,miss=nearCourtCrowd.miss,base=Math.max(hit*.84,G.cheer*.28),shock=miss*.85;
   nearCourtCrowd.people.forEach((p,i)=>{
+    if(p.vatSpec)return;
     const wave=Math.sin(t*(2.5+p.amp*1.4)+p.phase),pulse=Math.max(0,Math.sin(t*(5.2+p.amp)+p.phase));
     const age=t-p.responseStart;
     let react=0;
@@ -1134,7 +1559,34 @@ function updNearCourtCrowd(t,dt){
       const vel=Math.cos(u);
       const walking=Math.abs(vel)>0.18&&rng>0;
       const off=ping*rng;
-      p.g.position.set(p.base.x+p.walkAxis.x*off,p.baseY,p.base.z+p.walkAxis.z*off);
+      let sx=p.base.x+p.walkAxis.x*off,sz=p.base.z+p.walkAxis.z*off;
+      /* 人物间防穿模碰撞保护：场边走动人员自动绕避球员、传球手、三分球架、其他工作人员与前排 VIP 腿区 */
+      const repel=(ox,oz,minR)=>{
+        const dx=sx-ox,dz=sz-oz,d=Math.hypot(dx,dz);
+        if(d<minR){
+          const inv=d>1e-4?1/d:1,nx=d>1e-4?dx*inv:(sx>=0?-1:1),nz=d>1e-4?dz*inv:0;
+          sx=ox+nx*minR;sz=oz+nz*minR;
+        }
+      };
+      if(typeof P!=="undefined"&&P&&P.pos)repel(P.pos.x,P.pos.z,0.92);
+      if(typeof passer!=="undefined"&&passer&&passer.g&&passer.g.visible)repel(passer.g.position.x,passer.g.position.z,0.85);
+      if(typeof racks!=="undefined"&&Array.isArray(racks)){
+        for(let rk=0;rk<racks.length;rk++){
+          const rObj=racks[rk]&&racks[rk].g?racks[rk].g:racks[rk];
+          if(rObj&&rObj.visible!==false&&rObj.position)repel(rObj.position.x,rObj.position.z,0.95);
+        }
+      }
+      for(let j=0;j<i;j++){
+        const o=nearCourtCrowd.people[j];
+        if(o&&o.staff&&o.g)repel(o.g.position.x,o.g.position.z,0.72);
+      }
+      /* 严格禁止走入两侧 VIP 座椅与起立双腿占用的禁区(|x| in [8.22, 11.18]) */
+      if(Math.abs(p.base.x)<10.0&&Math.abs(sx)>8.20&&sz>COURT.nearBaseline+0.4&&sz<COURT.farBaseline-1.5){
+        sx=Math.sign(sx)*8.20;
+      }else if(Math.abs(p.base.x)>10.5&&Math.abs(sx)<11.22){
+        sx=Math.sign(p.base.x)*11.22;
+      }
+      p.g.position.set(sx,p.baseY,sz);
       const stride=walking?Math.sin(t*6.2+p.phase)*0.42:0;
       if(p.legs){p.legs[0].rotation.x=stride;p.legs[1].rotation.x=-stride;}
       if(p.staffRole==="security"){

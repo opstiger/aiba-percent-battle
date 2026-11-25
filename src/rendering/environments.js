@@ -692,30 +692,34 @@ function applyScenePreset(name,opts){
       arenaLights.forEach(l=>{l.intensity=0;});
     }else if(rainforest){
       scene.background.setHex(0x737353);scene.fog.color.setHex(0x998c64);scene.fog.near=20;scene.fog.far=139;
-      ambient.color.setHex(0xd3d8b8);ambient.intensity=.47;
-      hemi.color.setHex(0xdce2bd);hemi.groundColor.setHex(0x4c4f30);hemi.intensity=.61;
-      sun.color.setHex(0xffcd79);sun.intensity=1.68;sun.position.copy(AIBARainforest.light).multiplyScalar(45);
-      spot.intensity=0;camFill.intensity=.17;
+      /* 压低平淡全局环境光、拉深苔藓地面反弹色，让金黄丁达尔树隙光束与幽深树荫层次立起来 */
+      ambient.color.setHex(0xc4cc9e);ambient.intensity=.28;
+      hemi.color.setHex(0xc6dca0);hemi.groundColor.setHex(0x283416);hemi.intensity=.52;
+      sun.color.setHex(0xffc668);sun.intensity=1.78;sun.position.copy(AIBARainforest.light).multiplyScalar(45);
+      spot.intensity=0;camFill.intensity=.12;
       arenaLights.forEach(l=>{l.intensity=0;});
       if(renderer.shadowMap?.enabled){
         sun.castShadow=true;
         const shadow=sun.shadow;
         shadow.mapSize.setScalar(AA_COARSE_POINTER?1024:2048);
-        Object.assign(shadow.camera,{left:-23,right:23,top:26,bottom:-26,near:1,far:105});
-        shadow.bias=-.00045;shadow.normalBias=.029;shadow.radius=2.5;shadow.camera.updateProjectionMatrix();
+        /* 阴影视锥收紧至核心球场区(±16m)，低 normalBias 让脚影严丝合缝贴住鞋底 */
+        Object.assign(shadow.camera,{left:-16,right:16,top:18,bottom:-18,near:1,far:95});
+        shadow.bias=-.0004;shadow.normalBias=.010;shadow.radius=2.1;shadow.camera.updateProjectionMatrix();
       }
     }else if(flower){
       scene.background.setHex(0x8cbacb);scene.fog.color.setHex(0xa8c4d0);scene.fog.near=64;scene.fog.far=925;
-      ambient.color.setHex(0xe5ece9);ambient.intensity=.39;
-      hemi.color.setHex(0xc3e1ef);hemi.groundColor.setHex(0x6b7848);hemi.intensity=.50;
-      sun.color.setHex(0xffefcf);sun.intensity=1.12;sun.position.set(-22,32,14);
-      spot.intensity=0;camFill.intensity=.18;
+      /* 高原晴朗日光反差：微压平摊环境光、强化暖金直射阳光与草地绿光反弹 */
+      ambient.color.setHex(0xdce6ea);ambient.intensity=.29;
+      hemi.color.setHex(0xb8ddf5);hemi.groundColor.setHex(0x5c7838);hemi.intensity=.52;
+      sun.color.setHex(0xfff0cc);sun.intensity=1.42;sun.position.set(-22,30,14);
+      spot.intensity=0;camFill.intensity=.14;
       arenaLights.forEach(l=>{l.intensity=0;});
       if(renderer.shadowMap?.enabled){
         sun.castShadow=true;sun.shadow.mapSize.setScalar(AA_COARSE_POINTER?1024:2048);
-        sun.shadow.camera.left=-21;sun.shadow.camera.right=21;sun.shadow.camera.top=24;sun.shadow.camera.bottom=-24;
-        sun.shadow.camera.near=1;sun.shadow.camera.far=83;
-        sun.shadow.bias=-.0005;sun.shadow.normalBias=.027;sun.shadow.radius=1.7;
+        /* 阴影视锥收紧至核心球场区(±15.5m)，低 normalBias 消除鞋底与阴影脱节 */
+        sun.shadow.camera.left=-15.5;sun.shadow.camera.right=15.5;sun.shadow.camera.top=17.5;sun.shadow.camera.bottom=-17.5;
+        sun.shadow.camera.near=1;sun.shadow.camera.far=78;
+        sun.shadow.bias=-.0004;sun.shadow.normalBias=.010;sun.shadow.radius=1.5;
         sun.shadow.camera.updateProjectionMatrix();
       }
     }else if(name==="arcticSnow"){
@@ -725,20 +729,21 @@ function applyScenePreset(name,opts){
       sun.color.setHex(0xb9cfe5);sun.intensity=.42;sun.position.set(-14,20,-4);spot.intensity=0;camFill.intensity=.24;
       arenaLights.forEach(l=>{l.intensity=0;});
     }else if(name==="lunarCrater"){
-      /* 月球真空（阿波罗实拍质感）：无大气散射、极低环境填光、高反差炽白低角度日光、远山锐利无雾。 */
+      /* 月球真空（阿波罗实拍质感）：极低环境填光、炽白低角度日光、蓝色地球天光反照与锐利真空影。 */
       scene.background.setHex(0x010103);scene.fog.color.setHex(0x010103);scene.fog.near=260;scene.fog.far=520;
-      ambient.color.setHex(0x7d8696);ambient.intensity=.10;
-      hemi.color.setHex(0x8c9ab2);hemi.groundColor.setHex(0x121418);hemi.intensity=.12;
-      sun.color.setHex(0xfffdf8);sun.intensity=1.88;sun.position.set(-22,10.0,-4);
-      spot.intensity=0;camFill.intensity=.10;
+      ambient.color.setHex(0x6b7c9c);ambient.intensity=.08;
+      hemi.color.setHex(0x6890d2);hemi.groundColor.setHex(0x1e222a);hemi.intensity=.14;
+      sun.color.setHex(0xfffef8);sun.intensity=2.02;sun.position.set(-22,10.0,-4);
+      spot.intensity=0;camFill.intensity=.08;
       arenaLights.forEach(l=>{l.intensity=0;});
       if(renderer.shadowMap&&renderer.shadowMap.enabled){
         sun.castShadow=true;
         sun.shadow.mapSize.setScalar(AA_COARSE_POINTER?1024:2048);
-        sun.shadow.camera.left=-24;sun.shadow.camera.right=24;
-        sun.shadow.camera.top=24;sun.shadow.camera.bottom=-24;
-        sun.shadow.camera.near=1;sun.shadow.camera.far=75;
-        sun.shadow.bias=-0.0005;sun.shadow.normalBias=0.03;sun.shadow.radius=1.1;
+        /* 收紧月球阴影视锥至 ±16m 并压低 normalBias，让阿波罗真空影死死焊在鞋跟下 */
+        sun.shadow.camera.left=-16;sun.shadow.camera.right=16;
+        sun.shadow.camera.top=17;sun.shadow.camera.bottom=-17;
+        sun.shadow.camera.near=1;sun.shadow.camera.far=70;
+        sun.shadow.bias=-0.0004;sun.shadow.normalBias=0.010;sun.shadow.radius=0.8;
         sun.shadow.camera.updateProjectionMatrix();
       }
     }else if(name==="tokyoRooftop"){
@@ -825,10 +830,11 @@ function applyScenePreset(name,opts){
        纯黑在那里读作"破洞",带一点蓝的深色才读作"暗处的空气"。 */
     scene.background.setHex(0x05070e);
     scene.fog.color.setHex(0x080a14);scene.fog.near=26;scene.fog.far=96;
-    ambient.color.setHex(0x8494b8);ambient.intensity=.36;
-    hemi.color.setHex(0x647ab0);hemi.groundColor.setHex(0x1a120d);hemi.intensity=.34;
-    sun.color.setHex(0xffe0b2);sun.intensity=.28;sun.position.set(6.5,22,5);
-    spot.color.setHex(0xfff2d8);spot.intensity=.42;spot.distance=54;spot.angle=.68;spot.penumbra=.68;spot.decay=1.05;
+    /* NBA 剧场光比升级：压住平淡泛光、注入暖枫木地板漫反射(groundColor=0x4c351d)与更聚焦的顶棚主光池 */
+    ambient.color.setHex(0x7d8eb4);ambient.intensity=.30;
+    hemi.color.setHex(0x647ab8);hemi.groundColor.setHex(0x4c351d);hemi.intensity=.40;
+    sun.color.setHex(0xffe0b2);sun.intensity=.26;sun.position.set(6.5,22,5);
+    spot.color.setHex(0xfff0d2);spot.intensity=.52;spot.distance=54;spot.angle=.64;spot.penumbra=.72;spot.decay=1.08;
     spot.position.set(6.2,16.5,4.2);spot.target.position.set(0,.9,-4.2);spot.target.updateMatrixWorld();
     /* 灯阵恢复。户外分支把强度清成 0 了,切回来必须逐盏写回 ——
        和 spot/ambient 一样,漏写就会停在户外的值上(全黑)。 */

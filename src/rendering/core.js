@@ -232,7 +232,7 @@ const ARENA_LIGHT_LAYOUT=[
   [-8.5,11.5,-5.0],[8.5,11.5,-5.0],
   [-8.5,11.5, 7.0],[8.5,11.5, 7.0]
 ];
-const ARENA_KEY_I=0.22,ARENA_FILL_I=0.19;
+const ARENA_KEY_I=0.28,ARENA_FILL_I=0.20;
 function applyArenaLightMix(){
   arenaLights.forEach(l=>{
     l.color.setHex(0xfff6e8);
