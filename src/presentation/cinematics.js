@@ -500,9 +500,21 @@ function prepareCelebrateGround(o){
 function startCelebrate(o,type){
   if(!o||!o.g)return;
   const basePosY=prepareCelebrateGround(o);
+  let clip=null,skinned=false;
+  try{
+    const D=window.AIBADance;
+    if(D&&D.ready&&typeof D.pickFor==="function"){
+      skinned=typeof pregameSkinned==="function"&&pregameSkinned(o);
+      /* 站立球员庆祝只从 player 允许的 standing(cheer) 或 dance 中抽取，绝不触发坐姿 */
+      const useDance=(type===2||type===5)&&Math.random()<0.45;
+      clip=D.pickFor({role:"player",posture:useDance?"dance":"standing",mood:useDance?"dance":"cheer",skinned});
+    }
+  }catch(e){}
   o._celeb={
     t:0,
     type,
+    clip,
+    skinned,
     baseX:o.g.rotation.x,
     baseY:o.g.rotation.y,
     baseZ:o.g.rotation.z,
@@ -527,6 +539,21 @@ function updateCelebrate(o,dt){
   if(o.headband)o.headband.rotation.set(0,0,0);
   (o.wrists||[]).forEach(wrist=>{if(wrist)wrist.rotation.set(0,0,0);});
   if(o.jerseyHem)o.jerseyHem.rotation.set(0,0,0);
+  if(c.clip&&window.AIBADance&&AIBADance.ready){
+    const smp=AIBADance.sample(c.clip,t,true);
+    if(smp){
+      const w=Math.min(1,t/0.25);
+      if(c.skinned){
+        o.pregameDance={q:smp.q,hy:smp.hy,w};
+        return;
+      }else if(AIBADance.clips[c.clip]&&AIBADance.clips[c.clip].vox_ok){
+        o.pregameDance=null;
+        AIBADance.applyVox(o,smp.vox,w);
+        return;
+      }
+    }
+  }
+  o.pregameDance=null;
   if(c.type===0){ // 双臂振举欢呼，脚底保持贴地
     const pump=Math.abs(Math.sin(t*6));
     o.arms.forEach(a=>a.rotation.x=-2.6-pump*0.4);o.elbows.forEach(e=>e.rotation.x=-0.3);
@@ -581,6 +608,7 @@ function stopCelebrate(o){
   }
   o.arms.forEach(a=>a.rotation.x=-0.3);o.elbows.forEach(e=>e.rotation.x=-0.3);
   if(o.g)o.g.position.y=c.basePosY||0;
+  o.pregameDance=null;
   o._celeb=null;
 }
 const VICTORY_CINE={on:false,t:0,dur:4.8,hero:null,foil:null,heroType:0,foilType:0,camSeed:0,nextState:"champion",cb:null,tag:"🏆 胜利庆祝",phase:""};

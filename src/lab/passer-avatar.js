@@ -25,7 +25,10 @@
     throwTime:0,
     rackPose:null,
     ballCenter:null,
-    attachedGuy: null
+    attachedGuy: null,
+    reactClip:null,
+    reactT:0,
+    reactDur:0
   };
 
   const _vMid = new THREE.Vector3();
@@ -466,7 +469,22 @@
     }else if(state.rackPose){
       return;
     }else if(state.isThrowing){
+      state.reactClip=null;
       poseThrow(dt);
+    }else if(state.reactClip && global.AIBADance && AIBADance.ready && (!passerBall || !passerBall.visible)){
+      /* 晴子站立在场边且当前未持球时，播放 standing_crowd(standing) 欢呼/点头/遗憾动作，绝不坐下或跳舞 */
+      state.reactT += Math.min(0.05, Math.max(0, dt||0.016));
+      if(state.reactT >= state.reactDur){
+        state.reactClip = null;
+        idleGrip();
+      }else{
+        const fadeIn = Math.min(1, state.reactT / 0.22);
+        const fadeOut = Math.min(1, (state.reactDur - state.reactT) / 0.28);
+        const w = Math.max(0, Math.min(fadeIn, fadeOut));
+        const smp = AIBADance.sample(state.reactClip, state.reactT, false);
+        idleGrip();
+        if(smp && w > 0.005) applyDance({q:smp.q, hy:0, w});
+      }
     }else{
       idleGrip();
     }
@@ -484,6 +502,16 @@
     }
   }
 
+  function react(mood){
+    const D = global.AIBADance;
+    if(!state.ready || state.isThrowing || state.rackPose || !D || !D.ready || typeof D.pickFor !== "function") return;
+    const clip = D.pickFor({role:"standing_crowd", posture:"standing", mood:mood||"cheer", skinned:true, avoid:state.reactClip});
+    if(!clip || !D.clips[clip]) return;
+    state.reactClip = clip;
+    state.reactT = 0;
+    state.reactDur = Math.min(2.8, Math.max(1.2, D.clips[clip].dur || 2.0));
+  }
+
   const api = Object.freeze({
     playThrow,
     markReleased,
@@ -491,6 +519,7 @@
     getBallWorldPos,
     setRackPose,
     resetPose,
+    react,
     update,
     get state(){ return state; }
   });

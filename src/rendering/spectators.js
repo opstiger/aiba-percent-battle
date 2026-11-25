@@ -82,6 +82,242 @@ const _pendingVIPUpgrades=[];
 const _coloredSpectatorGeoCache=new Map();
 const _spectatorVertexColorMat=new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:true});
 
+/* ---------------- 写实骨骼观众系统 (spectator_rig.glb + AIBADance 分类动作) ----------------
+   严格按位置区分：
+     · seated_crowd   (VIP 坐席前排): 仅播放 seated / sit_stand（坐姿握拳、起立鼓掌、起身挥拳），绝不跳舞！
+     · standing_crowd (场边站立死忠区): 仅播放 standing（欢呼/胜利/嚣张/摇头/懊恼/重心切换/点头），绝不坐下！ */
+const _SPEC_DANCE_BONES=["Hips","Spine","Spine1","Spine2","Neck","Head","LeftShoulder","LeftArm","LeftForeArm","LeftHand","RightShoulder","RightArm","RightForeArm","RightHand","LeftUpLeg","LeftLeg","LeftFoot","LeftToeBase","RightUpLeg","RightLeg","RightFoot","RightToeBase"];
+let _cachedSpecRigGltf=null;
+let _specRigLoading=false;
+const _pendingHeroRigUpgrades=[];
+const _heroRigColoredGeoCache=new Map();
+const _specSkinMat=new THREE.MeshLambertMaterial({color:0xffffff,vertexColors:true,skinning:true});
+const _rqDq=new THREE.Quaternion(),_rqTgt=new THREE.Quaternion(),_rqInv=new THREE.Quaternion(),_rqCur=new THREE.Quaternion();
+const _rvUp=new THREE.Vector3();
+
+function getColoredRigSpectatorGeo(baseGeo,cfg){
+  const skinHex=recede(cfg.skin||0xedb48a,0.05,0.08);
+  const hairHex=cfg.capColor||cfg.hair||0x181412;
+  const outfitHex=recede(cfg.outfit||cfg.jersey||cfg.shirtHex||0x242a38,0.05,0.10);
+  const accentHex=cfg.accent||cfg.pom||outfitHex;
+  const pantsHex=recede(cfg.pants||0x161a24,0.05,0.12);
+  const shoeHex=cfg.shoe||0xf2f4f8;
+  const key=`rig_${skinHex}_${hairHex}_${outfitHex}_${accentHex}_${pantsHex}_${shoeHex}`;
+  if(_heroRigColoredGeoCache.has(key))return _heroRigColoredGeoCache.get(key);
+
+  const geo=baseGeo.clone();
+  const pos=geo.attributes.position;
+  const count=pos.count;
+  const colors=new Float32Array(count*3);
+  const cSkin=new THREE.Color(skinHex);
+  const cHair=new THREE.Color(hairHex);
+  const cOutfit=new THREE.Color(outfitHex);
+  const cAccent=new THREE.Color(accentHex);
+  const cPants=new THREE.Color(pantsHex);
+  const cShoe=new THREE.Color(shoeHex);
+  const cSole=new THREE.Color(0xf4f6fa);
+
+  /* Ch04 网格在绑定空间里的坐标系可能为 cm(Y 0..176) 或 m(Y 0..1.76)，按包围盒自动归一化到 0..1.76m */
+  geo.computeBoundingBox();
+  const bb=geo.boundingBox;
+  const spanY=Math.max(0.01,bb.max.y-bb.min.y);
+  const spanZ=Math.max(0.01,bb.max.z-bb.min.z);
+  const zUp=spanZ>spanY*1.2;
+  const minH=zUp?bb.min.z:bb.min.y;
+  const sH=1.76/(zUp?spanZ:spanY);
+
+  for(let i=0;i<count;i++){
+    const vx=pos.getX(i)*sH;
+    const vh=((zUp?pos.getZ(i):pos.getY(i))-minH)*sH;
+    const vf=(zUp?-pos.getY(i):pos.getZ(i))*sH;
+    let c;
+    if(vh<0.032)c=cSole;
+    else if(vh<0.13)c=cShoe;
+    else if(vh<0.93)c=cPants;
+    else if(vh<1.43&&Math.abs(vx)>0.36)c=cSkin;
+    else if(vh<1.38)c=cOutfit;
+    else if(vh<1.44)c=cAccent;
+    else if(vh>=1.62||(vh>=1.49&&vf<-0.02))c=cHair;
+    else c=cSkin;
+    colors[i*3]=c.r;colors[i*3+1]=c.g;colors[i*3+2]=c.b;
+  }
+  geo.setAttribute("color",new THREE.BufferAttribute(colors,3));
+  _heroRigColoredGeoCache.set(key,geo);
+  return geo;
+}
+
+function cloneSkinnedRig(srcScene,cfg){
+  let srcMesh=null;
+  srcScene.traverse(ch=>{if(ch.isSkinnedMesh&&!srcMesh)srcMesh=ch;});
+  if(!srcMesh||!srcMesh.skeleton)return null;
+
+  const root=new THREE.Group();
+  root.name="heroSpectatorRig";
+  /* 手动深拷贝骨骼树，避免依赖 r128 外置 SkeletonUtils */
+  const cloneMap=new Map();
+  function cloneNode(node){
+    let c;
+    if(node.isBone){
+      c=new THREE.Bone();
+    }else if(node.isSkinnedMesh){
+      return null;
+    }else if(node.isMesh){
+      return null;
+    }else{
+      c=new THREE.Object3D();
+    }
+    c.name=node.name;
+    c.position.copy(node.position);
+    c.quaternion.copy(node.quaternion);
+    c.scale.copy(node.scale);
+    cloneMap.set(node,c);
+    for(const ch of node.children){
+      const cc=cloneNode(ch);
+      if(cc)c.add(cc);
+    }
+    return c;
+  }
+  const rigTree=cloneNode(srcScene);
+  root.add(rigTree);
+
+  const srcSkel=srcMesh.skeleton;
+  const newBones=srcSkel.bones.map(b=>cloneMap.get(b)||b);
+  const newInverses=srcSkel.boneInverses.map(m=>m.clone());
+  const newSkel=new THREE.Skeleton(newBones,newInverses);
+
+  const geo=getColoredRigSpectatorGeo(srcMesh.geometry,cfg);
+  const mesh=new THREE.SkinnedMesh(geo,_specSkinMat);
+  mesh.name=srcMesh.name;
+  mesh.frustumCulled=false;
+  mesh.castShadow=false;
+  mesh.receiveShadow=true;
+  mesh.bind(newSkel,srcMesh.bindMatrix.clone());
+  const meshParent=cloneMap.get(srcMesh.parent)||rigTree;
+  meshParent.add(mesh);
+
+  /* 在绑定 T-pose 下记录 22 根骨骼相对 root 的静止世界旋转和 Hips 上升方向 */
+  root.updateMatrixWorld(true);
+  const bones={},restInRig={},parentName={};
+  for(const b of newBones){
+    const short=b.name.replace(/^mixamorig\d*:?/,"");
+    if(_SPEC_DANCE_BONES.indexOf(short)>=0){
+      bones[short]=b;
+      restInRig[short]=b.getWorldQuaternion(new THREE.Quaternion());
+    }
+  }
+  for(const bn of _SPEC_DANCE_BONES){
+    const b=bones[bn];if(!b)continue;
+    const pShort=b.parent&&b.parent.isBone?b.parent.name.replace(/^mixamorig\d*:?/,""):null;
+    parentName[bn]=pShort&&bones[pShort]?pShort:null;
+  }
+  const hips=bones.Hips;
+  const hipsParent=hips?hips.parent:rigTree;
+  const armInRigQ=hipsParent?hipsParent.getWorldQuaternion(new THREE.Quaternion()):new THREE.Quaternion();
+  const hipsRestPos=hips?hips.position.clone():new THREE.Vector3();
+  const hipsWorldY=hips?hips.getWorldPosition(new THREE.Vector3()).y:0.96;
+  const parentWorldScale=hipsParent?hipsParent.getWorldScale(new THREE.Vector3()).y:1;
+  const hipsUpLocal=new THREE.Vector3(0,1,0).applyQuaternion(armInRigQ.clone().invert()).divideScalar(Math.max(1e-4,parentWorldScale));
+
+  return {root,mesh,bones,restInRig,parentName,armInRigQ,hipsRestPos,hipsWorldY,hipsUpLocal,curInRig:{}};
+}
+
+function applyPoseToHeroRig(rig,smp,w,opts){
+  if(!rig||!smp||!smp.q)return;
+  w=Math.max(0,Math.min(1,w==null?1:w));
+  const {bones,restInRig,parentName,armInRigQ,curInRig}=rig;
+  for(let i=0;i<_SPEC_DANCE_BONES.length;i++){
+    const bn=_SPEC_DANCE_BONES[i],bone=bones[bn];
+    if(!bone)continue;
+    _rqDq.set(smp.q[i*4],smp.q[i*4+1],smp.q[i*4+2],smp.q[i*4+3]);
+    _rqTgt.copy(_rqDq).multiply(restInRig[bn]);
+    if(w<0.999){
+      const prev=curInRig[bn]||restInRig[bn];
+      _rqCur.copy(prev).slerp(_rqTgt,w);
+    }else{
+      _rqCur.copy(_rqTgt);
+    }
+    const pName=parentName[bn];
+    const pQ=pName&&curInRig[pName]?curInRig[pName]:armInRigQ;
+    _rqInv.copy(pQ).invert();
+    bone.quaternion.copy(_rqInv).multiply(_rqCur);
+    if(!curInRig[bn])curInRig[bn]=new THREE.Quaternion();
+    curInRig[bn].copy(_rqCur);
+  }
+  if(bones.Hips){
+    const hy=opts&&opts.fixedHy!=null?opts.fixedHy:(smp.hy||0);
+    bones.Hips.position.copy(rig.hipsRestPos).addScaledVector(rig.hipsUpLocal,hy*rig.hipsWorldY);
+  }
+}
+
+function loadSpectatorRigModel(){
+  if(_cachedSpecRigGltf||_specRigLoading)return;
+  _specRigLoading=true;
+  ensureGLTFLoader(()=>{
+    new THREE.GLTFLoader().load("assets/models/spectator_rig.glb",gltf=>{
+      _cachedSpecRigGltf=gltf.scene;
+      _specRigLoading=false;
+      while(_pendingHeroRigUpgrades.length>0){
+        const item=_pendingHeroRigUpgrades.shift();
+        attachHeroRigToPerson(item.person,item.cfg);
+      }
+      rebuildSpectatorInstances();
+    },undefined,err=>{
+      console.warn("Failed to load spectator_rig.glb:",err);
+      _specRigLoading=false;
+    });
+  });
+}
+
+function attachHeroRigToPerson(person,cfg){
+  if(!_cachedSpecRigGltf||!person||!person.g)return;
+  const rig=cloneSkinnedRig(_cachedSpecRigGltf,cfg);
+  if(!rig)return;
+  /* 隐藏旧静态体素/实例化替身，改用真实 22 骨写实观众 */
+  if(person.body)person.body.visible=false;
+  if(person.arms)person.arms.forEach(a=>{if(a)a.visible=false;});
+  person.realSpec=null;
+  person.realInst=null;
+
+  const idx=cfg.idx||Math.floor((person.phase||0)*10);
+  const fat=0.95+((idx*7)%5)*0.03;
+  const height=0.96+((idx*11)%5)*0.028;
+  rig.root.rotation.y=Math.PI; /* person.g 朝向 -Z，Mixamo 模型朝向 +Z */
+  rig.root.scale.set(fat,height,fat);
+  /* 坐席 VIP 坐垫在 z≈0.02，Mixamo 坐姿脚朝 +Z、髋略靠后，微调 Z=+0.08 贴合座椅靠背 */
+  rig.root.position.set(0,0,person.seated?0.08:0);
+  person.g.add(rig.root);
+  person.heroRig=rig;
+  person.crowdRole=person.seated?"seated_crowd":"standing_crowd";
+  person.poseClip=null;
+  person.poseT=person.phase||0;
+  person.poseDur=3.0;
+  person.poseMood="idle";
+  person.poseBlend=1;
+}
+
+function queueHeroRigUpgrade(person,cfg){
+  person.isHeroRig=true;
+  if(_cachedSpecRigGltf){
+    attachHeroRigToPerson(person,cfg);
+  }else{
+    _pendingHeroRigUpgrades.push({person,cfg});
+    loadSpectatorRigModel();
+  }
+}
+
+function pickCrowdClip(person,mood,forceStandUp){
+  const D=window.AIBADance;
+  if(!D||!D.ready||typeof D.pickFor!=="function")return null;
+  const role=person.crowdRole||(person.seated?"seated_crowd":"standing_crowd");
+  if(role==="seated_crowd"){
+    /* 严格位置约束：坐席观众只允许 seated 或 sit_stand，绝对禁止 dance 与 standing */
+    const posture=forceStandUp?"sit_stand":(mood==="cheer"&&Math.random()<0.62?"sit_stand":"seated");
+    return D.pickFor({role:"seated_crowd",posture,mood:"cheer",skinned:!!person.heroRig,avoid:person.poseClip});
+  }
+  /* 严格位置约束：场边站立观众只允许 standing，绝对禁止 seated / sit_stand / dance */
+  return D.pickFor({role:"standing_crowd",posture:"standing",mood:mood||"idle",skinned:!!person.heroRig,avoid:person.poseClip});
+}
+
 function ensureGLTFLoader(cb){
   if(window.THREE&&window.THREE.GLTFLoader)return cb();
   const s=document.createElement("script");
@@ -209,7 +445,7 @@ function rebuildSpectatorInstances(){
 }
 
 function applyModelToVIP(person,cfg,deferBatch){
-  if(!_cachedSpectatorSitMesh||!person.g)return;
+  if(!_cachedSpectatorSitMesh||!person.g||person.isHeroRig)return;
   if(person.body)person.body.visible=false;
   if(person.arms){
     // 将挂在旧方块手臂上的相机/饮品/手机移到真实人体胸前手部位置，彻底隐藏旧体素手臂避免“四只手”
@@ -374,11 +610,13 @@ function makeCourtsideVIP(parent,cube,cfg){
   g.position.set(cfg.x,baseY,cfg.z);g.rotation.y=cfg.rot+yawOff;g.scale.setScalar(s);
   parent.add(g);
   const person={g,body,shirtVertCount:0,arms:[armL,armR],phone,sign:null,prop,poms:[null,null],
-    kind:role==="fashion"?"filmer":(role==="coach"?"coach":"vip"),vip:true,seated:true,role,pose,excitement,basePitch,yawOff,
+    kind:role==="fashion"?"filmer":(role==="coach"?"coach":"vip"),vip:true,seated:true,crowdRole:"seated_crowd",role,pose,excitement,basePitch,yawOff,
     base:V3(cfg.x,baseY,cfg.z),baseY,baseRot:cfg.rot,axis:V3(0,0,0),move:0,
     phase:cfg.phase,amp:cfg.amp||1,team:cfg.x>0?1:0,responseStart:-100,responseDuration:0,responseSign:0};
   nearCourtCrowd.people.push(person);
-  if(_cachedSpectatorSitMesh){
+  if(cfg.heroRig&&!phone&&!prop){
+    queueHeroRigUpgrade(person,cfg);
+  }else if(_cachedSpectatorSitMesh){
     applyModelToVIP(person,cfg);
   }else{
     _pendingVIPUpgrades.push({person,cfg});
@@ -714,7 +952,8 @@ function buildCourtsideVIPs(root,cube){
     {dist:10.05,y:0.22,step:0.64,skipScorer:true},
     {dist:10.82,y:0.46,step:0.66,skipScorer:false}
   ];
-  let idx=0;
+  let idx=0,heroVipCount=0;
+  const maxHeroVips=mobile?5:10;
   for(const side of [-1,1]){
     const rot=side>0?Math.PI/2:-Math.PI/2;
     for(const row of sideRows){
@@ -725,7 +964,10 @@ function buildCourtsideVIPs(root,cube){
         if(idx%17===0)continue; // 偶留零星未入座空位更真实
         const prof=vipProfiles[idx%vipProfiles.length];
         const yawOff=prof.pose==="social"?((idx%2?1:-1)*0.24):((idx%5-2)*0.045);
-        makeCourtsideVIP(root,cube,{idx,x:cx,y:row.y,z:cz,rot,yawOff,phase:idx*0.77,amp:0.82+(idx%4)*0.11,...prof});
+        /* 仅选第一排(row.y===0)中靠近球场视野焦点的非持道具席位升级为 22 骨真动作 VIP */
+        const canHero=row.y===0&&heroVipCount<maxHeroVips&&(prof.role==="vipfan"||prof.role==="star")&&prof.pose!=="chill"&&(idx%(mobile?5:4)===0);
+        if(canHero)heroVipCount++;
+        makeCourtsideVIP(root,cube,{idx,heroRig:canHero,x:cx,y:row.y,z:cz,rot,yawOff,phase:idx*0.77,amp:0.82+(idx%4)*0.11,...prof});
       }
     }
   }
@@ -736,7 +978,9 @@ function buildCourtsideVIPs(root,cube){
       idx++;
       if(idx%15===0)continue;
       const prof=vipProfiles[idx%vipProfiles.length];
-      makeCourtsideVIP(root,cube,{idx,x:side*x,y:0.16,z:baseVipZ,rot:Math.PI,yawOff:(idx%5-2)*0.05,phase:idx*0.83,amp:0.85+(idx%3)*0.12,...prof});
+      const canHero=heroVipCount<maxHeroVips+2&&(prof.role==="vipfan"||prof.role==="star")&&prof.pose!=="chill"&&(idx%(mobile?5:4)===1);
+      if(canHero)heroVipCount++;
+      makeCourtsideVIP(root,cube,{idx,heroRig:canHero,x:side*x,y:0.16,z:baseVipZ,rot:Math.PI,yawOff:(idx%5-2)*0.05,phase:idx*0.83,amp:0.85+(idx%3)*0.12,...prof});
     }
   }
   // 技术台后方 3 位记录员
@@ -790,6 +1034,13 @@ function buildNearCourtCrowd(){
   ];
   const mobile=(window.matchMedia&&window.matchMedia("(pointer:coarse)").matches)||Math.min(innerWidth,innerHeight)<700;
   const max=mobile?10:16;
+  const skinPalette=[0xf6cdab,0xedb48a,0xda9d6e,0xb87848];
+  const hairPalette=[0x16100d,0x2c1b10,0x8a6d42,0x0f1118,0x3a3e48];
+  const shirtPalette=[0xf2ae29,0x58278a,0xeef1f7,0x1b202c,0x3a4860,0xf8bb34,0x4b2078,0xe0e5ef,0x252a38];
+  const pantsPalette=[0x141720,0x1d2b42,0x2c303a,0x122620,0x242834,0x221814];
+  const shoePalette=[0x88909c,0x111116,0x6e2838,0x2e5870,0x8a7030];
+  let heroStandCount=0;
+  const maxHeroStand=mobile?3:6;
   slots.slice(0,max).forEach((s,i)=>{
     const pos=V3(s[0]+rnd(-.12,.12),0,s[1]+rnd(-.16,.16));
     const target=Math.abs(pos.x)>9.8?V3(0,0,Math.min(COURT.playMaxZ,pos.z+.45)):V3(0,0,HOOP.z+.9);
@@ -797,6 +1048,23 @@ function buildNearCourtCrowd(){
     makeNearCourtPerson(root,cube,{x:pos.x,z:pos.z,rot:faceTo(pos,target)+Math.PI,kind:s[2],skin:i%4,hair:(i*2)%5,shirt:(i*3)%9,
       pants:(i+1)%6,shoe:(i*5)%5,sign:i%4,scale:rnd(.82,.96),phase:rnd(0,Math.PI*2),amp:rnd(.7,1.2),
       axis,move:(s[2]==="hype"||s[2]==="distract"||s[2]==="filmer")?rnd(.08,.22):0},mats);
+    const created=nearCourtCrowd.people[nearCourtCrowd.people.length-1];
+    if(created){
+      created.crowdRole="standing_crowd";
+      /* 场边无手持道具的站立死忠(hype/calm)升级为 22 骨写实站立观众，只播放 standing 动作 */
+      if((s[2]==="hype"||s[2]==="calm")&&heroStandCount<maxHeroStand){
+        heroStandCount++;
+        queueHeroRigUpgrade(created,{
+          idx:200+i,
+          skin:skinPalette[i%4],
+          hair:hairPalette[(i*2)%5],
+          outfit:shirtPalette[(i*3)%9],
+          accent:0xfdb927,
+          pants:pantsPalette[(i+1)%6],
+          shoe:shoePalette[(i*5)%5]
+        });
+      }
+    }
   });
   buildCourtsideVIPs(root,cube);
   if(_cachedSpectatorSitMesh)rebuildSpectatorInstances();
@@ -808,11 +1076,40 @@ function triggerNearCourtCrowdReaction(kind,points){
   else nearCourtCrowd.reaction=Math.max(nearCourtCrowd.reaction,big?1:.76);
   nearCourtCrowd.last=kind||"make";
   const scorer=kind==="oppMake"||kind==="oppMiss"?1:0,miss=kind==="miss"||kind==="oppMiss";
+  /* 场边站立传球手晴子同步响应玩家进球/打铁（仅使用 standing 动作） */
+  try{
+    if(window.AIBAPasserAvatar&&typeof window.AIBAPasserAvatar.react==="function"&&(kind==="make"||kind==="miss"||kind==="final"||!kind)){
+      window.AIBAPasserAvatar.react(miss?"miss":"cheer");
+    }
+  }catch(e){}
+  const D=window.AIBADance;
   nearCourtCrowd.people.forEach((p,i)=>{
     p.responseStart=crowd.clock+.05+(Math.sin(p.phase*17+i)+1)*.25;
     p.responseDuration=2.0+p.amp;
     p.responseLinger=2.6+p.amp*1.2;
     p.responseSign=(p.team===scorer?1:-.42)*(miss?-.6:1);
+    if(D&&D.ready&&(p.heroRig||p.vip||(!p.seated&&!p.staff&&!p.baselineCrew&&(p.kind==="hype"||p.kind==="calm")))){
+      const mood=miss?"miss":"cheer";
+      if(p.seated){
+        /* 坐席观众：进球触发 sit_stand(起立鼓掌/起身挥拳) 或 seated(坐姿挥拳)，打铁保持坐姿 */
+        if(!miss&&(big||p.pose==="hyper"||p.heroRig)){
+          const clip=pickCrowdClip(p,"cheer",big&&Math.random()<0.78);
+          if(clip){
+            p.poseClip=clip;p.poseT=0;p.poseMood="cheer";
+            p.poseDur=D.clips[clip]?D.clips[clip].dur:3.2;
+            p.poseBlend=0;p.poseDelay=0.04+(i%7)*0.05;
+          }
+        }
+      }else{
+        /* 场边站立观众：严格只抽 standing 动作(欢呼/胜利/嚣张/摇头/懊恼) */
+        const clip=pickCrowdClip(p,mood,false);
+        if(clip){
+          p.poseClip=clip;p.poseT=0;p.poseMood=mood;
+          p.poseDur=D.clips[clip]?D.clips[clip].dur:2.6;
+          p.poseBlend=0;p.poseDelay=0.03+(i%6)*0.04;
+        }
+      }
+    }
   });
 }
 function updNearCourtCrowd(t,dt){
@@ -864,6 +1161,49 @@ function updNearCourtCrowd(t,dt){
     const move=p.seated?0:Math.sin(t*.55+p.phase)*p.move;
     p.g.position.set(p.base.x+p.axis.x*move,p.baseY||0,p.base.z+p.axis.z*move);
     const cheer=Math.max(0,react),taunt=Math.max(0,-react);
+    /* 22 骨写实英雄观众：按 seated_crowd / standing_crowd 严格播放对应 Mixamo 分类动作 */
+    if(p.heroRig){
+      const D=window.AIBADance;
+      if(D&&D.ready){
+        if(p.poseDelay>0){
+          p.poseDelay=Math.max(0,p.poseDelay-dt);
+        }else{
+          p.poseT=(p.poseT||0)+dt;
+          if(!p.poseClip||p.poseT>=(p.poseDur||3.0)){
+            if(p.seated){
+              /* 坐席空闲时：绝大多数时间自然安坐微动(sit_fist_pump 慢速/轻幅)，绝不起立乱晃或跳舞 */
+              p.poseClip=pickCrowdClip(p,"idle",false);
+              p.poseMood="idle";
+              p.poseT=0;
+              p.poseDur=4.2+(p.phase%3.0);
+              p.poseBlend=0;
+            }else{
+              /* 站立死忠空闲时：自然切换重心、点头赞许、轻叹观赛，绝不坐下或跳舞 */
+              p.poseClip=pickCrowdClip(p,"idle",false);
+              p.poseMood="idle";
+              p.poseT=0;
+              const c=p.poseClip&&D.clips[p.poseClip];
+              p.poseDur=c?Math.max(2.2,c.dur):3.0;
+              p.poseBlend=0;
+            }
+          }
+        }
+        p.poseBlend=Math.min(1,(p.poseBlend==null?1:p.poseBlend)+dt*4.5);
+        if(p.poseClip&&D.clips[p.poseClip]){
+          const isSeatedIdle=p.seated&&p.poseMood==="idle";
+          /* 坐席空闲时只取坐姿起始附近微幅呼吸与偶尔轻振拳，保持端坐椅面 */
+          const sampleT=isSeatedIdle?(0.06+0.10*(0.5+0.5*Math.sin(t*1.15+p.phase))):p.poseT;
+          const smp=D.sample(p.poseClip,sampleT,false);
+          if(smp){
+            applyPoseToHeroRig(p.heroRig,smp,p.poseBlend,isSeatedIdle?{fixedHy:-0.42}:null);
+          }
+        }
+      }
+      /* 骨骼自带起立/重心起伏，根节点保持严丝合缝贴合椅子/地面 */
+      p.g.position.set(p.base.x,p.baseY||0,p.base.z);
+      p.g.rotation.y=p.baseRot+(p.yawOff||0)+Math.sin(t*0.75+p.phase)*0.025;
+      return;
+    }
     if(p.baselineCrew){
       // 随机周期性切换动作状态（拍照/回看/聊天/休息/挥舞花球）
       p.stateTimer=(p.stateTimer||0)+dt;
@@ -928,9 +1268,24 @@ function updNearCourtCrowd(t,dt){
     if(p.vip){
       const exc=p.excitement!=null?p.excitement:0.6;
       const ec=cheer*exc,et=taunt*exc;
-      const stand=p.pose==="hyper"?Math.min(1,Math.max(0,ec*0.95+base*0.25)):0;
-      p.g.position.y=(p.baseY||0)+(p.pose==="hyper"?stand*0.28:Math.max(0,ec)*0.035);
-      p.g.rotation.y=p.baseRot+(p.yawOff||0)*(1-0.6*ec)+Math.sin(t*(p.pose==="chill"?0.6:1.3)+p.phase)*(p.pose==="chill"?0.012:0.032+0.045*ec);
+      let standRise=p.pose==="hyper"?Math.min(1,Math.max(0,ec*0.95+base*0.25))*0.28:Math.max(0,ec)*0.035;
+      let voxPitch=0,voxYaw=0;
+      /* 其余静态坐席 VIP 同步借鉴 sit_stand / seated 动作的重心起伏与躯干前倾曲线 */
+      if(p.poseClip&&window.AIBADance&&AIBADance.ready&&AIBADance.clips[p.poseClip]){
+        p.poseT=(p.poseT||0)+dt;
+        if(p.poseT<=(p.poseDur||3.2)){
+          const smp=AIBADance.sample(p.poseClip,p.poseT,false);
+          if(smp){
+            const lift=Math.max(0,(smp.hy||-0.42)+0.42); /* 0=安坐, ~0.41=起立 */
+            standRise=Math.max(standRise,lift*0.52*Math.min(1,exc+0.35));
+            if(smp.vox){voxPitch=smp.vox[0]*0.18;voxYaw=smp.vox[1]*0.16;}
+          }
+        }else{
+          p.poseClip=null;
+        }
+      }
+      p.g.position.y=(p.baseY||0)+standRise;
+      p.g.rotation.y=p.baseRot+(p.yawOff||0)*(1-0.6*ec)+voxYaw+Math.sin(t*(p.pose==="chill"?0.6:1.3)+p.phase)*(p.pose==="chill"?0.012:0.032+0.045*ec);
       if(p.pose==="chill"){
         p.arms[0].rotation.set(0.32+0.15*ec,0,-0.14);
         p.arms[1].rotation.set(p.prop?0.85+0.12*ec:0.42+0.18*ec,0,0.12);
@@ -952,8 +1307,14 @@ function updNearCourtCrowd(t,dt){
         p.arms[0].rotation.set(0.65+0.72*ec,0,-0.18+clap);
         p.arms[1].rotation.set(0.65+0.72*ec,0,0.18-clap);
       }
-      if(p.body)p.body.rotation.x=(p.basePitch||0)+0.05*ec-0.04*et;
-      if(p.realMesh)p.realMesh.rotation.x=(p.basePitch||0)+0.05*ec-0.04*et;
+      if(p.body)p.body.rotation.x=(p.basePitch||0)+voxPitch+0.05*ec-0.04*et;
+      if(p.realMesh)p.realMesh.rotation.x=(p.basePitch||0)+voxPitch+0.05*ec-0.04*et;
+      if(p.realInst&&p.realSpec){
+        _specQuat.setFromAxisAngle(_specUp,p.g.rotation.y);
+        _specMatParent.compose(p.g.position,_specQuat,_specScale);
+        _specMatOut.multiplyMatrices(_specMatParent,p.realSpec.localMat);
+        p.realInst.inst.setMatrixAt(p.realInst.index,_specMatOut);
+      }
       return;
     }
     p.g.position.y=Math.max(0,wave)*(.012+.19*Math.max(0,react))*p.amp;
@@ -994,13 +1355,37 @@ function updNearCourtCrowd(t,dt){
       p.arms[1].rotation.z=.18+.42*cheer-.18*taunt;
       if(p.prop&&p.prop.parent===p.g)p.prop.position.y=1.05+.16*cheer+.04*Math.sin(t*3+p.phase);
     }else{
-      p.arms[0].rotation.z=-.1-.68*cheer+.26*taunt;
-      p.arms[1].rotation.z=.1+.68*cheer-.26*taunt;
-      p.arms[0].rotation.x=.22*cheer-.10*taunt;
-      p.arms[1].rotation.x=.22*cheer-.10*taunt;
+      let usedMixamo=false;
+      const D=window.AIBADance;
+      if(D&&D.ready){
+        p.poseT=(p.poseT||0)+dt;
+        if(!p.poseClip||p.poseT>=(p.poseDur||3.0)){
+          p.poseClip=pickCrowdClip(p,cheer>0.15?"cheer":(taunt>0.15?"miss":"idle"),false);
+          p.poseT=0;
+          const c=p.poseClip&&D.clips[p.poseClip];
+          p.poseDur=c?Math.max(2.0,c.dur):3.0;
+        }
+        const smp=p.poseClip?D.sample(p.poseClip,p.poseT,false):null;
+        if(smp&&smp.vox){
+          /* 场边普通站立观众手臂/躯干由 standing Mixamo vox 驱动（g 朝 -Z，故前后摆臂取反匹配前举方向） */
+          const v=smp.vox;
+          p.arms[0].rotation.set(-v[9]*0.72,0,clamp(-v[10]*0.75,-2.2,0.55));
+          p.arms[1].rotation.set(-v[6]*0.72,0,clamp(-v[7]*0.75,-0.55,2.2));
+          if(p.body)p.body.rotation.x=clamp(v[0]*0.24,-0.16,0.18);
+          p.g.rotation.y=p.baseRot+clamp(v[1]*0.32,-0.35,0.35);
+          usedMixamo=true;
+        }
+      }
+      if(!usedMixamo){
+        p.arms[0].rotation.z=-.1-.68*cheer+.26*taunt;
+        p.arms[1].rotation.z=.1+.68*cheer-.26*taunt;
+        p.arms[0].rotation.x=.22*cheer-.10*taunt;
+        p.arms[1].rotation.x=.22*cheer-.10*taunt;
+        if(p.body)p.body.rotation.x=-.012*cheer+.05*taunt;
+      }
     }
     /* 身体已烘焙成整块:以脚为轴做等效的轻微前倾/后仰(系数减半补偿更长的力臂) */
-    if(p.body)p.body.rotation.x=-.012*cheer+.05*taunt;
+    if(p.body&&(p.kind==="filmer"||p.kind==="heckler"||p.kind==="cheer"||p.kind==="distract"||p.kind==="player"))p.body.rotation.x=-.012*cheer+.05*taunt;
     if(p.realInst&&p.realSpec){
       _specQuat.setFromAxisAngle(_specUp,p.g.rotation.y);
       _specMatParent.compose(p.g.position,_specQuat,_specScale);
@@ -1279,8 +1664,22 @@ function triggerStreetCrowdReaction(kind,points){
   if(!streetCrowd.root||(SCENE_PRESETS[currentScenePreset]||{}).type!=="outdoor")return;
   const big=(points||0)>=5||kind==="final";
   if(streetCrowd.root.userData.place){
-    const state=streetCrowd.root.userData,random=state.random;
-    streetCrowd.people.forEach(p=>{if(random()<p.interest){p.pendingAt=state.clock+.08+random()*.85;p.pendingStrength=(big?1:.65)*p.energy;p.responseSign=(kind==="miss"||kind==="oppMiss")?-1:1;}});
+    const state=streetCrowd.root.userData,random=state.random,D=window.AIBADance,miss=(kind==="miss"||kind==="oppMiss");
+    streetCrowd.people.forEach(p=>{
+      if(random()<p.interest){
+        p.pendingAt=state.clock+.08+random()*.85;
+        p.pendingStrength=(big?1:.65)*p.energy;
+        p.responseSign=miss?-1:1;
+        if(D&&D.ready&&(p.kind==="fan"||p.kind==="bench")&&!p.life){
+          const isSeat=p.kind==="bench";
+          p.seated=isSeat;p.crowdRole=isSeat?"seated_crowd":"standing_crowd";
+          if(!isSeat||!miss){
+            const clip=pickCrowdClip(p,miss?"miss":"cheer",false);
+            if(clip){p.poseClip=clip;p.poseT=0;p.poseDur=D.clips[clip]?D.clips[clip].dur:2.6;}
+          }
+        }
+      }
+    });
     streetCrowd.last=kind||"make";return;
   }
   if(kind==="miss"||kind==="oppMiss")streetCrowd.miss=Math.max(streetCrowd.miss,big?.9:.62);
@@ -1299,6 +1698,28 @@ function updStreetCrowd(t,dt){
       p.g.rotation.y=p.baseRot+Math.sin(state.clock*.6+p.phase)*.025;
       p.arms[0].rotation.set(-.12*cheer,-0,-.08-.8*(cheer+base)+.22*shock);
       p.arms[1].rotation.set(-.12*cheer,0,.08+.8*(cheer+base)-.22*shock);
+      /* 户外无手持道具的站立粉丝/长椅观众套用对应位置分类的 Mixamo 姿势(standing_crowd vs seated_crowd) */
+      if((p.kind==="fan"||p.kind==="bench")&&!p.life&&!(p.chat&&p.chat.amount>0.1)&&window.AIBADance&&AIBADance.ready){
+        const D=AIBADance;
+        const isSeat=p.kind==="bench";
+        p.seated=isSeat;p.crowdRole=isSeat?"seated_crowd":"standing_crowd";
+        p.poseT=(p.poseT||0)+dt;
+        if(!p.poseClip||p.poseT>=(p.poseDur||3.0)){
+          const m=cheer>0.12?"cheer":(shock>0.12?"miss":"idle");
+          p.poseClip=isSeat?D.pickFor({role:"seated_crowd",posture:"seated",mood:"cheer",skinned:false}):pickCrowdClip(p,m,false);
+          p.poseT=0;
+          const c=p.poseClip&&D.clips[p.poseClip];
+          p.poseDur=c?Math.max(2.0,c.dur):3.0;
+        }
+        const smp=p.poseClip?D.sample(p.poseClip,isSeat&&cheer<0.1?(0.05+0.08*(0.5+0.5*Math.sin(state.clock+p.phase))):p.poseT,false):null;
+        if(smp&&smp.vox){
+          const v=smp.vox,amp=isSeat?0.55:0.75;
+          p.arms[0].rotation.set(-v[9]*amp,0,clamp(-v[10]*amp,-2.0,0.45));
+          p.arms[1].rotation.set(-v[6]*amp,0,clamp(-v[7]*amp,-0.45,2.0));
+          if(p.body)p.body.rotation.x=clamp(v[0]*0.22,-0.14,0.16);
+          p.g.rotation.y=p.baseRot+clamp(v[1]*0.28,-0.32,0.32);
+        }
+      }
       if(p.kind==="filmer"||p.kind==="quiet"){p.arms[1].rotation.x=p.kind==="quiet"?1.1:1.5;p.arms[1].rotation.z=-.35;if(p.phone&&p.phone.parent===p.g)p.phone.position.y=(p.kind==="quiet"?1.05:1.23)+cheer*.04;}
       if(p.kind==="player"){p.arms[0].rotation.z=-.55;if(p.ball&&p.ball.parent===p.g)p.ball.position.y=1.04;}
       if(p.kind==="passer"){

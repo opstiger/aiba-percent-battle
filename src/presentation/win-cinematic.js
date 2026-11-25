@@ -17,7 +17,7 @@ function poseShock(o,k){
 }
 function startWinCine(win,ball){
   const w=winCine;
-  w.on=true;w.win=win;w.t=0;w.fxCrowd=false;w.heroStarted=false;w.ballHitFx=false;w.camSeed=Math.random()*Math.PI*2;w.heroType=(Math.random()*8)|0;if(window.AIBARecorder)AIBARecorder.mark(win?"百分大战制胜球":"对手破百瞬间",{postMs:(WC_T3+1.2)*1000});
+  w.on=true;w.win=win;w.t=0;w.fxCrowd=false;w.heroStarted=false;w.ballHitFx=false;w.loserClip=null;w.loserSkinned=false;w.camSeed=Math.random()*Math.PI*2;w.heroType=(Math.random()*8)|0;if(window.AIBARecorder)AIBARecorder.mark(win?"百分大战制胜球":"对手破百瞬间",{postMs:(WC_T3+1.2)*1000});
   G.battleResultRecord=saveBattleRecord(makeBattleRecord(win,stopBattleClock()));
   G.battleOver=true;G.running=false;G.canShoot=false;G.charging=false;
   if(typeof cancelOppPass==="function")cancelOppPass(true);
@@ -129,17 +129,35 @@ function updWinCine(dt){
     }
   }
 
-  /* ---- 失败者姿态:震惊前保持站立,T2 起慢慢举手后仰 ---- */
+  /* ---- 失败者姿态:震惊前保持站立,T2 起使用站立遗憾/摇头 Mixamo 动作(兼容写实与方块) ---- */
   if(w.loser){
     if(tt<WC_T2){
+      w.loser.pregameDance=null;
       poseGuy(w.loser,shotCurves(0),0);
       w.loser.g.position.set(w.lPos.x,0,w.lPos.z);
       w.loser.g.rotation.y=w.lFace;w.loser.g.rotation.x=0;
     }else{
       const k=clamp((tt-WC_T2)/0.7,0,1);
-      poseShock(w.loser,k);
-      w.loser.g.position.set(w.lPos.x,0,w.lPos.z);
-      w.loser.g.rotation.y=w.lFace;
+      if(!w.loserClip&&window.AIBADance&&AIBADance.ready&&typeof AIBADance.pickFor==="function"){
+        w.loserSkinned=typeof pregameSkinned==="function"&&pregameSkinned(w.loser);
+        w.loserClip=AIBADance.pickFor({role:"player",posture:"standing",mood:"miss",skinned:w.loserSkinned});
+      }
+      const smp=w.loserClip&&window.AIBADance&&AIBADance.ready?AIBADance.sample(w.loserClip,tt-WC_T2,true):null;
+      if(smp&&w.loserSkinned){
+        w.loser.pregameDance={q:smp.q,hy:smp.hy,w:k};
+        w.loser.g.position.set(w.lPos.x,0,w.lPos.z);
+        w.loser.g.rotation.y=w.lFace;w.loser.g.rotation.x=0;
+      }else if(smp&&AIBADance.clips[w.loserClip]&&AIBADance.clips[w.loserClip].vox_ok){
+        w.loser.pregameDance=null;
+        w.loser.g.position.set(w.lPos.x,0,w.lPos.z);
+        w.loser.g.rotation.y=w.lFace;
+        AIBADance.applyVox(w.loser,smp.vox,k);
+      }else{
+        w.loser.pregameDance=null;
+        poseShock(w.loser,k);
+        w.loser.g.position.set(w.lPos.x,0,w.lPos.z);
+        w.loser.g.rotation.y=w.lFace;
+      }
     }
   }
 
@@ -237,6 +255,7 @@ function updWinCine(dt){
     w.on=false;
     if(w.ghost){w.ghost.visible=false;w.gBlob.visible=false;}
     if(w.heroStarted)stopCelebrate(w.shooter);
+    if(w.loser)w.loser.pregameDance=null;
     $("lbT").style.height="0";$("lbB").style.height="0";$("heroTag").style.display="none";
     showBattleResult(w.win);
   }

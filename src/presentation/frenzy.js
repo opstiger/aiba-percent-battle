@@ -306,17 +306,32 @@
   function onMiss(){if(S.level>0)setLevel(0);}
 
   /* ================= 赛后:球员情绪 + 冲场互动 ================= */
-  const EMO={good:["fistjump","spread","dance","camflex","pointcam"],flat:["clap","wavecam","spread"],bad:["knees","headhands","squat","slump"]};
+  const EMO={
+    good:["mixamo","mixamo","dance","fistjump","spread","camflex","pointcam"],
+    flat:["mixamo","mixamo","clap","wavecam","spread"],
+    bad:["mixamo","mixamo","knees","headhands","squat","slump"]
+  };
   const CAM_EMO={camflex:1,pointcam:1,wavecam:1};
   function startPost(tone,secs,opts){
     if(!active()||typeof player==="undefined"||typeof P==="undefined")return;
     opts=opts||{};
     let emo=opts.emo||pickOf(EMO[tone]||EMO.flat);
-    if(emo==="dance"&&!(global.AIBADance&&AIBADance.ready&&AIBADance.ids.length))emo="fistjump";
+    if((emo==="dance"||emo==="mixamo")&&!(global.AIBADance&&AIBADance.ready&&AIBADance.ids.length))emo=tone==="bad"?"headhands":tone==="flat"?"clap":"fistjump";
     const post=S.post={t:0,dur:secs,tone,emo,px:P.pos.x,pz:P.pos.z,face:P.face,cam:!!opts.cam,fans:true,clip:null,clipT:0,skinned:false,camSide:Math.random()<.5?-1:1,seed:Math.random()*TAU};
     if(emo==="dance"){
       try{post.skinned=typeof pregameSkinned==="function"&&pregameSkinned(player);post.clip=AIBADance.pick(post.skinned);
         if(post.clip)post.clipT=rn(0,Math.max(0,AIBADance.clips[post.clip].dur-secs-.2));else post.emo="fistjump";}catch(e){post.emo="fistjump";}
+    }else if(emo==="mixamo"){
+      try{
+        post.skinned=typeof pregameSkinned==="function"&&pregameSkinned(player);
+        const mood=tone==="good"?"cheer":tone==="bad"?"miss":"idle";
+        /* 赛后站立球员只调用 role:"player", posture:"standing" 的对应情绪动作 */
+        post.clip=typeof AIBADance.pickFor==="function"
+          ?AIBADance.pickFor({role:"player",posture:"standing",mood,skinned:post.skinned})
+          :null;
+        if(post.clip)post.clipT=0;
+        else post.emo=tone==="bad"?"headhands":tone==="flat"?"clap":"fistjump";
+      }catch(e){post.emo=tone==="bad"?"headhands":tone==="flat"?"clap":"fistjump";}
     }
     /* 冲场:按结果决定来多少人、干什么。站位以球员为圆心,留出"球员→镜头"那一侧不挡脸 */
     const fx=Math.sin(P.face),fz=Math.cos(P.face);                                    // 球员面朝的方向(朝篮筐)
@@ -385,14 +400,14 @@
       A.forEach(a=>a.rotation.set(.04,0,0));E.forEach(e=>e.rotation.x=-.05);guy.g.rotation.x=.16;
       if(H){H.rotation.x=.46;H.rotation.y=Math.sin(t*3.2)*.3*(1-sm((t-1.6)/.6));}
       yaw=post.face+sm(t/2.2)*1.2;
-    }else if(emo==="dance"&&post.clip){
-      const smp=AIBADance.sample(post.clip,post.clipT+t);
+    }else if((emo==="dance"||emo==="mixamo")&&post.clip){
+      const smp=AIBADance.sample(post.clip,post.clipT+t,emo==="mixamo");
       if(smp){
         if(post.skinned)guy.pregameDance={q:smp.q,hy:smp.hy,w};
         else{guy.g.rotation.y=post.face;AIBADance.applyVox(guy,smp.vox,1);}
       }
     }
-    if(!(emo==="dance"&&!post.skinned)){
+    if(!((emo==="dance"||emo==="mixamo")&&!post.skinned)){
       guy.g.rotation.order="XYZ";guy.g.rotation.y=yaw;guy.g.rotation.z=0;
       guy.g.position.y=rootY+lift;
     }

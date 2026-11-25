@@ -44,7 +44,9 @@ const PREGAME_LABELS={
 const PREGAME_DANCE_LABELS={
   hiphop:"街头律动 · HIP-HOP",dancing:"花式舞步 · GROOVE",silly:"全场嗨舞 · SHOWTIME",
   freeze:"街舞定格 · FREEZE",freeze2:"倒立定格 · POWER FREEZE",
-  swing:"摇摆舞步 · SWING DANCE",silly2:"魔性尬舞 · FUNKY DANCE",slowrun:"热身慢跑 · WARM-UP JOG"
+  break1990:"单手陀螺 · 1990 SPIN",headspin:"街舞头转 · HEADSPIN",
+  swing:"摇摆舞步 · SWING DANCE",silly2:"魔性尬舞 · FUNKY DANCE",slowrun:"热身慢跑 · WARM-UP JOG",
+  cheering:"举臂欢呼 · CHEERING",victory_idle:"胜利呐喊 · VICTORY",being_cocky:"霸气摊手 · SWAGGER",happy_gesture:"开心致意 · HAPPY CHEER"
 };
 function ensurePregameDanceClip(seg,actor,avoidClip){
   if(!seg||!(window.AIBADance&&AIBADance.ready&&AIBADance.ids&&AIBADance.ids.length))return false;

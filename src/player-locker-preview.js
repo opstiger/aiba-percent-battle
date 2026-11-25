@@ -100,8 +100,10 @@
     if(D&&typeof D.load==="function"&&!D.ready&&!D.loading)D.load();
     const seed=Array.from(String(id||"star8")).reduce((a,c)=>a+c.charCodeAt(0),0);
     if(D&&D.ready&&Array.isArray(D.ids)&&D.ids.length){
-      const clipIdx=Math.floor((time*0.24)+seed)%D.ids.length;
-      const clipId=D.ids[clipIdx];
+      const lockerPool=typeof D.list==="function"?D.list({role:"locker",postures:["dance","standing"],moods:["dance","cheer"],skinned:true}):D.ids;
+      const pool=lockerPool.length?lockerPool:D.ids;
+      const clipIdx=Math.floor((time*0.24)+seed)%pool.length;
+      const clipId=pool[clipIdx];
       const clip=D.clips&&D.clips[clipId];
       if(clip){
         const dur=Math.max(0.5,(clip.n-1)/(clip.fps||15));
@@ -370,7 +372,9 @@
     const D=global.AIBADance;
     if(D&&typeof D.load==="function"&&!D.ready&&!D.loading)D.load();
     if(!D||!D.ready||!Array.isArray(D.ids)||!D.ids.length||typeof D.applyVox!=="function")return false;
-    const voxIds=D.ids.filter(k=>D.clips[k]&&D.clips[k].vox_ok);
+    const voxIds=typeof D.list==="function"
+      ?D.list({role:"locker",postures:["dance","standing"],moods:["dance","cheer"],skinned:false})
+      :D.ids.filter(k=>D.clips[k]&&D.clips[k].vox_ok);
     const pool=voxIds.length?voxIds:D.ids;
     const seed=Array.from(String(id||"random")).reduce((n,c)=>n+c.charCodeAt(0),0);
     const clipId=pool[Math.floor((time*0.22)+seed)%pool.length];
