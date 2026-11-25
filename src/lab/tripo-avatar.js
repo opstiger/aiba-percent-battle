@@ -27,14 +27,45 @@
     cat1:{file:"cat1.glb",yaw:0},
     /* husky:哈士奇(凯尔特人),混元生成 → 1.5 万面 → Mixamo 绑骨;哈士奇没有现成的 run,跑动借用猫的 20 帧 run(骨名一致) */
     husky:{file:"husky.glb",yaw:0},
-    /* nvidia23:混元 5 万面减至 1.8 万面 → Mixamo 绑骨(33 骨 + 补齐 HandMiddle1 → 35 骨),自带 Slow Run 原地跑动循环 */
-    nvidia23:{file:"nvidia23.glb",yaw:0}
+    /* nvidia23:混元 5 万面减至 1.8 万面 → Mixamo 绑骨(33 骨 + 补齐 HandMiddle1 → 35 骨),自带 Slow Run 原地跑动循环 + 科比视频转 3D 跳投动作 */
+    nvidia23:{file:"nvidia23.glb",yaw:0,shotClip:"nvidia23_kb_shot.json"}
   };
   const QS=new URLSearchParams(location.search),FORCE=QS.get("tripo")==="1";
   if(QS.get("tripo")==="0")return;
   const T=THREE;
   const SELF=document.currentScript&&document.currentScript.src||location.href;
   const urlOf=id=>new URL("../../assets/models/"+MODELS[id].file,SELF).href;
+  const shotClipUrl=file=>new URL("../../assets/dance/"+file,SELF).href;
+  const SHOT_CLIP_CACHE={};
+  function getShotClip(file){
+    if(!file)return null;
+    const hit=SHOT_CLIP_CACHE[file];
+    if(hit)return hit.ready?hit.data:null;
+    const entry=SHOT_CLIP_CACHE[file]={ready:false,loading:true,data:null};
+    fetch(shotClipUrl(file)).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.json();}).then(j=>{
+      entry.data=j;entry.ready=true;entry.loading=false;
+    }).catch(()=>{entry.loading=false;});
+    return null;
+  }
+  const _shotQ=new Float32Array(22*4);
+  function sampleShotClip(clip,frame,out){
+    if(!clip||!clip.q||!clip.n)return false;
+    const f=Math.max(0,Math.min(clip.n-1,frame));
+    const i=Math.min(clip.n-2,Math.floor(f)),k=f-i;
+    const A=clip.q[i],B=clip.q[i+1];
+    for(let b=0;b<22;b++){
+      const o=b*4;
+      let ax=A[o],ay=A[o+1],az=A[o+2],aw=A[o+3],bx=B[o],by=B[o+1],bz=B[o+2],bw=B[o+3];
+      let d=ax*bx+ay*by+az*bz+aw*bw;
+      if(d<0){bx=-bx;by=-by;bz=-bz;bw=-bw;d=-d;}
+      let s0,s1;
+      if(d>.9995){s0=1-k;s1=k;}
+      else{const th=Math.acos(d),sn=Math.sin(th);s0=Math.sin((1-k)*th)/sn;s1=Math.sin(k*th)/sn;}
+      const x=s0*ax+s1*bx,y=s0*ay+s1*by,z=s0*az+s1*bz,w=s0*aw+s1*bw,inv=1/Math.hypot(x,y,z,w);
+      out[o]=x*inv;out[o+1]=y*inv;out[o+2]=z*inv;out[o+3]=w*inv;
+    }
+    return true;
+  }
   const URL_LOADER=new URL("../../vendor/GLTFLoader.r128.js",SELF).href;
   /* 热身舞蹈(presentation/dance.js)的 22 根主骨骼,顺序和 dances.json 的 q 一致(父在前) */
   const DANCE_BONES=["Hips","Spine","Spine1","Spine2","Neck","Head","LeftShoulder","LeftArm","LeftForeArm","LeftHand","RightShoulder","RightArm","RightForeArm","RightHand","LeftUpLeg","LeftLeg","LeftFoot","LeftToeBase","RightUpLeg","RightLeg","RightFoot","RightToeBase"];
@@ -233,9 +264,10 @@
       if(state.root&&state.root.parent)state.root.parent.remove(state.root);
       for(const o of [B,restL,restP,restW,restWinv,restPos,LIMB])for(const k in o)delete o[k];
       _prevPole.hasR=_prevPole.hasL=false;
-      Object.assign(state,{root:null,M:null,mesh:null,fp:null,run:null,ready:false,player:null,modelId:null,failed:false,ballMoved:false,guideOff:null,oursG:null,airTop:0,landT:null,landV:0,airPrev:0,airVel:0});
+      Object.assign(state,{root:null,M:null,mesh:null,fp:null,run:null,ready:false,player:null,modelId:null,failed:false,ballMoved:false,guideOff:null,oursG:null,airTop:0,landT:null,landV:0,airPrev:0,airVel:0,shotW:0,shotFrame:0});
     }
     function build(gltf,id){
+      if(MODELS[id]&&MODELS[id].shotClip)getShotClip(MODELS[id].shotClip);
       const root=new T.Group();root.name="tripoAvatar";root.matrixAutoUpdate=false;root.visible=false;
       const M=new T.Group();M.rotation.y=MODELS[id].yaw;root.add(M);M.add(gltf.scene);
       let mesh=null;
@@ -304,6 +336,7 @@
       mesh.parent.add(fp);fp.bind(mesh.skeleton,mesh.bindMatrix);fp.visible=false;
       Object.assign(state,{root,M,mesh,fp,hullVerts,modelId:id,base:M.position.clone(),scale:s,footRest:footMin(),hipY:restPos.Hips.y});
       state.shootingFingerVertices=id==="star30"?findShootingFingerVertices(mesh):null;
+      if(MODELS[id]&&MODELS[id].shotClip)getShotClip(MODELS[id].shotClip);
       readRun(gltf.animations&&gltf.animations[0]);
     }
     /* run 动画:按骨骼存成采样表;再量出"脚踩地时往后蹬的速度",得到一个循环对应的前进距离 */
@@ -602,15 +635,123 @@
       /* 跑动:换成模型自带的 run 动画 */
       if(rw>.001){applyRun(state.phase,rw,state.armHold);}
 
-      /* 热身舞蹈:整身骨骼换成舞蹈的姿势(脚或支撑手/肘/头的落地、位置、朝向仍走下面这套) */
+      /* 专属视频转 3D 投篮动作(如 nvidia23 的科比跳投):蓄力下蹲→高举出手点→滞空压腕随挥→落地缓冲,
+         同步保持篮球紧锁在真实投篮手与辅助手之间，且完全保留游戏原生抛物线起跳高度 air。 */
+      let sw=0;
+      const shotClipFile=state.modelId&&MODELS[state.modelId]&&MODELS[state.modelId].shotClip;
+      const shotClip=shotClipFile?getShotClip(shotClipFile):null;
+      state.shotClipReady=!!shotClip;
       const dn=guy.pregameDance&&guy.pregameDance.q?guy.pregameDance:null;
       const dw=dn?clamp(dn.w==null?1:dn.w,0,1):0;
+      if(shotClip&&dw<.01){
+        const isCharging=cfg.player&&typeof G!=="undefined"&&G&&!!G.charging;
+        const chargeP=isCharging?clamp((G.power!=null?G.power:shotLoad)||0,0,1):clamp(shotLoad||0,0,1);
+        const inShot=isCharging||shotLoad>.03||following||airborneShot||atRelease;
+        const targetW=inShot&&rw<.45?(1-rw):0;
+        const tau=targetW>(state.shotW||0)?.06:.13;
+        state.shotW=atRelease&&targetW>0?1:ease(state.shotW||0,targetW,tau);
+        sw=state.shotW*state.shotW*(3-2*state.shotW);
+        if(sw>.005){
+          const mk=shotClip.markers||{gather:0,dip:12,setPoint:16,release:20,apex:24,land:30,end:shotClip.n-1};
+          let shotF=mk.gather;
+          if(following||atRelease){
+            const fa=atRelease?0:(shot?Number(shot.followAge)||0:0);
+            if(fa<.14)shotF=mk.release+(mk.apex-mk.release)*(fa/.14);
+            else if(fa<.48)shotF=mk.apex+(mk.land-mk.apex)*((fa-.14)/.34);
+            else shotF=mk.land+(mk.end-mk.land)*clamp((fa-.48)/.36,0,1);
+          }else if(!isCharging&&airborneShot){
+            shotF=mk.release+(mk.apex-mk.release)*smooth(air/.35);
+          }else{
+            /* 蓄力前半段深屈膝收球(gather→dip)，后半段蹬伸举球至科比高出手点(dip→release-1) */
+            if(chargeP<.55)shotF=mk.gather+(mk.dip-mk.gather)*(chargeP/.55);
+            else shotF=mk.dip+(mk.release-1-mk.dip)*((chargeP-.55)/.45);
+          }
+          state.shotFrame=shotF;
+          if(sampleShotClip(shotClip,shotF,_shotQ)){
+            applyDance({q:_shotQ,w:sw});
+            root.updateMatrixWorld(true);
+            /* 持球阶段:保留科比全身躯干/深蹲/起跳/举球轨迹，同时对齐老球星(SHOT_READY_POSE→SHOT_SET_POSE)
+               的标准持球手掌方位——收球/下沉时投篮手在球后方发力、高点才自然翻腕托球，辅助手稳贴球左侧不钻球底 */
+            if(holding&&ball&&B.RightHand&&B.LeftHand){
+              const br=BALL_R*BALL_VIS*Math.max(ball.scale.x,.01);
+              const rSh=wpos("RightArm"),rEl=wpos("RightForeArm"),rWr=wpos("RightHand");
+              const lSh=wpos("LeftArm"),lEl=wpos("LeftForeArm"),lWr=wpos("LeftHand");
+              const rPalm=TV().copy(rWr);if(B.RightHandMiddle1)rPalm.lerp(wpos("RightHandMiddle1"),.42);
+              const lPalm=TV().copy(lWr);if(B.LeftHandMiddle1)lPalm.lerp(wpos("LeftHandMiddle1"),.42);
+              /* 球心直接取科比双掌中点(不再强行 +Y 顶到掌心上方)，略前移 4cm 避开额头/胸口 */
+              const guideW=clamp(1-(shotF-mk.setPoint)/Math.max(1,mk.release-mk.setPoint),0,1)*.48;
+              const tgtBall=TV().copy(rPalm).lerp(lPalm,guideW);
+              tgtBall.z+=.045;
+              /* 按动作进度(gather→dip→setPoint)平滑过渡手掌方位：
+                 - 收球(0.0): 投篮手掌心在球正后方(约 10° 仰角，与老球星 READY_R 一致)，手指朝上
+                 - 下沉(0.5): 投篮手仍在球后方发力(约 26° 仰角)，绝不提前钻到球底
+                 - 高点(1.0): 投篮手在球后下方约 40° 沿出手弧线托球，左辅助手全程稳贴球左侧 */
+              const liftK=smooth((shotF-mk.gather)/Math.max(1,mk.release-1-mk.gather));
+              const ob=(f,n)=>{const nn=n.normalize(),ff=perp(f,nn)||TV(0,1,0);return basisQ(ff,nn);};
+              const qReadyR=ob(TV(.08,.98,-.18),TV(.255,.176,.951));
+              const qSetR=ob(TV(.10,.75,-.65),TV(.176,.636,.751));
+              const qCurR=TQ().copy(qReadyR).slerp(qSetR,liftK);
+              const qReadyL=ob(TV(-.18,.65,.74),TV(-.918,.150,-.366));
+              const qSetL=ob(TV(-.12,.98,.16),TV(-.958,-.045,-.283));
+              const qCurL=TQ().copy(qReadyL).slerp(qSetL,liftK);
+              /* 随科比胸腔朝向做极轻的偏航对齐，让手腕顺着肩膀发力不别扭 */
+              let chestYaw=0;
+              if(B.Spine2){
+                const cf=TV(0,0,1).applyQuaternion(B.Spine2.getWorldQuaternion(TQ()).multiply(restWinv.Spine2));
+                chestYaw=clamp(Math.atan2(cf.x,cf.z),-.35,.35);
+              }
+              if(Math.abs(chestYaw)>.005){
+                const yq=TQ().setFromAxisAngle(Yax,chestYaw);
+                qCurR.premultiply(yq);qCurL.premultiply(yq);
+              }
+              const rF=TV(1,0,0).applyQuaternion(qCurR).normalize(),rN=TV(0,1,0).applyQuaternion(qCurR).normalize();
+              const lF=TV(1,0,0).applyQuaternion(qCurL).normalize(),lN=TV(0,1,0).applyQuaternion(qCurL).normalize();
+              /* 保留科比原片的肘部弯曲面(pole)，再把右投篮手与左辅助手严丝合缝贴到球面上 */
+              const rPole=TV().copy(rEl).sub(TV().copy(rSh).add(rWr).multiplyScalar(.5));
+              if(rPole.lengthSq()<.01)rPole.set(-.25,-.7,.5);rPole.normalize();
+              const lPole=TV().copy(lEl).sub(TV().copy(lSh).add(lWr).multiplyScalar(.5));
+              if(lPole.lengthSq()<.01)lPole.set(.55,-.45,.2);lPole.normalize();
+              const along=state.ballAlong,lift=br+state.ballLift;
+              const rWrist1=TV().copy(tgtBall).addScaledVector(rN,-lift).addScaledVector(rF,-along);
+              solveLimb(R.L,rWrist1,rPole);
+              shootingWrist(R,rF,rN,SHOT_WRIST_LIMIT);
+              const rWrist2=TV().copy(tgtBall).addScaledVector(R.N,-lift).addScaledVector(R.F,-along);
+              solveLimb(R.L,rWrist2,rPole);
+              shootingWrist(R,rF,rN,SHOT_WRIST_LIMIT);
+              setHand(R);
+              const exactBall=wpos(R.L.hand).addScaledVector(R.F,along).addScaledVector(R.N,lift);
+              if(state.shootingFingerVertices?.length){
+                curlFingers("Right",R.L,.16);
+                clearShootingFingerSurface(exactBall,R.N,br);
+              }else{
+                fitFingers("Right",R.L,exactBall,br,.22,null);
+              }
+              /* 辅助手始终稳贴球的左侧，绝不越过投篮手或掉到球底 */
+              if(shotF<mk.release-0.3){
+                const lWrist=TV().copy(exactBall).addScaledVector(lN,-(br+.012)).addScaledVector(lF,-.068);
+                const rhNow=wpos(R.L.hand);
+                if(lWrist.x<rhNow.x+.06)lWrist.x=rhNow.x+.06;
+                solveLimb(Lf.L,lWrist,lPole);
+                Lf.F.copy(lF);Lf.N.copy(lN);setHand(Lf);
+                fitFingers("Left",Lf.L,exactBall,br,.22,off=>{lWrist.add(off);solveLimb(Lf.L,lWrist,lPole);setHand(Lf);});
+              }
+              if(ballK)ballK.lerp(exactBall,sw);
+              else ballK=exactBall;
+            }
+          }
+        }
+      }else{
+        state.shotW=0;
+      }
+
+      /* 热身舞蹈:整身骨骼换成舞蹈的姿势(脚或支撑手/肘/头的落地、位置、朝向仍走下面这套) */
       if(dn)applyDance(dn);
 
-      /* 摆到 AIBA 球员的位置上。跑动/街舞时不要 AIBA 那套身体起伏和侧倾(动画里自带),只取水平位置和朝向 */
+      /* 摆到 AIBA 球员的位置上。跑动/街舞/专属投篮动作时去掉方块人的额外前倾(动画里自带),只取水平位置和朝向 */
       const kw=Math.max(rw,dw);
+      const rotKw=Math.max(kw,sw);
       const fw=TV().copy(Zax).applyQuaternion(_gq),yawQ=TQ().setFromAxisAngle(Yax,Math.atan2(fw.x,fw.z));
-      const rq=TQ().copy(_gq).slerp(yawQ,kw),rpos=TV().copy(_gp);rpos.y*=1-kw;
+      const rq=TQ().copy(_gq).slerp(yawQ,rotKw),rpos=TV().copy(_gp);rpos.y*=1-kw;
       /* 贴地:正常动作按鞋底最低点对齐地板;街舞(含倒立/Freeze)按全身蒙皮极值顶点最低点对齐地板,绝不穿模下沉 */
       root.updateMatrixWorld(true);
       const footRef=footMin()-state.footRest;
