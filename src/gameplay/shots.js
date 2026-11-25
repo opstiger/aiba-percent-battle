@@ -355,7 +355,7 @@ function resimPhysicsBall(b,p,v,w,t0){
 }
 function spawnPhysicsBall(shot,err,latErr,zone,isDeep,faceAim,faceYawRad,power,ideal,cosmic){
   const PHYS=globalThis.AIBABallPhysics;
-  const p0=new THREE.Vector3();ballWorldPos(p0);
+  const p0=new THREE.Vector3();ballWorldPos(p0,true);
   handBall.visible=false;pBall.visible=false;
   const sim=canonicalRelease(P.pos,G.myStar);
   const dist=Math.hypot(HOOP.x-sim.x,HOOP.z-sim.z);
@@ -445,7 +445,7 @@ function releaseShot(power,shot,automatic=false,meterPower=power){
     return afterBallSpawn(ball,shot,err,isBattle,isRush,isDeep);
   }
   // spawn from the hands (any camera mode)
-  const p0=new THREE.Vector3();ballWorldPos(p0);
+  const p0=new THREE.Vector3();ballWorldPos(p0,true);
   handBall.visible=false;pBall.visible=false;
   const dirH=HOOP.clone().sub(p0);dirH.y=0;const dist=dirH.length();dirH.normalize();
   const perp=V3(dirH.z,0,-dirH.x);

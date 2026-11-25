@@ -2085,6 +2085,7 @@ function startPass(targetPos,face){
   const catchP=pickup?rackHoldPointAt(anchor,anchorFace,pickSide)
     :(hasTarget?passCatchPointAt(target,targetFace):eyePos());
   if(!pickup&&!hasTarget)catchP.y-=0.3;
+  if(!pickup&&G.myStar?.id==="nvidia23")catchP.copy(rackHoldPointAt(anchor,anchorFace,0));
   /* 球从**手**上飞出去,不是从身体中心。passerBall 现在挂在 ballGrip 上,
      它的世界坐标就是手里那颗球的位置 —— 起点用它,传球才接得上持球姿势。 */
   let handFrom=null;

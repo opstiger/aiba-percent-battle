@@ -879,12 +879,12 @@ function updateCameraDirector(dt){
   if(G.state==="lastshot"){updPlayCam(dt);return "play";}
   return "idle";
 }
-function ballWorldPos(out){
+function ballWorldPos(out,atRelease=false){
   // 出手点取当前可见骨架的球心，第一和第三人称共用。带上同一份胸腔叠加。
   const shooter=typeof player!=="undefined"?player:null;
   const readGrip=()=>{
     const skin=window.AIBATripo;
-    if(shooter&&skin&&skin.heldBallPosition&&skin.heldBallPosition(shooter,out))return out;
+    if(shooter&&skin&&skin.heldBallPosition&&skin.heldBallPosition(shooter,out,atRelease))return out;
     pBall.getWorldPosition(out);
     return out;
   };

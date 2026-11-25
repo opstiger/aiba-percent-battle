@@ -589,6 +589,7 @@
     enabled:()=>on,
     setEnabled,toggleMarkup,restoreLegacy:restoreLegacyMotion,
     stats:()=>({on,ballAttached,fpRig:!!fpRig,followAge:+followAge.toFixed(2),followActive,pendingRelease:!!pendingRelease,
+      extensionProgress:clampN(followAge/BALL_RELEASE_AT,0,1),timeAfterRelease:Math.max(0,followAge-BALL_RELEASE_AT),
       shotAnimation:typeof getShotAnimationMode==="function"?getShotAnimationMode():"game",
       shotCycleActive,shotCycleTime:+shotCycleClock.toFixed(2),releaseFeetActive,releaseFeetAirborne,
       releaseFeetKickTime:+releaseFeetAirClock.toFixed(2)})

@@ -263,8 +263,9 @@
     function unload(){
       if(state.root&&state.root.parent)state.root.parent.remove(state.root);
       for(const o of [B,restL,restP,restW,restWinv,restPos,LIMB])for(const k in o)delete o[k];
+      stanceReady=stanceLocked=false;
       _prevPole.hasR=_prevPole.hasL=false;
-      Object.assign(state,{root:null,M:null,mesh:null,fp:null,run:null,ready:false,player:null,modelId:null,failed:false,ballMoved:false,guideOff:null,oursG:null,airTop:0,landT:null,landV:0,airPrev:0,airVel:0,shotW:0,shotFrame:0});
+      Object.assign(state,{root:null,M:null,mesh:null,fp:null,run:null,ready:false,player:null,modelId:null,failed:false,ballMoved:false,guideOff:null,oursG:null,airTop:0,landT:null,landV:0,airPrev:0,airVel:0,shotW:0,shotFrame:0,chargeFrame:null});
     }
     function build(gltf,id){
       if(MODELS[id]&&MODELS[id].shotClip)getShotClip(MODELS[id].shotClip);
@@ -395,6 +396,7 @@
         const f=guy.footRoots[0];inv.copy(f.matrixWorld).invert();
         f.traverse(o=>{if(o.isMesh&&o.geometry){o.geometry.computeBoundingBox();box.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld).applyMatrix4(inv);soleY=Math.min(soleY,box.min.y);}});
       }catch(e){}
+      stanceReady=stanceLocked=false;
       _prevPole.hasR=_prevPole.hasL=false;
       Object.assign(state,{player:guy,armIdx,legIdx,soleY,ready:true,tA:0,prevX:null,prevZ:null,holdW:0,runW:0,armHold:0});
       return true;
@@ -436,6 +438,54 @@
     const I0=new T.Quaternion(),Xax=V(1,0,0),Yax=V(0,1,0),Zax=V(0,0,1);
     const _armSlots={R:{},L:{}},_prevPole={R:new T.Vector3(),L:new T.Vector3(),hasR:false,hasL:false};
     const _guideOff=new T.Vector3(),_ballWorld=new T.Vector3(),_ballShift=new T.Vector3();
+    // Record each shoe in court space, then solve in the unmirrored rig space used by solveLimb.
+    const plantFrame=new T.Matrix4(),stanceFrame=new T.Matrix4(),toRig=new T.Matrix4();
+    const contacts=["L","R"].map(side=>({side,toeName:side==="L"?"LeftToeBase":"RightToeBase",ankle:new T.Vector3(),sole:new T.Quaternion(),
+      toe:new T.Quaternion(),target:new T.Vector3()}));
+    let stanceReady=false,stanceLocked=false;
+    function plantShotFeet(active,clipWeight,air,walking){
+      if(walking||air>=.22||(stanceReady&&Math.hypot(plantFrame.elements[12]-stanceFrame.elements[12],
+        plantFrame.elements[14]-stanceFrame.elements[14])>.55)){
+        stanceReady=stanceLocked=false;
+        return 0;
+      }
+      if(!active&&clipWeight<.005)stanceLocked=false;
+      if(!stanceReady||(!active&&!stanceLocked)){
+        if(air>0)return 0;
+        stanceFrame.copy(plantFrame);
+        for(const c of contacts){
+          const foot=LIMB["leg"+c.side].hand;
+          wpos(foot,c.ankle);B[foot].getWorldQuaternion(c.sole);
+          c.toe.copy(B[c.toeName].quaternion);
+        }
+        stanceReady=true;
+      }
+      if(active)stanceLocked=true;
+      if(!stanceLocked)return 0;
+      const weight=(active?1:clipWeight)*(1-smooth(air/.22));
+      toRig.copy(plantFrame).invert().multiply(stanceFrame);
+      const stanceRotation=TQ().setFromRotationMatrix(toRig);
+      const basis=plantFrame.elements,lift=TV(basis[1],basis[5],basis[9]).multiplyScalar(air);
+      let lower=0;
+      for(const c of contacts){
+        const leg=LIMB["leg"+c.side],hip=wpos(leg.up);
+        c.target.copy(c.ankle).applyMatrix4(toRig).add(lift).lerp(wpos(leg.hand),1-weight);
+        // At full extension let the pelvis yield before a planted heel can lift.
+        const dx=hip.x-c.target.x,dz=hip.z-c.target.z,reach=(leg.l1+leg.l2)*.997;
+        lower=Math.max(lower,hip.y-c.target.y-Math.sqrt(Math.max(0,reach*reach-dx*dx-dz*dz)));
+      }
+      if(lower>0){state.M.position.y-=lower;state.M.updateMatrixWorld(true);}
+      for(const c of contacts){
+        const leg=LIMB["leg"+c.side],toe=B[c.toeName];
+        const sole=B[leg.hand].getWorldQuaternion(TQ()).slerp(TQ().copy(stanceRotation).multiply(c.sole),weight);
+        const pole=wpos(leg.fore).sub(wpos(leg.up).lerp(wpos(leg.hand),.5));
+        if(pole.lengthSq()<.0001)pole.copy(Zax);
+        solveLimb(leg,c.target,pole);
+        setW(B[leg.hand],sole);
+        toe.quaternion.slerp(c.toe,weight);
+      }
+      return lower;
+    }
     function retarget(atRelease=false){
       _vPtr=0;_qPtr=0;
       const guy=state.player,g=guy.g,ball=ballNow(),root=state.root,M=state.M;
@@ -645,24 +695,35 @@
       const dw=dn?clamp(dn.w==null?1:dn.w,0,1):0;
       if(shotClip&&dw<.01){
         const isCharging=cfg.player&&typeof G!=="undefined"&&G&&!!G.charging;
-        const chargeP=isCharging?clamp((G.power!=null?G.power:shotLoad)||0,0,1):clamp(shotLoad||0,0,1);
-        const inShot=isCharging||shotLoad>.03||following||airborneShot||atRelease;
+        const inShot=isCharging||following||atRelease||(!cfg.player&&(shotLoad>.03||airborneShot));
         const targetW=inShot&&rw<.45?(1-rw):0;
         const tau=targetW>(state.shotW||0)?.06:.13;
         state.shotW=atRelease&&targetW>0?1:ease(state.shotW||0,targetW,tau);
         sw=state.shotW*state.shotW*(3-2*state.shotW);
         if(sw>.005){
           const mk=shotClip.markers||{gather:0,dip:12,setPoint:16,release:20,apex:24,land:30,end:shotClip.n-1};
-          let shotF=mk.gather;
-          if(following||atRelease){
-            const fa=atRelease?0:(shot?Number(shot.followAge)||0:0);
+          // Keep the final sample during blend-out; returning to gather here would replay the dip.
+          let shotF=state.shotFrame??mk.gather;
+          if(atRelease){
+            shotF=mk.release;
+          }else if(isCharging){
+            const ideal=curShot()?weatherAdjustedIdeal(curShot(),false):IDEAL;
+            const p=clamp(G.power/Math.max(1,ideal),0,1);
+            shotF=p<.55?mk.gather+(mk.dip-mk.gather)*p/.55
+              :mk.dip+(mk.release-1-mk.dip)*(p-.55)/.45;
+            state.chargeFrame=shotF;
+          }else if(shot?.pendingRelease){
+            const from=state.chargeFrame??mk.gather;
+            shotF=from+(mk.release-from)*shot.extensionProgress;
+          }else if(following){
+            const fa=shot.timeAfterRelease;
             if(fa<.14)shotF=mk.release+(mk.apex-mk.release)*(fa/.14);
             else if(fa<.48)shotF=mk.apex+(mk.land-mk.apex)*((fa-.14)/.34);
             else shotF=mk.land+(mk.end-mk.land)*clamp((fa-.48)/.36,0,1);
-          }else if(!isCharging&&airborneShot){
+          }else if(!cfg.player&&airborneShot){
             shotF=mk.release+(mk.apex-mk.release)*smooth(air/.35);
-          }else{
-            /* 蓄力前半段深屈膝收球(gather→dip)，后半段蹬伸举球至科比高出手点(dip→release-1) */
+          }else if(!cfg.player&&inShot){
+            const chargeP=clamp(shotLoad||0,0,1);
             if(chargeP<.55)shotF=mk.gather+(mk.dip-mk.gather)*(chargeP/.55);
             else shotF=mk.dip+(mk.release-1-mk.dip)*((chargeP-.55)/.45);
           }
@@ -770,12 +831,19 @@
       }
       const floor=-rpos.y,off=floor+Math.max(0,air)*(1-kw)+danceJump-ref;
       M.position.y+=off;
-      root.matrix.compose(rpos,rq,TV(g.scale.x<0?-1:1,1,1));
+      plantFrame.compose(rpos,rq,TV(g.scale.x<0?-1:1,1,1));
+      if(ballK)_ballWorld.copy(ballK);
+      let pelvisDrop=0;
+      if(cfg.player&&state.modelId==="nvidia23"){
+        M.updateMatrixWorld(true);
+        pelvisDrop=plantShotFeet(G.charging||following||atRelease,sw,air,moving||rw>.05||dw>.001);
+      }
+      root.matrix.copy(plantFrame);
       root.updateMatrixWorld(true);
 
       /* 手里的球挪到这副手上,AIBA 出手从这里读;第一人称的显示球用同一个世界坐标 */
       state.ballWorld=null;state.ballLocal=null;
-      if(ballK){ballK.y+=off;state.ballWorld=_ballWorld.copy(ballK).applyMatrix4(root.matrix);}
+      if(ballK){_ballWorld.y+=off-pelvisDrop;state.ballWorld=_ballWorld.applyMatrix4(root.matrix);}
       if(ball&&grip&&ball.parent===grip){
         const w=state.ballWorld?TV().copy(state.ballWorld):wpos(R.L.hand);
         state.ballShift=_ballShift.copy(w).sub(TV().setFromMatrixPosition(grip.matrixWorld));
@@ -879,10 +947,10 @@
         }
       };
     }
-    if(cfg.player)state.heldBallPosition=(guy,out)=>{
+    if(cfg.player)state.heldBallPosition=(guy,out,atRelease=false)=>{
       if(!state.ready||state.player!==guy||state.modelId!==wantId()||!holdingNow(ballNow()))return false;
       // 采本帧的真实掌上球位，沿用渲染的骨架。游戏时钟相同，随后渲染不会再推进一次过渡。
-      try{retarget(true);}catch(e){return false;}
+      try{retarget(atRelease);}catch(e){return false;}
       if(!state.ballWorld)return false;
       out.copy(state.ballWorld);
       return true;
