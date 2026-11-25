@@ -624,6 +624,9 @@ function stopVictoryCine(){
   v.on=false;v.t=0;v.phase="";
   if(v.hero&&v.hero._celeb)stopCelebrate(v.hero);
   if(v.hero&&v.hero.g){
+    v.hero.running=false;
+    v.hero._celebRunArms=false;
+    v.hero.pregameLift=0;
     v.hero.g.rotation.x=0;
     if(v.hero.legs)v.hero.legs.forEach(l=>l.rotation.set(0,0,0));
     if(v.hero.knees)v.hero.knees.forEach(k=>k.rotation.set(0,0,0));
@@ -688,19 +691,16 @@ function updVictoryCine(dt){
       v.hero.g.position.x=clamp(nx,-COURT.halfWidth+1.5,COURT.halfWidth-1.5);
       v.hero.g.position.z=clamp(nz,COURT.nearBaseline+1.8,COURT.playMaxZ-1.2);
       if(moveD>0.001)v.hero.g.rotation.y=Math.atan2(dx,dz);
-      // 跑步跨步与双臂展开/挥拳庆祝动作
-      const stride=v.t*11.5;
-      const s0=Math.sin(stride),s1=Math.sin(stride+Math.PI);
-      if(v.hero.legs&&v.hero.legs.length>=2){
-        v.hero.legs[0].rotation.x=s0*0.58;
-        v.hero.legs[1].rotation.x=s1*0.58;
-      }
-      if(v.hero.knees&&v.hero.knees.length>=2){
-        v.hero.knees[0].rotation.x=Math.max(0,-s0)*0.85;
-        v.hero.knees[1].rotation.x=Math.max(0,-s1)*0.85;
-      }
-      v.hero.g.position.y=Math.abs(Math.sin(stride))*0.075;
-      v.hero.g.rotation.x=0.12;
+      /* 庆祝冲刺阶段显式标记 running 并清除舞蹈覆盖，确保写实蒙皮与方块人都是真实奔跑而非脚底漂移 */
+      v.hero.running=true;
+      v.hero._celebRunArms=true;
+      v.hero.pregameDance=null;
+      v.hero.pregameLift=0;
+      // The gait follows the distance actually travelled along the celebration path.
+      r.gait=r.gait||{phase:0,idleT:0,lean:0};
+      const speed=dt>0?moveD/dt:0;
+      poseRunCycle(v.hero,r.gait,speed,dt,{decel:clamp((u-.80)/.20,0,1)});
+      const s1=Math.sin(r.gait.phase+Math.PI);
       if(v.hero.arms&&v.hero.arms.length>=2){
         if(r.style===0){
           // 张开双臂滑翔庆祝（“飞机”式狂奔）
@@ -718,6 +718,8 @@ function updVictoryCine(dt){
       }
     }else{
       // 急停面向观众席/镜头挥拳跳起定格庆祝
+      v.hero.running=false;
+      v.hero._celebRunArms=false;
       if(v.hero.legs)v.hero.legs.forEach(l=>l.rotation.x*=0.82);
       if(v.hero.knees)v.hero.knees.forEach(k=>k.rotation.x*=0.82);
       v.hero.g.rotation.x*=0.82;

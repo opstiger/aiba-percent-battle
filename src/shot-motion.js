@@ -29,6 +29,38 @@
   const FLOW_FOLLOW_FADE=0.5,FLOW_FOLLOW_HOLD=0.6;
   const FOLLOW_EXTEND=0.105,BALL_RELEASE_AT=0.092,FOLLOW_HOLD=0.24,FOLLOW_FADE=0.38;
   let fpRig=null,fpHidden=[],fpBallHome=null,followAge=0,followActive=false,followLong=false;
+  /* 投篮后自然余韵状态(仅作用于出手后与落地缓冲，绝不触碰 P.pos 或蓄力/出手关键帧)：
+     1) 手回落后的随机惯性后摆(20°~31° 钟摆余韵，告别定点卡停)
+     2) 约 55% 跳投带半步前跳(0.28~0.44m)并在落地后摆手顺势退回原位
+     3) 原地跳投落地带脚腕/膝盖弹性双缓冲(像弹簧轻轻弹两下再站稳) */
+  const shotTail={
+    active:false,armActive:false,armT:0,armDur:0.62,armSwing:0.44,guideScale:0.68,armRoll:0.04,
+    hasSweep:false,sweepDist:0,sweepCur:0,sweepPeak:0,landed:false,landAge:0,
+    springT:-1,springDur:0.74,springFreq:12.6,springAmp:1.0
+  };
+  function resetShotTail(){
+    shotTail.active=false;shotTail.armActive=false;shotTail.armT=0;
+    shotTail.hasSweep=false;shotTail.sweepDist=0;shotTail.sweepCur=0;shotTail.sweepPeak=0;
+    shotTail.landed=false;shotTail.landAge=0;shotTail.springT=-1;
+  }
+  function seedShotTail(){
+    const r=()=>Math.random();
+    shotTail.active=true;
+    shotTail.armActive=false;
+    shotTail.armT=0;
+    shotTail.armDur=0.64+r()*0.18;                // 0.64~0.82s 惯性钟摆收尾
+    shotTail.armSwing=(21+r()*11)*Math.PI/180;    // 随机后摆 21°~32°
+    shotTail.guideScale=0.54+r()*0.26;            // 辅助手略轻且不同步
+    shotTail.armRoll=(r()-0.5)*0.08;
+    shotTail.hasSweep=r()<0.55;                   // 约一半跳投带半步前跳，另一半原地弹性双缓冲
+    shotTail.sweepDist=shotTail.hasSweep?(0.28+r()*0.16):0;
+    shotTail.sweepCur=0;shotTail.sweepPeak=0;
+    shotTail.landed=false;shotTail.landAge=0;
+    shotTail.springT=-1;
+    shotTail.springDur=0.72+r()*0.18;             // 0.72~0.90s 弹簧双缓冲
+    shotTail.springFreq=11.4+r()*2.6;
+    shotTail.springAmp=shotTail.hasSweep?(0.48+r()*0.20):(0.88+r()*0.28);
+  }
   let releasePose=null;
   let releaseCurve={dip:0,lift:1,rise:1,jmp:1,over:0},lastPoseCurve=releaseCurve,pendingRelease=null;
   let shotCycleClock=0,shotCycleActive=false,shotCycleReleased=false,shotCycleWasCharging=false;
@@ -162,6 +194,7 @@
   }
   function beginFollow(){
     followAge=0;followActive=true;followLong=false;
+    seedShotTail();
   }
   function followForce(){
     if(typeof G!=="undefined"&&Number.isFinite(Number(G.lastShotFollowForce)))
@@ -352,9 +385,32 @@
       blip(960,0.03,"square",0.045);
     }
     if(phys.autoRelease&&G.charging){doRelease(true);}
-    if(phys.justLanded)landT=0.3;
+    if(phys.justLanded){
+      landT=0.3;
+      if(shotTail.active){shotTail.landed=true;shotTail.landAge=0;shotTail.springT=0;}
+    }
     if(landT>0)landT-=dt;
-    const lk=landT>0?Math.sin((0.3-landT)/0.3*Math.PI):0;
+    let lk=landT>0?Math.sin((0.3-landT)/0.3*Math.PI):0;
+    /* 落地弹性双缓冲：初次吃力下压后紧接着两下衰减弹性轻弹，脚腕膝盖像弹簧一样自然收稳 */
+    let springBounce=0;
+    if(shotTail.springT>=0){
+      if(G.charging||P.walking){
+        shotTail.springT=-1;
+      }else{
+        shotTail.springT+=dt;
+        const st=shotTail.springT,sd=shotTail.springDur;
+        if(st<sd){
+          const t1=sd*0.30,t2=sd*0.34,t3=sd*0.36;
+          const b1=st<t1?Math.sin((st/t1)*Math.PI)*0.85:0;
+          const b2=(st>=t1*0.85&&st<t1*0.85+t2)?Math.sin(((st-t1*0.85)/t2)*Math.PI)*0.52:0;
+          const b3=(st>=t1*0.85+t2*0.85&&st<sd)?Math.sin(clampN((st-(t1*0.85+t2*0.85))/Math.max(0.05,t3),0,1)*Math.PI)*0.24:0;
+          springBounce=(b1+b2+b3)*shotTail.springAmp;
+          lk=Math.max(lk,Math.min(1,springBounce*0.72));
+        }else{
+          shotTail.springT=-1;
+        }
+      }
+    }
     const landingImpact=phys&&Number.isFinite(phys.landingImpact)?phys.landingImpact:1;
     const follow=followState(dt);
     const c=visualReleaseCurve(rawCurve,follow);
@@ -386,14 +442,56 @@
     const mir=player.lefty?-1:1;
     const aimYaw=(!P.walking&&global.AIBAVisionAim&&typeof global.AIBAVisionAim.yawRad==="function")?global.AIBAVisionAim.yawRad():0;
     player.g.rotation.y=P.face+pickupTurn+aimYaw+(P.walking?0:mir*(SHOT_STANCE_YAW+styleTurn)*stance);
-    /* 出手后的前后位移。沿"球员→篮筐"的水平方向偏移,所以正值永远是"向篮筐",
-       和球员站在哪个点无关。只在离地后(c.jmp)生效,站定时位置一个字没动。 */
-    const styleDrift=style&&Number(style.drift)||0;
-    if(styleDrift&&c.jmp>0){
-      const dx=HOOP.x-P.pos.x,dz=HOOP.z-P.pos.z,L=Math.hypot(dx,dz)||1;
-      const k=styleDrift*c.jmp;
-      player.g.position.x+=dx/L*k;player.g.position.z+=dz/L*k;
+    /* 出手后的前后位移(纯视觉，不改逻辑站位 P.pos)：
+       1) 原有球星风格 drift
+       2) 随机半步前跳(hasSweep): 起跳顺势往前飘出半步(0.28~0.44m)落地，随后配着手臂后摆顺势退回原位 */
+    let stepBackPhase=0;
+    if(shotTail.active){
+      if(G.charging||P.walking){
+        shotTail.sweepCur+=((0-shotTail.sweepCur)*Math.min(1,dt*14));
+        if(Math.abs(shotTail.sweepCur)<0.004)resetShotTail();
+      }else{
+        if(shotTail.hasSweep){
+          if(!shotTail.landed&&(phys.airborne||rawCurve.jmp>0.04)){
+            shotTail.sweepPeak=Math.max(shotTail.sweepPeak,ease01(rawCurve.jmp));
+            const targetSweep=shotTail.sweepDist*(0.35+0.65*shotTail.sweepPeak);
+            shotTail.sweepCur+=(targetSweep-shotTail.sweepCur)*Math.min(1,dt*9.5);
+          }else{
+            if(!shotTail.landed&&!phys.airborne&&followAge>0.18){
+              shotTail.landed=true;shotTail.landAge=0;
+              if(shotTail.springT<0)shotTail.springT=0;
+            }
+            if(shotTail.landed){
+              shotTail.landAge+=dt;
+              const backU=clampN((shotTail.landAge-0.06)/0.48,0,1);
+              shotTail.sweepCur=shotTail.sweepDist*(1-ease01(backU));
+              stepBackPhase=Math.sin(backU*Math.PI);
+            }
+          }
+        }else if(!shotTail.landed&&!phys.airborne&&followAge>0.22){
+          shotTail.landed=true;shotTail.landAge=0;
+          if(shotTail.springT<0)shotTail.springT=0;
+        }
+        /* 手臂回落过半后启动随机后摆钟摆(20°~32°)，落地与收手连成一条自然弧线 */
+        if(!shotTail.armActive&&(follow.recover>=0.48||(!follow.active&&followAge>0.12))){
+          shotTail.armActive=true;shotTail.armT=0;
+        }
+        if(shotTail.armActive){
+          shotTail.armT+=dt;
+          if(shotTail.armT>=shotTail.armDur){
+            shotTail.armActive=false;
+            if(!shotTail.hasSweep||shotTail.sweepCur<0.005)shotTail.active=false;
+          }
+        }
+      }
     }
+    const styleDrift=style&&Number(style.drift)||0;
+    const totalDrift=(styleDrift&&c.jmp>0?styleDrift*c.jmp:0)+shotTail.sweepCur;
+    if(Math.abs(totalDrift)>0.001){
+      const dx=HOOP.x-P.pos.x,dz=HOOP.z-P.pos.z,L=Math.hypot(dx,dz)||1;
+      player.g.position.x+=dx/L*totalDrift;player.g.position.z+=dz/L*totalDrift;
+    }
+    player._noSlideRun=!P.walking&&(stepBackPhase>0.01||shotTail.sweepCur>0.01);
     if(P.walking){
       /* 走路统一走 poseRunCycle —— 它才是"全项目唯一的一套跑动姿势"(motion.js)。
          这里原本是另抄的一条正弦:步频写死 dt*9(和真实位移脱钩,脚在地上滑)、
@@ -429,6 +527,50 @@
          blendNodeQuat 从"本帧已有姿势"往迎球帧插值(progress 小的时候 k≈0)。
          二选一会把跟随姿势整个丢掉，手从静止姿势直接弹去接球，就是"还没收回手就去接了"。 */
       if(follow.active)applyFollowThroughPose(player,follow);
+      /* 出手后余韵叠加(仅在未蓄力/未伸手接球时生效，绝不打断接球或下次蓄力)：
+         1) 手回落过垂直位后自然继续向后摆出 20°~32° 再轻柔摆回，消除机械卡停感
+         2) 落地后半步退回原位时的自然迈步交替腿型 + 脚腕膝盖弹簧双缓冲 */
+      const catchBusy=!!(catchState&&catchState.active&&((catchState.progress||0)>.12||catchState.settling))||G.pickupReach>.04;
+      if(!G.charging&&!catchBusy&&shotTail.armActive&&player.arms&&player.arms.length>=2){
+        const u=clampN(shotTail.armT/Math.max(0.05,shotTail.armDur),0,1);
+        /* 归一化欠阻尼钟摆：峰值精准达到 +21°~32° 后摆，再轻柔前摆回正，绝不卡停 */
+        const pen=(Math.sin(u*Math.PI*1.38)*Math.exp(-u*1.90))/0.50;
+        const penG=(Math.sin(clampN((u-0.08)/0.92,0,1)*Math.PI*1.32)*Math.exp(-u*2.05))/0.50;
+        const fadeOut=1-ease01(clampN((u-0.84)/0.16,0,1));
+        const swingR=pen*shotTail.armSwing*fadeOut;
+        const swingL=penG*shotTail.armSwing*shotTail.guideScale*fadeOut;
+        player.arms[0].rotation.x+=swingR;
+        player.arms[0].rotation.z-=Math.abs(swingR)*0.18+shotTail.armRoll*Math.abs(pen)*fadeOut;
+        player.arms[1].rotation.x+=swingL;
+        player.arms[1].rotation.z+=Math.abs(swingL)*0.16;
+        if(player.elbows&&player.elbows.length>=2){
+          player.elbows[0].rotation.x+=Math.max(0,swingR)*0.22;
+          player.elbows[1].rotation.x+=Math.max(0,swingL)*0.18;
+        }
+      }
+      if(!G.charging&&P.jump<.02&&player.legs&&player.knees&&player.ankles){
+        /* 前跳落地后退回原位的小碎步摆腿与轻微重心转移 */
+        if(stepBackPhase>0.01){
+          const sb=stepBackPhase;
+          player.legs[0].rotation.x+=sb*0.18;
+          player.legs[1].rotation.x-=sb*0.14;
+          player.knees[0].rotation.x+=sb*0.24;
+          player.knees[1].rotation.x+=sb*0.16;
+          player.ankles[0].rotation.x-=sb*0.10;
+          player.ankles[1].rotation.x-=sb*0.08;
+          player.g.rotation.z+=sb*0.028*mir;
+        }
+        /* 原地投篮落地后的脚腕/膝盖弹性轻弹两下缓冲 */
+        if(springBounce>0.008){
+          player.legs[0].rotation.x-=springBounce*0.15;
+          player.legs[1].rotation.x-=springBounce*0.14;
+          player.knees[0].rotation.x+=springBounce*0.32;
+          player.knees[1].rotation.x+=springBounce*0.30;
+          player.ankles[0].rotation.x-=springBounce*0.16;
+          player.ankles[1].rotation.x-=springBounce*0.15;
+          player.g.position.y-=springBounce*0.036;
+        }
+      }
       // 飞行阶段迎球；到手后由同一控制器短暂缓冲到持球帧，禁止一帧换骨架。
       if(catchState&&catchState.active)poseCatchHands(player,catchState,dt);
       /* 从球架取球时,用伸手姿势盖掉编排好的接球手型 —— poseCatchHands 播的是

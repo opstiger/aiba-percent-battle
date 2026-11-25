@@ -28,7 +28,9 @@
     /* husky:哈士奇(凯尔特人),混元生成 → 1.5 万面 → Mixamo 绑骨;哈士奇没有现成的 run,跑动借用猫的 20 帧 run(骨名一致) */
     husky:{file:"husky.glb",yaw:0},
     /* nvidia23:混元 5 万面减至 1.8 万面 → Mixamo 绑骨(33 骨 + 补齐 HandMiddle1 → 35 骨),自带 Slow Run 原地跑动循环 + 科比视频转 3D 跳投动作 */
-    nvidia23:{file:"nvidia23.glb",yaw:0,shotClip:"nvidia23_kb_shot.json"}
+    nvidia23:{file:"nvidia23.glb",yaw:0,shotClip:"nvidia23_kb_shot.json"},
+    /* mushroom:魔性金发蘑菇头舞王,Colab 混元生成 → 减面 1.6 万面 → 自动移植 Mixamo 35 骨骨架 + 原视频提取魔性蘑菇舞 */
+    mushroom:{file:"mushroom.glb",yaw:0}
   };
   const QS=new URLSearchParams(location.search),FORCE=QS.get("tripo")==="1";
   if(QS.get("tripo")==="0")return;
@@ -76,6 +78,7 @@
     star30:{hip:.10,chest:.15,lean:.055,roll:.025},
     star8:{hip:.18,chest:.23,lean:.145,roll:.045},
     nvidia23:{hip:.18,chest:.23,lean:.145,roll:.045},
+    mushroom:{hip:.14,chest:.18,lean:.08,roll:.03},
     star1:{hip:.10,chest:.17,lean:.083,roll:.021},
     // 15 号跟随汤普森的主骨架胸腔，写实层只补轻微开髋。
     star15:{hip:.045,chest:0,lean:0,roll:0}
@@ -109,9 +112,9 @@
       :()=>{try{const g=rivalGuy();const pl=pregameLift(g);if(pl>0)return pl;if(!g||!g.g||g.poseYRet==null||!(Math.abs((G.tNow||0)-(g.poseT||0))<.12))return 0;return Math.max(0,g.g.position.y-g.poseYRet);}catch(e){return 0;}};
     const movingNow=role==="player"
       ?(guy,dt)=>{try{return !!(guy.walking||guy.running||(typeof P!=="undefined"&&P&&P.walking)||(typeof G!=="undefined"&&G&&G.moving))||slidingNow(guy,dt);}catch(e){return false;}}
-      :(guy,dt)=>slidingNow(guy,dt);
-    /* 热身演示里人物是被"滑"到位置上的(助跑、走向篮筐),不走游戏的走位链:按位移速度判断该不该跑 */
-    const slidingNow=(guy,dt)=>{try{if(state.prevX==null||!(dt>0))return false;const p=guy.g.position;return Math.hypot(p.x-state.prevX,p.z-state.prevZ)/dt>(role==="player"?.9:.5);}catch(e){return false;}};
+      :(guy,dt)=>{try{return !!(guy.walking||guy.running)||slidingNow(guy,dt);}catch(e){return false;}};
+    /* 热身演示/庆祝里人物移动时(助跑、狂奔、走向篮筐):按位移速度与 running 标志同步触发真实跑步动画，不再脚底飘移 */
+    const slidingNow=(guy,dt)=>{try{if(guy._noSlideRun||state.prevX==null||!(dt>0))return false;const p=guy.g.position;return Math.hypot(p.x-state.prevX,p.z-state.prevZ)/dt>.45;}catch(e){return false;}};
     const catchNow=role==="player"?()=>{try{return !!(G.passCatch&&G.passCatch.active)||Number(G.pickupReach)>0;}catch(e){return false;}}:()=>false;
     const passNow=role==="player"?()=>{try{if(typeof passing!=="undefined"&&passing&&passing.mesh&&passing.mesh.visible){const k=passing.pickup?(Number(passing.kb)||0):(G&&G.passCatch?Number(G.passCatch.progress)||0:0);return {mesh:passing.mesh,k};}}catch(e){}return null;}:()=>null;
     /* ---------- 1. 加载(第一次需要时才取) ---------- */
@@ -500,9 +503,9 @@
       /* 腾空时不算跑动:热身扣篮起跳那一段人在空中还在往前飘,要是继续当成跑步,跑步权重会把离地高度压回 0 */
       const air=airNow(),moving=air<.05&&movingNow(guy,dt),holding=holdingNow(ball);
       const ease=(cur,to,tau)=>cur+(to-cur)*Math.min(1,dt/tau);
-      state.runW=state.run?ease(state.runW,moving?1:0,.14):0;
+      state.runW=state.run?ease(state.runW,moving?1:0,.11):0;
       state.holdW=ease(state.holdW,holding?1:0,.15);
-      state.armHold=ease(state.armHold,(holding||catchNow())?1:0,.12);
+      state.armHold=ease(state.armHold,(holding||catchNow()||!!guy._celebRunArms)?1:0,.12);
       const rw=state.runW*state.runW*(3-2*state.runW),hw=state.holdW*state.holdW*(3-2*state.holdW);
 
       /* 跑动相位:按这一帧实际走过的距离推进,一个循环对应 run.stride 这么远 */
@@ -533,7 +536,13 @@
       if(state.landT!=null){const r=clamp(state.landT/.12,0,1);loadK*=r*r*(3-2*r);}
       if(loadK>.001){M.position.z+=(-.065*loadK-state.hipY*Math.sin(tilt))/Math.max(.7,Math.cos(tilt));M.position.y+=-.035*loadK;}
       let squat=state.crouchExtra*loadK;
-      if(state.landT!=null&&!moving)squat+=state.landGain*state.landV*state.landT*Math.exp(-state.landT/state.landTau)*groundK;
+      if(state.landT!=null&&!moving){
+        const lt=state.landT;
+        /* 主缓冲 + 轻柔衰减双弹弹簧余震，让写实蒙皮落地也有自然的膝踝弹性收稳 */
+        const baseBounce=state.landGain*state.landV*lt*Math.exp(-lt/state.landTau);
+        const microElastic=Math.max(0,Math.sin(lt*13.8))*Math.exp(-lt*3.6)*0.022*clamp(state.landV/2.2,0.4,1.1);
+        squat+=(baseBounce+microElastic)*groundK;
+      }
       state.squat=squat=Math.min(squat,.24);
       root.updateMatrixWorld(true);
 
@@ -692,11 +701,13 @@
       const shotClip=shotClipFile?getShotClip(shotClipFile):null;
       state.shotClipReady=!!shotClip;
       const dn=guy.pregameDance&&guy.pregameDance.q?guy.pregameDance:null;
-      const dw=dn?clamp(dn.w==null?1:dn.w,0,1):0;
+      const dw=dn?clamp(dn.w==null?1:dn.w,0,1)*(1-rw):0;
       if(shotClip&&dw<.01){
         const isCharging=cfg.player&&typeof G!=="undefined"&&G&&!!G.charging;
         const inShot=isCharging||following||atRelease||(!cfg.player&&(shotLoad>.03||airborneShot));
-        const targetW=inShot&&rw<.45?(1-rw):0;
+        /* 落地后把科比收势平滑交棒给 shot-motion 的自然随机后摆与弹性缓冲 */
+        const tailFade=(following&&shot&&Number(shot.timeAfterRelease)>.44)?1-clamp((shot.timeAfterRelease-.44)/.18,0,1):1;
+        const targetW=inShot&&rw<.45?(1-rw)*tailFade:0;
         const tau=targetW>(state.shotW||0)?.06:.13;
         state.shotW=atRelease&&targetW>0?1:ease(state.shotW||0,targetW,tau);
         sw=state.shotW*state.shotW*(3-2*state.shotW);
@@ -805,8 +816,11 @@
         state.shotW=0;
       }
 
-      /* 热身舞蹈:整身骨骼换成舞蹈的姿势(脚或支撑手/肘/头的落地、位置、朝向仍走下面这套) */
-      if(dn)applyDance(dn);
+      /* 热身舞蹈:整身骨骼换成舞蹈的姿势(奔跑移动时自动让位给跑动步态，绝不在跑动时脚底飘移) */
+      if(dn&&rw<.95){
+        const effW=(dn.w==null?1:dn.w)*(1-rw);
+        if(effW>.005)applyDance({q:dn.q,hy:dn.hy,w:effW});
+      }
 
       /* 摆到 AIBA 球员的位置上。跑动/街舞/专属投篮动作时去掉方块人的额外前倾(动画里自带),只取水平位置和朝向 */
       const kw=Math.max(rw,dw);

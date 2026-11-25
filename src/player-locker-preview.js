@@ -14,7 +14,8 @@
     star30b:{file:"star30b.glb",yaw:0},
     cat1:{file:"cat1.glb",yaw:0},
     husky:{file:"husky.glb",yaw:0},
-    nvidia23:{file:"nvidia23.glb",yaw:0}
+    nvidia23:{file:"nvidia23.glb",yaw:0},
+    mushroom:{file:"mushroom.glb",yaw:0}
   });
   const DANCE_BONES=["Hips","Spine","Spine1","Spine2","Neck","Head","LeftShoulder","LeftArm","LeftForeArm","LeftHand","RightShoulder","RightArm","RightForeArm","RightHand","LeftUpLeg","LeftLeg","LeftFoot","LeftToeBase","RightUpLeg","RightLeg","RightFoot","RightToeBase"];
   const tripoRigCache=new Map();
@@ -52,12 +53,15 @@
     root.updateMatrixWorld(true);
     const skinBox=()=>{
       const bx=new T.Box3(),v=new T.Vector3(),pos=mesh.geometry.attributes.position;
-      mesh.updateMatrixWorld(true);
+      root.updateMatrixWorld(true);
+      if(mesh.skeleton)mesh.skeleton.update();
       for(let i=0;i<pos.count;i++){mesh.boneTransform(i,v);v.applyMatrix4(mesh.matrixWorld);bx.expandByPoint(v);}
       return bx;
     };
     let box=skinBox();
-    const s=1.84/Math.max(0.1,box.max.y-box.min.y);
+    const rawH=Math.max(1e-6,box.max.y-box.min.y);
+    /* 与方块人站立视高(约 1.92m)完全对齐，避免 Armature 带 0.01 缩放的模型(如 23 号老黄 / 77 号蘑菇头)显得偏小 */
+    const s=1.92/rawH;
     M.scale.setScalar(s);root.updateMatrixWorld(true);box=skinBox();
     const hp=B.Hips.getWorldPosition(new T.Vector3());
     M.position.set(-hp.x,-box.min.y-0.052,-hp.z);
@@ -68,6 +72,13 @@
       restW[n]=B[n].getWorldQuaternion(new T.Quaternion());
       restPos[n]=B[n].getWorldPosition(new T.Vector3());
     }
+    const FEET=["LeftFoot","RightFoot","LeftToeBase","RightToeBase","LeftToe_End","RightToe_End"];
+    const footMinY=()=>{
+      let m=Infinity;const v=new T.Vector3();
+      for(const fn of FEET){if(B[fn]){B[fn].getWorldPosition(v);if(v.y<m)m=v.y;}}
+      return Number.isFinite(m)?m:0;
+    };
+    const footRest=footMinY();
     let run=null;
     const clip=gltf.animations&&gltf.animations[0];
     if(clip){
@@ -80,7 +91,7 @@
       }
       if(t1>t0)run={rot,hips,t0,span:t1-t0};
     }
-    return {id,root,M,B,restL,restP,restW,restPos,basePos:M.position.clone(),run};
+    return {id,root,M,B,restL,restP,restW,restPos,basePos:M.position.clone(),footRest,footMinY,run};
   }
 
   function resetTripoRig(rig){
@@ -92,6 +103,8 @@
     rig.root.rotation.set(0,-0.16,0);
   }
 
+  /* 选人界面只抽站立/挥手/律动类动作，排除低趴倒立/地板定格(freeze/headspin/break1990)以免卡片人物缩成一团 */
+  const LOCKER_FLOOR_CLIPS={freeze:1,freeze2:1,break1990:1,headspin:1};
   function poseTripoRig(rig,time,id,featured){
     if(!rig||!global.THREE)return;
     const T=global.THREE;
@@ -100,8 +113,9 @@
     if(D&&typeof D.load==="function"&&!D.ready&&!D.loading)D.load();
     const seed=Array.from(String(id||"star8")).reduce((a,c)=>a+c.charCodeAt(0),0);
     if(D&&D.ready&&Array.isArray(D.ids)&&D.ids.length){
-      const lockerPool=typeof D.list==="function"?D.list({role:"locker",postures:["dance","standing"],moods:["dance","cheer"],skinned:true}):D.ids;
-      const pool=lockerPool.length?lockerPool:D.ids;
+      const rawPool=typeof D.list==="function"?D.list({role:"locker",postures:["dance","standing"],moods:["dance","cheer"],skinned:true}):D.ids;
+      const uprightPool=(rawPool.length?rawPool:D.ids).filter(cid=>!LOCKER_FLOOR_CLIPS[cid]);
+      const pool=uprightPool.length?uprightPool:(rawPool.length?rawPool:D.ids);
       const clipIdx=Math.floor((time*0.24)+seed)%pool.length;
       const clipId=pool[clipIdx];
       const clip=D.clips&&D.clips[clipId];
@@ -110,8 +124,8 @@
         const localT=featured?Math.min(dur*0.45,1.2):((time*0.92)%dur);
         const dn=D.sample(clipId,localT);
         if(dn&&dn.q){
-          const w=featured?0.92:1;
-          const dq=new T.Quaternion(),dc=new T.Quaternion(),pq=new T.Quaternion(),v=new T.Vector3();
+          const w=featured?0.78:0.92;
+          const dq=new T.Quaternion(),dc=new T.Quaternion(),pq=new T.Quaternion(),v=new T.Vector3(),sc=new T.Vector3();
           for(let i=0;i<DANCE_BONES.length;i++){
             const n=DANCE_BONES[i],bone=rig.B[n];if(!bone)continue;
             dq.set(dn.q[i*4],dn.q[i*4+1],dn.q[i*4+2],dn.q[i*4+3]).multiply(rig.restW[n]);
@@ -122,8 +136,21 @@
           }
           if(rig.B.Hips&&dn.hy){
             rig.B.Hips.parent.getWorldQuaternion(pq);
+            rig.B.Hips.parent.getWorldScale(sc);
             v.set(0,dn.hy*(rig.restPos.Hips?rig.restPos.Hips.y:0.95)*w,0).applyQuaternion(pq.invert());
+            if(sc.x>1e-5)v.x/=sc.x;
+            if(sc.y>1e-5)v.y/=sc.y;
+            if(sc.z>1e-5)v.z/=sc.z;
             rig.B.Hips.position.add(v);
+          }
+          rig.root.updateMatrixWorld(true);
+          /* 重新贴稳底座并把骨盆水平居中，避免动作下蹲或前倾让人物在选人卡片里显得偏矮/偏移 */
+          const fDiff=rig.footMinY()-rig.footRest;
+          rig.M.position.y-=fDiff;
+          if(rig.B.Hips){
+            rig.B.Hips.getWorldPosition(v);
+            rig.M.position.x-=v.x*0.75;
+            rig.M.position.z-=v.z*0.75;
           }
           rig.root.updateMatrixWorld(true);
           return;
