@@ -17,18 +17,18 @@
     star1:{file:"star1.glb",yaw:0},
     star15:{file:"star15.glb",yaw:0},
     /* star30:混元生成的 4.9 万面静态模型,先焊接重复顶点再减到 1.48 万面,Mixamo 绑骨(护齿是独立碎片,单独拿出来再并回) */
-    star30:{file:"star30.glb",yaw:0},
+    star30:{file:"star30.glb?v=9378581b22",look:true,yaw:0},
     /* star3 / star30b:混元生成的 4.9 万面静态模型,焊接后减到 1.5 万面,Mixamo 绑骨,权重落到减面网格上;
        跑动沿用 star30 的 24 帧原地版本(按世界旋转差重映射到各自骨架) */
     star3:{file:"star3.glb",yaw:0},
-    star30b:{file:"star30b.glb",yaw:0},
+    star30b:{file:"star30b.glb?v=6459b67a97",look:true,yaw:0},
     /* cat1:猫吉祥物,混元生成 → 焊接减面 1.5 万面 → Mixamo 绑骨(用 Mixamo 自带的 run,20 帧);
        握拳手只有食指链,游戏要量掌心方向,所以补了一根不带权重的 HandMiddle1 */
     cat1:{file:"cat1.glb",yaw:0},
     /* husky:哈士奇(凯尔特人),混元生成 → 1.5 万面 → Mixamo 绑骨;哈士奇没有现成的 run,跑动借用猫的 20 帧 run(骨名一致) */
     husky:{file:"husky.glb",yaw:0},
     /* nvidia23:混元 5 万面减至 1.8 万面 → Mixamo 绑骨(33 骨 + 补齐 HandMiddle1 → 35 骨),自带 Slow Run 原地跑动循环 + 科比视频转 3D 跳投动作 */
-    nvidia23:{file:"nvidia23.glb",yaw:0,shotClip:"nvidia23_kb_shot.json"},
+    nvidia23:{file:"nvidia23.glb?v=ff9a83a316",look:true,yaw:0,shotClip:"nvidia23_kb_shot.json"},
     /* mushroom:魔性金发蘑菇头舞王,Colab 混元生成 → 减面 1.6 万面 → 自动移植 Mixamo 35 骨骨架 + 原视频提取魔性蘑菇舞 */
     mushroom:{file:"mushroom.glb",yaw:0}
   };
@@ -278,6 +278,13 @@
       const maxAniso=(typeof renderer!=="undefined"&&renderer&&renderer.capabilities&&renderer.capabilities.getMaxAnisotropy)?Math.min(8,renderer.capabilities.getMaxAnisotropy()):4;
       gltf.scene.traverse(o=>{o.frustumCulled=false;o.userData.tripo=true;if(o.isMesh){o.castShadow=true;o.receiveShadow=true;}if(o.isSkinnedMesh&&!mesh)mesh=o;if(o.isBone)B[o.name.replace(/^mixamorig:?/,"")]=o;if(o.isMesh&&o.material&&o.material.map){o.material.map.anisotropy=maxAniso;o.material.map.needsUpdate=true;}});
       if(!mesh||!B.Hips)throw new Error(MODELS[id].file+" 里没有蒙皮网格或骨骼");
+      const venueLook=!!MODELS[id].look;
+      if(venueLook){
+        gltf.scene.traverse(o=>{
+          if(o.isMesh&&o.material?.isMeshStandardMaterial)o.material.userData.aibaLinearCharacter=true;
+        });
+        window.AIBACharacterShading?.shadeTree(root);
+      }
       root.updateMatrixWorld(true);
       /* 量身高要用蒙皮后的真实顶点:Mixamo 绑的模型,Armature 节点带着一个 90° 旋转(Z 朝上遗留),
          直接取几何包围盒会把身高当成厚度。静止姿势下蒙皮顶点 = 原顶点,star8 这条路算出来和以前一样 */
@@ -332,13 +339,16 @@
         for(const idx of [bMinX[b],bMaxX[b],bMinY[b],bMaxY[b],bMinZ[b],bMaxZ[b]])if(idx>=0)hvSet.add(idx);
       }
       const hullVerts=Uint32Array.from(hvSet);
+      const soleVertices=venueLook?["Left","Right"].map(side=>["Foot","ToeBase","Toe_End"]
+        .map(part=>bMinY[mesh.skeleton.bones.indexOf(B[side+part])])
+        .filter(index=>Number.isInteger(index)&&index>=0)):null;
       const src=geo.index.array,out=[];
       for(let i=0;i<src.length;i+=3)if(keep[src[i]]&&keep[src[i+1]]&&keep[src[i+2]])out.push(src[i],src[i+1],src[i+2]);
       const g2=geo.clone();g2.setIndex(new T.BufferAttribute(new src.constructor(out),1));
       const fp=new T.SkinnedMesh(g2,mesh.material);fp.name="tripoFpArms";fp.frustumCulled=false;fp.userData.tripo=true;
       fp.position.copy(mesh.position);fp.quaternion.copy(mesh.quaternion);fp.scale.copy(mesh.scale);
       mesh.parent.add(fp);fp.bind(mesh.skeleton,mesh.bindMatrix);fp.visible=false;
-      Object.assign(state,{root,M,mesh,fp,hullVerts,modelId:id,base:M.position.clone(),scale:s,footRest:footMin(),hipY:restPos.Hips.y});
+      Object.assign(state,{root,M,mesh,fp,hullVerts,soleVertices,modelId:id,base:M.position.clone(),scale:s,footRest:footMin(),hipY:restPos.Hips.y});
       state.shootingFingerVertices=id==="star30"?findShootingFingerVertices(mesh):null;
       if(MODELS[id]&&MODELS[id].shotClip)getShotClip(MODELS[id].shotClip);
       readRun(gltf.animations&&gltf.animations[0]);
@@ -933,7 +943,10 @@
            表现为球员每隔几帧抽一下、像几个动作来回切。 */
         const mirror=(sc.scale&&sc.scale.y<0)||state.aux>0;
         const held=ballNow(),fpBall=fpBallNow();
-        if(!mirror)try{retarget();}catch(e){oops(e);}
+        if(!mirror)try{
+          retarget();
+          if(state.soleVertices&&typeof syncSkinnedFootShadows==="function")syncSkinnedFootShadows(guy,state);
+        }catch(e){oops(e);}
         shrinkBalls(guy.g,held,fpOn?fpBall:null);
         root.visible=true;state.mesh.visible=tp;state.fp.visible=fpOn;
         if(tp)hideTree(guy.g,held,null);
@@ -961,6 +974,23 @@
         }
       };
     }
+    const soleSample=new T.Vector3();
+    state.footContact=(guy,side,out)=>{
+      const {mesh,soleVertices}=state;
+      const indices=soleVertices&&soleVertices[side];
+      if(!state.ready||state.player!==guy||state.modelId!==wantId()||!indices?.length)return false;
+      let lowest=Infinity;
+      out.set(0,0,0);
+      for(const index of indices){
+        mesh.boneTransform(index,soleSample);
+        soleSample.applyMatrix4(mesh.matrixWorld);
+        out.add(soleSample);
+        lowest=Math.min(lowest,soleSample.y);
+      }
+      out.multiplyScalar(1/indices.length);
+      out.y=lowest;
+      return true;
+    };
     if(cfg.player)state.heldBallPosition=(guy,out,atRelease=false)=>{
       if(!state.ready||state.player!==guy||state.modelId!==wantId()||!holdingNow(ballNow()))return false;
       // 采本帧的真实掌上球位，沿用渲染的骨架。游戏时钟相同，随后渲染不会再推进一次过渡。

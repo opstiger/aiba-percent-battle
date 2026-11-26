@@ -134,14 +134,54 @@
     "}"
   ].join("\n");
 
+  const HERO_FRAG_BODY=`
+{
+  vec3 worldNormal=normalize(aibaWN);
+  vec3 viewNormal=normalize(aibaN);
+  #ifdef DOUBLE_SIDED
+    float faceSign=gl_FrontFacing?1.0:-1.0;
+    worldNormal*=faceSign;
+    viewNormal*=faceSign;
+  #endif
+  float up=worldNormal.y;
+  float sunDot=dot(worldNormal,aibaSunDir);
+  float bounce=(1.0-smoothstep(0.04,1.15,aibaY)) * (0.18+0.82*max(0.0,-up));
+  vec3 groundLight=aibaGroundColor*aibaGroundColor;
+  gl_FragColor.rgb+=diffuseColor.rgb*groundLight*bounce*0.15;
+  if(aibaSceneMode>0.5&&aibaSceneMode<1.5){
+    vec2 q=aibaWPos.xz-aibaWPos.y*vec2(-0.52,0.40);
+    float dapple=0.5+0.5*sin(q.x*1.55+q.y*1.12)*cos(q.y*1.75-q.x*0.98);
+    float openSky=smoothstep(0.16,0.84,dapple);
+    vec3 canopy=mix(vec3(0.43,0.63,0.36),vec3(0.98,0.93,0.78),openSky);
+    float lightSide=smoothstep(-0.65,0.50,sunDot);
+    gl_FragColor.rgb*=canopy*mix(0.75,1.03,lightSide);
+  }else if(aibaSceneMode>1.5&&aibaSceneMode<2.5){
+    float shadowSide=max(0.0,-sunDot);
+    gl_FragColor.rgb+=diffuseColor.rgb*vec3(0.024,0.042,0.084)*shadowSide;
+    gl_FragColor.rgb*=1.0-aibaWetness*0.08;
+  }else if(aibaSceneMode>3.5){
+    float earthLight=max(0.0,dot(worldNormal,vec3(0.46,0.38,-0.80)));
+    gl_FragColor.rgb+=diffuseColor.rgb*vec3(0.025,0.060,0.14)*earthLight;
+  }
+  float contact=smoothstep(0.015,0.20,aibaY);
+  gl_FragColor.rgb*=mix(0.84,1.0,contact);
+  float facing=clamp(dot(viewNormal,normalize(aibaV)),0.0,1.0);
+  float rim=1.0-facing;
+  float keySide=smoothstep(-0.20,0.72,sunDot);
+  gl_FragColor.rgb+=aibaRimColor*aibaRimColor*rim*rim*rim*aibaRimStrength*keySide*0.21;
+}
+`;
+
   function inject(shader){
     Object.assign(shader.uniforms,uniforms);
     shader.vertexShader=shader.vertexShader
       .replace("#include <common>","#include <common>"+VERT_DECL)
       .replace("#include <project_vertex>","#include <project_vertex>\n"+VERT_BODY);
+    const hero=this.userData.aibaLinearCharacter;
+    const insertion=hero?"#include <tonemapping_fragment>":"#include <dithering_fragment>";
     shader.fragmentShader=shader.fragmentShader
       .replace("#include <common>","#include <common>"+FRAG_DECL)
-      .replace("#include <dithering_fragment>",FRAG_BODY+"\n#include <dithering_fragment>");
+      .replace(insertion,(hero?HERO_FRAG_BODY:FRAG_BODY)+"\n"+insertion);
   }
   function shadeable(m){
     return m&&(m.isMeshLambertMaterial||m.isMeshStandardMaterial||m.isMeshPhongMaterial)&&!m.transparent;
@@ -239,7 +279,7 @@
     if(m.onBeforeCompile&&m.onBeforeCompile!==THREE.Material.prototype.onBeforeCompile)return;
     m.userData.aibaShade=true;
     m.onBeforeCompile=inject;
-    m.customProgramCacheKey=()=>"aibaShade3";
+    m.customProgramCacheKey=()=>m.userData.aibaLinearCharacter?"aibaShadeLinearHero":"aibaShade3";
     m.needsUpdate=true;patched++;
   }
   function shadeTree(root){

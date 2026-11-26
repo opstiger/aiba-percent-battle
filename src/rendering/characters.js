@@ -90,7 +90,7 @@ const GROUND_SHADOW_SCALE=(typeof SHADOWS!=="undefined"&&SHADOWS)?.58:1;
 const SHADOW_RECEIVE=!(typeof location!=="undefined"&&/(\?|&)selfshadow=0(&|#|$)/.test(location.search));
 const GROUND_SHADOWS=[];
 let groundShadowGeo=null,groundShadowMat=null,footShadowMat=null;
-const _footTmpA=new THREE.Vector3(),_footTmpB=new THREE.Vector3();
+const _footTmpA=new THREE.Vector3();
 function groundShadowAssets(){
   if(groundShadowMat)return;
   const c=document.createElement("canvas");c.width=c.height=64;
@@ -138,22 +138,6 @@ function attachGroundShadow(o){
   return m;
 }
 function resolveFootWorldPos(o,side,out){
-  /* 优先读取写实蒙皮球星(tripoAvatar)真实骨骼 Foot/Toe 中点，精确对齐到鞋掌正下方 */
-  try{
-    const rigs=[window.AIBATripo].concat(window.AIBATripoRivals||[]);
-    for(let r=0;r<rigs.length;r++){
-      const st=rigs[r];
-      if(!st||!st.ready||st.player!==o||!st.B)continue;
-      const bFoot=side===0?st.B.LeftFoot:st.B.RightFoot;
-      const bToe=side===0?st.B.LeftToeBase:st.B.RightToeBase;
-      if(bFoot){
-        bFoot.getWorldPosition(_footTmpA);
-        if(bToe){bToe.getWorldPosition(_footTmpB);out.copy(_footTmpA).lerp(_footTmpB,0.45);}
-        else out.copy(_footTmpA);
-        return true;
-      }
-    }
-  }catch(e){}
   const node=(o.shoes&&o.shoes[side])||(o.footRoots&&o.footRoots[side])||(o.ankles&&o.ankles[side]);
   if(node&&node.getWorldPosition){node.getWorldPosition(out);return true;}
   return false;
@@ -175,6 +159,31 @@ function markShadowCasters(o){
 }
 let _shadowScanTick=0;
 /* 逐帧同步。离地越高影子越摊开、越淡，并沿主光相反方向轻微偏移。 */
+function updateFootShadows(o,groundY,preset,skinned){
+  const footDark=preset==="lunarCrater"?0.86:(preset==="rainforest"?0.84:(preset==="flowerCourt"?0.78:0.74));
+  for(let side=0;side<2;side++){
+    const shadow=o.footShadows[side];
+    const hasSole=skinned?.footContact(o,side,_footTmpA);
+    const found=hasSole||resolveFootWorldPos(o,side,_footTmpA);
+    const footLift=found?Math.max(0,_footTmpA.y-(hasSole?groundY:0.06)):Infinity;
+    const fade=Math.max(0,1-footLift/0.32);
+    shadow.visible=fade>0.02;
+    if(!shadow.visible)continue;
+    shadow.position.set(_footTmpA.x,groundY+0.002,_footTmpA.z);
+    shadow.rotation.set(-Math.PI/2,0,o.g.rotation.y||0);
+    const spread=1+footLift*1.1;
+    shadow.scale.set(0.30*spread,0.44*spread,1);
+    shadow.material.opacity=footDark*fade*fade;
+  }
+}
+function contactGroundY(preset){
+  return preset==="flowerCourt"?0.032:(preset==="rainforest"?0.022:0.016);
+}
+function syncSkinnedFootShadows(o,rig){
+  if(!o.footShadows||!o.g.visible)return;
+  const preset=currentScenePreset||"indoor";
+  updateFootShadows(o,contactGroundY(preset),preset,rig);
+}
 function updGroundShadows(){
   const realOutdoorSunShadow=typeof sun!=="undefined"&&!!sun&&!!sun.castShadow&&typeof renderer!=="undefined"&&!!renderer?.shadowMap?.enabled;
   if((GROUND_SHADOW_SCALE<1||realOutdoorSunShadow)&&(++_shadowScanTick%15===0))
@@ -189,7 +198,7 @@ function updGroundShadows(){
     }
     const preset=(typeof currentScenePreset==="string"&&currentScenePreset)||"indoor";
     /* 鲜花草甸的草壳略高于 y=0，接触影抬高至 y=0.032 防止被草叶完全盖没 */
-    const groundY=preset==="flowerCourt"?0.032:(preset==="rainforest"?0.022:0.016);
+    const groundY=contactGroundY(preset);
     m.visible=true;
     const height=Math.max(0,Number(o.g.position.y)||0);
     const k=1+height*0.85;
@@ -210,28 +219,7 @@ function updGroundShadows(){
     m.userData.groundShadowOpacity=m.material.opacity;
     m.userData.groundShadowOffset=[shadowX,shadowZ];
 
-    /* 逐脚独立接触 AO：精准贴在左右两只球鞋正下方，脚着地极实、离地平滑淡出 */
-    if(fs&&fs.length===2){
-      const yaw=o.g.rotation.y||0;
-      const footDark=preset==="lunarCrater"?0.86:(preset==="rainforest"?0.84:(preset==="flowerCourt"?0.78:0.74));
-      for(let s=0;s<2;s++){
-        const fm=fs[s];
-        if(resolveFootWorldPos(o,s,_footTmpA)){
-          const footLift=Math.max(0,_footTmpA.y-0.06);
-          const fFade=Math.max(0,1-footLift/0.32);
-          fm.visible=fFade>0.02;
-          if(fm.visible){
-            fm.position.set(_footTmpA.x,groundY+0.002,_footTmpA.z);
-            fm.rotation.set(-Math.PI/2,0,yaw);
-            const spread=1+footLift*1.1;
-            fm.scale.set(0.30*spread,0.44*spread,1);
-            fm.material.opacity=footDark*fFade*fFade;
-          }
-        }else{
-          fm.visible=false;
-        }
-      }
-    }
+    if(fs)updateFootShadows(o,groundY,preset);
   }
 }
 
