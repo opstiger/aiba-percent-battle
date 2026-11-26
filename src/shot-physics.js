@@ -107,7 +107,10 @@
     const apexCue=charging&&!paused&&!S.apexed&&S.t>=p.peak;
     if(apexCue)S.apexed=true;
     S.lastJump=jump;
-    return {curve,jump,late,landingImpact:S.landingImpact,apexCue,autoRelease:charging&&!paused&&S.t>=Math.max(p.auto,100/Math.max(1,rate)+.09),airborne:S.airborne,offGround:S.airborne&&S.t>=takeoff,justLanded:S.justLanded,t:S.t,params:p};
+    const drive=flow&&(charging||S.airborne)?{
+      load:clamp(S.t/pushAt,0,1),push:clamp((S.t-pushAt)/pushT,0,1),sinceTakeoff:S.t-takeoff
+    }:null;
+    return {curve,jump,drive,late,landingImpact:S.landingImpact,apexCue,autoRelease:charging&&!paused&&S.t>=Math.max(p.auto,100/Math.max(1,rate)+.09),airborne:S.airborne,offGround:S.airborne&&S.t>=takeoff,justLanded:S.justLanded,t:S.t,params:p};
   }
   function releasePower(power,ideal){
     if(!S.late||S.lateStartPower===null)return power;

@@ -30,12 +30,19 @@
   const FOLLOW_EXTEND=0.105,BALL_RELEASE_AT=0.092,FOLLOW_HOLD=0.24,FOLLOW_FADE=0.38;
   let fpRig=null,fpHidden=[],fpBallHome=null,followAge=0,followActive=false,followLong=false;
   /* 投篮后自然余韵状态(仅作用于出手后与落地缓冲，绝不触碰 P.pos 或蓄力/出手关键帧)：
-     1) 手回落后的随机惯性后摆(20°~31° 钟摆余韵，告别定点卡停)
+     1) 手回落后按原地跳或前跳选择不同的后摆幅度
      2) 约 55% 跳投带半步前跳(0.28~0.44m)，落地后走 1–2 个短倒步退回原位
      3) 原地跳投落地带脚腕/膝盖弹性双缓冲(像弹簧轻轻弹两下再站稳) */
+  function dampedSwing(frequency,damping){
+    const angular=frequency*Math.PI;
+    const peak=Math.atan2(angular,damping)/angular;
+    const scale=1/(Math.sin(angular*peak)*Math.exp(-damping*peak));
+    return phase=>Math.sin(angular*phase)*Math.exp(-damping*phase)*scale;
+  }
+  const shootingArmSwing=dampedSwing(1.38,1.90),guideArmSwing=dampedSwing(1.32,2.05);
   let shotTailSequence=null;
   const shotTail={
-    active:false,armActive:false,armT:0,armDur:0.62,armSwing:0.44,guideScale:0.68,armRoll:0.04,
+    active:false,armActive:false,armT:0,armDur:0.62,armSwing:0,guideSwing:0,armRoll:0.04,
     hasSweep:false,sweepDist:0,sweepCur:0,sweepPeak:0,landed:false,landAge:0,
     springT:-1,springDur:0.74,springFreq:12.6,springAmp:1.0,
     recovering:false,recoveryStart:0,recoveryDistance:0,recoveryTraveled:0,recoveryTime:0,
@@ -60,10 +67,12 @@
     shotTail.armActive=false;
     shotTail.armT=0;
     shotTail.armDur=0.48+r()*0.14;                // 落地后约半秒，双手后摆再回到身侧
-    shotTail.armSwing=(21+r()*11)*Math.PI/180;    // 随机后摆 21°~32°
-    shotTail.guideScale=0.54+r()*0.26;            // 辅助手略轻且不同步
+    const swingRoll=r(),guideRoll=r();
     shotTail.armRoll=(r()-0.5)*0.08;
     shotTail.hasSweep=r()<0.55;                   // 约一半跳投带半步前跳，另一半原地弹性双缓冲
+    const swingDegrees=(shotTail.hasSweep?26:21)+swingRoll*4;
+    shotTail.armSwing=swingDegrees*Math.PI/180;
+    shotTail.guideSwing=Math.max(20,swingDegrees-1-guideRoll)*Math.PI/180;
     shotTail.sweepDist=shotTail.hasSweep?(0.28+r()*0.16):0;
     shotTail.sweepCur=0;shotTail.sweepPeak=0;
     shotTail.landed=false;shotTail.landAge=0;
@@ -443,6 +452,8 @@
     const flowJump=style&&style.flow&&typeof shotFlowJump==="function"?{push:SHOT_FLOW_PUSH,pow:SHOT_FLOW_POW,air:SHOT_FLOW_AIR,lag:SHOT_FLOW_LAG,height:SHOT_FLOW_HEIGHT}:null;
     const phys=AIBAShotPhysics.update({charging:G.charging,power:G.power,paused:tutorialHold,dt,ideal,rate:playerChargeRate(),curve:base,flow:flowJump});
     const rawCurve=phys.curve;
+    const nvidiaDrive=G.myStar?.id==="nvidia23"?phys.drive:null;
+    player.shotDrive=nvidiaDrive;
     if(G.charging)lastPoseCurve={dip:rawCurve.dip,lift:rawCurve.lift,rise:rawCurve.rise,jmp:rawCurve.jmp,over:rawCurve.over};
     /* 真实弹道版:蹬地途中松手后腿还在继续蹬(物理按时间走完这一跳),出手跟随不能把下蹲/蹬伸/举球冻在松手那一刻,
        否则人会半蹲着悬在空中;跟着实时值走,落地后跟随用的就是腾空末尾的值(腿已蹬直、球已举到位)。 */
@@ -483,6 +494,7 @@
     const follow=followState(dt);
     const c=visualReleaseCurve(rawCurve,follow);
     const catchState=G.passCatch;
+    player.shotBalanceSwing=null;
     const tstageShotPhase=updateShotCycle(dt,!!P.walking);
     const releaseFeetPhase=updateReleaseFeet(dt,!!P.walking,phys,c);
     // 接球屈髋：这条才是当前生效的 updPose，不写这里改了也看不见
@@ -520,7 +532,8 @@
         resetShotTail();
       }else{
         if(shotTail.hasSweep){
-          if(!shotTail.landed&&(phys.airborne||rawCurve.jmp>0.04)){
+          const movingInAir=nvidiaDrive?nvidiaDrive.sinceTakeoff>=0:(phys.airborne||rawCurve.jmp>.04);
+          if(!shotTail.landed&&movingInAir){
             shotTail.sweepPeak=Math.max(shotTail.sweepPeak,ease01(rawCurve.jmp));
             const targetSweep=shotTail.sweepDist*(0.35+0.65*shotTail.sweepPeak);
             shotTail.sweepCur+=(targetSweep-shotTail.sweepCur)*Math.min(1,dt*9.5);
@@ -598,24 +611,25 @@
          二选一会把跟随姿势整个丢掉，手从静止姿势直接弹去接球，就是"还没收回手就去接了"。 */
       if(follow.active)applyFollowThroughPose(player,follow);
       /* 出手后余韵叠加(仅在未蓄力/未伸手接球时生效，绝不打断接球或下次蓄力)：
-         1) 手回落过垂直位后自然继续向后摆出 20°~32° 再轻柔摆回，消除机械卡停感
+         1) 两臂从身侧自然后摆，前跳的摆幅比原地跳投略大
          2) 落地后半步退回原位时的自然迈步交替腿型 + 脚腕膝盖弹簧双缓冲 */
       const catchBusy=!!(catchState&&catchState.active&&((catchState.progress||0)>.12||catchState.settling))||G.pickupReach>.04;
       if(!G.charging&&!catchBusy&&shotTail.armActive&&player.arms&&player.arms.length>=2){
         const u=clampN(shotTail.armT/Math.max(0.05,shotTail.armDur),0,1);
-        /* 归一化欠阻尼钟摆：峰值精准达到 +21°~32° 后摆，再轻柔前摆回正，绝不卡停 */
-        const pen=(Math.sin(u*Math.PI*1.38)*Math.exp(-u*1.90))/0.50;
-        const penG=(Math.sin(clampN((u-0.08)/0.92,0,1)*Math.PI*1.32)*Math.exp(-u*2.05))/0.50;
-        const fadeOut=1-ease01(clampN((u-0.84)/0.16,0,1));
+        const pen=shootingArmSwing(u);
+        const penG=guideArmSwing(clampN((u-.08)/.92,0,1));
+        const fadeOut=1-ease01(clampN((u-.84)/.16,0,1));
         const swingR=pen*shotTail.armSwing*fadeOut;
-        const swingL=penG*shotTail.armSwing*shotTail.guideScale*fadeOut;
+        const swingL=penG*shotTail.guideSwing*fadeOut;
+        player.shotBalanceSwing=[swingR,swingL];
         // Uncurl the elbows on the way past the hips so it reads as a relaxed swing.
         const relax=ease01(u/.25)*fadeOut;
         player.elbows[0].rotation.x*=1-.78*relax;
         player.elbows[1].rotation.x*=1-.78*relax;
-        player.arms[0].rotation.x+=swingR;
+        // Let the release pose soften toward the relaxed arm angle before adding the swing.
+        player.arms[0].rotation.x+=(IDLE_ARM_X-player.arms[0].rotation.x)*.64*relax+swingR;
         player.arms[0].rotation.z-=Math.abs(swingR)*0.18+shotTail.armRoll*Math.abs(pen)*fadeOut;
-        player.arms[1].rotation.x+=swingL;
+        player.arms[1].rotation.x+=(IDLE_ARM_X-player.arms[1].rotation.x)*.64*relax+swingL;
         player.arms[1].rotation.z+=Math.abs(swingL)*0.16;
         if(player.elbows&&player.elbows.length>=2){
           player.elbows[0].rotation.x+=Math.max(0,swingR)*0.22;
@@ -761,6 +775,10 @@
     global.updBalls=origUpdBalls;
     if(global.AIBAShotPhysics)AIBAShotPhysics.reset();
     followAge=0;followActive=false;pendingRelease=null;
+    if(typeof player!=="undefined"&&player){
+      player.shotDrive=null;
+      player.shotBalanceSwing=null;
+    }
     resetShotTail();
     resetShotCycle();
   }
