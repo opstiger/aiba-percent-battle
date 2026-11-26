@@ -11,7 +11,7 @@ A cyberpunk voxel 3D basketball game that runs entirely in your browser — shoo
 - Vercel (auto-deployed): https://aiba-percent-battle.vercel.app/
 - GitHub Pages (mirror): https://opstiger.github.io/aiba-percent-battle/
 
-Current version: `v2.47.6`
+Current version: `v2.47.7`
 
 | Home | Percent Battle | Locker room | Motion control |
 |---|---|---|---|
@@ -73,7 +73,7 @@ Developer notes — muting audio in tests, the appearance viewer, motion-control
 - `viewer.html` — inspect a single player or gear item on a neutral backdrop, with no game logic loaded (see [developer notes](docs/DEVELOPMENT.zh-CN.md)).
 - `tools/capture.mjs` — fixed-camera screenshot rig; output lands in `captures/` (not tracked).
 - `index.html` — the playable entry: a ~200-line modular shell that loads the game from `src/` (cutover completed in v2.0).
-- `block-3pt-kingv2.47.6-modular.html` — current versioned snapshot, kept identical to `index.html`. Older snapshots live in git history and tags, not in the tree.
+- `block-3pt-kingv2.47.7-modular.html` — current versioned snapshot, kept identical to `index.html`. Older snapshots live in git history and tags, not in the tree.
 - `styles.css` — HUD, home screen, panels and mobile styles.
 - `src/` — the game itself, fully modular:
   - `core/` runtime, state and the migration bridge · `modes/` Percent Battle, Rack Rush, contest, practice · `rendering/` Three.js scene core · `ui/` menus, panels, pre-game flow · `gameplay/`, `presentation/`, `services/`, `data/` supporting layers

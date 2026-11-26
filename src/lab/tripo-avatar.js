@@ -111,7 +111,7 @@
       ?()=>{try{const g=typeof player!=="undefined"?player:null;return Math.max(typeof P!=="undefined"&&P?Number(P.jump)||0:0,pregameLift(g));}catch(e){return 0;}}
       :()=>{try{const g=rivalGuy();const pl=pregameLift(g);if(pl>0)return pl;if(!g||!g.g||g.poseYRet==null||!(Math.abs((G.tNow||0)-(g.poseT||0))<.12))return 0;return Math.max(0,g.g.position.y-g.poseYRet);}catch(e){return 0;}};
     const movingNow=role==="player"
-      ?(guy,dt)=>{try{return !!(guy.walking||guy.running||(typeof P!=="undefined"&&P&&P.walking)||(typeof G!=="undefined"&&G&&G.moving))||slidingNow(guy,dt);}catch(e){return false;}}
+      ?(guy,dt)=>{try{return !!(guy.walking||guy.running||guy.shotRecovery?.active||(typeof P!=="undefined"&&P&&P.walking)||(typeof G!=="undefined"&&G&&G.moving))||slidingNow(guy,dt);}catch(e){return false;}}
       :(guy,dt)=>{try{return !!(guy.walking||guy.running)||slidingNow(guy,dt);}catch(e){return false;}};
     /* 热身演示/庆祝里人物移动时(助跑、狂奔、走向篮筐):按位移速度与 running 标志同步触发真实跑步动画，不再脚底飘移 */
     const slidingNow=(guy,dt)=>{try{if(guy._noSlideRun||state.prevX==null||!(dt>0))return false;const p=guy.g.position;return Math.hypot(p.x-state.prevX,p.z-state.prevZ)/dt>.45;}catch(e){return false;}};
@@ -266,7 +266,7 @@
     function unload(){
       if(state.root&&state.root.parent)state.root.parent.remove(state.root);
       for(const o of [B,restL,restP,restW,restWinv,restPos,LIMB])for(const k in o)delete o[k];
-      stanceReady=stanceLocked=false;
+      stanceReady=stanceLocked=shotStanceReleased=false;
       _prevPole.hasR=_prevPole.hasL=false;
       Object.assign(state,{root:null,M:null,mesh:null,fp:null,run:null,ready:false,player:null,modelId:null,failed:false,ballMoved:false,guideOff:null,oursG:null,airTop:0,landT:null,landV:0,airPrev:0,airVel:0,shotW:0,shotFrame:0,chargeFrame:null});
     }
@@ -409,7 +409,7 @@
         const f=guy.footRoots[0];inv.copy(f.matrixWorld).invert();
         f.traverse(o=>{if(o.isMesh&&o.geometry){o.geometry.computeBoundingBox();box.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld).applyMatrix4(inv);soleY=Math.min(soleY,box.min.y);}});
       }catch(e){}
-      stanceReady=stanceLocked=false;
+      stanceReady=stanceLocked=shotStanceReleased=false;
       _prevPole.hasR=_prevPole.hasL=false;
       Object.assign(state,{player:guy,armIdx,legIdx,soleY,ready:true,tA:0,prevX:null,prevZ:null,holdW:0,runW:0,armHold:0});
       return true;
@@ -455,16 +455,25 @@
     const plantFrame=new T.Matrix4(),stanceFrame=new T.Matrix4(),toRig=new T.Matrix4();
     const contacts=["L","R"].map(side=>({side,toeName:side==="L"?"LeftToeBase":"RightToeBase",ankle:new T.Vector3(),sole:new T.Quaternion(),
       toe:new T.Quaternion(),target:new T.Vector3()}));
-    let stanceReady=false,stanceLocked=false;
-    function plantShotFeet(active,clipWeight,air,walking){
-      if(walking||air>=.22||(stanceReady&&Math.hypot(plantFrame.elements[12]-stanceFrame.elements[12],
-        plantFrame.elements[14]-stanceFrame.elements[14])>.55)){
+    let stanceReady=false,stanceLocked=false,shotStanceReleased=false;
+    function plantShotFeet(active,clipWeight,air,walking,charging,recovery){
+      if(charging&&air<=.004&&!recovery)shotStanceReleased=false;
+      if(recovery||shotStanceReleased){
+        stanceReady=stanceLocked=false;
+        return 0;
+      }
+      if(walking){
+        stanceReady=stanceLocked=false;
+        return 0;
+      }
+      if(active&&air>.004){
+        shotStanceReleased=true;
         stanceReady=stanceLocked=false;
         return 0;
       }
       if(!active&&clipWeight<.005)stanceLocked=false;
-      if(!stanceReady||(!active&&!stanceLocked)){
-        if(air>0)return 0;
+      if(!stanceReady){
+        if(!active||air>0)return 0;
         stanceFrame.copy(plantFrame);
         for(const c of contacts){
           const foot=LIMB["leg"+c.side].hand;
@@ -511,7 +520,8 @@
       let now=performance.now();try{if(typeof G!=="undefined"&&G&&Number.isFinite(G.tNow))now=G.tNow*1000;}catch(e){}
       const dt=Math.min(.1,Math.max(0,(now-(state.tA||now))/1000));state.tA=now;
       /* 腾空时不算跑动:热身扣篮起跳那一段人在空中还在往前飘,要是继续当成跑步,跑步权重会把离地高度压回 0 */
-      const air=airNow(),moving=air<.05&&movingNow(guy,dt),holding=holdingNow(ball);
+      const air=airNow(),recovery=cfg.player&&guy.shotRecovery?.active?guy.shotRecovery:null;
+      const moving=air<.05&&movingNow(guy,dt),holding=holdingNow(ball);
       const ease=(cur,to,tau)=>cur+(to-cur)*Math.min(1,dt/tau);
       state.runW=state.run?ease(state.runW,moving?1:0,.11):0;
       state.holdW=ease(state.holdW,holding?1:0,.15);
@@ -520,7 +530,10 @@
 
       /* 跑动相位:按这一帧实际走过的距离推进,一个循环对应 run.stride 这么远 */
       g.matrixWorld.decompose(_gp,_gq,_gs);
-      if(state.prevX!=null&&state.run){const d=Math.hypot(_gp.x-state.prevX,_gp.z-state.prevZ);if(d<1.5)state.phase+=d/state.run.stride;}
+      if(state.prevX!=null&&state.run){
+        const dx=_gp.x-state.prevX,dz=_gp.z-state.prevZ,d=Math.hypot(dx,dz);
+        if(d<1.5)state.phase+=(recovery?(Number(recovery.direction)||-1):1)*d/state.run.stride;
+      }
       state.prevX=_gp.x;state.prevZ=_gp.z;
 
       root.matrix.identity();M.position.copy(state.base);resetPose();
@@ -717,9 +730,9 @@
         const inShot=isCharging||following||atRelease||(!cfg.player&&(shotLoad>.03||airborneShot));
         /* 落地后把科比收势平滑交棒给 shot-motion 的自然随机后摆与弹性缓冲 */
         const tailFade=(following&&shot&&Number(shot.timeAfterRelease)>.44)?1-clamp((shot.timeAfterRelease-.44)/.18,0,1):1;
-        const targetW=inShot&&rw<.45?(1-rw)*tailFade:0;
+        const targetW=recovery?0:(inShot&&rw<.45?(1-rw)*tailFade:0);
         const tau=targetW>(state.shotW||0)?.06:.13;
-        state.shotW=atRelease&&targetW>0?1:ease(state.shotW||0,targetW,tau);
+        state.shotW=recovery?0:(atRelease&&targetW>0?1:ease(state.shotW||0,targetW,tau));
         sw=state.shotW*state.shotW*(3-2*state.shotW);
         if(sw>.005){
           const mk=shotClip.markers||{gather:0,dip:12,setPoint:16,release:20,apex:24,land:30,end:shotClip.n-1};
@@ -827,10 +840,11 @@
       }
 
       /* 热身舞蹈:整身骨骼换成舞蹈的姿势(奔跑移动时自动让位给跑动步态，绝不在跑动时脚底飘移) */
-      if(dn&&rw<.95){
+      if(dn&&rw<.95&&!recovery){
         const effW=(dn.w==null?1:dn.w)*(1-rw);
         if(effW>.005)applyDance({q:dn.q,hy:dn.hy,w:effW});
       }
+      if(recovery&&rw>.001)applyRun(state.phase,rw,state.armHold);
 
       /* 摆到 AIBA 球员的位置上。跑动/街舞/专属投篮动作时去掉方块人的额外前倾(动画里自带),只取水平位置和朝向 */
       const kw=Math.max(rw,dw);
@@ -860,7 +874,9 @@
       let pelvisDrop=0;
       if(cfg.player&&state.modelId==="nvidia23"){
         M.updateMatrixWorld(true);
-        pelvisDrop=plantShotFeet(G.charging||following||atRelease,sw,air,moving||rw>.05||dw>.001);
+        pelvisDrop=plantShotFeet(G.charging,following||atRelease,air,moving||rw>.05||dw>.001,G.charging,!!recovery);
+        state.stanceLocked=stanceLocked;state.stanceReleased=shotStanceReleased;state.pelvisDrop=pelvisDrop;
+        state.shotRecovery=!!recovery;state.runDirection=recovery?(Number(recovery.direction)||-1):1;
       }
       root.matrix.copy(plantFrame);
       root.updateMatrixWorld(true);

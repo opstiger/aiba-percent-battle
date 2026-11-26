@@ -1125,12 +1125,29 @@ function solveRunSwing(stepLength,run){
 /* 一只脚的完整步态时间轴：u=0 是脚跟接触，随后承重、前掌蹬地，
    u=stance 后进入空中摆动。stance 段的 z 斜率固定为 -2*stepLength，
    与位移驱动的 phase 完全相等，因此支撑脚相对世界不会反向滑动。 */
-function runFootPhase(index,phase,stepLength,run){
+function runFootPhase(index,phase,stepLength,run,reverse){
   const u=((phase/(Math.PI*2)-.25+index*.5)%1+1)%1;
   const stance=runStanceFraction(run);
   const lead=stepLength*(RUN_CONTACT_LEAD+.04*clamp(run,0,1));
-  const toeOff=lead-2*stepLength*stance;
   const clearance=RUN_FOOT_CLEARANCE_MIN+RUN_FOOT_CLEARANCE_GAIN*clamp(run,0,1);
+  if(reverse){
+    if(u<stance){
+      const p=1-u/stance;
+      const heelSettle=ease01(clamp(p/.08,0,1));
+      const toeWindow=.16/stance,toeStart=1-toeWindow;
+      const toeRoll=ease01(clamp((p-toeStart)/toeWindow,0,1));
+      return {u,stance,z:-lead+2*stepLength*stance*p,lift:0,contact:1,support:1,grounded:true,
+        footPitch:mixN(mixN(RUN_HEEL_STRIKE_PITCH,RUN_MIDSTANCE_PITCH,heelSettle),RUN_TOE_OFF_PITCH,toeRoll),
+        toePitch:RUN_TOE_OFF_TOE_PITCH*toeRoll,anklePitch:0};
+    }
+    const p=clamp((1-u)/(1-stance),0,1),pEase=ease01(p);
+    const landing=ease01(clamp((p-.88)/.12,0,1));
+    return {u,stance,z:mixN(-lead+2*stepLength*stance,-lead,pEase),lift:Math.sin(Math.PI*p)*clearance,
+      contact:landing,support:landing,grounded:false,
+      footPitch:mixN(RUN_TOE_OFF_PITCH,RUN_HEEL_STRIKE_PITCH,pEase),
+      toePitch:mixN(RUN_TOE_OFF_TOE_PITCH,0,pEase),anklePitch:-.045*Math.sin(Math.PI*p)};
+  }
+  const toeOff=lead-2*stepLength*stance;
   if(u<stance){
     const heelSettle=ease01(clamp(u/.08,0,1));
     const toeRoll=ease01(clamp((u-(stance-.16))/.16,0,1));
@@ -1333,12 +1350,18 @@ function poseRunCycle(o,state,speed,dt,opts){
      下游(球鞋接地)会把这一帧永久锁成 NaN。实测:走位起步那一帧鞋整只消失且不可恢复。 */
   dt=Number.isFinite(dt)?dt:1/60;
   speed=Number.isFinite(speed)?speed:0;
+  const direction=speed<0?-1:1,travelSpeed=Math.abs(speed);
   if(!Number.isFinite(state.phase))state.phase=0;
   if(!Number.isFinite(state.lean))state.lean=0;
+  const cfg=opts||{},hs=cfg.hs||1;
   /* NPC/绝杀队员也会直接调用这个共享跑动循环，不能只依赖主角后续的 poseHandJoints；
      否则主角掌心相对、其他跑动角色却仍然掌心朝地。投篮/接球关键帧在后续阶段覆盖它。 */
-  poseRunPalms(o);
-  const cfg=opts||{},hs=cfg.hs||1;
+  if(cfg.hands!==false)poseRunPalms(o);
+  const poseBlend=clamp(Number.isFinite(Number(cfg.poseBlend))?Number(cfg.poseBlend):0,0,1);
+  const blendPose=poseBlend>0?{
+    rootY:o.g.position.y,rootX:o.g.rotation.x,
+    nodes:[o.legs,o.knees,o.ankles,o.footRoots,o.shoes].flat().filter(Boolean).map(node=>({node,rotation:node.rotation.toArray()}))
+  }:null;
   const variation=ensureRunVariation(o,state);
   /* updPose 在 updWalk 前执行一帧；主角的 walk 状态因此可直接提供上
      一帧已经算好的收步进度。其他调用方仍可显式传 decel。 */
@@ -1348,34 +1371,37 @@ function poseRunCycle(o,state,speed,dt,opts){
     (Number.isFinite(Number(state.runDecel))?Number(state.runDecel):autoDecel),0,1);
   state.runDecel=decel;
   state.runClipPhase=runClipPhase(state);
-  const run=clamp(speed/3.6,0,1);
+  const run=clamp(travelSpeed/3.6,0,1);
   /* ---- 步幅/步频 ----
      先定自然步频，再反推出这一步需要多长。最高常规跑速把步频封在约
-     189 spm，超出的速度交给更长的步幅，不再用高频抽腿掩盖几何误差。 */
-  const cadence=runCadence(speed,decel);
+     189 spm，超出的速度交给更长的步幅，不再用高频抽腿掩盖几何误差。
+     投篮回位可显式给短步长；倒步用负速度，相位与支撑脚轨迹一起反向。 */
+  const cadence=runCadence(travelSpeed,decel);
   const minStep=mixN(.34,RUN_DECEL_STEP_MIN,decel);
-  const L=clamp(Math.max(minStep,speed/Math.max(.01,cadence)),minStep,1.16);
+  const requestedStep=Number.isFinite(Number(cfg.stepLength))?Number(cfg.stepLength):0;
+  const L=clamp(requestedStep>0?requestedStep:Math.max(minStep,travelSpeed/Math.max(.01,cadence)),.12,1.16);
   const solvedSwing=solveRunSwing(L,run);
   /* 起步第一帧 speed 可能还是 0，不能因此把双腿冻结在一个随机半步姿态。
      这里的 stepLen 与 IK 的两脚几何分离相同，phase 仍然按位移推进。 */
-  const gaitBlend=clamp(speed/.45,0,1);
+  const gaitBlend=clamp(travelSpeed/.45,0,1);
   /* 腿姿比摆臂更晚才完全进入跑姿；减速时先抬身，再保留最后的小步。
      .72m/s 是跑姿到直立腿姿的过渡带，不改变步频和脚的位移相位。 */
-  const legActivity=clamp(speed/.72,0,1);
+  const legActivity=clamp(travelSpeed/.72,0,1);
   state.runActive=gaitBlend;
+  state.runDirection=direction;
   /* stepLen 走的是 solveRunSwing→runFootSpan 的数值解，解不出来时会返回 NaN；
      Math.max(.12,NaN) 仍然是 NaN，于是相位、lean 和根节点高度整帧污染。
      步长和相位增量各自兜底，坏帧退化成"这一帧不推进相位"，而不是写出 NaN。 */
   const spanRaw=runFootSpan(solvedSwing,run);
   const stepLen=Math.max(.12,Number.isFinite(spanRaw)?spanRaw:.12);
   const prevPhase=Number.isFinite(state.phase)?state.phase:0;
-  state.phase=(state.phase||0)+(speed*dt/stepLen)*Math.PI;
+  state.phase=(state.phase||0)+(direction*travelSpeed*dt/stepLen)*Math.PI;
   if(!Number.isFinite(state.phase))state.phase=prevPhase;
   state.idleT=(state.idleT||0)+dt;
   const s=Math.sin(state.phase),c=Math.cos(state.phase);
   const idle=Math.sin(state.idleT*1.7)*.03;
-  const footAState=runFootPhase(0,state.phase,stepLen,run);
-  const footBState=runFootPhase(1,state.phase,stepLen,run);
+  const footAState=runFootPhase(0,state.phase,stepLen,run,direction<0);
+  const footBState=runFootPhase(1,state.phase,stepLen,run,direction<0);
   const legA=runLegFromFoot(footAState,run,legActivity),legB=runLegFromFoot(footBState,run,legActivity);
   const hipA=legA.hip,hipB=legB.hip;
   const kneeA=legA.knee,kneeB=legB.knee;
@@ -1388,10 +1414,12 @@ function poseRunCycle(o,state,speed,dt,opts){
   /* 鞋面自身保持局部 0；foot 负责整脚滚动，toe 只在蹬地/落地窗口折叠。 */
   o.shoes[0].rotation.x=0;o.shoes[1].rotation.x=0;
   if(o.g){
-    o.g.userData.runCadence=speed>0.001?speed/stepLen:0;
+    o.g.userData.runCadence=travelSpeed/stepLen;
     o.g.userData.runTargetCadence=cadence;
     o.g.userData.runDecel=decel;
+    o.g.userData.runDirection=direction;
     o.g.userData.runStride=stepLen;
+    o.g.userData.runPhase=state.phase;
     o.g.userData.runTargetStride=L;
     o.g.userData.runAnklePitch=[legA.footPitch,legB.footPitch];
     o.g.userData.runFootContact=[legA.contact,legB.contact];
@@ -1430,7 +1458,7 @@ function poseRunCycle(o,state,speed,dt,opts){
   if(cfg.arms!==false&&!cfg.defensive)applyTstageRunPose(o,state);
   /* T台 run clip 也可能写入自己的 finger curl；共享层最后统一成游戏的轻握拳，
      这样默认 game、T台开关和绝杀跑动不会出现三种手型。 */
-  if(cfg.arms!==false)poseRunFingers(o,state,speed,dt);
+  if(cfg.arms!==false)poseRunFingers(o,state,travelSpeed,dt);
   state.lean=(state.lean||0)+(run*.16-(state.lean||0))*Math.min(1,dt*6);
   o.g.rotation.x=state.lean;
   /* 左右摆:重心在两条支撑腿之间来回,频率等于步频。少了它,人像装在轨道上平移。
@@ -1438,7 +1466,7 @@ function poseRunCycle(o,state,speed,dt,opts){
      而且 squad 里有自己写 rotation.z 的地方,不能无条件覆盖。 */
   if(cfg.sway)o.g.rotation.z=s*(.012+run*.026);
   if(cfg.resetHead!==false&&o.headRoot)o.headRoot.rotation.set(0,0,0);
-  if(cfg.arms!==false)applyRunVitality(o,state,run,dt,!!cfg.defensive);
+  if(cfg.arms!==false&&cfg.secondary!==false)applyRunVitality(o,state,run,dt,!!cfg.defensive);
   const footYA=poseFootBottomY(hipA,kneeA,ankA,legA.footPitch,legA.toePitch);
   const footYB=poseFootBottomY(hipB,kneeB,ankB,legB.footPitch,legB.toePitch);
   /* footRoot 的 y 位移是上一帧的接地安全垫，必须先清掉；真实鞋底测量
@@ -1498,6 +1526,18 @@ function poseRunCycle(o,state,speed,dt,opts){
   if((legA.support<RUN_GROUND_SUPPORT_THRESHOLD&&Number.isFinite(correctedA)&&correctedA<-.006)||
      (legB.support<RUN_GROUND_SUPPORT_THRESHOLD&&Number.isFinite(correctedB)&&correctedB<-.006))
     o.g.updateMatrixWorld(true);
+  if(blendPose){
+    blendPose.nodes.forEach(({node,rotation})=>{
+      node.rotation.set(
+        mixN(rotation[0],node.rotation.x,poseBlend),
+        mixN(rotation[1],node.rotation.y,poseBlend),
+        mixN(rotation[2],node.rotation.z,poseBlend)
+      );
+    });
+    o.g.rotation.x=mixN(blendPose.rootX,o.g.rotation.x,poseBlend);
+    o.g.position.y=mixN(blendPose.rootY,o.g.position.y,poseBlend);
+    o.g.updateMatrixWorld(true);
+  }
   const finalGroundA=runFootGroundY(o,0),finalGroundB=runFootGroundY(o,1);
   o.g.userData.tstageRunBodyBob=bodyBob;
   o.g.userData.runBodyBounce=gaitBounce;

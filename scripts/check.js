@@ -8,7 +8,7 @@ const childProcess=require("child_process");
 
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
-const snapshot="block-3pt-kingv2.47.6-modular.html";
+const snapshot="block-3pt-kingv2.47.7-modular.html";
 const requiredFiles=[
   entry,
   snapshot,
@@ -504,9 +504,9 @@ for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"]
 if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js"></script>'))fail("Percent Battle opponent cache version missing");
 if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js"></script>')>entryHtml.indexOf('<script src="src/game-flow.js"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
-for(const token of ["v2.47.6 MODULAR","MODULAR / v2.47.6"])
+for(const token of ["v2.47.7 MODULAR","MODULAR / v2.47.7"])
   if(!entryHtml.includes(token))fail("visible version token missing "+token);
-if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.47.6";'))fail("GAME_VERSION must be v2.47.6");
+if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.47.7";'))fail("GAME_VERSION must be v2.47.7");
 /* GAME_VERSION 会随成绩上报(见 percent-battle/state.js 的 version 字段)。以前靠手工让
    game-config.js 的 ?v= 跟着发版号走；现在 v 是内容 hash，改常量就会换 v，上面已校验不过期。 */
 const playerMeterGradient='<linearGradient id="ppGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#2e8bff"/><stop offset="55%" stop-color="#39d3ff"/><stop offset="78%" stop-color="#ffd23f"/><stop offset="100%" stop-color="#ff4040"/></linearGradient>';
@@ -1493,8 +1493,12 @@ if(!lastShotSquad.includes("function poseContestHands")||!/actor\.pressure=/.tes
      归一化用的那个长度还必须**等于脚真正迈出的几何距离** —— 早先它是写死的
      `.5+.6*run`,和迈腿角度毫无关系,实测比真实步幅大 64%~179%(越慢越离谱),
      身体平移得比脚多,照样是滑步。所以现在要求:步幅 L 先定,迈腿角度由 L 反解。 */
-  if(!/state\.phase=\(state\.phase\|\|0\)\+\(speed\*dt\/stepLen\)\*Math\.PI;/.test(renderingMotion))
-    fail("run phase must advance by distance/stride, not by elapsed time (foot sliding)");
+  if(!/state\.phase=\(state\.phase\|\|0\)\+\(direction\*travelSpeed\*dt\/stepLen\)\*Math\.PI;/.test(renderingMotion))
+    fail("run phase must advance by signed distance/stride, not by elapsed time (foot sliding)");
+  if(!/const direction=speed<0\?-1:1,travelSpeed=Math\.abs\(speed\);/.test(renderingMotion)||
+     !/runFootPhase\(0,state\.phase,stepLen,run,direction<0\)/.test(renderingMotion)||
+     !/2\*stepLength\*stance\*p/.test(renderingMotion))
+    fail("reverse recovery gait must reverse both phase and support-foot travel without foot sliding");
   if(!/const solvedSwing=solveRunSwing\(L,run\);/.test(renderingMotion))
     fail("swing must be solved back from the stride L, or the step length and the body translation disagree");
   if(/const stride=\.5\+\.6\*run/.test(renderingMotion))
@@ -1503,8 +1507,8 @@ if(!lastShotSquad.includes("function poseContestHands")||!/actor\.pressure=/.tes
     fail("phase must normalise by the TRUE geometric step (runFootSpan), not a straight-leg approximation");
   for(const token of ["function runCadence(speed,decel)","function runLegAngles(legSign,swing,run,phaseValue,activity)",
     "function solveRunSwing(stepLength,run)","function solveRunLegTarget(z,lift,anklePitch,run,activity)",
-    "function runFootPhase(index,phase,stepLength,run)","function runLegFromFoot(foot,run,activity)","function regroundRunPose(o)",
-    "const cadence=runCadence(speed,decel);","const minStep=mixN(.34,RUN_DECEL_STEP_MIN,decel);","setFootRoll(o,0,legA.footPitch,legA.toePitch)",
+    "function runFootPhase(index,phase,stepLength,run,reverse)","function runLegFromFoot(foot,run,activity)","function regroundRunPose(o)",
+    "const cadence=runCadence(travelSpeed,decel);","const minStep=mixN(.34,RUN_DECEL_STEP_MIN,decel);","setFootRoll(o,0,legA.footPitch,legA.toePitch)",
     "o.g.userData.runFootContact=","o.g.userData.runToePitch="])
     if(!renderingMotion.includes(token))fail("run gait foot/cadence guard missing "+token);
   for(const token of ["state.runActive=gaitBlend","runHipTwist","runWristSpring","runHemSpring","o.legs[0].rotation.y=hipTwist","o.wrists||[]","o.jerseyHem","regroundRunPose(player)"])

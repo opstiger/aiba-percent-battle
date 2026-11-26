@@ -31,17 +31,26 @@
   let fpRig=null,fpHidden=[],fpBallHome=null,followAge=0,followActive=false,followLong=false;
   /* 投篮后自然余韵状态(仅作用于出手后与落地缓冲，绝不触碰 P.pos 或蓄力/出手关键帧)：
      1) 手回落后的随机惯性后摆(20°~31° 钟摆余韵，告别定点卡停)
-     2) 约 55% 跳投带半步前跳(0.28~0.44m)并在落地后摆手顺势退回原位
+     2) 约 55% 跳投带半步前跳(0.28~0.44m)，落地后走 1–2 个短倒步退回原位
      3) 原地跳投落地带脚腕/膝盖弹性双缓冲(像弹簧轻轻弹两下再站稳) */
   const shotTail={
     active:false,armActive:false,armT:0,armDur:0.62,armSwing:0.44,guideScale:0.68,armRoll:0.04,
     hasSweep:false,sweepDist:0,sweepCur:0,sweepPeak:0,landed:false,landAge:0,
-    springT:-1,springDur:0.74,springFreq:12.6,springAmp:1.0
+    springT:-1,springDur:0.74,springFreq:12.6,springAmp:1.0,
+    recovering:false,recoveryStart:0,recoveryDistance:0,recoveryTraveled:0,recoveryTime:0,
+    recoveryDuration:0,recoverySpeed:0,recoveryBlend:0,recoverySteps:1,recoveryStepLength:0,
+    recoveryPeak:0,recoveryAccelT:0,recoveryCruiseT:0,recoveryDecelT:0,
+    recoveryRig:{phase:0,idleT:0,lean:0}
   };
   function resetShotTail(){
     shotTail.active=false;shotTail.armActive=false;shotTail.armT=0;
     shotTail.hasSweep=false;shotTail.sweepDist=0;shotTail.sweepCur=0;shotTail.sweepPeak=0;
     shotTail.landed=false;shotTail.landAge=0;shotTail.springT=-1;
+    shotTail.recovering=false;shotTail.recoveryStart=0;shotTail.recoveryDistance=0;
+    shotTail.recoveryTraveled=0;shotTail.recoveryTime=0;shotTail.recoveryDuration=0;
+    shotTail.recoverySpeed=0;shotTail.recoveryBlend=0;shotTail.recoverySteps=1;shotTail.recoveryStepLength=0;
+    shotTail.recoveryPeak=0;shotTail.recoveryAccelT=0;shotTail.recoveryCruiseT=0;shotTail.recoveryDecelT=0;
+    shotTail.recoveryRig.phase=0;shotTail.recoveryRig.idleT=0;shotTail.recoveryRig.lean=0;
   }
   function seedShotTail(){
     const r=()=>Math.random();
@@ -60,6 +69,63 @@
     shotTail.springDur=0.72+r()*0.18;             // 0.72~0.90s 弹簧双缓冲
     shotTail.springFreq=11.4+r()*2.6;
     shotTail.springAmp=shotTail.hasSweep?(0.48+r()*0.20):(0.88+r()*0.28);
+    shotTail.recovering=false;shotTail.recoveryStart=0;shotTail.recoveryDistance=0;
+    shotTail.recoveryTraveled=0;shotTail.recoveryTime=0;shotTail.recoveryDuration=0;
+    shotTail.recoverySpeed=0;shotTail.recoveryBlend=0;shotTail.recoverySteps=1;shotTail.recoveryStepLength=0;
+    shotTail.recoveryPeak=0;shotTail.recoveryAccelT=0;shotTail.recoveryCruiseT=0;shotTail.recoveryDecelT=0;
+    shotTail.recoveryRig.phase=0;shotTail.recoveryRig.idleT=0;shotTail.recoveryRig.lean=0;
+  }
+  function beginShotRecovery(){
+    const distance=Math.max(0,shotTail.sweepCur);
+    if(distance<.006){shotTail.sweepCur=0;return;}
+    const accel=2.2,decel=2.8,maxSpeed=.68;
+    const peak=Math.min(maxSpeed,Math.sqrt(2*distance/(1/accel+1/decel)));
+    const accelT=peak/accel,decelT=peak/decel;
+    const cruise=Math.max(0,distance-.5*peak*(accelT+decelT));
+    shotTail.recovering=true;
+    shotTail.recoveryStart=distance;
+    shotTail.recoveryDistance=distance;
+    shotTail.recoveryTraveled=0;
+    shotTail.recoveryTime=0;
+    shotTail.recoveryPeak=peak;
+    shotTail.recoveryAccelT=accelT;
+    shotTail.recoveryCruiseT=cruise/peak;
+    shotTail.recoveryDecelT=decelT;
+    shotTail.recoveryDuration=accelT+shotTail.recoveryCruiseT+decelT;
+    shotTail.recoverySpeed=0;
+    shotTail.recoveryBlend=0;
+    shotTail.recoverySteps=distance>.24?2:1;
+    shotTail.recoveryStepLength=distance/shotTail.recoverySteps;
+    shotTail.recoveryRig.phase=0;
+    shotTail.recoveryRig.idleT=0;
+    shotTail.recoveryRig.lean=0;
+  }
+  function advanceShotRecovery(dt){
+    const s=shotTail,a=2.2,d=2.8,v=s.recoveryPeak;
+    s.recoveryTime=Math.min(s.recoveryDuration,s.recoveryTime+dt);
+    const t=s.recoveryTime,ta=s.recoveryAccelT,tc=s.recoveryCruiseT;
+    let traveled;
+    if(t<ta)traveled=.5*a*t*t;
+    else if(t<ta+tc)traveled=.5*v*ta+v*(t-ta);
+    else{
+      const u=Math.min(s.recoveryDecelT,t-ta-tc);
+      traveled=.5*v*ta+v*tc+v*u-.5*d*u*u;
+    }
+    traveled=clampN(traveled,0,s.recoveryDistance);
+    const previous=s.sweepCur;
+    s.recoveryTraveled=traveled;
+    s.sweepCur=Math.max(0,s.recoveryStart-traveled);
+    s.recoverySpeed=dt>0?(previous-s.sweepCur)/dt:0;
+    const fade=clampN(Math.min(t/.05,(s.recoveryDuration-t)/.05),0,1);
+    s.recoveryBlend=ease01(fade);
+    if(t>=s.recoveryDuration){
+      s.sweepCur=0;s.recovering=false;s.recoverySpeed=0;s.recoveryBlend=0;
+    }
+  }
+  function markShotTailLanded(){
+    if(!shotTail.active||shotTail.landed)return;
+    shotTail.landed=true;shotTail.landAge=0;shotTail.springT=0;
+    if(shotTail.hasSweep)beginShotRecovery();
   }
   let releasePose=null;
   let releaseCurve={dip:0,lift:1,rise:1,jmp:1,over:0},lastPoseCurve=releaseCurve,pendingRelease=null;
@@ -387,7 +453,7 @@
     if(phys.autoRelease&&G.charging){doRelease(true);}
     if(phys.justLanded){
       landT=0.3;
-      if(shotTail.active){shotTail.landed=true;shotTail.landAge=0;shotTail.springT=0;}
+      markShotTailLanded();
     }
     if(landT>0)landT-=dt;
     let lk=landT>0?Math.sin((0.3-landT)/0.3*Math.PI):0;
@@ -444,12 +510,11 @@
     player.g.rotation.y=P.face+pickupTurn+aimYaw+(P.walking?0:mir*(SHOT_STANCE_YAW+styleTurn)*stance);
     /* 出手后的前后位移(纯视觉，不改逻辑站位 P.pos)：
        1) 原有球星风格 drift
-       2) 随机半步前跳(hasSweep): 起跳顺势往前飘出半步(0.28~0.44m)落地，随后配着手臂后摆顺势退回原位 */
-    let stepBackPhase=0;
+       2) 随机半步前跳(hasSweep): 起跳顺势往前飘出半步(0.28~0.44m)，落地后走短倒步退回原位 */
+    let recoverySpeed=0,recoveryBlend=0;
     if(shotTail.active){
       if(G.charging||P.walking){
-        shotTail.sweepCur+=((0-shotTail.sweepCur)*Math.min(1,dt*14));
-        if(Math.abs(shotTail.sweepCur)<0.004)resetShotTail();
+        resetShotTail();
       }else{
         if(shotTail.hasSweep){
           if(!shotTail.landed&&(phys.airborne||rawCurve.jmp>0.04)){
@@ -457,20 +522,18 @@
             const targetSweep=shotTail.sweepDist*(0.35+0.65*shotTail.sweepPeak);
             shotTail.sweepCur+=(targetSweep-shotTail.sweepCur)*Math.min(1,dt*9.5);
           }else{
-            if(!shotTail.landed&&!phys.airborne&&followAge>0.18){
-              shotTail.landed=true;shotTail.landAge=0;
-              if(shotTail.springT<0)shotTail.springT=0;
-            }
+            if(!shotTail.landed&&!phys.airborne&&followAge>0.18)markShotTailLanded();
             if(shotTail.landed){
               shotTail.landAge+=dt;
-              const backU=clampN((shotTail.landAge-0.06)/0.48,0,1);
-              shotTail.sweepCur=shotTail.sweepDist*(1-ease01(backU));
-              stepBackPhase=Math.sin(backU*Math.PI);
+              if(shotTail.recovering&&shotTail.landAge>=.08){
+                advanceShotRecovery(dt);
+                recoverySpeed=shotTail.recoverySpeed;
+                recoveryBlend=shotTail.recoveryBlend;
+              }
             }
           }
         }else if(!shotTail.landed&&!phys.airborne&&followAge>0.22){
-          shotTail.landed=true;shotTail.landAge=0;
-          if(shotTail.springT<0)shotTail.springT=0;
+          markShotTailLanded();
         }
         /* 手臂回落过半后启动随机后摆钟摆(20°~32°)，落地与收手连成一条自然弧线 */
         if(!shotTail.armActive&&(follow.recover>=0.48||(!follow.active&&followAge>0.12))){
@@ -480,7 +543,7 @@
           shotTail.armT+=dt;
           if(shotTail.armT>=shotTail.armDur){
             shotTail.armActive=false;
-            if(!shotTail.hasSweep||shotTail.sweepCur<0.005)shotTail.active=false;
+            if(!shotTail.hasSweep||(!shotTail.recovering&&shotTail.sweepCur<0.005))shotTail.active=false;
           }
         }
       }
@@ -491,7 +554,11 @@
       const dx=HOOP.x-P.pos.x,dz=HOOP.z-P.pos.z,L=Math.hypot(dx,dz)||1;
       player.g.position.x+=dx/L*totalDrift;player.g.position.z+=dz/L*totalDrift;
     }
-    player._noSlideRun=!P.walking&&(stepBackPhase>0.01||shotTail.sweepCur>0.01);
+    const recovering=recoveryBlend>.001;
+    player._noSlideRun=!P.walking&&!recovering&&shotTail.sweepCur>0.01;
+    player.shotRecovery={active:recovering,direction:-1,speed:recoverySpeed,
+      stepLength:shotTail.recoveryStepLength,steps:shotTail.recoverySteps,
+      distance:shotTail.recoveryTraveled,blend:recoveryBlend};
     if(P.walking){
       /* 走路统一走 poseRunCycle —— 它才是"全项目唯一的一套跑动姿势"(motion.js)。
          这里原本是另抄的一条正弦:步频写死 dt*9(和真实位移脱钩,脚在地上滑)、
@@ -549,17 +616,6 @@
         }
       }
       if(!G.charging&&P.jump<.02&&player.legs&&player.knees&&player.ankles){
-        /* 前跳落地后退回原位的小碎步摆腿与轻微重心转移 */
-        if(stepBackPhase>0.01){
-          const sb=stepBackPhase;
-          player.legs[0].rotation.x+=sb*0.18;
-          player.legs[1].rotation.x-=sb*0.14;
-          player.knees[0].rotation.x+=sb*0.24;
-          player.knees[1].rotation.x+=sb*0.16;
-          player.ankles[0].rotation.x-=sb*0.10;
-          player.ankles[1].rotation.x-=sb*0.08;
-          player.g.rotation.z+=sb*0.028*mir;
-        }
         /* 原地投篮落地后的脚腕/膝盖弹性轻弹两下缓冲 */
         if(springBounce>0.008){
           player.legs[0].rotation.x-=springBounce*0.15;
@@ -585,6 +641,13 @@
       if(releaseFeetPhase&&typeof applyReleaseFeetPose==="function"){
         releaseFeetPhase.ground=1-clampN(P.jump/RELEASE_FEET_GROUND_BAND,0,1);
         applyReleaseFeetPose(player,releaseFeetPhase,gameFootY);
+      }
+      if(recovering&&typeof poseRunCycle==="function"){
+        poseRunCycle(player,shotTail.recoveryRig,-recoverySpeed,dt,{
+          arms:false,hands:false,secondary:false,resetHead:false,sway:false,
+          stepLength:shotTail.recoveryStepLength,poseBlend:recoveryBlend
+        });
+        if(typeof regroundRunPose==="function")regroundRunPose(player);
       }
     }
     /* 放松/反应动作层(gameplay/reaction.js):只在完全站定、没有任何出手/接球/跟随动作时写头和手臂。
@@ -734,7 +797,13 @@
       extensionProgress:clampN(followAge/BALL_RELEASE_AT,0,1),timeAfterRelease:Math.max(0,followAge-BALL_RELEASE_AT),
       shotAnimation:typeof getShotAnimationMode==="function"?getShotAnimationMode():"game",
       shotCycleActive,shotCycleTime:+shotCycleClock.toFixed(2),releaseFeetActive,releaseFeetAirborne,
-      releaseFeetKickTime:+releaseFeetAirClock.toFixed(2)})
+      releaseFeetKickTime:+releaseFeetAirClock.toFixed(2),
+      shotRecovery:{active:shotTail.recovering,landed:shotTail.landed,landAge:+shotTail.landAge.toFixed(3),
+        hasSweep:shotTail.hasSweep,sweepDistance:+shotTail.sweepDist.toFixed(3),
+        distance:+shotTail.recoveryDistance.toFixed(3),traveled:+shotTail.recoveryTraveled.toFixed(3),
+        offset:+shotTail.sweepCur.toFixed(3),speed:+shotTail.recoverySpeed.toFixed(3),
+        duration:+shotTail.recoveryDuration.toFixed(3),blend:+shotTail.recoveryBlend.toFixed(3),
+        steps:shotTail.recoverySteps,stepLength:+shotTail.recoveryStepLength.toFixed(3)}})
   };
   apply();
 })(window);
