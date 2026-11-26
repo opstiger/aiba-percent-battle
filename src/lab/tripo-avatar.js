@@ -266,7 +266,7 @@
     function unload(){
       if(state.root&&state.root.parent)state.root.parent.remove(state.root);
       for(const o of [B,restL,restP,restW,restWinv,restPos,LIMB])for(const k in o)delete o[k];
-      stanceReady=stanceLocked=shotStanceReleased=rackFeetPlanted=false;
+      stanceReady=stanceLocked=shotStanceReleased=rackFeetPlanted=shotShoeReference=false;
       state.takeoffFloorLift=0;
       _prevPole.hasR=_prevPole.hasL=false;
       Object.assign(state,{root:null,M:null,mesh:null,fp:null,run:null,ready:false,player:null,modelId:null,failed:false,ballMoved:false,guideOff:null,oursG:null,airTop:0,landT:null,landV:0,airPrev:0,airVel:0,shotW:0,shotFrame:0,chargeFrame:null});
@@ -415,7 +415,7 @@
         const f=guy.footRoots[0];inv.copy(f.matrixWorld).invert();
         f.traverse(o=>{if(o.isMesh&&o.geometry){o.geometry.computeBoundingBox();box.copy(o.geometry.boundingBox).applyMatrix4(o.matrixWorld).applyMatrix4(inv);soleY=Math.min(soleY,box.min.y);}});
       }catch(e){}
-      stanceReady=stanceLocked=shotStanceReleased=rackFeetPlanted=false;
+      stanceReady=stanceLocked=shotStanceReleased=rackFeetPlanted=shotShoeReference=false;
       state.takeoffFloorLift=0;
       _prevPole.hasR=_prevPole.hasL=false;
       Object.assign(state,{player:guy,armIdx,legIdx,soleY,ready:true,tA:0,prevX:null,prevZ:null,holdW:0,runW:0,armHold:0});
@@ -461,9 +461,21 @@
     // Record each shoe in court space, then solve in the unmirrored rig space used by solveLimb.
     const plantFrame=new T.Matrix4(),stanceFrame=new T.Matrix4(),toRig=new T.Matrix4();
     const contacts=["L","R"].map(side=>({side,toeName:side==="L"?"LeftToeBase":"RightToeBase",ankle:new T.Vector3(),sole:new T.Quaternion(),
-      toe:new T.Quaternion(),toePivot:new T.Vector3(),target:new T.Vector3()}));
+      toe:new T.Quaternion(),toeLocal:new T.Quaternion(),toePivot:new T.Vector3(),target:new T.Vector3()}));
     const TAKEOFF_BLEND_SECONDS=.14;
-    let stanceReady=false,stanceLocked=false,shotStanceReleased=false,rackFeetPlanted=false;
+    const PLANTED_KNEE_YAW_LIMIT=8*Math.PI/180;
+    const AIR_KNEE_YAW_LIMIT=10*Math.PI/180;
+    const AIR_FOOT_SIDE_TRAVEL=.026;
+    const AIR_TOE_INWARD_LIMIT=5*Math.PI/180,AIR_TOE_OUTWARD_LIMIT=10*Math.PI/180;
+    let stanceReady=false,stanceLocked=false,shotStanceReleased=false,rackFeetPlanted=false,shotShoeReference=false;
+    function limitKneeBend(pole,axis,shoeHeading,weight,limit){
+      const shoeBend=perp(shoeHeading,axis);
+      if(!shoeBend)return pole;
+      const clipBend=perp(pole,axis)||shoeBend;
+      const yaw=signedAngle(shoeBend,clipBend,axis);
+      const supported=clamp(yaw,-limit,limit);
+      return shoeBend.applyAxisAngle(axis,yaw+(supported-yaw)*weight);
+    }
     function plantShotFeet(active,clipWeight,air,walking,recovery,rackReach,kneeDrive,drive){
       const rackTurn=rackReach>.001&&air<=.004&&!walking&&!recovery;
       if(rackTurn!==rackFeetPlanted){
@@ -495,8 +507,11 @@
           const foot=LIMB["leg"+c.side].hand;
           wpos(foot,c.ankle);B[foot].getWorldQuaternion(c.sole);
           B[c.toeName].getWorldQuaternion(c.toe);
+          c.toeLocal.copy(B[c.toeName].quaternion);
           c.toePivot.copy(wpos(c.toeName)).sub(c.ankle);
+          c.footSideOffset=c.ankle.x-wpos(LIMB["leg"+c.side].up).x;
         }
+        shotShoeReference=!rackTurn;
         stanceReady=true;
       }
       if((active||pushing||rackTurn)&&!launched)stanceLocked=true;
@@ -527,10 +542,18 @@
         const toeGoal=toe.getWorldQuaternion(TQ()).slerp(TQ().copy(stanceRotation).multiply(c.toe),weight);
         const pole=wpos(leg.fore).sub(wpos(leg.up).lerp(wpos(leg.hand),.5));
         if(pole.lengthSq()<.0001)pole.copy(Zax);
-        // Hips can turn for the rack while the knees track the planted shoes.
-        const kneeAim=TV().copy(Zax).applyQuaternion(stanceRotation);
-        pole.normalize().lerp(kneeAim,rackTurn?weight*.72:kneeDrive);
-        solveLimb(leg,c.target,pole);
+        const forward=TV().copy(Zax).applyQuaternion(stanceRotation);
+        pole.normalize().lerp(forward,rackTurn?weight*.72:kneeDrive);
+        let bend=pole;
+        if(!rackTurn){
+          // The clip can twist a nearly straight knee sideways while the ankle stays planted.
+          // Measure its bend around the hip-to-ankle axis against that shoe's forward direction.
+          const axis=TV().copy(c.target).sub(wpos(leg.up)).normalize();
+          const shoeHeading=TV(c.toePivot.x,0,c.toePivot.z).applyQuaternion(stanceRotation);
+          const heading=shoeHeading.lengthSq()>1e-8?shoeHeading:forward;
+          bend=limitKneeBend(pole,axis,heading,weight,PLANTED_KNEE_YAW_LIMIT);
+        }
+        solveLimb(leg,c.target,bend);
         setW(B[leg.hand],sole);
         setW(toe,toeGoal);
       }
@@ -549,14 +572,41 @@
       }
       return Math.max(0,plane-bottom)/plantFrame.elements[5];
     }
-    function relaxAirborneAnkles(weight){
+    function shapeAirborneLegs(air,age){
       const basis=plantFrame.elements,up=TV(basis[1],basis[5],basis[9]);
+      const stanceToRig=toRig.copy(plantFrame).invert().multiply(stanceFrame);
+      const across=perp(TV().copy(Xax).transformDirection(stanceToRig),up);
+      const alignment=shotShoeReference&&across?smooth(age/.035)*smooth(air/.09):0;
+      const ankleRelax=smooth(age/.07)*smooth(air/.09);
       const pitchLimit=THREE.MathUtils.degToRad(59);
-      for(const side of ["L","R"]){
-        const leg=LIMB["leg"+side],toe=side==="L"?"LeftToeBase":"RightToeBase";
-        if(!B[toe]||!Number.isFinite(leg.restAnkleAngle))continue;
-        const ankle=wpos(leg.hand);
-        const sole=wpos(toe).sub(ankle).normalize(),shin=wpos(leg.fore).sub(ankle).normalize();
+      for(const c of contacts){
+        const leg=LIMB["leg"+c.side],toe=B[c.toeName];
+        if(!toe||!Number.isFinite(leg.restAnkleAngle))continue;
+        const foot=B[leg.hand],ankle=wpos(leg.hand);
+        const footQ=foot.getWorldQuaternion(TQ()),toeQ=toe.getWorldQuaternion(TQ());
+        const sole=wpos(c.toeName).sub(ankle).normalize();
+        const shoeHeading=alignment>0?perp(TV(c.toePivot.x,0,c.toePivot.z).transformDirection(stanceToRig),up):null;
+        let yawCorrection=0;
+        if(shoeHeading){
+          // Keep the air pose near the width and toe direction established during the push-off.
+          const outward=c.side==="L"?1:-1;
+          const animatedHeading=perp(sole,up)||shoeHeading;
+          const yaw=signedAngle(shoeHeading,animatedHeading,up)*outward;
+          const naturalYaw=clamp(yaw,-AIR_TOE_INWARD_LIMIT,AIR_TOE_OUTWARD_LIMIT);
+          yawCorrection=(naturalYaw-yaw)*outward*alignment;
+          const hip=wpos(leg.up),offset=TV().copy(ankle).sub(hip).dot(across);
+          const sideTravel=clamp(offset-c.footSideOffset,-AIR_FOOT_SIDE_TRAVEL,AIR_FOOT_SIDE_TRAVEL);
+          const target=TV().copy(ankle).addScaledVector(across,(c.footSideOffset+sideTravel-offset)*alignment);
+          const axis=TV().copy(target).sub(hip).normalize();
+          const pole=wpos(leg.fore).sub(hip);
+          const kneeHeading=TV().copy(shoeHeading).applyAxisAngle(up,naturalYaw*outward);
+          const bend=limitKneeBend(pole,axis,kneeHeading,alignment,AIR_KNEE_YAW_LIMIT);
+          solveLimb(leg,target,bend);
+          setW(foot,footQ);
+          setW(toe,toeQ);
+        }
+        const actualAnkle=wpos(leg.hand);
+        const shin=wpos(leg.fore).sub(actualAnkle).normalize();
         const goal=TV().copy(sole);
         const excess=goal.angleTo(shin)-leg.restAnkleAngle-.34;
         if(excess>0)goal.applyAxisAngle(TV().crossVectors(goal,shin).normalize(),excess);
@@ -564,10 +614,26 @@
           const level=perp(goal,up)||TV().copy(Zax);
           goal.copy(level).multiplyScalar(Math.cos(pitchLimit)).addScaledVector(up,-Math.sin(pitchLimit));
         }
-        const foot=B[leg.hand];
-        const rotation=TQ().setFromUnitVectors(sole,goal);
-        rotation.slerp(I0,1-weight).multiply(foot.getWorldQuaternion(TQ()));
-        setW(foot,rotation);
+        const relax=TQ().setFromUnitVectors(sole,goal).slerp(I0,1-ankleRelax);
+        // Apply yaw after relaxing the ankle so the pitch correction cannot turn the toe inward again.
+        const corrected=TV().copy(sole).applyQuaternion(relax);
+        if(shoeHeading){
+          const level=perp(corrected,up)||shoeHeading;
+          const correctedYaw=signedAngle(shoeHeading,level,up);
+          const originalYaw=signedAngle(shoeHeading,perp(sole,up)||shoeHeading,up);
+          relax.premultiply(TQ().setFromAxisAngle(up,originalYaw+yawCorrection-correctedYaw));
+        }
+        const animatedSole=TQ().copy(relax).multiply(footQ);
+        if(shoeHeading){
+          // Preserve the new toe direction and pitch while removing the clip's sideways ankle roll.
+          const resultDirection=TV().copy(sole).applyQuaternion(relax);
+          const restDirection=TV().copy(c.toePivot).transformDirection(stanceToRig);
+          const restSole=TQ().setFromRotationMatrix(stanceToRig).multiply(c.sole);
+          const stableSole=TQ().setFromUnitVectors(restDirection,resultDirection).multiply(restSole);
+          animatedSole.slerp(stableSole,alignment);
+          toe.quaternion.slerp(c.toeLocal,alignment);
+        }
+        setW(foot,animatedSole);
       }
     }
     function limitBalanceSwing(swing){
@@ -575,14 +641,36 @@
       const up=TV(0,1,0).transformDirection(inverse);
       const forward=TV(Math.sin(P.face),0,Math.cos(P.face)).transformDirection(inverse);
       const side=TV().crossVectors(up,forward).normalize();
+      const shoulders=TV().copy(wpos("LeftArm")).sub(wpos("RightArm"));
+      const torsoWidth=shoulders.length();
+      const bodySide=perp(shoulders,up)||side;
+      const clearance=clamp(torsoWidth*.62,.23,.32);
       for(let i=0;i<2;i++){
         const arm=i===0?LIMB.armR:LIMB.armL;
         const direction=wpos(arm.fore).sub(wpos(arm.up));
         const pitch=Math.atan2(-direction.dot(forward),-direction.dot(up));
         const extra=pitch-Math.max(0,swing[i]);
-        if(extra<=0)continue;
-        const shoulder=B[arm.up];
-        setW(shoulder,TQ().setFromAxisAngle(side,-extra).multiply(shoulder.getWorldQuaternion(TQ())));
+        if(state.modelId==="nvidia23"&&extra>0){
+          const shoulder=B[arm.up];
+          setW(shoulder,TQ().setFromAxisAngle(side,-extra).multiply(shoulder.getWorldQuaternion(TQ())));
+        }
+        // Guide the forearm around the torso during the backward swing.
+        const amount=smooth(Math.max(0,swing[i])/.20);
+        if(amount<=.001)continue;
+        const sign=i===0?-1:1;
+        const hip=wpos("Hips"),chest=wpos("Spine2"),wrist=wpos(arm.hand);
+        const height=clamp((wrist.y-hip.y)/Math.max(.1,chest.y-hip.y),0,1);
+        const middle=TV().copy(hip).lerp(chest,height);
+        const outward=TV().copy(bodySide).multiplyScalar(sign);
+        const distance=TV().copy(wrist).sub(middle).dot(outward);
+        const correction=Math.max(0,clearance-distance)*amount;
+        if(correction>.0001){
+          const hand=B[arm.hand],handQ=hand.getWorldQuaternion(TQ());
+          const target=TV().copy(wrist).addScaledVector(outward,correction);
+          const pole=wpos(arm.fore).sub(wpos(arm.up).lerp(wrist,.5)).addScaledVector(outward,.16*amount);
+          solveLimb(arm,target,pole);
+          setW(hand,handQ);
+        }
       }
     }
     function retarget(atRelease=false){
@@ -689,14 +777,50 @@
       if(B.Hips)B.Hips.updateMatrixWorld(true);
 
       /* 腿:脚踝跟着 AIBA 脚踝的落点走(挪到这副骨架自己的胯宽和踝高上),反解膝盖;脚掌朝向照抄 */
+      const danceOn=!!(guy.pregameDance&&guy.pregameDance.q&&(guy.pregameDance.w==null?1:guy.pregameDance.w)*(1-rw)>.001);
+      const airLegW=(!MODELS[state.modelId]?.shotClip&&air>.004&&!moving&&!danceOn)?smooth(air/.09):0;
+      const rigUp=airLegW>0?TV(0,1,0):null;
       for(const [sd,s,side] of [["L",1,"Left"],["R",-1,"Right"]]){
         const l=state.legIdx[sd],L=LIMB["leg"+sd];
         const hipA=loc(guy.legs[l]),kneeA=loc(guy.knees[l]),ankA=loc(guy.ankles[l]),rf=restPos[side+"Foot"];
         const tg=TV().copy(ankA);tg.x+=rf.x-s*.125;tg.y+=rf.y-.12*Sc.y;tg.y+=squat;
+        if(airLegW>0){
+          const restOffset=rf.x-restPos[side+"UpLeg"].x;
+          const hipX=wpos(L.up).x;
+          const travel=clamp(tg.x-hipX-restOffset,-.035,.035);
+          tg.x=tg.x+(hipX+restOffset+travel-tg.x)*airLegW;
+        }
         const fwT=TV().copy(Zax).applyQuaternion(rot(guy.legs[l]));
-        const pole=TV().copy(kneeA).sub(TV().copy(hipA).add(ankA).multiplyScalar(.5)).addScaledVector(fwT,.03);
+        let pole=TV().copy(kneeA).sub(TV().copy(hipA).add(ankA).multiplyScalar(.5)).addScaledVector(fwT,.03);
+        if(airLegW>0){
+          const axis=TV().copy(tg).sub(wpos(L.up)).normalize();
+          pole=limitKneeBend(pole,axis,Zax,airLegW,AIR_KNEE_YAW_LIMIT);
+        }
         solveLimb(L,tg,pole);
         put(side+"Foot",rot(guy.footRoots[l]));
+        if(airLegW>0){
+          const toe=B[side+"ToeBase"],foot=B[L.hand];
+          if(toe&&foot&&Number.isFinite(L.restAnkleAngle)){
+            const ankle=wpos(L.hand),sole=wpos(side+"ToeBase").sub(ankle).normalize();
+            const shin=wpos(L.fore).sub(ankle).normalize();
+            const goal=TV().copy(sole);
+            const excess=goal.angleTo(shin)-L.restAnkleAngle-.34;
+            if(excess>0)goal.applyAxisAngle(TV().crossVectors(goal,shin).normalize(),excess);
+            const pitchLimit=THREE.MathUtils.degToRad(59);
+            if(goal.dot(rigUp)<-Math.sin(pitchLimit)){
+              const level=perp(goal,rigUp)||TV().copy(Zax);
+              goal.copy(level).multiplyScalar(Math.cos(pitchLimit)).addScaledVector(rigUp,-Math.sin(pitchLimit));
+            }
+            const relax=TQ().setFromUnitVectors(sole,goal).slerp(I0,1-airLegW);
+            const outward=sd==="L"?1:-1;
+            const corrected=TV().copy(sole).applyQuaternion(relax);
+            const level=perp(corrected,rigUp)||Zax;
+            const yaw=signedAngle(Zax,level,rigUp)*outward;
+            const naturalYaw=clamp(yaw,-AIR_TOE_INWARD_LIMIT,AIR_TOE_OUTWARD_LIMIT);
+            if(Math.abs(naturalYaw-yaw)>1e-4)relax.premultiply(TQ().setFromAxisAngle(rigUp,(naturalYaw-yaw)*outward*airLegW));
+            setW(foot,TQ().copy(relax).multiply(foot.getWorldQuaternion(TQ())));
+          }
+        }
       }
 
       // Set the backstep torso before solving the arms so the running spine cannot pull the wrists farther back.
@@ -934,6 +1058,42 @@
               }
               if(ballK)ballK.lerp(exactBall,sw);
               else ballK=exactBall;
+            }else if(!holding&&(atRelease||following)&&shotF<mk.land&&B.RightHand&&B.LeftHand){
+              /* 出手瞬间到落地前：把投篮手从高点翻腕顺滑过渡到压腕随挥（鹅颈式下压），避免原片腕骨反折；
+                 辅助手同步放松并微降，不再高举在投篮手旁。 */
+              const snap=atRelease?0:smooth((shot?shot.followAge:0)/SHOT_WRIST_SNAP_DELAY);
+              const followFade=1-smooth((shotF-mk.apex)/Math.max(1,mk.land-mk.apex));
+              const ob=(f,n)=>{const nn=n.normalize(),ff=perp(f,nn)||TV(0,1,0);return basisQ(ff,nn);};
+              let chestYaw=0;
+              if(B.Spine2){
+                const cf=TV(0,0,1).applyQuaternion(B.Spine2.getWorldQuaternion(TQ()).multiply(restWinv.Spine2));
+                chestYaw=clamp(Math.atan2(cf.x,cf.z),-.35,.35);
+              }
+              const qSetR=ob(TV(.10,.75,-.65),TV(.176,.636,.751));
+              const qFollowR=ob(TV(.08,-.42,.90),TV(.12,-.90,-.42));
+              const qGuideL=ob(TV(-.18,.78,.60),TV(-.94,-.12,-.32));
+              if(Math.abs(chestYaw)>.005){
+                const yq=TQ().setFromAxisAngle(Yax,chestYaw);
+                qSetR.premultiply(yq);qFollowR.premultiply(yq);qGuideL.premultiply(yq);
+              }
+              const qSnapR=TQ().copy(qSetR).slerp(qFollowR,snap);
+              const rTarget=TQ().copy(qSnapR).multiply(R.L.restBasisInv).multiply(restW[R.L.hand]);
+              const rCur=B.RightHand.getWorldQuaternion(TQ());
+              setW(B.RightHand,rCur.slerp(rTarget,sw*followFade));
+              curlFingers("Right",R.L,.12+.18*snap);
+              const lDrop=snap*followFade;
+              if(lDrop>.005){
+                const lWrist=wpos(Lf.L.hand).add(TV(.04*lDrop,-.12*lDrop,-.04*lDrop));
+                const lPole=wpos(Lf.L.fore).sub(wpos(Lf.L.up).lerp(wpos(Lf.L.hand),.5));
+                if(lPole.lengthSq()<.01)lPole.set(.55,-.45,.2);
+                const lHandQ=B.LeftHand.getWorldQuaternion(TQ());
+                solveLimb(Lf.L,lWrist,lPole.normalize());
+                setW(B.LeftHand,lHandQ);
+              }
+              const lTarget=TQ().copy(qGuideL).multiply(Lf.L.restBasisInv).multiply(restW[Lf.L.hand]);
+              const lCur=B.LeftHand.getWorldQuaternion(TQ());
+              setW(B.LeftHand,lCur.slerp(lTarget,sw*followFade*.85));
+              curlFingers("Left",Lf.L,.22);
             }
           }
         }
@@ -995,7 +1155,7 @@
           // Carry the court surface offset into takeoff and fade it as the shoes clear the floor.
           const release=smooth(drive.sinceTakeoff/TAKEOFF_BLEND_SECONDS);
           soleLift=release<1?(state.takeoffFloorLift||0)*(1-release):0;
-          if(air>.004)relaxAirborneAnkles(smooth(drive.sinceTakeoff/.07)*smooth(air/.09));
+          if(air>.004)shapeAirborneLegs(air,drive.sinceTakeoff);
         }else if(air<=.004&&!moving&&dw<.001){
           soleLift=soleClearance();
           state.takeoffFloorLift=soleLift;
@@ -1003,7 +1163,6 @@
         if(soleLift>0){M.position.y+=soleLift;M.updateMatrixWorld(true);}
         state.stanceLocked=stanceLocked;state.stanceReleased=shotStanceReleased;state.pelvisDrop=pelvisDrop;
         state.shotRecovery=!!recovery;state.runDirection=recovery?(Number(recovery.direction)||-1):1;
-        if(!holding&&!center&&guy.shotBalanceSwing)limitBalanceSwing(guy.shotBalanceSwing);
         if(center){
           // The nearer hand takes the ball and the other hand supports it when it comes within reach.
           for(const A of [R,Lf]){
@@ -1022,6 +1181,10 @@
             setW(B[A.L.hand],grip.slerp(desired,weight));
           }
         }
+      }
+      if(cfg.player&&!holding&&!G.passCatch?.active&&!G.pickupReach&&guy.shotBalanceSwing){
+        M.updateMatrixWorld(true);
+        limitBalanceSwing(guy.shotBalanceSwing);
       }
       root.matrix.copy(plantFrame);
       root.updateMatrixWorld(true);
