@@ -1971,7 +1971,7 @@ function rackHoldPointAt(pos,face,side){
   const d=V3(Math.sin(face),0,Math.cos(face));
   const perp=V3(d.z,0,-d.x);                 // 球员左手边
   const lat=side*.06;                        // 略偏抓球那一侧,不影响后面进口袋
-  return V3(pos.x+d.x*.33+perp.x*lat,EYE+P.eyeDip+P.jump-.3,pos.z+d.z*.33+perp.z*lat);
+  return V3(pos.x+d.x*.33+perp.x*lat,1.22+P.eyeDip*.2+P.jump,pos.z+d.z*.33+perp.z*lat);
 }
 /* ---------------- 供球员待机:真的把球拿在手里 ----------------
    原来 passerBall 直接挂在 passer.g 的 (0,1.12,0.32),而两条胳膊只有传球那 0.3 秒动一下、

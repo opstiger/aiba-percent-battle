@@ -185,7 +185,7 @@ function updDotsUI(){
 // G.seq is replaced at the start of every run, including battle and rack rush.
 let overchargeRun=null,overchargeCount=0,cosmicBall=null;
 function cosmicViewEnd(b){
-  return b.groundImpact?b.groundImpact.t+.92:b.scoreT+.18;
+  return b.groundImpact?b.groundImpact.t+2.55:b.scoreT+.18;
 }
 const COSMIC_FINAL_FALL_LEAD=.095;
 function cosmicFlightStep(age,dt,impact){
@@ -525,6 +525,7 @@ function readyBall(walkInfo){
   if(G.buzzed)return;
   if(G.mode==="battle"&&G.battleOver)return;
   if(!curShot())return;
+  cosmicGroundFX.prime(currentScenePreset);
   if(G.mode==="battle"&&!battleSpotAvailable(G.battleSpot)){
     if(battleAutoMoveIfNeeded())return;
   }
