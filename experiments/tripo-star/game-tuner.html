@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>aiBA 游戏投篮参数预览</title>
+<style>
+  html,body{height:100%;margin:0;overflow:hidden;background:#141a28}
+  canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none}
+  .joint-overlay{position:absolute;inset:0;pointer-events:none;overflow:hidden;font:12px system-ui;color:#eaf2ff}
+  .joint-overlay[hidden]{display:none}
+  .joint-tools{position:absolute;z-index:5;display:flex;gap:4px;flex-wrap:wrap;align-items:center;top:6px;left:6px;right:6px}
+  .joint-tools select,.joint-tools button{pointer-events:auto;background:#1c293d;color:inherit;border:1px solid #516481;border-radius:5px;padding:4px 6px;font:inherit}
+  .joint-tools button[aria-pressed=true]{background:#0c766e;border-color:#22d3bb}
+  .joint-point{position:absolute;pointer-events:auto;touch-action:none;transform:translate(-50%,-50%);width:17px;height:17px;padding:0;border:2px solid #f8fbff;border-radius:50%;background:#386b97;color:transparent;font-size:0;cursor:grab;box-shadow:0 0 3px #001b3c}
+  .joint-point[data-joint^=Right]{background:#e39444}
+  .joint-point[data-joint^=Left]{background:#33a69f}
+  .joint-point.selected,.joint-point:hover,.joint-point:focus-visible{z-index:3;border-color:#ffe08d;outline:2px solid #894c0f}
+  .joint-point.selected::after,.joint-point:hover::after{content:attr(aria-label);position:absolute;left:19px;top:-4px;white-space:nowrap;color:#fff;background:#15243a;padding:3px 5px;border-radius:4px;font:11px system-ui;pointer-events:none}
+  @media(max-width:700px){.joint-tools{font-size:10px}}
+</style>
+<script src="/vendor/three.min.r128.js"></script>
+<script src="/vendor/GLTFLoader.r128.js"></script>
+<script src="/src/core/runtime.js"></script>
+<script src="/src/config.js"></script>
+<script src="game-tuner.js?v=curry-latest1"></script>
+<script src="/src/assets-manifest.js"></script>
+<script src="/src/rendering/materials.js"></script>
+<script src="/src/rendering/model-detail.js"></script>
+<script src="/src/rendering/character-shading.js"></script>
+<script src="/src/rendering/characters.js"></script>
+<script src="/src/data/tstage-motion-pack.js"></script>
+<script src="/src/rendering/motion.js"></script>
+<script src="/src/shot-physics.js"></script>
+</head>
+<body>
+<script>initShotPlayer()</script>
+<script src="/src/shot-motion.js"></script>
+<script src="/src/lab/tripo-avatar.js"></script>
+<script src="game-joints.js?v=curry-latest1"></script>
+<script src="curry-pose-stage.js?v=shoulder-step1"></script>
+<script>startTunerWithCurryPose(playerId==="star30"&&options.get("curry")==="latest")</script>
+</body>
+</html>

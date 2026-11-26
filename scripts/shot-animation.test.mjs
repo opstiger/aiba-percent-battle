@@ -45,8 +45,8 @@ function playwrightCandidates(){
 async function launchBrowser(){
   const problems=[];
   for(const mod of playwrightCandidates()){
-    try{return await mod.chromium.launch({headless:true});}catch(e){problems.push(e.message.split("\n")[0]);}
-    try{return await mod.chromium.launch({channel:"chrome",headless:true});}catch(e){problems.push(e.message.split("\n")[0]);}
+    try{return await mod.chromium.launch({headless:true,args:["--mute-audio"]});}catch(e){problems.push(e.message.split("\n")[0]);}
+    try{return await mod.chromium.launch({channel:"chrome",headless:true,args:["--mute-audio"]});}catch(e){problems.push(e.message.split("\n")[0]);}
   }
   throw new Error("Playwright 起不来浏览器: "+problems.slice(0,3).join(" | "));
 }

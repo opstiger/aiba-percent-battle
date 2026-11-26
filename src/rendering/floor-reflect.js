@@ -19,8 +19,9 @@
   const coarse=typeof matchMedia==="function"&&matchMedia("(pointer:coarse)").matches;
   const enabled=forced!==null?forced:(!coarse&&(navigator.deviceMemory||4)>2);
 
-  /* 倒影强度：克制的 NBA 缎面枫木清漆倒影（清晰锚定鞋底与双腿，绝不变成镜面）。 */
-  const STRENGTH=.38;
+  /* 倒影强度：开启 HDRI 高光地板时提升至 NBA 2K 广播级清漆倒影（清晰映出球员双腿与篮球），?hdri=0 保持原版 0.38。 */
+  const _hdriOn=!(typeof location!=="undefined"&&/(\?|&)hdri=0(&|#|$)/.test(location.search));
+  const STRENGTH=_hdriOn?.58:.38;
   const uniforms={
     aibaRefl:{value:null},
     aibaReflRes:{value:new THREE.Vector2(1,1)},
@@ -40,8 +41,8 @@
     "    +texture2D(aibaRefl,ruv+vec2(0.0,aibaReflTexel.y*2.2))*.16+texture2D(aibaRefl,ruv-vec2(0.0,aibaReflTexel.y*2.2))*.16;",
     "  float ra=clamp(rf.a,0.0,1.0)*aibaReflStrength;",
     // 倒影被木色吃掉一部分：暖色、压暗；同时地板在倒影处略暗（被遮住的是灯的反射）
-    "  vec3 tint=rf.rgb/max(rf.a,1e-3)*vec3(1.0,.9,.78)*.62;",
-    "  gl_FragColor.rgb=mix(gl_FragColor.rgb,gl_FragColor.rgb*.7+tint,ra);",
+    "  vec3 tint=rf.rgb/max(rf.a,1e-3)*vec3(1.0,.92,.82)*"+(_hdriOn?".80":".62")+";",
+    "  gl_FragColor.rgb=mix(gl_FragColor.rgb,gl_FragColor.rgb*"+(_hdriOn?".64":".7")+ "+tint,ra);",
     "}"
   ].join("\n");
   function inject(shader){

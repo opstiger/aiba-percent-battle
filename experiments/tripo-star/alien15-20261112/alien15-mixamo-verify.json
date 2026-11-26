@@ -1,0 +1,124 @@
+{
+  "blender": "5.2.0 LTS",
+  "source_glb": "/Users/tigeryao/CodeBuddy/强化学习版TigerBro/projects/fable5测试/篮球游戏/experiments/tripo-star/alien15-20261112/tripo-out/tripo-out/alien15-20261112-beb2cb86/model.glb",
+  "source_size": 1217568,
+  "fbx_path": "/Users/tigeryao/CodeBuddy/强化学习版TigerBro/projects/fable5测试/篮球游戏/experiments/tripo-star/alien15-20261112/alien15-mixamo.fbx",
+  "fbx_size": 1259660,
+  "downloads_path": "/Users/tigeryao/Downloads/alien15-mixamo.fbx",
+  "downloads_ok": true,
+  "downloads_error": null,
+  "sidecar_next_to_fbx": [],
+  "packed_images_before_export": [
+    "Color_beb2cb86-677e-49f9-8d1b-c742fccffa53"
+  ],
+  "glb_import": {
+    "objects": [
+      "tripo_node_beb2cb86-677e-49f9-8d1b-c742fccffa53:MESH"
+    ],
+    "meshes": [
+      {
+        "name": "tripo_node_beb2cb86-677e-49f9-8d1b-c742fccffa53",
+        "verts": 6443,
+        "polys": 4945,
+        "tris": 4945,
+        "bbox_min": [
+          -0.109130859375,
+          -0.443603515625,
+          -0.499755859375
+        ],
+        "bbox_max": [
+          0.109130859375,
+          0.443603515625,
+          0.499755859375
+        ]
+      }
+    ],
+    "total_verts": 6443,
+    "total_polys": 4945,
+    "total_tris": 4945,
+    "materials": [
+      {
+        "name": "tripo_material_beb2cb86-677e-49f9-8d1b-c742fccffa53",
+        "textures": [
+          "Color_beb2cb86-677e-49f9-8d1b-c742fccffa53"
+        ]
+      }
+    ],
+    "images": [
+      {
+        "name": "Color_beb2cb86-677e-49f9-8d1b-c742fccffa53",
+        "size": [
+          2048,
+          2048
+        ],
+        "channels": 4,
+        "packed": true,
+        "filepath": "",
+        "has_data": true
+      }
+    ],
+    "armatures": [],
+    "actions": []
+  },
+  "fbx_reimport": {
+    "objects": [
+      "tripo_node_beb2cb86-677e-49f9-8d1b-c742fccffa53:MESH"
+    ],
+    "meshes": [
+      {
+        "name": "tripo_node_beb2cb86-677e-49f9-8d1b-c742fccffa53",
+        "verts": 6443,
+        "polys": 4945,
+        "tris": 4945,
+        "bbox_min": [
+          -0.109130859375,
+          -0.4436034858226776,
+          -0.499755859375
+        ],
+        "bbox_max": [
+          0.109130859375,
+          0.4436035454273224,
+          0.499755859375
+        ]
+      }
+    ],
+    "total_verts": 6443,
+    "total_polys": 4945,
+    "total_tris": 4945,
+    "materials": [
+      {
+        "name": "tripo_material_beb2cb86-677e-49f9-8d1b-c742fccffa53",
+        "textures": [
+          "Color_beb2cb86-677e-49f9-8d1b-c742fccffa53"
+        ]
+      }
+    ],
+    "images": [
+      {
+        "name": "Color_beb2cb86-677e-49f9-8d1b-c742fccffa53",
+        "size": [
+          2048,
+          2048
+        ],
+        "channels": 4,
+        "packed": true,
+        "filepath": "/Users/tigeryao/CodeBuddy/强化学习版TigerBro/projects/fable5测试/篮球游戏/experiments/tripo-star/alien15-20261112/alien15-mixamo.fbm/Color_beb2cb86-677e-49f9-8d1b-c742fccffa53",
+        "has_data": true
+      }
+    ],
+    "armatures": [],
+    "actions": []
+  },
+  "checks": {
+    "fbx_exists": true,
+    "source_untouched": true,
+    "no_armature_on_reimport": true,
+    "no_actions_on_reimport": true,
+    "mesh_present": true,
+    "tris_match": true,
+    "verts_match": true,
+    "materials_present": true,
+    "images_present": true,
+    "image_count_match": true
+  }
+}

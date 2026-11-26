@@ -1,0 +1,421 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>投篮动作双屏对比 & 参数调优工作台</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;background:#0b101d;color:#e5ebf5;font:12px/1.35 system-ui,-apple-system,sans-serif;overflow:hidden}
+  .app{display:flex;flex-direction:column;height:100vh}
+  .topbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;padding:8px 12px;background:#111827;border-bottom:1px solid #243047}
+  .topbar b{font-size:13px;color:#fbbf24;margin-right:4px}
+  button,select{background:#1e293b;color:#f1f5f9;border:1px solid #334155;border-radius:6px;padding:4px 9px;font:inherit;cursor:pointer}
+  button:hover,select:hover{border-color:#60a5fa}
+  button.primary{background:#2563eb;border-color:#3b82f6;font-weight:600}
+  button.cam.on{background:#0f766e;border-color:#14b8a6}
+  .scrub{display:flex;align-items:center;gap:6px;flex:1;min-width:220px}
+  .scrub input{flex:1;accent-color:#38bdf8}
+  .grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;padding:8px;flex:1;min-height:0}
+  .col{display:flex;flex-direction:column;background:#111827;border:1px solid #243047;border-radius:10px;overflow:hidden;min-height:0}
+  .col-hd{display:flex;align-items:center;gap:8px;padding:7px 10px;background:#0f172a;border-bottom:1px solid #1e293b}
+  .badge{font-size:11px;color:#93c5fd;margin-left:auto;white-space:nowrap}
+  .view{position:relative;flex:1;min-height:280px;background:#141a28}
+  .view iframe{width:100%;height:100%;border:0;display:block}
+  .ref-dock{position:absolute;top:8px;right:8px;width:148px;background:rgba(11,16,29,.88);border:1px solid #334155;border-radius:8px;padding:6px;backdrop-filter:blur(6px);z-index:5}
+  .ref-dock .ref-hd{display:flex;align-items:center;justify-content:space-between;font-size:10px;color:#fbbf24;margin-bottom:4px;font-weight:700}
+  .ref-dock img{width:100%;height:112px;object-fit:cover;object-position:top;border-radius:5px;display:block;margin-bottom:4px;border:1px solid #1e293b}
+  .ref-dock .ref-cap{font-size:10px;color:#cbd5e1;line-height:1.25}
+  .params{height:230px;overflow:auto;padding:8px 10px;background:#0d1422;border-top:1px solid #1e293b}
+  .params-grid{display:grid;grid-template-columns:1fr 1fr;gap:5px 12px}
+  .p-row{display:flex;align-items:center;gap:6px;font-size:11px}
+  .p-row label{width:92px;color:#94a3b8;flex-shrink:0}
+  .p-row input{flex:1;min-width:60px;accent-color:#fbbf24}
+  .p-row span{width:38px;text-align:right;font-family:ui-monospace,monospace;color:#e2e8f0}
+  .p-row.diff span{color:#fbbf24;font-weight:700}
+  .sec{grid-column:1/-1;color:#38bdf8;font-size:11px;font-weight:700;margin-top:4px;border-bottom:1px solid #1e293b;padding-bottom:2px}
+  .toast{position:fixed;right:16px;bottom:16px;background:#0f766e;color:#fff;padding:7px 12px;border-radius:8px;font-size:12px;opacity:0;transition:opacity .2s;pointer-events:none}
+  .toast.show{opacity:1}
+  @media(max-width:1080px){.game-compare .params-grid{grid-template-columns:1fr}}
+  @media(max-width:660px){
+    .game-compare .grid{grid-template-columns:1fr;overflow:auto}
+    .game-compare .col{min-height:505px}
+  }
+  @media(max-height:720px){.game-compare .view{min-height:210px}}
+</style>
+</head>
+<body>
+<div class="app">
+  <div class="topbar">
+    <b>双动作同步对比台</b>
+    <button id="playBtn" class="primary">▶ 同步播放</button>
+    <button id="stepPrev">◀ -2%</button>
+    <button id="stepNext">+2% ▶</button>
+    <select id="speedSel"><option value="1">1x</option><option value="0.5" selected>0.5x</option><option value="0.2">0.2x</option></select>
+    <div class="scrub">
+      <span id="pctLbl" style="width:40px;font-family:monospace">0%</span>
+      <input id="timeSlider" type="range" min="0" max="1000" value="0">
+    </div>
+    <button class="cam on" data-cam="side">纯侧面 90°</button>
+    <button class="cam" data-cam="45">前右 45°</button>
+    <button class="cam" data-cam="front">正面</button>
+    <button class="cam" data-cam="back">背面</button>
+    <button class="cam" data-cam="wrist">手腕特写</button>
+  </div>
+  <div class="grid">
+    <div class="col" id="colA">
+      <div class="col-hd">
+        <span style="color:#fbbf24;font-weight:700">A</span>
+        <select id="styleA">
+          <option value="legacy" selected>正式游戏真实原版（motion.js + tripo）</option>
+          <option value="curry">库里 Curry · 极速一段式</option>
+          <option value="klay">克莱 Klay · 教科书一段式</option>
+          <option value="kobe">科比 Kobe · 高跳滞空后仰</option>
+          <option value="booker">布克 Booker · 高跳紧凑干脆</option>
+        </select>
+        <button id="copyA">📋 复制 A 参数</button>
+        <span class="badge" id="infoA">加载中…</span>
+      </div>
+      <div class="view"><iframe id="frameA" title="动作 A"></iframe></div>
+      <div class="params"><div class="params-grid" id="paramsA"></div></div>
+    </div>
+    <div class="col" id="colB">
+      <div class="col-hd">
+        <span style="color:#38bdf8;font-weight:700">B</span>
+        <select id="styleB">
+          <option value="legacy">正式游戏真实原版（motion.js + tripo）</option>
+          <option value="curry" selected>库里 Curry · 极速一段式</option>
+          <option value="klay">克莱 Klay · 教科书一段式</option>
+          <option value="kobe">科比 Kobe · 高跳滞空后仰</option>
+          <option value="booker">布克 Booker · 高跳紧凑干脆</option>
+        </select>
+        <button id="copyB">📋 复制 B 参数</button>
+        <span class="badge" id="infoB">加载中…</span>
+      </div>
+      <div class="view">
+        <iframe id="frameB" title="动作 B"></iframe>
+        <div class="ref-dock" id="refDock">
+          <div class="ref-hd"><span id="refTitle">真实参考</span></div>
+          <img id="refImg1" src="refs/curry_shoot_sm.jpg" alt="ref1">
+          <img id="refImg2" src="refs/kobe_ft_upright.jpg" alt="ref2" style="display:none">
+          <div class="ref-cap" id="refCap">库里实拍：额上发际线置球、高肘顶起、自然45°托腕</div>
+        </div>
+      </div>
+      <div class="params"><div class="params-grid" id="paramsB"></div></div>
+    </div>
+  </div>
+</div>
+<div class="toast" id="toast">已复制</div>
+
+<script>
+const gameMode = new URLSearchParams(location.search).get('game')==='1';
+const useLatestCurry = new URLSearchParams(location.search).get('curry')!=='base';
+const gamePlayers = {star1:'布克 · 太阳 1 号',star30:useLatestCurry?'库里 30 号 · 最新':'库里 · 勇士 30 号'};
+const gameSource = (slot,player)=>{
+  const query=new URLSearchParams({v:'shoulder-step1',slot,player});
+  if(player==='star30'&&useLatestCurry)query.set('curry','latest');
+  return 'game-tuner.html?'+query;
+};
+const CAMS={
+  side:  {yaw:Math.PI/2, pitch:0.10, dist:4.5, ty:1.35, tz:0.25},
+  '45':  {yaw:-0.65,     pitch:0.15, dist:4.5, ty:1.35, tz:0.25},
+  front: {yaw:0,         pitch:0.12, dist:4.5, ty:1.35, tz:0.25},
+  back:  {yaw:Math.PI,   pitch:0.14, dist:4.5, ty:1.35, tz:0.25},
+  wrist: {yaw:Math.PI/2, pitch:0.05, dist:2.4, ty:2.05, tz:0.35}
+};
+
+const GAME_PARAMS=[
+  {sec:'出手与随挥'},
+  {k:'releaseArmAngle',lbl:'出手手臂仰角',min:35,max:75,step:1,unit:'°'},
+  {k:'releaseElbowFlex',lbl:'离手肘部弯曲',min:5,max:42,step:1,unit:'°'},
+  {k:'followHold',lbl:'随挥保持',min:.15,max:.75,step:.01,unit:'s'},
+  {k:'releasePower',lbl:'松手力度',min:65,max:110,step:1,unit:'%'},
+  {sec:'身体与落地'},
+  {k:'kick',lbl:'前踢幅度',min:0,max:2,step:.05,unit:'×'},
+  {k:'lean',lbl:'空中前后倾',min:-.20,max:.24,step:.01,unit:'rad'},
+  {k:'turn',lbl:'站姿侧身增量',min:-.30,max:.35,step:.01,unit:'rad'},
+  {k:'crouchExtra',lbl:'下蹲加深',min:0,max:.22,step:.01,unit:'m'},
+  {k:'landGain',lbl:'落地缓冲幅度',min:0,max:1.5,step:.05,unit:'×'},
+  {k:'landTau',lbl:'落地缓冲时长',min:.05,max:.22,step:.01,unit:'s'},
+  {sec:'持球'},
+  {k:'ballAlong',lbl:'球沿手掌前移',min:.02,max:.15,step:.005,unit:'m'},
+  {k:'ballLift',lbl:'球离掌心距离',min:0,max:.045,step:.005,unit:'m'},
+  {k:'holdCurl',lbl:'持球屈指',min:0,max:.8,step:.02,unit:'rad'},
+  {k:'elbowOut',lbl:'双肘展开',min:0,max:1.6,step:.05,unit:'×'}
+];
+const PARAM_DEFS=gameMode?GAME_PARAMS:[
+  {sec:'投篮动力学参数（拖动实时改动作）'},
+  {k:'jumpH',         lbl:'起跳高度(m)',  min:0.20, max:0.85, step:0.02, unit:'m'},
+  {k:'releaseFrac',   lbl:'离手时机',     min:0.65, max:1.15, step:0.02, unit:''},
+  {k:'loadDur',       lbl:'蓄力时长(s)',  min:0.25, max:1.10, step:0.02, unit:'s'},
+  {k:'snapDur',       lbl:'压腕时长(s)',  min:0.06, max:0.22, step:0.01, unit:'s'},
+  {k:'turnPeakHip',   lbl:'髋转体峰值',   min:0,    max:32,   step:1,    unit:'°'},
+  {k:'turnPeakChest', lbl:'胸转体峰值',   min:0,    max:40,   step:1,    unit:'°'},
+  {k:'swaySpine',     lbl:'空中后仰角',   min:-18,  max:4,    step:0.5,  unit:'°'},
+  {k:'sweepR',        lbl:'右腿前扫角',   min:0,    max:34,   step:1,    unit:'°'},
+  {k:'sweepL',        lbl:'左腿前扫角',   min:0,    max:28,   step:1,    unit:'°'},
+  {k:'setPos.y',      lbl:'置球点高度',   min:0.15, max:0.55, step:0.02, unit:'m'},
+  {k:'relPos.z',      lbl:'出手前伸距',   min:0.10, max:0.55, step:0.02, unit:'m'},
+  {k:'fhold',         lbl:'跟随定格(s)',  min:0.10, max:0.55, step:0.02, unit:'s'},
+  {sec:'骨骼实时叠加微调（可停任意帧掰骨骼）'},
+  {k:'off:Hips.turn',       lbl:'胯部左转',     min:-40, max:40, step:1, unit:'°'},
+  {k:'off:Spine.bend',      lbl:'躯干前后倾',   min:-30, max:30, step:1, unit:'°'},
+  {k:'off:Spine.twist',     lbl:'胸腔左转',     min:-40, max:40, step:1, unit:'°'},
+  {k:'off:Head.nod',        lbl:'抬头/低头',    min:-30, max:30, step:1, unit:'°'},
+  {k:'off:RightHand.pitch', lbl:'右手腕 压/背', min:-60, max:60, step:1, unit:'°'},
+  {k:'off:RightHand.curl',  lbl:'右五指弯曲',   min:-45, max:60, step:1, unit:'°'}
+];
+
+const fA=document.getElementById('frameA'), fB=document.getElementById('frameB');
+let jointEdit = gameMode && new URLSearchParams(location.search).get('edit')!=='0';
+let playing=false, normT=Number(new URLSearchParams(location.search).get('t'))||0, lastNow=performance.now();
+
+function win(f){ try{ return f.contentWindow && f.contentWindow.__ready && f.contentWindow.Shot ? f.contentWindow : null; }catch(e){ return null; } }
+function formatParam(v,d){
+  return (Number.isInteger(d.step)?Math.round(v):v.toFixed(d.step<.01?3:2))+d.unit;
+}
+function readVal(w, k){
+  if(!w) return 0;
+  if(k.startsWith('off:')) return (w.poseOffsets && w.poseOffsets[k.slice(4)]) || 0;
+  const p=w.Shot.PROFILES[w.Shot.style];
+  if(k.includes('.')){ const [o,pr]=k.split('.'); return p[o]?p[o][pr]:0; }
+  return p[k] ?? 0;
+}
+function writeVal(w, k, v){
+  if(!w) return;
+  if(k.startsWith('off:')){ w.poseOffsets[k.slice(4)]=v; w.Shot.render(); return; }
+  w.Shot.updateParam(k, v);
+}
+
+if(gameMode){
+  document.body.classList.add('game-compare');
+  document.getElementById('refDock').hidden=true;
+  document.querySelector('.topbar b').textContent='游戏投篮动作调参';
+  const jointToggle=document.createElement('button');
+  jointToggle.id='jointEdit';
+  jointToggle.setAttribute('aria-pressed',String(jointEdit));
+  jointToggle.textContent=jointEdit?'拖关节：开':'拖关节：关';
+  jointToggle.onclick=()=>{
+    jointEdit=!jointEdit;
+    jointToggle.textContent=jointEdit?'拖关节：开':'拖关节：关';
+    jointToggle.setAttribute('aria-pressed',String(jointEdit));
+    jointToggle.classList.toggle('primary',jointEdit);
+    if(jointEdit)pausePlayback();
+    else updateJointVisibility();
+  };
+  jointToggle.classList.toggle('primary',jointEdit);
+  document.getElementById('playBtn').after(jointToggle);
+  if(useLatestCurry){
+    const keys=document.createElement('select');
+    keys.setAttribute('aria-label','跳到库里关键帧');
+    keys.append(new Option('库里关键帧',''),new Option('蓄力下蹲 · 41','41'),
+      new Option('空中随挥 · 73','73'),new Option('落地收手 · 99','99'));
+    keys.onchange=()=>{
+      if(!keys.value)return;
+      pausePlayback();
+      normT=Number(keys.value)/156;
+      keys.value='';
+      applyNormT();
+    };
+    document.getElementById('stepNext').after(keys);
+  }
+  for(const [slot,fr,player] of [['A',fA,'star1'],['B',fB,'star30']]){
+    const select=document.getElementById('style'+slot);
+    select.replaceChildren(...Object.entries(gamePlayers).map(([id,name])=>new Option(name,id)));
+    select.value=player;
+    fr.src=gameSource(slot,player);
+    const reset=document.createElement('button');
+    reset.textContent='重置';
+    reset.onclick=()=>{ const w=win(fr); if(w){w.Shot.resetParams(); syncPanelsFromModels(); applyNormT();} };
+    select.after(reset);
+  }
+}else{
+  fA.src='real-game-shot.html?slot=A';
+  fB.src='preview.html?embed=1&slot=B&style=curry';
+}
+
+const inputs={A:{}, B:{}};
+function buildPanel(slot, container){
+  container.innerHTML='';
+  for(const d of PARAM_DEFS){
+    if(d.sec){ const s=document.createElement('div'); s.className='sec'; s.textContent=d.sec; container.appendChild(s); continue; }
+    const row=document.createElement('div'); row.className='p-row'; row.dataset.k=d.k;
+    const lbl=document.createElement('label'); lbl.textContent=d.lbl;
+    const inp=document.createElement('input'); inp.type='range'; inp.min=d.min; inp.max=d.max; inp.step=d.step; inp.value=0; inp.setAttribute('aria-label',d.lbl+' '+slot);
+    const sp=document.createElement('span'); sp.textContent='0'+d.unit;
+    inp.addEventListener('input',()=>{
+      const v=+inp.value; sp.textContent=formatParam(v,d);
+      writeVal(win(slot==='A'?fA:fB), d.k, v);
+      if(gameMode)applyNormT();
+      highlightDiffs();
+    });
+    row.append(lbl,inp,sp); container.appendChild(row);
+    inputs[slot][d.k]={inp,sp,row,def:d};
+  }
+}
+buildPanel('A', document.getElementById('paramsA'));
+buildPanel('B', document.getElementById('paramsB'));
+
+function syncPanelsFromModels(){
+  for(const [slot,fr] of [['A',fA],['B',fB]]){
+    const w=win(fr); if(!w) continue;
+    for(const d of PARAM_DEFS){
+      if(d.sec) continue;
+      const v=readVal(w,d.k), it=inputs[slot][d.k];
+      it.inp.value=v;
+      it.sp.textContent=formatParam(+v,d);
+    }
+  }
+  highlightDiffs();
+}
+function highlightDiffs(){
+  for(const d of PARAM_DEFS){
+    if(d.sec) continue;
+    const a=inputs.A[d.k], b=inputs.B[d.k];
+    const diff=Math.abs((+a.inp.value)-(+b.inp.value))>1e-3;
+    a.row.classList.toggle('diff',diff);
+    b.row.classList.toggle('diff',diff);
+  }
+}
+
+function applyNormT(){
+  document.getElementById('timeSlider').value=Math.round(normT*1000);
+  document.getElementById('pctLbl').textContent=Math.round(normT*100)+'%';
+  for(const [slot,fr] of [['A',fA],['B',fB]]){
+    const w=win(fr); if(!w) continue;
+    w.Shot.setNormT(normT);
+    const s=w.Shot.last && w.Shot.last.s;
+    if(s) document.getElementById('info'+slot).textContent=`${s.phase} · 跳高 ${s.jumpY.toFixed(2)}m`+(gameMode?'':` · 压腕 ${(s.snap*100)|0}%`);
+  }
+}
+
+function setBothCam(c){
+  for(const fr of [fA,fB]){ const w=win(fr); if(w&&w.setCam) w.setCam(c.yaw,c.pitch,c.dist,c.ty,c.tz); }
+}
+
+// 拖拽任意一侧视角，另一侧实时同步
+window.addEventListener('message',e=>{
+  if(e.origin!==location.origin||(e.source!==fA.contentWindow&&e.source!==fB.contentWindow))return;
+  if(e.data?.type==='poseDrag')pausePlayback();
+  if(e.data?.type==='shotError'){
+    document.getElementById('info'+e.data.from).textContent='模型加载失败';
+  }
+  if(e.data&&e.data.type==='cam'){
+    const other=e.data.from==='A'?win(fB):win(fA);
+    const c=e.data.cam;
+    if(other&&other.setCam) other.setCam(c.yaw,c.pitch,c.dist,c.ty,c.tz);
+  }
+});
+
+function updateJointVisibility(){
+  if(gameMode)for(const fr of [fA,fB])win(fr)?.Shot.setJointEdit(jointEdit&&!playing);
+}
+function pausePlayback(){
+  const wasPlaying=playing;
+  playing=false;
+  document.getElementById('playBtn').textContent='▶ 同步播放';
+  if(wasPlaying||jointEdit)updateJointVisibility();
+}
+document.getElementById('playBtn').onclick=()=>{
+  playing=!playing;
+  updateJointVisibility();
+  document.getElementById('playBtn').textContent=playing?'❚❚ 同步暂停':'▶ 同步播放';
+};
+document.getElementById('stepPrev').onclick=()=>{ pausePlayback(); normT=(normT-0.02+1)%1; applyNormT(); };
+document.getElementById('stepNext').onclick=()=>{ pausePlayback(); normT=(normT+0.02)%1; applyNormT(); };
+document.getElementById('timeSlider').oninput=e=>{
+  pausePlayback();
+  normT=(+e.target.value)/1000; applyNormT();
+};
+document.querySelectorAll('button.cam').forEach(btn=>{
+  btn.onclick=()=>{
+    document.querySelectorAll('button.cam').forEach(b=>b.classList.remove('on'));
+    btn.classList.add('on');
+    setBothCam(CAMS[btn.dataset.cam]);
+  };
+});
+
+const REFS={
+  curry:  {t:'库里 真实参考', i1:'refs/curry_shoot_sm.jpg', i2:'refs/kobe_ft_upright.jpg', cap:'额上置球 + 持续顶肘至 65° 高弧出手'},
+  klay:   {t:'克莱 真实参考', i1:'refs/klay_shoot_sm.jpg',  i2:'refs/kobe_ft_upright.jpg', cap:'高肘 69° 直线出手 + 辅助手干净早离'},
+  kobe:   {t:'科比 真实参考', i1:'refs/kobe_fade_sm.jpg',  i2:'refs/kobe_ft_upright.jpg', cap:'头顶高肘 72° 滞空后仰 + 右腿前扫'},
+  booker: {t:'布克 真实参考', i1:'refs/kobe_ft_upright.jpg', i2:'refs/curry_shoot_sm.jpg', cap:'额上紧凑高肘 70° + 顶点干脆鹅颈'},
+  legacy: {t:'原版对照',     i1:'refs/kobe_ft_upright.jpg', i2:'', cap:'正式游戏原版 motion.js + tripo-avatar'}
+};
+function updateRefDock(k){
+  const r=REFS[k]||REFS.curry;
+  document.getElementById('refTitle').textContent=r.t;
+  document.getElementById('refImg1').src=r.i1;
+  const img2=document.getElementById('refImg2');
+  if(r.i2){ img2.src=r.i2; img2.style.display='block'; } else img2.style.display='none';
+  document.getElementById('refCap').textContent=r.cap;
+}
+if(!gameMode)updateRefDock('curry');
+
+for(const [slot,fr] of [['A',fA],['B',fB]]){
+  document.getElementById('style'+slot).onchange=e=>{
+    const val=e.target.value;
+    if(gameMode){
+      inited=false;
+      document.getElementById('info'+slot).textContent='加载中…';
+      fr.src=gameSource(slot,val);
+      return;
+    }
+    if(slot==='B') updateRefDock(val);
+    const isReal=fr.src.includes('real-game-shot.html');
+    if(val==='legacy' && !isReal){
+      inited=false; fr.src=`real-game-shot.html?slot=${slot}`; return;
+    }
+    if(val!=='legacy' && isReal){
+      inited=false; fr.src=`preview.html?embed=1&slot=${slot}&style=${val}`; return;
+    }
+    const w=win(fr); if(!w) return;
+    w.Shot.setStyle(val);
+    syncPanelsFromModels(); applyNormT();
+  };
+  document.getElementById('copy'+slot).onclick=async()=>{
+    const w=win(fr); if(!w) return;
+    const p=w.Shot.PROFILES[w.Shot.style];
+    if(gameMode){
+      const out=JSON.stringify({player:w.Shot.style,posePreset:w.Shot.posePreset,normT:+normT.toFixed(3),params:p},null,2);
+      const toast=document.getElementById('toast');
+      try{
+        await navigator.clipboard.writeText(out);
+        toast.textContent='已复制 '+gamePlayers[w.Shot.style]+' 的参数';
+      }catch(e){
+        window.prompt('复制球员参数',out);
+        return;
+      }
+      toast.classList.add('show');
+      setTimeout(()=>toast.classList.remove('show'),2000);
+      return;
+    }
+    const offs={}; for(const k in w.poseOffsets) if(w.poseOffsets[k]) offs[k]=w.poseOffsets[k];
+    const out=JSON.stringify({slot, style:w.Shot.style, normT:+normT.toFixed(3), params:{jumpH:p.jumpH,releaseFrac:p.releaseFrac,loadDur:p.loadDur,snapDur:p.snapDur,turnPeakHip:p.turnPeakHip,turnPeakChest:p.turnPeakChest,swaySpine:p.swaySpine,sweepR:p.sweepR,sweepL:p.sweepL,setPos:{x:p.setPos.x,y:p.setPos.y,z:p.setPos.z},relPos:{x:p.relPos.x,y:p.relPos.y,z:p.relPos.z},fhold:p.fhold}, boneOffsets:offs});
+    if(navigator.clipboard) navigator.clipboard.writeText(out).catch(()=>{});
+    const t=document.getElementById('toast'); t.textContent=`已复制 ${slot} (${w.Shot.style}) 参数 JSON`; t.classList.add('show');
+    setTimeout(()=>t.classList.remove('show'),2000);
+  };
+}
+
+let inited=false;
+function tick(){
+  requestAnimationFrame(tick);
+  const now=performance.now(), dt=Math.min(0.05,(now-lastNow)/1000); lastNow=now;
+  const wA=win(fA), wB=win(fB);
+  if(!inited && wA && wB){
+    inited=true;
+    updateJointVisibility();
+    setBothCam(CAMS.side);
+    syncPanelsFromModels();
+    applyNormT();
+  }
+  if(inited && playing){
+    const spd=+(document.getElementById('speedSel').value)||0.5;
+    normT=(normT + dt*spd/2.6)%1;
+    applyNormT();
+  }
+}
+tick();
+</script>
+</body>
+</html>

@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>aiBA 游戏投篮参数预览</title>
+<style>html,body{height:100%;margin:0;overflow:hidden;background:#141a28;color:#e4edff}canvas{display:block;width:100%;height:100%;cursor:grab;touch-action:none}</style>
+<script src="/vendor/three.min.r128.js"></script>
+<script src="/vendor/GLTFLoader.r128.js"></script>
+<script src="/src/core/runtime.js"></script>
+<script src="/src/config.js"></script>
+<script src="game-tuner.js?v=curry-latest1"></script>
+<script src="/src/assets-manifest.js"></script>
+<script src="/src/rendering/materials.js"></script>
+<script src="/src/rendering/model-detail.js"></script>
+<script src="/src/rendering/character-shading.js"></script>
+<script src="/src/rendering/characters.js"></script>
+<script src="/src/data/tstage-motion-pack.js"></script>
+<script src="/src/rendering/motion.js"></script>
+<script src="/src/shot-physics.js"></script>
+</head>
+<body>
+<script>initShotPlayer()</script>
+<script src="/src/shot-motion.js"></script>
+<script src="/src/lab/tripo-avatar.js"></script>
+<script src="curry-pose-stage.js?v=shoulder-step1"></script>
+<script>startTunerWithCurryPose(options.get("pose")==="user")</script>
+</body>
+</html>

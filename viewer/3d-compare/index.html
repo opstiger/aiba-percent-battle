@@ -1,0 +1,246 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <title>aiBA · 混元 3D 三代模型横向对比 (HY2.0 单图 vs HY2-MV 三视图 vs HY2.1 PBR)</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { background: #0f1117; color: #e2e8f0; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; overflow: hidden; height: 100vh; display: flex; flex-direction: column; }
+    header { background: #161922; border-bottom: 1px solid #2d3748; padding: 10px 20px; display: flex; justify-content: space-between; align-items: center; z-index: 10; }
+    h1 { font-size: 16px; font-weight: 700; color: #f6e05e; display: flex; align-items: center; gap: 8px; }
+    .badge { font-size: 11px; padding: 3px 8px; border-radius: 12px; background: #2b6cb0; color: #fff; }
+    .controls { display: flex; gap: 12px; align-items: center; }
+    .btn { background: #2d3748; color: #edf2f7; border: 1px solid #4a5568; padding: 6px 12px; border-radius: 6px; cursor: pointer; font-size: 12px; font-weight: 600; transition: all 0.2s; }
+    .btn:hover { background: #4a5568; color: #fff; }
+    .btn.active { background: #d69e2e; color: #1a202c; border-color: #ecc94b; }
+
+    #container { flex: 1; display: grid; grid-template-columns: repeat(3, 1fr); gap: 2px; background: #242b38; position: relative; }
+    .viewport { position: relative; background: radial-gradient(circle at center, #1f2738 0%, #0d1117 100%); overflow: hidden; }
+    .card-title { position: absolute; top: 12px; left: 12px; background: rgba(15, 23, 42, 0.86); backdrop-filter: blur(6px); border: 1px solid rgba(255,255,255,0.12); border-radius: 8px; padding: 8px 12px; z-index: 5; max-width: 90%; }
+    .card-title h3 { font-size: 13px; color: #63b3ed; margin-bottom: 3px; }
+    .card-title p { font-size: 11px; color: #a0aec0; line-height: 1.35; }
+    .meta-tag { font-size: 10px; color: #ecc94b; font-weight: 600; margin-top: 3px; display: block; }
+
+    canvas { width: 100% !important; height: 100% !important; display: block; }
+    .hint { position: absolute; bottom: 10px; left: 50%; transform: translateX(-50%); font-size: 11px; color: #718096; pointer-events: none; }
+  </style>
+  <script src="../../vendor/three.min.r128.js"></script>
+  <script src="../../vendor/GLTFLoader.r128.js"></script>
+  <script>
+    THREE.OrbitControls = function(object, domElement) {
+      this.object = object;
+      this.domElement = domElement;
+      this.target = new THREE.Vector3();
+      const scope = this;
+      let isDown = false, prevX = 0, prevY = 0;
+      let spherical = new THREE.Spherical().setFromVector3(object.position.clone().sub(this.target));
+
+      function updateCamera() {
+        spherical.radius = Math.max(0.5, Math.min(20, spherical.radius));
+        spherical.phi = Math.max(0.01, Math.min(Math.PI - 0.01, spherical.phi));
+        const offset = new THREE.Vector3().setFromSpherical(spherical);
+        scope.object.position.copy(scope.target).add(offset);
+        scope.object.lookAt(scope.target);
+        if (scope.onChange) scope.onChange();
+      }
+
+      domElement.addEventListener('mousedown', e => { isDown = true; prevX = e.clientX; prevY = e.clientY; });
+      window.addEventListener('mouseup', () => isDown = false);
+      window.addEventListener('mousemove', e => {
+        if (!isDown) return;
+        const dx = e.clientX - prevX, dy = e.clientY - prevY;
+        prevX = e.clientX; prevY = e.clientY;
+        spherical.theta -= dx * 0.008;
+        spherical.phi -= dy * 0.008;
+        updateCamera();
+      });
+      domElement.addEventListener('wheel', e => {
+        e.preventDefault();
+        spherical.radius *= e.deltaY > 0 ? 1.08 : 0.92;
+        updateCamera();
+      }, { passive: false });
+
+      this.update = function() {
+        spherical.setFromVector3(scope.object.position.clone().sub(this.target));
+        updateCamera();
+      };
+      this.addEventListener = function(name, fn) { if (name === 'change') scope.onChange = fn; };
+    };
+  </script>
+</head>
+<body>
+  <header>
+    <h1>🏀 aiBA · 混元 3D 三代模型实机对比 <span class="badge">同角色垫图实测</span></h1>
+    <div class="controls">
+      <button class="btn active" id="btnSync">🔗 同步旋转/视角：开启</button>
+      <button class="btn" id="btnReset">🔄 重置视角</button>
+      <button class="btn" id="btnWire">🕸️ 线框拓扑模式</button>
+    </div>
+  </header>
+
+  <div id="container">
+    <div class="viewport" id="vp1">
+      <div class="card-title">
+        <h3>1. Hunyuan3D-2.0 (单图初版)</h3>
+        <p>仅给正面垫图，背面靠 AI 脑补（注意裤子被脑补成白色）</p>
+        <span class="meta-tag">24,863 顶点 / 40,000 面 · 1.9 MB</span>
+      </div>
+      <div class="hint">左键拖拽旋转 · 滚轮缩放</div>
+    </div>
+
+    <div class="viewport" id="vp2">
+      <div class="card-title">
+        <h3>2. Hunyuan3D-2mv (三视图版)</h3>
+        <p>同时输入正/侧/背三视图联合塑形 + 多视角贴图（零脑补失真）</p>
+        <span class="meta-tag">145,838 顶点 / 291,676 面 · 13 MB</span>
+      </div>
+      <div class="hint">左键拖拽旋转 · 滚轮缩放</div>
+    </div>
+
+    <div class="viewport" id="vp3">
+      <div class="card-title">
+        <h3>3. Hunyuan3D-2.1 (PBR 材质版)</h3>
+        <p>升级 Shape VAE + PBR 全通道 (Albedo + Roughness + Metallic)</p>
+        <span class="meta-tag">完整 PBR 贴图材质 · 10 MB</span>
+      </div>
+      <div class="hint">左键拖拽旋转 · 滚轮缩放</div>
+    </div>
+  </div>
+
+  <script>
+    const VIEWS = [
+      { id: "vp1", file: "hunyuan_raw.glb" },
+      { id: "vp2", file: "hy2mv_textured.glb" },
+      { id: "vp3", file: "hy21_pbr.glb", rotX: -Math.PI / 2 }
+    ];
+
+    let syncRotate = true;
+    let wireframe = false;
+    const instances = [];
+
+    document.getElementById("btnSync").onclick = function() {
+      syncRotate = !syncRotate;
+      this.classList.toggle("active", syncRotate);
+      this.textContent = syncRotate ? "🔗 同步旋转/视角：开启" : "🔓 独立视角：开启";
+    };
+
+    document.getElementById("btnReset").onclick = function() {
+      instances.forEach(inst => {
+        inst.camera.position.set(0, 0.3, 2.9);
+        inst.camera.lookAt(0, 0, 0);
+        inst.controls.target.set(0, 0, 0);
+        inst.controls.update();
+      });
+    };
+
+    document.getElementById("btnWire").onclick = function() {
+      wireframe = !wireframe;
+      this.classList.toggle("active", wireframe);
+      instances.forEach(inst => {
+        if (inst.model) {
+          inst.model.traverse(o => {
+            if (o.isMesh && o.material) {
+              if (Array.isArray(o.material)) o.material.forEach(m => m.wireframe = wireframe);
+              else o.material.wireframe = wireframe;
+            }
+          });
+        }
+      });
+    };
+
+    VIEWS.forEach((cfg) => {
+      const container = document.getElementById(cfg.id);
+      const scene = new THREE.Scene();
+      const camera = new THREE.PerspectiveCamera(38, container.clientWidth / container.clientHeight, 0.1, 50);
+      camera.position.set(0, 0.3, 2.9);
+
+      const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true, preserveDrawingBuffer: true });
+      renderer.setPixelRatio(window.devicePixelRatio);
+      renderer.setSize(container.clientWidth, container.clientHeight);
+      renderer.outputEncoding = THREE.sRGBEncoding;
+      renderer.toneMapping = THREE.ACESFilmicToneMapping;
+      renderer.toneMappingExposure = 1.15;
+      container.appendChild(renderer.domElement);
+
+      const controls = new THREE.OrbitControls(camera, renderer.domElement);
+      controls.target.set(0, 0, 0);
+
+      const hemi = new THREE.HemisphereLight(0xffffff, 0x444c5c, 1.0);
+      scene.add(hemi);
+      const dir1 = new THREE.DirectionalLight(0xfff5ea, 1.35);
+      dir1.position.set(2.5, 4, 3);
+      scene.add(dir1);
+      const dir2 = new THREE.DirectionalLight(0xcfe4ff, 0.85);
+      dir2.position.set(-2.5, 3, -3);
+      scene.add(dir2);
+
+      const grid = new THREE.GridHelper(4, 20, 0x3182ce, 0x2d3748);
+      grid.position.y = -0.92;
+      scene.add(grid);
+
+      const inst = { id: cfg.id, scene, camera, renderer, controls, model: null };
+      instances.push(inst);
+
+      const loader = new THREE.GLTFLoader();
+      loader.load(cfg.file, gltf => {
+        const root = gltf.scene;
+        const wrap = new THREE.Group();
+        if (cfg.rotX) root.rotation.x = cfg.rotX;
+        wrap.add(root);
+        wrap.updateMatrixWorld(true);
+        inst.model = wrap;
+
+        const box = new THREE.Box3().setFromObject(wrap);
+        const size = box.getSize(new THREE.Vector3());
+        const center = box.getCenter(new THREE.Vector3());
+        const scale = 1.8 / Math.max(0.0001, size.y);
+        wrap.scale.setScalar(scale);
+        wrap.position.x = -center.x * scale;
+        wrap.position.z = -center.z * scale;
+        wrap.position.y = -box.min.y * scale - 0.9;
+
+        wrap.traverse(o => {
+          if (o.isMesh && o.material) {
+            o.castShadow = true;
+            o.receiveShadow = true;
+            o.material.side = THREE.DoubleSide;
+          }
+        });
+
+        scene.add(wrap);
+      });
+
+      controls.addEventListener("change", () => {
+        if (!syncRotate) return;
+        instances.forEach(other => {
+          if (other !== inst) {
+            other.camera.position.copy(camera.position);
+            other.camera.quaternion.copy(camera.quaternion);
+            other.camera.fov = camera.fov;
+            other.camera.updateProjectionMatrix();
+            other.controls.target.copy(controls.target);
+          }
+        });
+      });
+    });
+
+    window.addEventListener("resize", () => {
+      instances.forEach(inst => {
+        const container = document.getElementById(inst.id);
+        inst.camera.aspect = container.clientWidth / container.clientHeight;
+        inst.camera.updateProjectionMatrix();
+        inst.renderer.setSize(container.clientWidth, container.clientHeight);
+      });
+    });
+
+    function animate() {
+      requestAnimationFrame(animate);
+      instances.forEach(inst => {
+        inst.controls.update();
+        inst.renderer.render(inst.scene, inst.camera);
+      });
+    }
+    animate();
+  </script>
+</body>
+</html>

@@ -45,6 +45,8 @@ const DICT={
 "他在看别人 · 快加速横移":"Defender looking away \u00b7 Burst sideways now",
 "传球路线被封 · 危险!":"Passing lane jumped!",
 "23 号 · 老黄(NVIDIA)":"#23 \u00b7 Jensen (NVIDIA)",
+"77 号 · 金发蘑菇头":"#77 \u00b7 Blonde Bowlcut",
+"魔性蘑菇舞 · MUSHROOM BOOGIE":"MUSHROOM BOOGIE",
 "摇摆舞步 · SWING DANCE":"SWING DANCE",
 "魔性尬舞 · FUNKY DANCE":"FUNKY DANCE",
 "热身慢跑 · WARM-UP JOG":"WARM-UP JOG",

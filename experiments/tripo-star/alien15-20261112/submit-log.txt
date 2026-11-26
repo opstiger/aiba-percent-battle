@@ -1,0 +1,14 @@
+time: 2026-11-12 23:33:49 CST
+cwd: /Users/tigeryao/CodeBuddy/强化学习版TigerBro/projects/fable5测试/篮球游戏/experiments/tripo-star/alien15-20261112/views
+command: /opt/homebrew/bin/tripo make front.png left.png back.png --yes --no-open --json --name alien15-20261112 --out /Users/tigeryao/CodeBuddy/强化学习版TigerBro/projects/fable5测试/篮球游戏/experiments/tripo-star/alien15-20261112/tripo-out --timeout 1800
+inputs: front.png left.png back.png
+dry-run estimate: 110 credits, model P2-20260801, view-key front/left/back
+no rig/retarget
+
+time finished: 2026-11-12 23:35:22 CST
+task_id: beb2cb86-677e-49f9-8d1b-c742fccffa53
+status: success
+credits_consumed: 110
+artifact_dir: /Users/tigeryao/CodeBuddy/强化学习版TigerBro/projects/fable5测试/篮球游戏/experiments/tripo-star/alien15-20261112/tripo-out/tripo-out/alien15-20261112-beb2cb86
+model_glb: /Users/tigeryao/CodeBuddy/强化学习版TigerBro/projects/fable5测试/篮球游戏/experiments/tripo-star/alien15-20261112/model.glb
+preview: /Users/tigeryao/CodeBuddy/强化学习版TigerBro/projects/fable5测试/篮球游戏/experiments/tripo-star/alien15-20261112/preview.png

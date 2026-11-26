@@ -69,6 +69,8 @@ captures/
 !docs/RETROHIGH-20260916.md
 
 # ---- 发布卫生:以下内容不进公开仓库 ----
+# Colab CLI 本地凭据(含 Google OAuth token,绝不可提交)
+.colab-home/
 # backup/ 与 artifacts/ 已在文件开头忽略
 # AI 工具的本地配置
 .claude/

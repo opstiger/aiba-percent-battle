@@ -10,7 +10,7 @@
     return String(v==null?"":v).replace(/[&<>"']/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;","'":"&#39;"}[c]));
   }
   function starKey(star){return star&&(star.id||star.n)||"";}
-  const TRIPO_STAR_IDS={star8:1,star1:1,star15:1,star30:1,star3:1,star30b:1,cat1:1,husky:1,nvidia23:1};
+  const TRIPO_STAR_IDS={star8:1,star1:1,star15:1,star30:1,star3:1,star30b:1,cat1:1,husky:1,nvidia23:1,mushroom:1};
   function isTripoStar(star){return !!(star&&TRIPO_STAR_IDS[starKey(star)]);}
   function allStars(list){
     const custom=global.AIBACustomizer&&typeof global.AIBACustomizer.listStars==="function"?global.AIBACustomizer.listStars():[];

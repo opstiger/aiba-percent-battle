@@ -1,0 +1,93 @@
+<!doctype html>
+<html lang="zh-CN"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>库里第 73 帧 · 同步对照</title>
+<style>
+*{box-sizing:border-box}
+body{margin:0;background:#0e1625;color:#e6edf9;font:14px system-ui}
+main{max-width:1450px;margin:auto;padding:12px}
+header{display:flex;align-items:center;gap:7px;flex-wrap:wrap}
+strong{margin-right:6px;color:#ffda86}
+button,select{border:1px solid #415373;border-radius:5px;background:#1c2b45;color:inherit;padding:5px 9px;font:inherit}
+button:disabled{opacity:.5}
+label{display:flex;align-items:center;gap:7px;flex:1;min-width:180px}
+input{width:100%;accent-color:#63bef8}
+section{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px;margin-top:10px}
+article{background:#172134;border:1px solid #344761;border-radius:8px;overflow:hidden}
+h2{margin:0;font-size:13px;font-weight:650;padding:8px}
+iframe{width:100%;height:min(72vh,710px);border:0;display:block}
+@media(max-width:680px){iframe{height:410px}}
+</style></head>
+<body><main>
+<header>
+  <strong>库里 · 随挥对照</strong>
+  <button id="play" disabled>播放 0.5×</button>
+  <button id="key" disabled>跳到你的姿势</button>
+  <select id="timing" aria-label="右手随挥接入时机"><option value="73">对齐第 73 帧</option><option value="78">右手随挥放慢 5 帧</option></select>
+  <label><output id="frame">73</output><input id="timeline" aria-label="同步时间轴" type="range" min="0" max="156" value="73"></label>
+  <button data-camera="back">背面</button><button data-camera="side">侧面</button><button data-camera="front">前侧</button>
+</header>
+<section>
+  <article><h2 id="base-title">原动作</h2><iframe title="原版库里" id="base" src="curry-pose-stage.html?v=shoulder-step1&player=star30&slot=A"></iframe></article>
+  <article><h2 id="user-title">你的姿势</h2><iframe title="调整后的库里" id="custom" src="curry-pose-stage.html?v=shoulder-step1&player=star30&slot=B&pose=user"></iframe></article>
+</section>
+</main>
+<script>
+const controls = Object.fromEntries(["base","custom","timing","play","key","timeline","frame"].map(id=>[id,document.getElementById(id)]));
+const views = [controls.base,controls.custom];
+let active=false, previous=0, nowFrame=73, view="back";
+const cameras={back:[-Math.PI+.30,.08,4.15,1.35,.25],side:[Math.PI/2,.10,4.15,1.35,.25],front:[-.65,.10,4.15,1.35,.25]};
+const ready = ()=>views.every(f=>f.contentWindow.__ready);
+function setCamera(name){
+  view=name;
+  for(const f of views)if(f.contentWindow.__ready)f.contentWindow.setCam(...cameras[name]);
+}
+function seek(n){
+  nowFrame=n;
+  const f=Math.round(n);
+  controls.frame.textContent="第 "+f+" 帧";
+  controls.timeline.value=f;
+  for(const iframe of views){
+    const w=iframe.contentWindow;
+    if(!w.__ready)continue;
+    w.Shot.setNormT(f/156);
+    document.getElementById(iframe.id==="base"?"base-title":"user-title").textContent=
+      (iframe.id==="base"?"原动作":"你的姿势")+" · "+w.Shot.last.s.phase;
+  }
+}
+function pause(){
+  active=false;
+  controls.play.textContent="播放 0.5×";
+}
+controls.play.onclick=()=>{
+  if(active){pause();return;}
+  if(nowFrame>=Number(controls.timing.value))seek(60);
+  active=true;
+  controls.play.textContent="暂停";
+};
+controls.key.onclick=()=>{pause();seek(Number(controls.timing.value));};
+controls.timeline.oninput=()=>{pause();seek(Number(controls.timeline.value));};
+controls.timing.onchange=()=>{
+  if(!ready())return;
+  views[1].contentWindow.Shot.setPoseAnchor(Number(controls.timing.value));
+  controls.key.click();
+};
+for(const button of document.querySelectorAll("[data-camera]"))button.onclick=()=>setCamera(button.dataset.camera);
+let initialized=false;
+function tick(t){
+  const dt=previous?Math.min((t-previous)/1000,.05):0;
+  previous=t;
+  if(!initialized&&ready()){
+    initialized=true;
+    controls.play.disabled=controls.key.disabled=false;
+    setCamera(view);
+    seek(nowFrame);
+  }
+  if(active){
+    seek(Math.min(120,nowFrame+dt*30));
+    if(nowFrame>=120)pause();
+  }
+  requestAnimationFrame(tick);
+}
+requestAnimationFrame(tick);
+</script></body></html>

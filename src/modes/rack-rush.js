@@ -392,7 +392,7 @@
       const supply=rush.supply;
       if(supply?.readyIn!=null){
         supply.readyIn-=dt;
-        if(supply.readyIn<=0&&!global.AIBAShotPhysics?.isAirborne()){
+        if(supply.readyIn<=0&&!global.AIBAShotPhysics?.isAirborne()&&!global.AIBAShotMotion?.waitingForBalance()){
           supply.readyIn=null;
           readyBall();
         }

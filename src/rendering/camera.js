@@ -605,18 +605,22 @@ function updateCosmicCamera(ball,dt,interactive=true){
     fov=mix(47,63,dive)+(camera.aspect<1?8:0);
     cosmicView.shot="spiral";
   }else{
-    // Cut to the court side of the hoop and travel down with the ball.
+    // Track the final dive, then pull back into a readable hero composition around the palm print.
     const closing=1-smooth(p.y,3.0,21);
-    const settle=smooth(age,0,.78);
-    const bearing=mix(-.88,-.50,closing)+.36*settle;
-    const radius=mix(4.45,3.15,closing)-.38*settle;
+    const settle=smooth(age,0,.62);
+    const orbit=age>=0?Math.min(1,age/2.55):0;
+    const bearing=mix(-.88,-.50,closing)+.36*settle+.22*orbit;
+    const radius=mix(4.45,3.15,closing)+3.05*settle;
     const kick=age>=0?.16*Math.sin(44*age)*Math.exp(-age*11):0;
     const x=age>=0?impact.x:p.x,z=age>=0?impact.z:p.z;
-    const y=age>=0?AIBABallPhysics.GEOM.ballR:p.y;
-    rig.pos.set(x+Math.sin(bearing)*radius,y+mix(2.4,1.0,closing)+.66*settle+kick,
-      z+Math.cos(bearing)*radius);
-    rig.look.set(x,y+.26*closing-.37*settle,z);
-    fov=mix(59,48,closing)+2*settle+(camera.aspect<1?8:0);
+    const place=environmentRoot.userData.placeState;
+    const ground=place?.heightAt||place?.wonder?.terrainY;
+    const groundY=age>=0&&ground?ground(x,z):0;
+    const targetY=age>=0?groundY+.12:p.y;
+    const cameraHeight=mix(mix(2.4,1.0,closing)+.66*settle,3.15,settle)+kick;
+    rig.pos.set(x+Math.sin(bearing)*radius,targetY+cameraHeight,z+Math.cos(bearing)*radius);
+    rig.look.set(x,targetY+mix(.26*closing-.37*settle,.08,settle),z);
+    fov=mix(mix(59,48,closing),60,settle)+(camera.aspect<1?8:0);
     cosmicView.shot=age<0?"net":"impact";
   }
   requestCameraFov("cosmic",fov,80);

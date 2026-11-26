@@ -38,6 +38,7 @@ try{
   outer:for(const base of bases)for(const pkg of ["playwright","playwright-core"]){
     let mod;try{mod=createRequire(base)(pkg);}catch{continue;}
     try{browser=await mod.chromium.launch({args:["--mute-audio"]});break outer;}catch{}
+    try{browser=await mod.chromium.launch({channel:"chrome",args:["--mute-audio"]});break outer;}catch{}
   }
   if(!browser)throw new Error("需要 Playwright: npx playwright install chromium");
 

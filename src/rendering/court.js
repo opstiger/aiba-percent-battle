@@ -97,20 +97,21 @@ function paintHardwood(g,W,D,PXM){
 /* 三秒区、罚球圈、中圈独立薄几何，带连续清漆。 */
 function buildCourtZones(){
   const Y=0.020;
+  const _hdri=!(typeof location!=="undefined"&&/(\?|&)hdri=0(&|#|$)/.test(location.search));
   const zoneMat=new THREE.MeshPhysicalMaterial({
-    color:0x261142,transparent:true,opacity:0.26,
-    roughness:0.34,metalness:0,
+    color:0x261142,transparent:true,opacity:0.36,
+    roughness:_hdri?0.22:0.34,metalness:0,
     polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,
-    clearcoat:FLOOR_PHYS.clearcoat,
-    clearcoatRoughness:FLOOR_PHYS.clearcoatRoughness,
-    envMap:makeArenaEnvPMREM(),envMapIntensity:FLOOR_PHYS.envMapIntensity});
+    clearcoat:_hdri?0.86:FLOOR_PHYS.clearcoat,
+    clearcoatRoughness:_hdri?0.14:FLOOR_PHYS.clearcoatRoughness,
+    envMap:makeArenaEnvPMREM(),envMapIntensity:_hdri?0.34:FLOOR_PHYS.envMapIntensity});
   const lineMat=new THREE.MeshPhysicalMaterial({
     color:0xe8edf2,side:THREE.DoubleSide,
-    roughness:0.36,metalness:0,
+    roughness:_hdri?0.26:0.36,metalness:0,
     polygonOffset:true,polygonOffsetFactor:-2,polygonOffsetUnits:-2,
-    clearcoat:FLOOR_PHYS.clearcoat,
-    clearcoatRoughness:FLOOR_PHYS.clearcoatRoughness,
-    envMap:makeArenaEnvPMREM(),envMapIntensity:FLOOR_PHYS.envMapIntensity*0.55});
+    clearcoat:_hdri?0.78:FLOOR_PHYS.clearcoat,
+    clearcoatRoughness:_hdri?0.16:FLOOR_PHYS.clearcoatRoughness,
+    envMap:makeArenaEnvPMREM(),envMapIntensity:_hdri?0.46:FLOOR_PHYS.envMapIntensity*0.55});
   const face=(geo,mat,z,sx)=>{
     const m=new THREE.Mesh(geo,mat);
     m.rotation.x=-Math.PI/2;m.position.set(0,Y,z);
@@ -443,18 +444,215 @@ function makeArenaEnvMap(){
   return arenaEnvMap;
 }
 
-let arenaEnvRT=null;
+const AIBA_HDRI_ENABLED=!(typeof location!=="undefined"&&/(\?|&)hdri=0(&|#|$)/.test(location.search));
+let arenaEnvRT=null,arenaEnvHdriStarted=false,arenaEnvCurrentTex=null;
+const _arenaEnvMats=new Set();
+
+/* 轻量零依赖 Radiance RGBE (.hdr) 浮点高动态光照图解码器 -> FloatType DataTexture -> Three.js PMREMGenerator */
+function loadRGBEHdrTexture(url,onLoad,onError){
+  fetch(url).then(r=>{if(!r.ok)throw new Error("HTTP "+r.status);return r.arrayBuffer();}).then(buf=>{
+    const u8=new Uint8Array(buf);
+    let pos=0,w=0,h=0;
+    const readLine=()=>{
+      let s="";
+      while(pos<u8.length){const c=u8[pos++];if(c===10)break;if(c!==13)s+=String.fromCharCode(c);}
+      return s;
+    };
+    while(pos<u8.length){
+      const line=readLine();
+      if(line===""){
+        const dim=readLine();
+        const m=dim.match(/-Y\s+(\d+)\s+\+X\s+(\d+)/);
+        if(!m)throw new Error("Unsupported HDR dim: "+dim);
+        h=parseInt(m[1],10);w=parseInt(m[2],10);
+        break;
+      }
+    }
+    if(!w||!h)throw new Error("Invalid HDR header");
+    const rgba=new Float32Array(w*h*4);
+    const scan=new Uint8Array(w*4);
+    for(let y=0;y<h;y++){
+      if(u8[pos]===2&&u8[pos+1]===2&&((u8[pos+2]<<8)|u8[pos+3])===w){
+        pos+=4;
+        for(let ch=0;ch<4;ch++){
+          let x=0;
+          while(x<w){
+            const code=u8[pos++];
+            if(code>128){
+              const cnt=code-128,val=u8[pos++];
+              for(let k=0;k<cnt;k++)scan[(x++)*4+ch]=val;
+            }else{
+              for(let k=0;k<code;k++)scan[(x++)*4+ch]=u8[pos++];
+            }
+          }
+        }
+      }else{
+        for(let i=0;i<w*4;i++)scan[i]=u8[pos++];
+      }
+      const rowOut=(h-1-y)*w*4;
+      for(let x=0;x<w;x++){
+        const si=x*4,e=scan[si+3];
+        const o=rowOut+x*4;
+        if(e){
+          const f=Math.pow(2.0,e-136);
+          rgba[o]=scan[si]*f;rgba[o+1]=scan[si+1]*f;rgba[o+2]=scan[si+2]*f;rgba[o+3]=1.0;
+        }else{
+          rgba[o]=0;rgba[o+1]=0;rgba[o+2]=0;rgba[o+3]=1.0;
+        }
+      }
+    }
+    const tex=new THREE.DataTexture(rgba,w,h,THREE.RGBAFormat,THREE.FloatType);
+    tex.mapping=THREE.EquirectangularReflectionMapping;
+    tex.magFilter=THREE.LinearFilter;
+    tex.minFilter=THREE.LinearFilter;
+    tex.generateMipmaps=false;
+    tex.flipY=false;
+    tex.needsUpdate=true;
+    onLoad(tex);
+  }).catch(err=>{if(onError)onError(err);});
+}
+window.AIBA_LOAD_HDR=loadRGBEHdrTexture;
+
+function _collectEnvMatsUsing(oldTex){
+  if(typeof scene==="undefined"||!scene||!oldTex)return;
+  scene.traverse(o=>{
+    if(!o||!o.isMesh||!o.material)return;
+    const mats=Array.isArray(o.material)?o.material:[o.material];
+    for(const m of mats){
+      if(m&&(m.envMap===oldTex||_arenaEnvMats.has(m)))_arenaEnvMats.add(m);
+    }
+  });
+}
+
+function _swapArenaEnvTexture(oldTex,newTex,skipIndoorRoot){
+  if(!newTex||oldTex===newTex)return;
+  _collectEnvMatsUsing(oldTex);
+  const indoorSet=new Set();
+  if(skipIndoorRoot&&typeof indoorRoot!=="undefined"&&indoorRoot){
+    indoorRoot.traverse(o=>{
+      if(!o||!o.isMesh||!o.material)return;
+      const mats=Array.isArray(o.material)?o.material:[o.material];
+      for(const m of mats)indoorSet.add(m);
+    });
+  }
+  _arenaEnvMats.forEach(m=>{
+    if(!m||(skipIndoorRoot&&indoorSet.has(m)))return;
+    if(m.envMap!==newTex){
+      m.envMap=newTex;
+      m.needsUpdate=true;
+    }
+  });
+  arenaEnvCurrentTex=newTex;
+}
+
 function makeArenaEnvPMREM(){
-  if(arenaEnvRT)return arenaEnvRT.texture;
+  if(arenaEnvRT){
+    if(AIBA_HDRI_ENABLED&&!arenaEnvHdriStarted)_loadIndoorHdriPMREM();
+    return arenaEnvCurrentTex||arenaEnvRT.texture;
+  }
   try{
     const pm=new THREE.PMREMGenerator(renderer);
     pm.compileEquirectangularShader();
     arenaEnvRT=pm.fromEquirectangular(makeArenaEnvMap());
     pm.dispose();
-    return arenaEnvRT.texture;
+    arenaEnvCurrentTex=arenaEnvRT.texture;
+    if(AIBA_HDRI_ENABLED&&!arenaEnvHdriStarted)_loadIndoorHdriPMREM();
+    return arenaEnvCurrentTex;
   }catch(e){
     return makeArenaEnvMap();
   }
+}
+
+function _applyIndoorHdriTex(tex){
+  const pm=new THREE.PMREMGenerator(renderer);
+  pm.compileEquirectangularShader();
+  const nextRT=pm.fromEquirectangular(tex);
+  pm.dispose();
+  tex.dispose();
+  const prevTex=arenaEnvCurrentTex||(arenaEnvRT&&arenaEnvRT.texture);
+  const prevRT=arenaEnvRT;
+  arenaEnvRT=nextRT;
+  const activePreset=(typeof currentScenePreset==="string"&&currentScenePreset)||"indoor";
+  if(activePreset==="indoor"){
+    _swapArenaEnvTexture(prevTex,nextRT.texture,false);
+  }
+  if(prevRT&&prevRT!==nextRT&&typeof prevRT.dispose==="function")prevRT.dispose();
+  window.AIBA_HDRI_STATUS=Object.assign(window.AIBA_HDRI_STATUS||{},{indoorArena:true});
+}
+
+function _loadIndoorHdriPMREM(){
+  if(arenaEnvHdriStarted||typeof renderer==="undefined"||!renderer)return;
+  arenaEnvHdriStarted=true;
+  try{
+    loadRGBEHdrTexture("assets/hdri/indoor.hdr",tex=>{
+      try{_applyIndoorHdriTex(tex);window.AIBA_HDRI_STATUS=Object.assign(window.AIBA_HDRI_STATUS||{},{indoorFloatHdr:true});}catch(e){}
+    },()=>{
+      if(typeof THREE.TextureLoader==="function"){
+        new THREE.TextureLoader().load("assets/hdri/indoor.webp",tex=>{
+          try{if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;_applyIndoorHdriTex(tex);}catch(e){}
+        },undefined,()=>{});
+      }
+    });
+  }catch(e){}
+}
+
+window.AIBA_SYNC_COURT_HDRI=function(venueKey,envTex){
+  if(!AIBA_HDRI_ENABLED||!envTex)return;
+  const targetTex=(venueKey==="indoor"&&arenaEnvRT)?arenaEnvRT.texture:envTex;
+  _swapArenaEnvTexture(arenaEnvCurrentTex||(arenaEnvRT&&arenaEnvRT.texture),targetTex,venueKey!=="indoor");
+  /* 室外 3 大球场(月球金属/水晶/宇航员面罩、雨林湿润地面、天山球架与岩石)同步吃进真浮点 HDR 环境光 */
+  if(venueKey!=="indoor"&&typeof environmentRoot!=="undefined"&&environmentRoot){
+    environmentRoot.traverse(o=>{
+      if(!o||!o.isMesh||!o.material)return;
+      const mats=Array.isArray(o.material)?o.material:[o.material];
+      for(const m of mats){
+        if(!m||!(m.isMeshStandardMaterial||m.isMeshPhysicalMaterial))continue;
+        if(m.envMap&&m.envMap!==targetTex){
+          m.envMap=targetTex;
+          m.envMapIntensity=Math.max(m.envMapIntensity||1.0,venueKey==="lunarCrater"?1.45:1.05);
+          m.needsUpdate=true;
+        }else if(!m.envMap&&venueKey==="rainforest"&&o.geometry&&(m.roughness==null||m.roughness<0.92)){
+          m.envMap=targetTex;
+          m.envMapIntensity=0.45;
+          m.needsUpdate=true;
+        }else if(!m.envMap&&venueKey==="flowerCourt"&&(m.metalness>0.15||(m.roughness!=null&&m.roughness<0.85))){
+          m.envMap=targetTex;
+          m.envMapIntensity=0.22;
+          m.needsUpdate=true;
+        }
+      }
+    });
+  }
+};
+
+function _applyMapleHdriPBR(floorMat){
+  if(!AIBA_HDRI_ENABLED||!floorMat||!floorMat.isMeshPhysicalMaterial||typeof THREE.TextureLoader!=="function")return;
+  try{
+    const loader=new THREE.TextureLoader();
+    const maxAniso=(typeof renderer!=="undefined"&&renderer&&renderer.capabilities)?Math.min(8,renderer.capabilities.getMaxAnisotropy()):4;
+    loader.load("assets/hdri/nba-maple-normal.webp",normTex=>{
+      normTex.wrapS=normTex.wrapT=THREE.RepeatWrapping;
+      normTex.repeat.set(6,8);
+      normTex.anisotropy=maxAniso;
+      floorMat.normalMap=normTex;
+      floorMat.normalScale=new THREE.Vector2(0.38,0.38);
+      floorMat.roughness=0.26;
+      floorMat.clearcoat=0.88;
+      floorMat.clearcoatRoughness=0.14;
+      floorMat.envMapIntensity=0.46;
+      floorMat.needsUpdate=true;
+      window.AIBA_HDRI_STATUS=Object.assign(window.AIBA_HDRI_STATUS||{},{mapleNormal:true});
+    },undefined,()=>{});
+    loader.load("assets/hdri/nba-maple-roughness.webp",roughTex=>{
+      roughTex.wrapS=roughTex.wrapT=THREE.RepeatWrapping;
+      roughTex.repeat.set(6,8);
+      roughTex.anisotropy=maxAniso;
+      floorMat.clearcoatRoughnessMap=roughTex;
+      floorMat.clearcoatRoughness=0.18;
+      floorMat.needsUpdate=true;
+      window.AIBA_HDRI_STATUS=Object.assign(window.AIBA_HDRI_STATUS||{},{mapleRoughness:true});
+    },undefined,()=>{});
+  }catch(e){}
 }
 
 function buildCourt(){
@@ -474,6 +672,7 @@ function buildCourt(){
     : new THREE.MeshPhongMaterial({
         map:courtIndoorTexture,color:0xb0a798,specular:0x8d8574,shininess:38,
         envMap:makeArenaEnvMap(),reflectivity:0.12}));
+  if(usePBR)_applyMapleHdriPBR(courtFloor.material);
   courtFloor.receiveShadow=true;
   courtFloor.name="courtFloor";
   courtFloor.rotation.x=-Math.PI/2;

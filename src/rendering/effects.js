@@ -92,7 +92,7 @@ window.AIBA.runtime.register("rendering:effects",Object.freeze({
 // Both live play and replay sample the same little set of reusable props.
 const cosmicGroundFX=(()=>{
   let group,wave,dust,print,flecks,bowl,cracks,restingBall,vegetation;
-  let activeProfile;
+  let activeProfile,preparedVenue=null;
   let liveImpact=null,sampling=false;
   const pitCut={value:new THREE.Vector3()},pitShape={value:new THREE.Vector3(1,1,0)};
   const patchedGround=new WeakSet();
@@ -263,6 +263,7 @@ const cosmicGroundFX=(()=>{
     material.needsUpdate=true;patchedGround.add(material);
   }
   function prepare(venue){
+    if(group&&preparedVenue===venue&&group.parent===scene){sampling=true;return;}
     if(!group){
       group=new THREE.Group();group.name="cosmicFloorPressure";
       print=layer("pressure-print.png");wave=layer("pressure-wave.png",true);
@@ -321,6 +322,13 @@ const cosmicGroundFX=(()=>{
     pitCut.value.z=0;
     scene.add(group);
     sampling=true;
+    preparedVenue=venue;
+  }
+  function prime(venue){
+    if(preparedVenue===venue&&group?.parent===scene)return false;
+    prepare(venue);
+    endView();
+    return true;
   }
   function land(impact,mesh){
     // Retain the latest impact in this round, separately from replay playback.
@@ -412,13 +420,14 @@ const cosmicGroundFX=(()=>{
     for(const entry of people){
       const p=entry.person,g=p.g,w=response(g.position.x,g.position.z);
       if(!w)continue;
-      const l=p.arms[0],r=p.arms[1];
+      const arms=Array.isArray(p.arms)?p.arms:[];
+      const l=arms[0],r=arms[1];
       entry.weight=w;entry.tilt=g.rotation.z;entry.squat=g.scale.y;
-      entry.left=l.rotation.x;entry.right=r.rotation.x;
+      entry.left=l?.rotation?.x??null;entry.right=r?.rotation?.x??null;
       g.rotation.z-=Math.sign(g.position.x-group.position.x)*w*.30;
       g.scale.y*=1-.19*w;
-      l.rotation.x=THREE.MathUtils.lerp(entry.left,2.34,w);
-      r.rotation.x=THREE.MathUtils.lerp(entry.right,2.10,w);
+      if(l?.rotation)l.rotation.x=THREE.MathUtils.lerp(entry.left,2.34,w);
+      if(r?.rotation)r.rotation.x=THREE.MathUtils.lerp(entry.right,2.10,w);
       if(p.realInst){
         const {inst,index}=p.realInst;inst.getMatrixAt(index,entry.instMatrix);
         pose.scale.set(1,1-.19*w,1);
@@ -433,7 +442,9 @@ const cosmicGroundFX=(()=>{
       if(!entry.weight)continue;
       const p=entry.person;
       p.g.rotation.z=entry.tilt;p.g.scale.y=entry.squat;
-      p.arms[0].rotation.x=entry.left;p.arms[1].rotation.x=entry.right;
+      const arms=Array.isArray(p.arms)?p.arms:[];
+      if(Number.isFinite(entry.left)&&arms[0]?.rotation)arms[0].rotation.x=entry.left;
+      if(Number.isFinite(entry.right)&&arms[1]?.rotation)arms[1].rotation.x=entry.right;
       if(p.realInst){
         p.realInst.inst.setMatrixAt(p.realInst.index,entry.instMatrix);p.realInst.inst.instanceMatrix.needsUpdate=true;
       }
@@ -442,9 +453,10 @@ const cosmicGroundFX=(()=>{
   }
   function reset(){
     liveImpact=null;
+    preparedVenue=null;
     endView();
     people.length=0;vegetation=null;
     if(group?.parent)group.parent.remove(group);
   }
-  return {prepare,sample:draw,land,tick,endView,reset,response,reacting,braceCrowd,releaseCrowd};
+  return {prepare,prime,sample:draw,land,tick,endView,reset,response,reacting,braceCrowd,releaseCrowd};
 })();

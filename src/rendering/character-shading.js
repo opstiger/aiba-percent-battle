@@ -134,29 +134,113 @@
     "}"
   ].join("\n");
 
+  // Skinned heroes already have material-specific highlights. Add only the
+  // venue response here, in linear light, before the scene tone map and fog.
+  const HERO_FRAG_BODY=`
+{
+  vec3 worldNormal=normalize(aibaWN);
+  vec3 viewNormal=normalize(aibaN);
+  #ifdef DOUBLE_SIDED
+    float faceSign=gl_FrontFacing?1.0:-1.0;
+    worldNormal*=faceSign;
+    viewNormal*=faceSign;
+  #endif
+  float up=worldNormal.y;
+  float sunDot=dot(worldNormal,aibaSunDir);
+  float bounce=(1.0-smoothstep(0.04,1.15,aibaY)) * (0.18+0.82*max(0.0,-up));
+  vec3 groundLight=aibaGroundColor*aibaGroundColor;
+  gl_FragColor.rgb+=diffuseColor.rgb*groundLight*bounce*0.15;
+  if(aibaSceneMode>0.5&&aibaSceneMode<1.5){
+    vec2 q=aibaWPos.xz-aibaWPos.y*vec2(-0.52,0.40);
+    float dapple=0.5+0.5*sin(q.x*1.55+q.y*1.12)*cos(q.y*1.75-q.x*0.98);
+    float openSky=smoothstep(0.16,0.84,dapple);
+    vec3 canopy=mix(vec3(0.43,0.63,0.36),vec3(0.98,0.93,0.78),openSky);
+    float lightSide=smoothstep(-0.65,0.50,sunDot);
+    gl_FragColor.rgb*=canopy*mix(0.75,1.03,lightSide);
+  }else if(aibaSceneMode>1.5&&aibaSceneMode<2.5){
+    float shadowSide=max(0.0,-sunDot);
+    gl_FragColor.rgb+=diffuseColor.rgb*vec3(0.024,0.042,0.084)*shadowSide;
+    gl_FragColor.rgb*=1.0-aibaWetness*0.08;
+  }else if(aibaSceneMode>3.5){
+    float earthLight=max(0.0,dot(worldNormal,vec3(0.46,0.38,-0.80)));
+    gl_FragColor.rgb+=diffuseColor.rgb*vec3(0.025,0.060,0.14)*earthLight;
+  }
+  float contact=smoothstep(0.015,0.20,aibaY);
+  gl_FragColor.rgb*=mix(0.84,1.0,contact);
+  float facing=clamp(dot(viewNormal,normalize(aibaV)),0.0,1.0);
+  float rim=1.0-facing;
+  float keySide=smoothstep(-0.20,0.72,sunDot);
+  gl_FragColor.rgb+=aibaRimColor*aibaRimColor*rim*rim*rim*aibaRimStrength*keySide*0.21;
+}
+`;
+
   function inject(shader){
     Object.assign(shader.uniforms,uniforms);
     shader.vertexShader=shader.vertexShader
       .replace("#include <common>","#include <common>"+VERT_DECL)
       .replace("#include <project_vertex>","#include <project_vertex>\n"+VERT_BODY);
+    const hero=this.userData.aibaLinearCharacter;
+    const insertion=hero?"#include <tonemapping_fragment>":"#include <dithering_fragment>";
     shader.fragmentShader=shader.fragmentShader
       .replace("#include <common>","#include <common>"+FRAG_DECL)
-      .replace("#include <dithering_fragment>",FRAG_BODY+"\n#include <dithering_fragment>");
+      .replace(insertion,(hero?HERO_FRAG_BODY:FRAG_BODY)+"\n"+insertion);
   }
   function shadeable(m){
     return m&&(m.isMeshLambertMaterial||m.isMeshStandardMaterial||m.isMeshPhongMaterial)&&!m.transparent;
   }
   let patched=0;
-  /* 分球场轻量 PMREM 环境光贴图（IBL）：写实 PBR 球星(nvidia23/star8 等)原本 envMap=null 导致表面发干像贴纸，
-     每个球场仅在首次切入时用 64x32 渐进画布烘一张 PMREM，每帧 0 额外开销，人物/篮球立刻吃进真实场景反射光！ */
+  /* 分球场 PMREM 环境光贴图（IBL）：默认首帧秒出轻量程序渐变，随后异步无缝替换为 Colab Cycles 烘焙的 360° 全景 HDRI
+     （支持 ?hdri=0 一键切回纯程序渐变做前后对比）。每帧 0 额外开销，人物/篮球/篮筐立刻吃进真实场景反射光！ */
+  const _hdriEnabled=!(typeof location!=="undefined"&&/(\?|&)hdri=0(&|#|$)/.test(location.search));
   const _venueEnvCache=new Map();
+  const _venueHdriLoading=new Set();
+  const _venueHdriPaths={
+    indoor:"assets/hdri/indoor.hdr",
+    flowerCourt:"assets/hdri/flowerCourt.hdr",
+    lunarCrater:"assets/hdri/lunarCrater.hdr",
+    rainforest:"assets/hdri/rainforest.hdr"
+  };
   let _pmremGen=null;
   let _activeEnvKey=null,_activeEnvTex=null,_activeEnvInt=0.45;
   const _pbrMats=new Set();
 
+  function _commitVenueHdri(key,tex){
+    const envTex=_pmremGen.fromEquirectangular(tex).texture;
+    tex.dispose();
+    _venueEnvCache.set(key,envTex);
+    window.AIBA_HDRI_STATUS=Object.assign(window.AIBA_HDRI_STATUS||{},{[key]:true});
+    if(_activeEnvKey===key){
+      _activeEnvTex=envTex;
+      _pbrMats.forEach(applyVenueEnv);
+      if(typeof window.AIBA_SYNC_COURT_HDRI==="function")window.AIBA_SYNC_COURT_HDRI(key,envTex);
+    }
+  }
+
+  function _kickLoadVenueHdri(key){
+    if(!_hdriEnabled||_venueHdriLoading.has(key)||!_venueHdriPaths[key])return;
+    if(!_pmremGen)return;
+    _venueHdriLoading.add(key);
+    try{
+      if(typeof window.AIBA_LOAD_HDR==="function"){
+        window.AIBA_LOAD_HDR(_venueHdriPaths[key],tex=>{
+          try{_commitVenueHdri(key,tex);}catch(e){}
+        },()=>{
+          if(typeof THREE.TextureLoader==="function"){
+            new THREE.TextureLoader().load(_venueHdriPaths[key].replace(/\.hdr$/,".webp"),tex=>{
+              try{if(THREE.sRGBEncoding)tex.encoding=THREE.sRGBEncoding;_commitVenueHdri(key,tex);}catch(e){}
+            },undefined,()=>{});
+          }
+        });
+      }
+    }catch(e){}
+  }
+
   function getVenueEnv(preset){
     const key=(preset==="flowerCourt"||preset==="lunarCrater"||preset==="rainforest"||preset==="indoor")?preset:"indoor";
-    if(_venueEnvCache.has(key))return _venueEnvCache.get(key);
+    if(_venueEnvCache.has(key)){
+      _kickLoadVenueHdri(key);
+      return _venueEnvCache.get(key);
+    }
     if(typeof renderer==="undefined"||!renderer||typeof THREE.PMREMGenerator!=="function")return null;
     try{
       if(!_pmremGen){
@@ -218,6 +302,7 @@
       const envTex=_pmremGen.fromEquirectangular(srcTex).texture;
       srcTex.dispose();
       _venueEnvCache.set(key,envTex);
+      _kickLoadVenueHdri(key);
       return envTex;
     }catch(e){return null;}
   }
@@ -239,7 +324,7 @@
     if(m.onBeforeCompile&&m.onBeforeCompile!==THREE.Material.prototype.onBeforeCompile)return;
     m.userData.aibaShade=true;
     m.onBeforeCompile=inject;
-    m.customProgramCacheKey=()=>"aibaShade3";
+    m.customProgramCacheKey=()=>m.userData.aibaLinearCharacter?"aibaShadeLinearHero":"aibaShade3";
     m.needsUpdate=true;patched++;
   }
   function shadeTree(root){
@@ -322,14 +407,17 @@
       if(typeof sun!=="undefined"&&sun&&sun.position.lengthSq()>0.01){
         uniforms.aibaSunDir.value.copy(sun.position).normalize();
       }
-      /* 切换球场时同步更新所有写实 PBR 角色/篮球的 PMREM 环境反射贴图（IBL） */
+      /* 切换球场时同步更新所有写实 PBR 角色/篮球/篮筐的 PMREM 环境反射贴图（IBL）；真浮点 HDR 亮度高，按场地精准定标防过曝 */
       const envKey=(preset==="flowerCourt"||preset==="lunarCrater"||preset==="rainforest"||preset==="indoor")?preset:"indoor";
-      const envInt=preset==="lunarCrater"?0.62:(preset==="rainforest"?0.52:(preset==="flowerCourt"?0.58:0.54));
+      const envInt=_hdriEnabled
+        ?(preset==="lunarCrater"?0.58:(preset==="rainforest"?0.46:(preset==="flowerCourt"?0.055:0.34)))
+        :(preset==="lunarCrater"?0.62:(preset==="rainforest"?0.52:(preset==="flowerCourt"?0.58:0.54)));
       if(_activeEnvKey!==envKey||!_activeEnvTex){
         const tex=getVenueEnv(envKey);
         if(tex){
           _activeEnvKey=envKey;_activeEnvTex=tex;_activeEnvInt=envInt;
           _pbrMats.forEach(applyVenueEnv);
+          if(typeof window.AIBA_SYNC_COURT_HDRI==="function")window.AIBA_SYNC_COURT_HDRI(envKey,tex);
         }
       }
     }catch(e){}

@@ -1,0 +1,196 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<title>正式游戏真实原版投篮动作 (motion.js + tripo-avatar.js)</title>
+<style>
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%;overflow:hidden;background:#141a28}
+  canvas{display:block;width:100%;height:100%}
+</style>
+<script src="/vendor/three.min.r128.js"></script>
+<script src="/vendor/GLTFLoader.r128.js"></script>
+<script>
+window.renderer=new THREE.WebGLRenderer({antialias:true,preserveDrawingBuffer:true});
+renderer.setPixelRatio(Math.min(2,devicePixelRatio||1));
+renderer.outputEncoding=THREE.sRGBEncoding;
+window.V3=(x,y,z)=>new THREE.Vector3(x,y,z);
+window.clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
+window.G={state:"round",tNow:0,canShoot:true,charging:false,moving:false,buzzed:false,myStar:{id:"star8"},mode:"round"};
+window.P={jump:0,pos:new THREE.Vector3()};
+window.scene=new THREE.Scene();
+scene.background=new THREE.Color(0x141a28);
+scene.add(new THREE.HemisphereLight(0xffffff,0x334466,1.25));
+const dl=new THREE.DirectionalLight(0xffffff,1.15);dl.position.set(2.5,5,3.5);scene.add(dl);
+const rimL=new THREE.DirectionalLight(0x88bbff,0.45);rimL.position.set(-2.5,2,-3);scene.add(rimL);
+const floor=new THREE.Mesh(new THREE.CircleGeometry(1.4,48),new THREE.MeshStandardMaterial({color:0x606b7c,roughness:0.9}));
+floor.rotation.x=-Math.PI/2;scene.add(floor);
+</script>
+<script src="/src/core/runtime.js"></script>
+<script src="/src/config.js"></script>
+<script src="/src/assets-manifest.js"></script>
+<script src="/src/rendering/materials.js"></script>
+<script src="/src/rendering/model-detail.js"></script>
+<script src="/src/rendering/shoe-last.js"></script>
+<script src="/src/rendering/retro-high.js"></script>
+<script src="/src/rendering/shoe-styles.js"></script>
+<script src="/src/rendering/basketball-shoes.js"></script>
+<script src="/src/rendering/shoe-colorways.js"></script>
+<script src="/src/rendering/player-kit.js"></script>
+<script src="/src/rendering/character-shading.js"></script>
+<script src="/src/rendering/characters.js"></script>
+<script src="/src/rendering/motion.js"></script>
+<script src="/src/lab/tripo-avatar.js"></script>
+</head>
+<body>
+<script>
+(function(){
+"use strict";
+document.body.appendChild(renderer.domElement);
+const cam=new THREE.PerspectiveCamera(36,innerWidth/innerHeight,0.05,50);
+let yaw=Math.PI/2, pitch=0.10, dist=4.5, target=new THREE.Vector3(0,1.35,0.25);
+function placeCam(){
+  cam.position.set(target.x+dist*Math.sin(yaw)*Math.cos(pitch), target.y+dist*Math.sin(pitch), target.z+dist*Math.cos(yaw)*Math.cos(pitch));
+  cam.lookAt(target);
+}
+function resize(){ renderer.setSize(innerWidth,innerHeight,false); cam.aspect=innerWidth/innerHeight; cam.updateProjectionMatrix(); }
+addEventListener("resize",resize); resize();
+
+let drag=false, lx=0, ly=0;
+const _qs=new URLSearchParams(location.search);
+renderer.domElement.addEventListener("pointerdown",e=>{drag=true;lx=e.clientX;ly=e.clientY;});
+addEventListener("pointerup",()=>drag=false);
+addEventListener("pointermove",e=>{
+  if(!drag)return;
+  yaw-=(e.clientX-lx)*0.008; pitch=clamp(pitch+(e.clientY-ly)*0.008,-0.5,1.2);
+  lx=e.clientX; ly=e.clientY; placeCam();
+  if(window.parent!==window) window.parent.postMessage({type:"cam",from:_qs.get("slot")||"",cam:window.getCam()},"*");
+});
+renderer.domElement.addEventListener("wheel",e=>{
+  e.preventDefault(); dist=clamp(dist*(1+e.deltaY*0.001),1.5,12); placeCam();
+  if(window.parent!==window) window.parent.postMessage({type:"cam",from:_qs.get("slot")||"",cam:window.getCam()},"*");
+},{passive:false});
+
+window.setCam=(y,p,d,ty,tz)=>{ if(y!=null)yaw=y; if(p!=null)pitch=p; if(d!=null)dist=d; if(ty!=null)target.y=ty; if(tz!=null)target.z=tz; placeCam(); };
+window.getCam=()=>({yaw,pitch,dist,ty:target.y,tz:target.z});
+window.poseOffsets={};
+
+// 创建真实主游戏球员 + 球（与正式游戏完全一致）
+const starDef=(typeof STARS!=="undefined"&&STARS.find(s=>s.id==="star8"))||{id:"star8",col:0x552583,acc:0xfdb927,skin:0x8d5524,num:"8"};
+player=voxelGuy(starDef.col,starDef.acc,starDef.skin,starDef.num);
+scene.add(player.g);
+pBall=new THREE.Mesh(ballGeo,matBall);
+const ballGrip=player.ballGrips&&player.ballGrips[0];
+if(ballGrip) ballGrip.add(pBall);
+else scene.add(pBall);
+
+// 真实主游戏投篮时间轴常量（来自 shot-motion.js & motion.js）
+const HOLD=0.35, CHARGE=0.78, EXTEND=0.105, REL_AT=0.092, FHOLD=0.24, FADE=0.38, GRAV=9.8, JUMP_H=0.55;
+const T_LAND_AIR=Math.sqrt(2*JUMP_H/GRAV), LAND_DUR=0.30;
+const TOTAL=HOLD+CHARGE+Math.max(EXTEND+FHOLD+FADE+0.3, T_LAND_AIR+LAND_DUR+0.3);
+const ease01=t=>{t=clamp(t,0,1);return t*t*(3-2*t);};
+
+let capturedRelease=null, relBallWorld=new THREE.Vector3(), relVel=new THREE.Vector3();
+function ensureCaptured(){
+  if(capturedRelease) return;
+  G.canShoot=false; G.charging=true; P.jump=JUMP_H;
+  const cTop=shotCurves(1);
+  const py=poseGuy(player,cTop,0);
+  player.g.position.set(0,py+JUMP_H,0);
+  player.g.updateMatrixWorld(true);
+  capturedRelease=captureShotPose(player);
+  // 离手瞬间球位（age = REL_AT）
+  applyShotFollowThroughPose(player,{active:true,extend:ease01(REL_AT/EXTEND),follow:1,recover:0,age:REL_AT},capturedRelease);
+  player.g.updateMatrixWorld(true);
+  if(ballGrip) ballGrip.getWorldPosition(relBallWorld);
+  else relBallWorld.set(-0.1,2.45,0.3);
+  const f=1.15;
+  relVel.set((0-relBallWorld.x)/f, (3.05-relBallWorld.y+0.5*GRAV*f*f)/f, (4.19-relBallWorld.z)/f);
+}
+
+const PROFILES={
+  legacy:{
+    isLegacy:true, name:"正式游戏真实原版", desc:"主游戏 motion.js + tripo-avatar.js（备份前原版）",
+    hold:HOLD, loadDur:CHARGE, jumpH:JUMP_H, releaseFrac:1.0, snapDur:EXTEND, fhold:FHOLD, fade:FADE, landDur:LAND_DUR,
+    turnPeakHip:0, turnPeakChest:0, swaySpine:-1.7, sweepR:0, sweepL:0, setPos:{x:-.106,y:.35,z:.32}, relPos:{x:-.106,y:.55,z:.32}
+  }
+};
+
+const Shot=window.Shot={
+  active:true, playing:false, t:0, PROFILES, style:"legacy",
+  get TOTAL(){ return TOTAL; },
+  setStyle(){},
+  updateParam(){},
+  setNormT(u01){ this.setT(clamp(u01,0,1)*TOTAL); },
+  setT(t){ this.t=clamp(t,0,TOTAL); this.render(); },
+  render(){
+    ensureCaptured();
+    const t=this.t, tc=t-HOLD, ph=clamp(tc/CHARGE,0,1), age=tc-CHARGE;
+    let jumpY=0, land=0, snap=0, phase="持球 Hold";
+    if(tc<0){
+      G.canShoot=true; G.charging=false; P.jump=0;
+      const py=poseGuy(player,shotCurves(0),0);
+      player.g.position.set(0,py,0);
+      if(ballGrip && pBall.parent!==ballGrip){ ballGrip.add(pBall); pBall.position.set(0,0,0); }
+      pBall.visible=true;
+    }else if(age<=0){
+      G.canShoot=false; G.charging=true;
+      const c=shotCurves(ph);
+      jumpY=c.jmp*JUMP_H; P.jump=jumpY;
+      const py=poseGuy(player,c,0);
+      player.g.position.set(0,py+jumpY,0);
+      if(ballGrip && pBall.parent!==ballGrip){ ballGrip.add(pBall); pBall.position.set(0,0,0); }
+      pBall.visible=true;
+      phase=ph<.32?"下蹲蓄力 Load":ph<.76?"举球 Lift":"起跳 Set";
+    }else{
+      G.canShoot=false; G.charging=false;
+      jumpY=Math.max(0, JUMP_H-0.5*GRAV*age*age); P.jump=jumpY;
+      const jmp=jumpY/JUMP_H;
+      if(age>T_LAND_AIR && age<T_LAND_AIR+LAND_DUR) land=Math.sin((age-T_LAND_AIR)/LAND_DUR*Math.PI);
+      const ext=ease01(age/EXTEND);
+      const rec=ease01((age-EXTEND-FHOLD)/FADE);
+      snap=age>REL_AT?ease01((age-REL_AT)/0.10):0;
+      const py=poseGuy(player,{dip:0,lift:1-rec,rise:1-rec,jmp,over:0},land);
+      player.g.position.set(0,py+jumpY,0);
+      if(rec<1){
+        applyShotFollowThroughPose(player,{active:true,extend:ext,follow:1-rec,recover:rec,age},capturedRelease);
+      }
+      if(age<=REL_AT){
+        if(ballGrip && pBall.parent!==ballGrip){ ballGrip.add(pBall); pBall.position.set(0,0,0); }
+        pBall.visible=true;
+        phase="出手推球 Push";
+      }else{
+        const tau=age-REL_AT;
+        if(pBall.parent!==scene) scene.add(pBall);
+        pBall.position.set(relBallWorld.x+relVel.x*tau, relBallWorld.y+relVel.y*tau-0.5*GRAV*tau*tau, relBallWorld.z+relVel.z*tau);
+        pBall.visible=pBall.position.y>0.12;
+        phase=rec<.85?"离手压腕 Follow":"落地缓冲 Land";
+      }
+    }
+    G.tNow+=0.016;
+    player.g.updateMatrixWorld(true);
+    this.last={s:{p:PROFILES.legacy, t, jumpY, snap, phase}};
+    placeCam();
+    renderer.render(scene,cam);
+  }
+};
+
+function bootLoop(){
+  requestAnimationFrame(bootLoop);
+  G.tNow+=0.016;
+  if(!window.__ready){
+    Shot.render();
+    if(window.AIBATripo && AIBATripo.ready && AIBATripo.root){
+      window.__ready=true;
+      Shot.setT(0);
+    }
+  }else{
+    placeCam();
+    renderer.render(scene,cam);
+  }
+}
+bootLoop();
+})();
+</script>
+</body>
+</html>

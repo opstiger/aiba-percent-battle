@@ -27,11 +27,24 @@
   <div class="row" id="presets"></div>
   <label><span>显示骨骼</span><input type="checkbox" id="skel"></label>
   <label><span>线框</span><input type="checkbox" id="wire"></label>
-  <div class="g">投篮动作(游戏曲线)</div>
+  <div class="g">投篮动作(4套球星投篮包)</div>
+  <div class="row">
+    <select id="shotStyle">
+      <option value="legacy">原版备份 · 游戏原曲线</option>
+      <option value="curry" selected>库里 Curry · 极速一段式</option>
+      <option value="klay">克莱 Klay · 教科书一段式</option>
+      <option value="kobe">科比 Kobe · 高跳滞空后仰</option>
+      <option value="booker">布克 Booker · 高跳紧凑干脆</option>
+    </select>
+  </div>
   <div class="row">
     <button id="shotPlay">▶ 播放投篮</button>
     <button id="shotStop">退出</button>
     <select id="shotSpeed"><option value="1">1x</option><option value="0.5">0.5x</option><option value="0.2">0.2x</option></select>
+  </div>
+  <div class="row">
+    <button id="shotCopy">📋 复制微调</button>
+    <button id="shotResetOff">↺ 重置微调</button>
   </div>
   <label><span>时间轴</span><input type="range" id="shotT" min="0" max="1000" value="0"></label>
   <div id="shotInfo" style="color:#9aa3b5;font-size:11px;white-space:pre;min-height:28px"></div>
@@ -77,6 +90,7 @@ addEventListener('resize', resize); resize();
 const CONTROLS = [
   ['躯干', null],
   ['Hips',  'tilt',  '胯部前倾',       'x', ()=>1],
+  ['Hips',  'turn',  '胯部左转',       'y', ()=>1],
   ['Spine', 'bend',  '躯干前弯',       'x', ()=>1],
   ['Spine', 'twist', '躯干左转',       'y', ()=>1],
   ['头', null],
@@ -92,6 +106,11 @@ const CONTROLS = [
   ['RightArm',     'swing', '右臂 前摆(垂臂后)',   'x', ()=>-1],
   ['RightArm',     'fwd',   '右臂 水平前收',       'y', s=>-s],
   ['RightForeArm', 'flex',  '右肘 弯曲',           'y', s=>-s],
+  ['手腕与手指（投篮微调）', null],
+  ['RightHand',  'pitch', '右手腕 压腕(+)/背屈(-)', null, ()=>1],
+  ['RightHand',  'curl',  '右五指 弯曲幅度',          null, ()=>1],
+  ['LeftHand',   'pitch', '左手腕 压腕(+)/背屈(-)', null, ()=>1],
+  ['LeftHand',   'curl',  '左五指 弯曲幅度',          null, ()=>1],
   ['腿', null],
   ['LeftUpLeg',  'lift', '左大腿 前抬', 'x', ()=>-1],
   ['LeftLeg',    'flex', '左膝 弯曲',   'x', ()=>1],
@@ -113,11 +132,14 @@ for (const c of CONTROLS){
   if (c[1]===null){ const g=document.createElement('div'); g.className='g'; g.textContent=c[0]; slidersBox.appendChild(g); continue; }
   const [b,a,label]=c, k=key(b,a); state[k]=0;
   const l=document.createElement('label'); l.innerHTML='<span>'+label+'</span>';
-  const r=document.createElement('input'); r.type='range'; r.min=-130; r.max=130; r.value=0;
-  r.addEventListener('input',()=>{ state[k]=+r.value; });
-  l.appendChild(r); slidersBox.appendChild(l); sliderEls[k]=r;
+  const r=document.createElement('input'); r.type='range'; r.min=-90; r.max=90; r.value=0;
+  const v=document.createElement('span'); v.style.cssText='width:30px;text-align:right;color:#78c2ff;font-size:10px'; v.textContent='0°';
+  r.addEventListener('input',()=>{ state[k]=+r.value; v.textContent=state[k]+'°'; if(window.Shot&&Shot.active&&!Shot.playing) Shot.render(); });
+  l.appendChild(r); l.appendChild(v); slidersBox.appendChild(l); sliderEls[k]=r; r._valEl=v;
 }
-function setPose(p){ for(const k in state){ state[k]=p[k]||0; sliderEls[k].value=state[k]; } }
+function setPose(p){ for(const k in state){ state[k]=p[k]||0; sliderEls[k].value=state[k]; if(sliderEls[k]._valEl) sliderEls[k]._valEl.textContent=state[k]+'°'; } }
+window.poseOffsets = state;
+window.resetPoseOffsets = ()=>{ setPose({}); if(window.Shot&&Shot.active) Shot.render(); };
 
 const ARMS_DOWN = {'LeftArm.raise':-78,'RightArm.raise':-78};
 const PRESETS = {
@@ -180,7 +202,7 @@ function applyPose(P, liftY, fixedY){   // fixedY: 给了就不做脚踩地,直�
   P=P||state; liftY=liftY||0;
   for(const s in bones) bones[s].quaternion.copy(rest[s]);
   const per={};
-  for(const c of CONTROLS){ if(c[1]===null) continue;
+  for(const c of CONTROLS){ if(c[1]===null||!c[3]) continue;
     const [b,a,,axis,sgn]=c, deg=P[key(b,a)]; if(!deg||!bones[b]) continue;
     (per[b]=per[b]||[]).push([axis, deg*sgn(side[b])*Math.PI/180]);
   }
@@ -208,8 +230,17 @@ loop();
 // 标签被隐藏时 rAF 会停,用定时器兜底(仅在隐藏时),保证截图/验证拿到真画面
 setInterval(()=>{ if(document.hidden) frame(); }, 100);
 window.__frame = frame;
-// 供自动化验证:window.__setPose({...}) 直接设置
+// 供自动化验证 & compare.html 双屏同步
 window.__setPose=p=>setPose(p); window.__presets=PRESETS;
+window.setCam=(y,p,d,ty,tz)=>{ if(y!=null)yaw=y; if(p!=null)pitch=p; if(d!=null)dist=d; if(ty!=null)target.y=ty; if(tz!=null)target.z=tz; placeCam(); };
+window.getCam=()=>({yaw,pitch,dist,ty:target.y,tz:target.z});
+const _qs=new URLSearchParams(location.search);
+if(_qs.get('embed')==='1'){
+  document.getElementById('ui').style.display='none';
+  document.getElementById('info').style.display='none';
+  window.addEventListener('pointermove',()=>{ if(drag&&window.parent!==window) window.parent.postMessage({type:'cam',from:_qs.get('slot')||'',cam:window.getCam()},'*'); });
+  window.addEventListener('wheel',()=>{ if(window.parent!==window) window.parent.postMessage({type:'cam',from:_qs.get('slot')||'',cam:window.getCam()},'*'); });
+}
 </script>
 <script>document.write('<script src="shot.js?v='+Date.now()+'"><\/script>')</script>
 </body>
