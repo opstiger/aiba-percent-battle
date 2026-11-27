@@ -43,6 +43,7 @@ function updatePausePresentation(dt){
   pauseLook.copy(rig.look);pauseLook.x+=sway*.34;pauseLook.y+=lift*.4;
   camera.lookAt(pauseLook);camera.updateMatrixWorld();
   if(typeof updGroundShadows==="function")updGroundShadows();
+  window.AIBACharacterShading?.syncSceneLight();
   renderGameScene();
 }
 function animate(){
@@ -158,6 +159,7 @@ function animate(){
   if(window.AIBABasketballShoes)AIBABasketballShoes.updateAll(realDt);
   /* 胸腔叠加层只在渲染这一刻生效，渲染完复原——下一帧的动作代码看到的仍是原始姿势 */
   if(window.AIBASpine)AIBASpine.apply(realDt);
+  window.AIBACharacterShading?.syncSceneLight();
   // 地板倒影要在主渲染之前画好（主渲染时地板采样它），并且要带上胸腔叠加层的姿势
   if(window.AIBAFloorReflect)AIBAFloorReflect.render(realDt);
   if(renderer&&renderer.shadowMap){

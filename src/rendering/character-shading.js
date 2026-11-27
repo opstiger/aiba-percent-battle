@@ -21,6 +21,10 @@
   const uniforms={
     aibaRimColor:{value:new THREE.Color(0xffe6bf)},
     aibaRimStrength:{value:.38},
+    aibaFillColor:{value:new THREE.Color()},
+    aibaFillDir:{value:new THREE.Vector3()},
+    aibaFillStrength:{value:0},
+    aibaWorldYSign:{value:1},
     aibaSunDir:{value:new THREE.Vector3(-.45,.72,.52)},
     aibaGroundColor:{value:new THREE.Color(0x4a5234)},
     aibaAirColor:{value:new THREE.Color(0x96885e)},
@@ -29,19 +33,23 @@
     aibaSky:{value:.20},
     aibaContact:{value:.28}
   };
+  const colorScratch=new THREE.Color();
+  const directionScratch=new THREE.Vector3();
   const VERT_DECL="\nvarying vec3 aibaN;\nvarying vec3 aibaV;\nvarying vec3 aibaWN;\nvarying vec3 aibaWPos;\nvarying float aibaY;\n";
   const VERT_BODY=[
     "aibaN=normalize(normalMatrix*objectNormal);",
     "aibaV=-mvPosition.xyz;",
-    "aibaWN=normalize(mat3(modelMatrix)*objectNormal);",
+    "aibaWN=normalize(mat3(modelMatrix)*objectNormal);aibaWN.y*=aibaWorldYSign;",
     "vec4 aibaWP=modelMatrix*vec4(transformed,1.0);",
-    "aibaWPos=aibaWP.xyz;",
-    "aibaY=aibaWP.y;"
+    "aibaWPos=vec3(aibaWP.x,aibaWP.y*aibaWorldYSign,aibaWP.z);",
+    "aibaY=aibaWPos.y;"
   ].join("\n");
   const FRAG_DECL=[
     "",
     "uniform vec3 aibaRimColor;",
     "uniform float aibaRimStrength;",
+    "uniform vec3 aibaFillColor,aibaFillDir;",
+    "uniform float aibaFillStrength;",
     "uniform vec3 aibaSunDir;",
     "uniform vec3 aibaGroundColor;",
     "uniform vec3 aibaAirColor;",
@@ -80,8 +88,10 @@
     "    float camDist=length(aibaV);",
     "    float airVeil=clamp(smoothstep(2.2,18.0,camDist)*0.05,0.01,0.06);",
     "    gl_FragColor.rgb=mix(gl_FragColor.rgb,aibaAirColor,airVeil);",
+    "    #ifndef AIBA_ACTOR",
     "    float purpleSide=clamp(-wn.x*0.5+0.5,0.0,1.0);",
     "    gl_FragColor.rgb+=mix(vec3(0.42,0.22,0.72),vec3(0.75,0.54,0.18),purpleSide)*fres*(1.0-sunSide)*0.30;",
+    "    #endif",
     "  }else if(aibaSceneMode>0.5&&aibaSceneMode<1.5){",
     // 3b. 热带深林 (rainforest)：真实树冠斑驳光影 + 浓绿苔藓上反光 + 潮湿叶隙暖金边 + 环境色调统一
     "    vec2 q=aibaWPos.xz-aibaWPos.y*vec2(-0.52,0.40);",
@@ -99,7 +109,9 @@
     "    float camDist=length(aibaV);",
     "    float airVeil=clamp(smoothstep(1.5,16.0,camDist)*0.10,0.03,0.11);",
     "    gl_FragColor.rgb=mix(gl_FragColor.rgb,aibaAirColor,airVeil);",
+    "    #ifndef AIBA_ACTOR",
     "    gl_FragColor.rgb+=vec3(0.24,0.36,0.14)*fres*(1.0-sunSide)*0.24;",
+    "    #endif",
     "  }else if(aibaSceneMode>1.5&&aibaSceneMode<2.5){",
     // 4. 鲜花草甸 (flowerCourt)：草根贴鞋绿影包裹 + 高原草地绿金上反光 + 背阴冷蓝天光反差
     "    float grassFoot=1.0-smoothstep(0.0,0.13,aibaY);",
@@ -127,10 +139,17 @@
     "    gl_FragColor.rgb+=vec3(0.98,0.99,1.0)*solarSpec*0.24;",
     "    float bootDust=(1.0-smoothstep(0.02,0.36,aibaY))*0.24;",
     "    gl_FragColor.rgb=mix(gl_FragColor.rgb,vec3(0.36,0.38,0.42),bootDust);",
+    "    #ifndef AIBA_ACTOR",
     "    gl_FragColor.rgb+=vec3(0.28,0.62,1.0)*fres*earthDot*0.42;",
+    "    #endif",
     "  }",
     // 5. 方向性主光逆光轮廓金边 (Directional Sun Rim)
     "  gl_FragColor.rgb+=aibaRimColor*fres*aibaRimStrength*sunSide;",
+    "  #ifdef AIBA_ACTOR",
+    "  float fill=smoothstep(-0.10,0.76,dot(wn,aibaFillDir));",
+    "  float aboveSole=smoothstep(0.025,0.32,aibaY);",
+    "  gl_FragColor.rgb+=aibaFillColor*fres*fill*aibaFillStrength*aboveSole;",
+    "  #endif",
     "}"
   ].join("\n");
 
@@ -154,7 +173,7 @@
     vec2 q=aibaWPos.xz-aibaWPos.y*vec2(-0.52,0.40);
     float dapple=0.5+0.5*sin(q.x*1.55+q.y*1.12)*cos(q.y*1.75-q.x*0.98);
     float openSky=smoothstep(0.16,0.84,dapple);
-    vec3 canopy=mix(vec3(0.43,0.63,0.36),vec3(0.98,0.93,0.78),openSky);
+    vec3 canopy=mix(vec3(0.54,0.66,0.45),vec3(0.99,0.95,0.83),openSky);
     float lightSide=smoothstep(-0.65,0.50,sunDot);
     gl_FragColor.rgb*=canopy*mix(0.75,1.03,lightSide);
   }else if(aibaSceneMode>1.5&&aibaSceneMode<2.5){
@@ -170,25 +189,43 @@
   float facing=clamp(dot(viewNormal,normalize(aibaV)),0.0,1.0);
   float rim=1.0-facing;
   float keySide=smoothstep(-0.20,0.72,sunDot);
-  gl_FragColor.rgb+=aibaRimColor*aibaRimColor*rim*rim*rim*aibaRimStrength*keySide*0.21;
+  vec3 keyColor=aibaRimColor*aibaRimColor;
+  if(aibaFillStrength>0.0){
+    float fillSide=smoothstep(-0.10,0.76,dot(worldNormal,aibaFillDir));
+    vec3 fillColor=aibaFillColor*aibaFillColor;
+    vec3 edge=keyColor*aibaRimStrength*keySide*0.40+fillColor*aibaFillStrength*fillSide;
+    gl_FragColor.rgb+=edge*rim*rim*rim*contact;
+    // Use the normal map and existing skin, fabric and shoe roughness.
+    // Grazing fabric is broader and dimmer than the specular on smooth trim.
+    vec3 keyView=mat3(viewMatrix)*aibaSunDir;
+    vec3 halfDir=normalize(normalize(aibaV)+keyView);
+    float surfaceRoughness=clamp(roughnessFactor,0.0,1.0);
+    float sheen=pow(max(0.0,dot(normal,halfDir)),mix(42.0,9.0,surfaceRoughness));
+    float sheenStrength=mix(0.13,0.035,surfaceRoughness);
+    gl_FragColor.rgb+=keyColor*sheen*sheenStrength*keySide*aibaRimStrength*contact;
+  }else{
+    gl_FragColor.rgb+=keyColor*rim*rim*rim*aibaRimStrength*keySide*0.21;
+  }
 }
 `;
 
   function inject(shader){
     Object.assign(shader.uniforms,uniforms);
     shader.vertexShader=shader.vertexShader
-      .replace("#include <common>","#include <common>"+VERT_DECL)
+      .replace("#include <common>","#include <common>\nuniform float aibaWorldYSign;"+VERT_DECL)
       .replace("#include <project_vertex>","#include <project_vertex>\n"+VERT_BODY);
     const hero=this.userData.aibaLinearCharacter;
+    const actor=this.userData.aibaShadeActor;
     const insertion=hero?"#include <tonemapping_fragment>":"#include <dithering_fragment>";
     shader.fragmentShader=shader.fragmentShader
-      .replace("#include <common>","#include <common>"+FRAG_DECL)
+      .replace("#include <common>","#include <common>"+(actor?"\n#define AIBA_ACTOR":"")+FRAG_DECL)
       .replace(insertion,(hero?HERO_FRAG_BODY:FRAG_BODY)+"\n"+insertion);
   }
   function shadeable(m){
     return m&&(m.isMeshLambertMaterial||m.isMeshStandardMaterial||m.isMeshPhongMaterial)&&!m.transparent;
   }
   let patched=0;
+  const patchedMaterials=new WeakSet();
   /* 分球场 PMREM 环境光贴图（IBL）：默认首帧秒出轻量程序渐变，随后异步无缝替换为 Colab Cycles 烘焙的 360° 全景 HDRI
      （支持 ?hdri=0 一键切回纯程序渐变做前后对比）。每帧 0 额外开销，人物/篮球/篮筐立刻吃进真实场景反射光！ */
   const _hdriEnabled=!(typeof location!=="undefined"&&/(\?|&)hdri=0(&|#|$)/.test(location.search));
@@ -316,22 +353,24 @@
     }
   }
 
-  function patchMaterial(m){
+  function patchMaterial(m,actor=false){
     if(!shadeable(m))return;
     if(m.isMeshStandardMaterial){_pbrMats.add(m);applyVenueEnv(m);}
-    if(m.userData.aibaShade)return;
+    if(patchedMaterials.has(m))return;
     /* 已经有别人的 onBeforeCompile 就不碰，免得互相覆盖（目前项目里没有） */
     if(m.onBeforeCompile&&m.onBeforeCompile!==THREE.Material.prototype.onBeforeCompile)return;
-    m.userData.aibaShade=true;
+    patchedMaterials.add(m);
+    m.userData.aibaShadeActor=actor;
     m.onBeforeCompile=inject;
-    m.customProgramCacheKey=()=>m.userData.aibaLinearCharacter?"aibaShadeLinearHero":"aibaShade3";
+    m.customProgramCacheKey=()=>m.userData.aibaLinearCharacter?"aibaShadeLinearHero2":actor?"aibaShadeActor4":"aibaShade4";
     m.needsUpdate=true;patched++;
   }
   function shadeTree(root){
     if(!enabled||!root)return;
     root.traverse(o=>{
       if(!o.isMesh||o.userData.aibaNoShade)return;
-      if(Array.isArray(o.material))o.material.forEach(patchMaterial);else patchMaterial(o.material);
+      if(Array.isArray(o.material))o.material.forEach(m=>patchMaterial(m,true));
+      else patchMaterial(o.material,true);
     });
   }
 
@@ -353,42 +392,57 @@
   function syncSceneLight(){
     try{
       const preset=(typeof currentScenePreset==="string"&&currentScenePreset)||document.documentElement.dataset.scenePreset||"indoor";
+      const places=((typeof environmentRoot!=="undefined"&&environmentRoot)||global.environmentRoot)?.userData?.placeState;
+      const fill=uniforms.aibaFillColor.value,fillDir=uniforms.aibaFillDir.value;
+      const fillStrength=uniforms.aibaFillStrength;
       if(preset==="rainforest"){
         uniforms.aibaSceneMode.value=1;
-        const envRoot=(typeof environmentRoot!=="undefined"&&environmentRoot)||global.environmentRoot;
-        const rf=envRoot?.userData?.placeState?.rainforest;
+        const rf=places?.rainforest;
         const cyc=rf?.uniforms?.forestCycle?.value;
         const dusk=cyc?cyc.x:0,night=cyc?cyc.y:0,ff=cyc?cyc.z:0;
-        uniforms.aibaRimColor.value.setHex(0xffd488).lerp(new THREE.Color(0xff7e38),dusk).lerp(new THREE.Color(0x88d468),night*(.35+.65*ff));
-        uniforms.aibaRimStrength.value=THREE.MathUtils.lerp(.44+.12*dusk,.14+.22*ff,night);
-        uniforms.aibaGroundColor.value.setHex(0x3f4c1c).lerp(new THREE.Color(0x4a3420),dusk*.7).lerp(new THREE.Color(0x0a1410),night);
-        uniforms.aibaAirColor.value.setHex(0x888450).lerp(new THREE.Color(0xa85a32),dusk*.8).lerp(new THREE.Color(0x060c10),night);
+        uniforms.aibaRimColor.value.setHex(0xffd488).lerp(colorScratch.setHex(0xff7e38),dusk).lerp(colorScratch.setHex(0x88d468),night*(.35+.65*ff));
+        uniforms.aibaRimStrength.value=THREE.MathUtils.lerp(.52+.12*dusk,.14+.22*ff,night);
+        fill.setHex(0x83bda4).lerp(colorScratch.setHex(0x457d83),night);
+        fillDir.set(.64,.52,.57);
+        fillStrength.value=THREE.MathUtils.lerp(.24,.07+.07*ff,night);
+        uniforms.aibaGroundColor.value.setHex(0x3f4c1c).lerp(colorScratch.setHex(0x4a3420),dusk*.7).lerp(colorScratch.setHex(0x0a1410),night);
+        uniforms.aibaAirColor.value.setHex(0x888450).lerp(colorScratch.setHex(0xa85a32),dusk*.8).lerp(colorScratch.setHex(0x060c10),night);
         uniforms.aibaContact.value=.38;
         uniforms.aibaWetness.value=.15;
       }else if(preset==="flowerCourt"){
         uniforms.aibaSceneMode.value=2;
-        const m=global.environmentRoot?.userData?.placeState?.meadow;
+        const m=places?.meadow;
         const gold=m?m.uniforms.meadowSky.value.y:0;
         const clear=m?m.uniforms.meadowSky.value.x:.5;
         uniforms.aibaWetness.value=m?m.wetness:0;
-        uniforms.aibaRimColor.value.setHex(0xe8f0f6).lerp(new THREE.Color(0xffe6b2),clear).lerp(new THREE.Color(0xffb468),gold);
+        uniforms.aibaRimColor.value.setHex(0xe8f0f6).lerp(colorScratch.setHex(0xffe6b2),clear).lerp(colorScratch.setHex(0xffb468),gold);
         uniforms.aibaRimStrength.value=.38+.18*clear+.12*gold;
-        uniforms.aibaGroundColor.value.setHex(0x648834).lerp(new THREE.Color(0x847e3c),gold*.6);
-        uniforms.aibaAirColor.value.setHex(0x889ca8).lerp(new THREE.Color(0xd8b888),gold*.75+.2*clear);
+        fill.setHex(0x8bb8e0).lerp(colorScratch.setHex(0x8ea8e0),gold);
+        fillDir.set(.64,.63,-.44);
+        fillStrength.value=.18+.08*clear+.04*gold;
+        const storm=1-(m?.uniforms.meadowSky.value.z??0)*.45;
+        uniforms.aibaRimStrength.value*=storm;
+        fillStrength.value*=storm;
+        uniforms.aibaGroundColor.value.setHex(0x648834).lerp(colorScratch.setHex(0x847e3c),gold*.6);
+        uniforms.aibaAirColor.value.setHex(0x889ca8).lerp(colorScratch.setHex(0xd8b888),gold*.75+.2*clear);
         uniforms.aibaContact.value=.36;
       }else if(preset==="lunarCrater"){
         uniforms.aibaSceneMode.value=4;
-        const envRoot=(typeof environmentRoot!=="undefined"&&environmentRoot)||global.environmentRoot;
-        const lw=envRoot?.userData?.placeState?.wonder;
+        const lw=places?.wonder;
         const ecl=(lw&&lw.kind==="lunar")?(lw.eclipseAmount||0):0;
-        uniforms.aibaRimColor.value.setHex(0xf6f9ff).lerp(new THREE.Color(0xff6a3c),ecl*.82);
-        uniforms.aibaRimStrength.value=.56+.16*ecl;
-        uniforms.aibaGroundColor.value.setHex(0x5c626e).lerp(new THREE.Color(0x5a241a),ecl*.85);
-        uniforms.aibaAirColor.value.setHex(0x707886).lerp(new THREE.Color(0x521c16),ecl*.85);
+        uniforms.aibaRimColor.value.setHex(0xf6f9ff).lerp(colorScratch.setHex(0xff6a3c),ecl*.82);
+        uniforms.aibaRimStrength.value=.58-.14*ecl;
+        fill.setHex(0x72baff).lerp(colorScratch.setHex(0xd87868),ecl);
+        if(lw?.earth)fillDir.copy(lw.earth.position).normalize();
+        else fillDir.set(.46,.38,-.80).normalize();
+        fillStrength.value=.34-.17*ecl;
+        uniforms.aibaGroundColor.value.setHex(0x5c626e).lerp(colorScratch.setHex(0x5a241a),ecl*.85);
+        uniforms.aibaAirColor.value.setHex(0x707886).lerp(colorScratch.setHex(0x521c16),ecl*.85);
         uniforms.aibaContact.value=.36;
         uniforms.aibaWetness.value=0;
       }else if(preset!=="indoor"){
         uniforms.aibaSceneMode.value=3;
+        fillStrength.value=0;
         if(typeof sun!=="undefined"&&sun)uniforms.aibaRimColor.value.copy(sun.color);
         uniforms.aibaRimStrength.value=.36;
         if(typeof hemi!=="undefined"&&hemi)uniforms.aibaGroundColor.value.copy(hemi.groundColor);
@@ -398,14 +452,22 @@
       }else{
         uniforms.aibaSceneMode.value=0;
         uniforms.aibaRimColor.value.setHex(0xffe4b4);
-        uniforms.aibaRimStrength.value=.42;
+        uniforms.aibaRimStrength.value=.49;
+        fill.setHex(0x9b97ff);
+        fillDir.set(-.78,.38,-.50);
+        const stageLight=global.AIBAShow?.rimLight;
+        const stage=stageLight?.strength||0;
+        if(stage>.001)fill.lerp(stageLight.color,stage*.65);
+        fillStrength.value=.32+stage*.25;
         uniforms.aibaGroundColor.value.setHex(0xc49454);
         uniforms.aibaAirColor.value.setHex(0x362a48);
         uniforms.aibaContact.value=.36;
         uniforms.aibaWetness.value=0;
       }
       if(typeof sun!=="undefined"&&sun&&sun.position.lengthSq()>0.01){
-        uniforms.aibaSunDir.value.copy(sun.position).normalize();
+        directionScratch.copy(sun.position);
+        if(sun.target)directionScratch.sub(sun.target.position);
+        uniforms.aibaSunDir.value.copy(directionScratch).normalize();
       }
       /* 切换球场时同步更新所有写实 PBR 角色/篮球/篮筐的 PMREM 环境反射贴图（IBL）；真浮点 HDR 亮度高，按场地精准定标防过曝 */
       const envKey=(preset==="flowerCourt"||preset==="lunarCrater"||preset==="rainforest"||preset==="indoor")?preset:"indoor";
@@ -424,7 +486,6 @@
   }
   let _sweepTick=0;
   function sweep(){
-    syncSceneLight();
     for(const r of refs){const g=canWeak?r.deref():r;if(g&&g.parent)shadeTree(g);}
     // 写实蒙皮皮套 (tripoAvatar / fpSharedPoseRig) 直接挂在 scene 下，必须一并扫描注入场景大气与树冠光影！
     if(typeof scene!=="undefined"&&scene&&scene.children){
@@ -445,7 +506,7 @@
   }
   function onBeforeRender(){
     syncSceneLight();
-    if((_sweepTick++%10)===0)sweep();
+    if(enabled&&(_sweepTick++%10)===0)sweep();
   }
   if(enabled)setInterval(sweep,400);
 

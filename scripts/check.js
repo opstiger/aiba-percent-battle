@@ -8,7 +8,7 @@ const childProcess=require("child_process");
 
 const root=path.resolve(__dirname,"..");
 const entry="index.html";
-const snapshot="block-3pt-kingv2.47.14-modular.html";
+const snapshot="block-3pt-kingv2.47.15-modular.html";
 const requiredFiles=[
   entry,
   snapshot,
@@ -504,9 +504,9 @@ for(const pair of [["state","spots"],["spots","opponent"],["opponent","results"]
 if(!entryHtml.includes('<script src="src/modes/percent-battle/opponent.js"></script>'))fail("Percent Battle opponent cache version missing");
 if(entryHtml.indexOf('<script src="src/modes/percent-battle/index.js"></script>')>entryHtml.indexOf('<script src="src/game-flow.js"></script>'))fail("Percent Battle module must load before late hooks");
 if(/^(<<<<<<<|=======|>>>>>>>)$/m.test(entryHtml))fail("conflict marker in html");
-for(const token of ["v2.47.14 MODULAR","MODULAR / v2.47.14"])
+for(const token of ["v2.47.15 MODULAR","MODULAR / v2.47.15"])
   if(!entryHtml.includes(token))fail("visible version token missing "+token);
-if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.47.14"'))fail("GAME_VERSION must be v2.47.14");
+if(!read("src/data/game-config.js").includes('const GAME_VERSION="v2.47.15"'))fail("GAME_VERSION must be v2.47.15");
 /* GAME_VERSION 会随成绩上报(见 percent-battle/state.js 的 version 字段)。以前靠手工让
    game-config.js 的 ?v= 跟着发版号走；现在 v 是内容 hash，改常量就会换 v，上面已校验不过期。 */
 const playerMeterGradient='<linearGradient id="ppGrad" x1="0" y1="1" x2="0" y2="0"><stop offset="0%" stop-color="#2e8bff"/><stop offset="55%" stop-color="#39d3ff"/><stop offset="78%" stop-color="#ffd23f"/><stop offset="100%" stop-color="#ff4040"/></linearGradient>';
@@ -1078,7 +1078,7 @@ for(const token of ['runtime.register("rendering:court"',"function makeCourtText
 for(const token of ["const FLOOR_PHYS=","function makeCourtRoughness()","roughnessMap:courtRoughTexture","anisotropy:16,linear:true","const w=512,h=256","const ROWS=4,PER=9"])
   if(!renderingCourt.includes(token))fail("polished hardwood guard missing "+token);
 const visualDirector=read("src/visual-director.js");
-if(!visualDirector.includes('const FP=(typeof FLOOR_PHYS!=="undefined")?FLOOR_PHYS'))fail("visual director must reuse FLOOR_PHYS instead of overriding court material values");
+if(!visualDirector.includes("applyArenaFloorFinish(mat)"))fail("visual director must use the shared arena floor finish");
 if(!entryHtml.includes('src/rendering/court.js'))fail("next entry must load rendering court");
 if(entryHtml.includes("function makeCourtTexture("))fail("next entry still contains inline court texture builder");
 const renderingArena=read("src/rendering/arena.js");

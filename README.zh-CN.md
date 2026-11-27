@@ -11,7 +11,7 @@
 - Vercel 自动部署：https://aiba-percent-battle.vercel.app/
 - GitHub Pages 备用：https://opstiger.github.io/aiba-percent-battle/
 
-当前版本：`v2.47.14`
+当前版本：`v2.47.15`
 
 | 首页 | 百分大战 | 更衣室 | 体感控制 |
 |---|---|---|---|
@@ -71,7 +71,7 @@ node scripts/check.js
 ## 项目结构
 
 - `index.html`：正式入口——约 200 行的模块化外壳，游戏全部从 `src/` 加载（v2.0 完成切换）。
-- `block-3pt-kingv2.47.14-modular.html`：当前版本快照，和 `index.html` 保持一致。旧快照只留在 git 历史和 tag 里，不进工作树。
+- `block-3pt-kingv2.47.15-modular.html`：当前版本快照，和 `index.html` 保持一致。旧快照只留在 git 历史和 tag 里，不进工作树。
 - `styles.css`：游戏 HUD、首页、面板和移动端样式。
 - `src/`：游戏本体，已完全模块化：
   - `core/` 运行时、状态与迁移桥接 · `modes/` 百分大战、RACK RUSH、三分赛、练习 · `rendering/` Three.js 场景核心 · `ui/` 菜单、面板、赛前流程 · `gameplay/`、`presentation/`、`services/`、`data/` 支撑层

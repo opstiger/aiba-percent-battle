@@ -14,13 +14,13 @@
   const MODELS={
     star8:{file:"star8.glb",yaw:-Math.PI/2},
     /* star1:4.8 万面高模,先焊接重复顶点再减到 1.45 万面(直接减会在脸和衣褶里撕出缝),权重从 Mixamo 绑好的版本转过来 */
-    star1:{file:"star1.glb",yaw:0},
-    star15:{file:"star15.glb",yaw:0},
+    star1:{file:"star1.glb",yaw:0,shotClip:"textmotion0_shot.json",smoothBlend:true,shotClipBodyOnly:true},
+    star15:{file:"star15.glb",yaw:0,shotClip:"textmotion0_shot.json",smoothBlend:true,shotClipBodyOnly:true},
     /* star30:混元生成的 4.9 万面静态模型,先焊接重复顶点再减到 1.48 万面,Mixamo 绑骨(护齿是独立碎片,单独拿出来再并回) */
     star30:{file:"star30.glb?v=9378581b22",look:true,yaw:0},
     /* star3 / star30b:混元生成的 4.9 万面静态模型,焊接后减到 1.5 万面,Mixamo 绑骨,权重落到减面网格上;
        跑动沿用 star30 的 24 帧原地版本(按世界旋转差重映射到各自骨架) */
-    star3:{file:"star3.glb",yaw:0},
+    star3:{file:"star3.glb",yaw:0,shotClip:"textmotion0_shot.json",smoothBlend:true,shotClipBodyOnly:true},
     star30b:{file:"star30b.glb?v=6459b67a97",look:true,yaw:0},
     /* cat1:猫吉祥物,混元生成 → 焊接减面 1.5 万面 → Mixamo 绑骨(用 Mixamo 自带的 run,20 帧);
        握拳手只有食指链,游戏要量掌心方向,所以补了一根不带权重的 HandMiddle1 */
@@ -322,7 +322,7 @@
             vMinY=new Float32Array(nb).fill(Infinity),vMaxY=new Float32Array(nb).fill(-Infinity),
             vMinZ=new Float32Array(nb).fill(Infinity),vMaxZ=new Float32Array(nb).fill(-Infinity);
       const hvSet=new Set(),tv=new T.Vector3();
-      const groundedSole=cfg.player&&id==="nvidia23"?[]:null;
+      const groundedSole=cfg.player&&(id==="nvidia23"||MODELS[id]?.shotClipBodyOnly)?[]:null;
       mesh.updateMatrixWorld(true);
       for(let v=0;v<si.count;v++){
         let bi=0,bw=-1;
@@ -426,9 +426,10 @@
      按 w 和当前姿势(正常重定向算出来的)混合,出入场平滑。髋部的上下起伏按这副骨架的髋高换算。
      DANCE_BONES 父在前,因此逐骨只做浅层矩阵累乘,最后统一一次 updateMatrixWorld(true)(省去 22 次递归遍历)。 */
   const _dq=new T.Quaternion(),_dc=new T.Quaternion();
-  function applyDance(dn){
+  function applyDance(dn,bodyOnly){
     const w=clamp(dn.w==null?1:dn.w,0,1);if(w<=0||!dn.q)return;
     for(let i=0;i<DANCE_BONES.length;i++){
+      if(bodyOnly&&i>=6&&i<=13)continue;
       const n=DANCE_BONES[i],bone=B[n];if(!bone)continue;
       _dq.set(dn.q[i*4],dn.q[i*4+1],dn.q[i*4+2],dn.q[i*4+3]).multiply(restW[n]);
       const targetQ=w<1?(bone.getWorldQuaternion(_dc).slerp(_dq,w)):_dq;
@@ -830,6 +831,63 @@
         M.updateMatrixWorld(true);
       }
 
+      /* 提前读取投篮状态，供分层投篮动作(shotClipBodyOnly)在手臂求解前先驱动躯干+下肢，
+         让手臂/手腕/辅助手 100% 沿用游戏原生的持球与压腕随挥，绝不出现手掌乱转或辅助手外拐。 */
+      const shot=cfg.player&&window.AIBAMotion?window.AIBAMotion.stats():null;
+      const following=shot&&shot.followActive&&(!holding||shot.pendingRelease||atRelease);
+      const shotClipCfg=state.modelId&&MODELS[state.modelId];
+      const shotClipFile=shotClipCfg&&shotClipCfg.shotClip;
+      const smoothBlend=!!(shotClipCfg&&shotClipCfg.smoothBlend);
+      const shotClipBodyOnly=!!(shotClipCfg&&shotClipCfg.shotClipBodyOnly);
+      const shotClip=shotClipFile?getShotClip(shotClipFile):null;
+      state.shotClipReady=!!shotClip;
+      const dn=guy.pregameDance&&guy.pregameDance.q?guy.pregameDance:null;
+      const dw=dn?clamp(dn.w==null?1:dn.w,0,1)*(1-rw):0;
+      let sw=0,kneeDrive=0;
+      if(shotClip&&shotClipBodyOnly&&dw<.01){
+        const isCharging=cfg.player&&typeof G!=="undefined"&&G&&!!G.charging;
+        const inShot=isCharging||following||atRelease||(!cfg.player&&(shotLoad>.03||airborneShot));
+        const tailFade=(following&&shot&&Number(shot.timeAfterRelease)>.44)?1-clamp((shot.timeAfterRelease-.44)/.18,0,1):1;
+        const targetW=recovery?0:(inShot&&rw<.45?(1-rw)*tailFade:0);
+        const tau=targetW>(state.shotW||0)?.16:.15;
+        state.shotW=recovery?0:ease(state.shotW||0,targetW,tau);
+        const w0=state.shotW;
+        sw=w0*w0*w0*(w0*(w0*6-15)+10);
+        if(sw>.005){
+          const mk=shotClip.markers||{gather:0,dip:12,setPoint:16,release:20,apex:24,land:30,end:shotClip.n-1};
+          let shotF=state.shotFrame??mk.gather;
+          if(atRelease){
+            shotF=mk.release;
+          }else if(isCharging){
+            const ideal=curShot()?weatherAdjustedIdeal(curShot(),false):IDEAL;
+            const p=clamp(G.power/Math.max(1,ideal),0,1);
+            shotF=p<.55?mk.gather+(mk.dip-mk.gather)*p/.55
+              :mk.dip+(mk.release-1-mk.dip)*(p-.55)/.45;
+            state.chargeFrame=shotF;
+          }else if(shot?.pendingRelease){
+            const from=state.chargeFrame??mk.gather;
+            shotF=from+(mk.release-from)*shot.extensionProgress;
+          }else if(following){
+            const fa=shot.timeAfterRelease;
+            if(fa<.14)shotF=mk.release+(mk.apex-mk.release)*(fa/.14);
+            else if(fa<.48)shotF=mk.apex+(mk.land-mk.apex)*((fa-.14)/.34);
+            else shotF=mk.land+(mk.end-mk.land)*clamp((fa-.48)/.36,0,1);
+          }else if(!cfg.player&&airborneShot){
+            shotF=mk.release+(mk.apex-mk.release)*smooth(air/.35);
+          }else if(!cfg.player&&inShot){
+            const chargeP=clamp(shotLoad||0,0,1);
+            if(chargeP<.55)shotF=mk.gather+(mk.dip-mk.gather)*(chargeP/.55);
+            else shotF=mk.dip+(mk.release-1-mk.dip)*((chargeP-.55)/.45);
+          }
+          state.shotFrame=shotF;
+          if(sampleShotClip(shotClip,shotF,_shotQ)){
+            applyDance({q:_shotQ,w:sw},true);
+          }
+        }
+      }else if(shotClipBodyOnly){
+        state.shotW=0;
+      }
+
       /* 手臂:复制 AIBA 手臂的方向和伸展比例(不照搬位置:肩宽、臂长都不一样) */
       for(const [sd,side] of [["R","Right"],["L","Left"]]){
         const a=state.armIdx[sd],L=LIMB["arm"+sd];
@@ -865,8 +923,6 @@
       let ballK=null,ballR=0;
       const grip=guy.ballGrips&&guy.ballGrips[R.a];
       /* 球仍在手上时逐渐从掌根移到指腹；压腕沿用主动作的离球后时序。 */
-      const shot=cfg.player&&window.AIBAMotion?window.AIBAMotion.stats():null;
-      const following=shot&&shot.followActive&&(!holding||shot.pendingRelease||atRelease);
       const roll=following?smooth(shot.followAge/SHOT_WRIST_SNAP_DELAY):0;
       const wristFollow=following?1-smooth((shot.followAge-SHOT_WRIST_SNAP_DELAY)/.16):0;
       const form=guy.shotStyle;
@@ -928,21 +984,18 @@
 
       /* 专属视频转 3D 投篮动作(如 nvidia23 的科比跳投):蓄力下蹲→高举出手点→滞空压腕随挥→落地缓冲,
          同步保持篮球紧锁在真实投篮手与辅助手之间，且完全保留游戏原生抛物线起跳高度 air。 */
-      let sw=0,kneeDrive=0;
-      const shotClipFile=state.modelId&&MODELS[state.modelId]&&MODELS[state.modelId].shotClip;
-      const shotClip=shotClipFile?getShotClip(shotClipFile):null;
-      state.shotClipReady=!!shotClip;
-      const dn=guy.pregameDance&&guy.pregameDance.q?guy.pregameDance:null;
-      const dw=dn?clamp(dn.w==null?1:dn.w,0,1)*(1-rw):0;
-      if(shotClip&&dw<.01){
+      const preserveHands=false;
+      if(shotClip&&!shotClipBodyOnly&&dw<.01){
         const isCharging=cfg.player&&typeof G!=="undefined"&&G&&!!G.charging;
         const inShot=isCharging||following||atRelease||(!cfg.player&&(shotLoad>.03||airborneShot));
-        /* 落地后把科比收势平滑交棒给 shot-motion 的自然随机后摆与弹性缓冲 */
+        /* 落地后把收势平滑交棒给 shot-motion 的自然随机后摆与弹性缓冲 */
         const tailFade=(following&&shot&&Number(shot.timeAfterRelease)>.44)?1-clamp((shot.timeAfterRelease-.44)/.18,0,1):1;
         const targetW=recovery?0:(inShot&&rw<.45?(1-rw)*tailFade:0);
-        const tau=targetW>(state.shotW||0)?.06:.13;
-        state.shotW=recovery?0:(atRelease&&targetW>0?1:ease(state.shotW||0,targetW,tau));
-        sw=state.shotW*state.shotW*(3-2*state.shotW);
+        const tau=targetW>(state.shotW||0)?(smoothBlend?.16:.06):(smoothBlend?.15:.13);
+        state.shotW=recovery?0:((!smoothBlend&&atRelease&&targetW>0)?1:ease(state.shotW||0,targetW,tau));
+        // C2 quintic smoothstep: 起止速度/加速度均为 0，避免蓄力一触发就"切"到新动作
+        const w0=state.shotW;
+        sw=smoothBlend?(w0*w0*w0*(w0*(w0*6-15)+10)):(w0*w0*(3-2*w0));
         if(sw>.005){
           const mk=shotClip.markers||{gather:0,dip:12,setPoint:16,release:20,apex:24,land:30,end:shotClip.n-1};
           // Keep the final sample during blend-out; returning to gather here would replay the dip.
@@ -1003,62 +1056,80 @@
               const guideW=clamp(1-(shotF-mk.setPoint)/Math.max(1,mk.release-mk.setPoint),0,1)*.48;
               const tgtBall=TV().copy(rPalm).lerp(lPalm,guideW);
               tgtBall.z+=.045;
-              /* 按动作进度(gather→dip→setPoint)平滑过渡手掌方位：
-                 - 收球(0.0): 投篮手掌心在球正后方(约 10° 仰角，与老球星 READY_R 一致)，手指朝上
-                 - 下沉(0.5): 投篮手仍在球后方发力(约 26° 仰角)，绝不提前钻到球底
-                 - 高点(1.0): 投篮手在球后下方约 40° 沿出手弧线托球，左辅助手全程稳贴球左侧 */
-              const liftK=smooth((shotF-mk.gather)/Math.max(1,mk.release-1-mk.gather));
-              const ob=(f,n)=>{const nn=n.normalize(),ff=perp(f,nn)||TV(0,1,0);return basisQ(ff,nn);};
-              const qReadyR=ob(TV(.08,.98,-.18),TV(.255,.176,.951));
-              const qSetR=ob(TV(.10,.75,-.65),TV(.176,.636,.751));
-              const qCurR=TQ().copy(qReadyR).slerp(qSetR,liftK);
-              const qReadyL=ob(TV(-.18,.65,.74),TV(-.918,.150,-.366));
-              const qSetL=ob(TV(-.12,.98,.16),TV(-.958,-.045,-.283));
-              const qCurL=TQ().copy(qReadyL).slerp(qSetL,liftK);
-              /* 随科比胸腔朝向做极轻的偏航对齐，让手腕顺着肩膀发力不别扭 */
-              let chestYaw=0;
-              if(B.Spine2){
-                const cf=TV(0,0,1).applyQuaternion(B.Spine2.getWorldQuaternion(TQ()).multiply(restWinv.Spine2));
-                chestYaw=clamp(Math.atan2(cf.x,cf.z),-.35,.35);
-              }
-              if(Math.abs(chestYaw)>.005){
-                const yq=TQ().setFromAxisAngle(Yax,chestYaw);
-                qCurR.premultiply(yq);qCurL.premultiply(yq);
-              }
-              const rF=TV(1,0,0).applyQuaternion(qCurR).normalize(),rN=TV(0,1,0).applyQuaternion(qCurR).normalize();
-              const lF=TV(1,0,0).applyQuaternion(qCurL).normalize(),lN=TV(0,1,0).applyQuaternion(qCurL).normalize();
-              /* 保留科比原片的肘部弯曲面(pole)，再把右投篮手与左辅助手严丝合缝贴到球面上 */
-              const rPole=TV().copy(rEl).sub(TV().copy(rSh).add(rWr).multiplyScalar(.5));
-              if(rPole.lengthSq()<.01)rPole.set(-.25,-.7,.5);rPole.normalize();
-              const lPole=TV().copy(lEl).sub(TV().copy(lSh).add(lWr).multiplyScalar(.5));
-              if(lPole.lengthSq()<.01)lPole.set(.55,-.45,.2);lPole.normalize();
-              const along=state.ballAlong,lift=br+state.ballLift;
-              const rWrist1=TV().copy(tgtBall).addScaledVector(rN,-lift).addScaledVector(rF,-along);
-              solveLimb(R.L,rWrist1,rPole);
-              shootingWrist(R,rF,rN,SHOT_WRIST_LIMIT);
-              const rWrist2=TV().copy(tgtBall).addScaledVector(R.N,-lift).addScaledVector(R.F,-along);
-              solveLimb(R.L,rWrist2,rPole);
-              shootingWrist(R,rF,rN,SHOT_WRIST_LIMIT);
-              setHand(R);
-              const exactBall=wpos(R.L.hand).addScaledVector(R.F,along).addScaledVector(R.N,lift);
-              if(state.shootingFingerVertices?.length){
-                curlFingers("Right",R.L,.16);
-                clearShootingFingerSurface(exactBall,R.N,br);
+              if(preserveHands){
+                /* TextMotion 动作自带手腕/手指随挥，持球阶段保留原片手掌朝向，只做轻量球心贴合，不在世界空间硬拧 */
+                const snapW=clamp(1-(shotF-mk.setPoint)/Math.max(1,mk.release-mk.setPoint),0,1)*sw;
+                const midBall=TV().copy(rPalm).lerp(lPalm,.42);
+                curlFingers("Right",R.L,.18);
+                curlFingers("Left",Lf.L,.18);
+                if(snapW>.01){
+                  if(ballK)ballK.lerp(midBall,snapW);
+                  else ballK=midBall;
+                }
               }else{
-                fitFingers("Right",R.L,exactBall,br,.22,null);
+                /* 按动作进度(gather→dip→setPoint)平滑过渡手掌方位：
+                   - 收球(0.0): 投篮手掌心在球正后方(约 10° 仰角，与老球星 READY_R 一致)，手指朝上
+                   - 下沉(0.5): 投篮手仍在球后方发力(约 26° 仰角)，绝不提前钻到球底
+                   - 高点(1.0): 投篮手在球后下方约 40° 沿出手弧线托球，左辅助手全程稳贴球左侧 */
+                const liftK=smooth((shotF-mk.gather)/Math.max(1,mk.release-1-mk.gather));
+                const ob=(f,n)=>{const nn=n.normalize(),ff=perp(f,nn)||TV(0,1,0);return basisQ(ff,nn);};
+                const qReadyR=ob(TV(.08,.98,-.18),TV(.255,.176,.951));
+                const qSetR=ob(TV(.10,.75,-.65),TV(.176,.636,.751));
+                const qCurR=TQ().copy(qReadyR).slerp(qSetR,liftK);
+                const qReadyL=ob(TV(-.18,.65,.74),TV(-.918,.150,-.366));
+                const qSetL=ob(TV(-.12,.98,.16),TV(-.958,-.045,-.283));
+                const qCurL=TQ().copy(qReadyL).slerp(qSetL,liftK);
+                /* 随科比胸腔朝向做极轻的偏航对齐，让手腕顺着肩膀发力不别扭 */
+                let chestYaw=0;
+                if(B.Spine2){
+                  const cf=TV(0,0,1).applyQuaternion(B.Spine2.getWorldQuaternion(TQ()).multiply(restWinv.Spine2));
+                  chestYaw=clamp(Math.atan2(cf.x,cf.z),-.35,.35);
+                }
+                if(Math.abs(chestYaw)>.005){
+                  const yq=TQ().setFromAxisAngle(Yax,chestYaw);
+                  qCurR.premultiply(yq);qCurL.premultiply(yq);
+                }
+                const rF=TV(1,0,0).applyQuaternion(qCurR).normalize(),rN=TV(0,1,0).applyQuaternion(qCurR).normalize();
+                const lF=TV(1,0,0).applyQuaternion(qCurL).normalize(),lN=TV(0,1,0).applyQuaternion(qCurL).normalize();
+                /* 保留科比原片的肘部弯曲面(pole)，再把右投篮手与左辅助手严丝合缝贴到球面上 */
+                const rPole=TV().copy(rEl).sub(TV().copy(rSh).add(rWr).multiplyScalar(.5));
+                if(rPole.lengthSq()<.01)rPole.set(-.25,-.7,.5);rPole.normalize();
+                const lPole=TV().copy(lEl).sub(TV().copy(lSh).add(lWr).multiplyScalar(.5));
+                if(lPole.lengthSq()<.01)lPole.set(.55,-.45,.2);lPole.normalize();
+                const along=state.ballAlong,lift=br+state.ballLift;
+                const rWrist1=TV().copy(tgtBall).addScaledVector(rN,-lift).addScaledVector(rF,-along);
+                solveLimb(R.L,rWrist1,rPole);
+                shootingWrist(R,rF,rN,SHOT_WRIST_LIMIT);
+                const rWrist2=TV().copy(tgtBall).addScaledVector(R.N,-lift).addScaledVector(R.F,-along);
+                solveLimb(R.L,rWrist2,rPole);
+                shootingWrist(R,rF,rN,SHOT_WRIST_LIMIT);
+                setHand(R);
+                const exactBall=wpos(R.L.hand).addScaledVector(R.F,along).addScaledVector(R.N,lift);
+                if(state.shootingFingerVertices?.length){
+                  curlFingers("Right",R.L,.16);
+                  clearShootingFingerSurface(exactBall,R.N,br);
+                }else{
+                  fitFingers("Right",R.L,exactBall,br,.22,null);
+                }
+                /* 辅助手始终稳贴球的左侧，绝不越过投篮手或掉到球底 */
+                if(shotF<mk.release-0.3){
+                  const lWrist=TV().copy(exactBall).addScaledVector(lN,-(br+.012)).addScaledVector(lF,-.068);
+                  const rhNow=wpos(R.L.hand);
+                  if(lWrist.x<rhNow.x+.06)lWrist.x=rhNow.x+.06;
+                  solveLimb(Lf.L,lWrist,lPole);
+                  Lf.F.copy(lF);Lf.N.copy(lN);setHand(Lf);
+                  fitFingers("Left",Lf.L,exactBall,br,.22,off=>{lWrist.add(off);solveLimb(Lf.L,lWrist,lPole);setHand(Lf);});
+                }
+                if(ballK)ballK.lerp(exactBall,sw);
+                else ballK=exactBall;
               }
-              /* 辅助手始终稳贴球的左侧，绝不越过投篮手或掉到球底 */
-              if(shotF<mk.release-0.3){
-                const lWrist=TV().copy(exactBall).addScaledVector(lN,-(br+.012)).addScaledVector(lF,-.068);
-                const rhNow=wpos(R.L.hand);
-                if(lWrist.x<rhNow.x+.06)lWrist.x=rhNow.x+.06;
-                solveLimb(Lf.L,lWrist,lPole);
-                Lf.F.copy(lF);Lf.N.copy(lN);setHand(Lf);
-                fitFingers("Left",Lf.L,exactBall,br,.22,off=>{lWrist.add(off);solveLimb(Lf.L,lWrist,lPole);setHand(Lf);});
-              }
-              if(ballK)ballK.lerp(exactBall,sw);
-              else ballK=exactBall;
             }else if(!holding&&(atRelease||following)&&shotF<mk.land&&B.RightHand&&B.LeftHand){
+              if(preserveHands){
+                /* 出手后保留 TextMotion 原片手腕压腕与辅助手自然回收，只做轻微手指放松 */
+                const snap=atRelease?0:smooth((shot?shot.followAge:0)/SHOT_WRIST_SNAP_DELAY);
+                curlFingers("Right",R.L,.12+.14*snap);
+                curlFingers("Left",Lf.L,.20);
+              }else{
               /* 出手瞬间到落地前：把投篮手从高点翻腕顺滑过渡到压腕随挥（鹅颈式下压），避免原片腕骨反折；
                  辅助手同步放松并微降，不再高举在投篮手旁。 */
               const snap=atRelease?0:smooth((shot?shot.followAge:0)/SHOT_WRIST_SNAP_DELAY);
@@ -1094,10 +1165,11 @@
               const lCur=B.LeftHand.getWorldQuaternion(TQ());
               setW(B.LeftHand,lCur.slerp(lTarget,sw*followFade*.85));
               curlFingers("Left",Lf.L,.22);
+              }
             }
           }
         }
-      }else{
+      }else if(!shotClipBodyOnly){
         state.shotW=0;
       }
 
@@ -1114,7 +1186,10 @@
       /* 贴地:正常动作按鞋底最低点对齐地板;街舞(含倒立/Freeze)按全身蒙皮极值顶点最低点对齐地板,绝不穿模下沉 */
       root.updateMatrixWorld(true);
       const footRef=footMin()-state.footRest;
-      const ours=dw>.001?footRef+(hullMinY()-footRef)*dw:footRef;
+      /* 专属投篮动作(蓄力深蹲/落地缓冲)脚掌会前倾后仰，按脚踝/脚趾关节对齐会让鞋底陷进地板 8cm；
+         这类动作改按蒙皮极值顶点(鞋底)对齐地面，和街舞同一套贴地。nvidia23 有自己的 plantShotFeet，不动。 */
+      const hullW=(!state.groundedSole&&sw>.001)?1:dw;
+      const ours=hullW>.001?footRef+(hullMinY()-footRef)*hullW:footRef;
       const danceJump=dw>.001&&dn.hy>.02?dn.hy*state.hipY*dw*.35:0;
       /* 腾空高度直接用游戏的起跳高度(一条抛物线),不经过任何平滑,否则离地/触地那两帧的速度会被改掉。
          上升段身体只跟抛物线走:脚在空中绷脚尖、收腿都不该把整个人再顶高一截(以前按"鞋底最低点"对齐,脚尖一绷髋就多涨 0.5 米/秒,提前出手换脚姿时还会抖)。
@@ -1181,6 +1256,20 @@
             setW(B[A.L.hand],grip.slerp(desired,weight));
           }
         }
+      }else if(cfg.player&&shotClipBodyOnly&&state.groundedSole){
+        M.updateMatrixWorld(true);
+        const drive=guy.shotDrive;
+        pelvisDrop=plantShotFeet(G.charging,sw,air,moving||rw>.05||dw>.001,!!recovery,0,0,drive);
+        if(drive?.sinceTakeoff>=0){
+          const release=smooth(drive.sinceTakeoff/TAKEOFF_BLEND_SECONDS);
+          soleLift=release<1?(state.takeoffFloorLift||0)*(1-release):0;
+          if(air>.004)shapeAirborneLegs(air,drive.sinceTakeoff);
+        }else if(air<=.004&&!moving&&dw<.001){
+          soleLift=soleClearance();
+          state.takeoffFloorLift=soleLift;
+        }
+        if(soleLift>0){M.position.y+=soleLift;M.updateMatrixWorld(true);}
+        state.stanceLocked=stanceLocked;state.stanceReleased=shotStanceReleased;state.pelvisDrop=pelvisDrop;
       }
       if(cfg.player&&!holding&&!G.passCatch?.active&&!G.pickupReach&&guy.shotBalanceSwing){
         M.updateMatrixWorld(true);

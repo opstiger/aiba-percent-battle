@@ -90,6 +90,7 @@
     const mesh=new THREE.Mesh(geo,new THREE.MeshBasicMaterial({vertexColors:true,blending:THREE.AdditiveBlending,transparent:true,
       depthWrite:false,toneMapped:false,side:THREE.DoubleSide,fog:false}));
     mesh.name="motionShowRing";mesh.visible=false;mesh.frustumCulled=false;mesh.renderOrder=5;
+    if(y<1&&global.AIBAFloorReflect?.enabled)mesh.layers.enable(AIBAFloorReflect.LAYER);
     indoorRoot.add(mesh);
     rings.push({mesh,col,ang,SEG,lag,attr:geo.attributes.color});
   }
@@ -793,7 +794,7 @@
     if(floorFar)floorFar.visible=any&&(S.burst>=0||!!(spec&&spec.kind==="super10"));
   }
   /* 追光:黑场期间一束柔和的队色白光罩着当前表演者,随演示的镜头换人;收场段跟着亮灯一起淡出 */
-  const _tg=new THREE.Vector3();
+  const rimLight={color:new THREE.Color(),strength:0};
   function updSpot(dt){
     if(!spot)return;
     const e=S.ent,focus=spotFocus();
@@ -803,6 +804,8 @@
     if(focus){
       if(!S.sp)S.sp=new THREE.Vector3().copy(focus);else S.sp.lerp(focus,1-Math.exp(-7*dt));
     }
+    rimLight.color.setRGB(.58,.68,1).lerp(C.acc,.55);
+    rimLight.strength=S.spK;
     if(S.spK<.003){spot.intensity=0;return;}
     spot.color.setRGB(1,1,1).lerp(C.acc,.28);
     spot.position.set(S.sp.x+.9,11,S.sp.z+1.6);spotTarget.position.set(S.sp.x,1.0+S.sp.y*.8,S.sp.z);spotTarget.updateMatrixWorld(true);
@@ -814,7 +817,7 @@
     if(Math.abs(t-S.t)<1e-4)return;
     const dt=clamp(t-S.t,0,.1);S.t=t;
     const live=active();
-    if(!live){for(const R of rings)R.mesh.visible=false;S.ringsOff=true;floor.visible=false;if(floorFar)floorFar.visible=false;setBeams(0,0,0);setStars(0);if(pyroPoints)pyroPoints.visible=false;if(dryIcePoints)dryIcePoints.visible=false;if(S.dim!==1&&S.base!=null){S.dim=1;renderer.toneMappingExposure=S.base;S.wrote=false;}S.ent=-1;S.burst=-1;S.special=null;S.pulses.length=0;S.ripples.length=0;if(spot)spot.intensity=0;return;}
+    if(!live){for(const R of rings)R.mesh.visible=false;S.ringsOff=true;floor.visible=false;if(floorFar)floorFar.visible=false;setBeams(0,0,0);setStars(0);if(pyroPoints)pyroPoints.visible=false;if(dryIcePoints)dryIcePoints.visible=false;if(S.dim!==1&&S.base!=null){S.dim=1;renderer.toneMappingExposure=S.base;S.wrote=false;}S.ent=-1;S.burst=-1;S.special=null;S.pulses.length=0;S.ripples.length=0;rimLight.strength=0;if(spot)spot.intensity=0;return;}
     for(const p of S.pulses)p.t+=dt;
     for(const p of S.ripples)p.t+=dt;
     while(S.pulses.length&&S.pulses[0].t>RING_PULSE+RING_LAG[3]+.3)S.pulses.shift();
@@ -922,7 +925,7 @@
       return r;};
     if(typeof xb==="function")global.missBall=function(){const r=xb.apply(this,arguments);try{fire("miss");}catch(e){}return r;};
   }
-  global.AIBAShow=Object.freeze({fire,entrance:()=>fire("entrance"),update,canvas:()=>fg&&fg.canvas,
+  global.AIBAShow=Object.freeze({fire,rimLight,entrance:()=>fire("entrance"),update,canvas:()=>fg&&fg.canvas,
     state:()=>({on:ON,built:S.built,ent:S.ent,entDur:S.entDur,spot:+S.spK.toFixed(3),ripples:S.ripples.length,burst:S.burst,special:S.special&&S.special.kind||null,heat:+S.heat.toFixed(3),pulses:S.pulses.length,dim:+S.dim.toFixed(3),
       floor:!!(floor&&floor.visible),rings:rings.map(r=>r.mesh.visible),star:C.key,num:C.num,name:C.name,acc:C.accCss,err:S.err||null})});
 })(window);

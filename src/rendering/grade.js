@@ -40,7 +40,8 @@
      —— 那不是电影感,那是穿帮。所以户外整体减半。 */
   const LOOKS={
     indoor:{
-      contrast:1.16,saturation:1.06,lift:-0.006,
+      exposure:1.00,contrast:1.18,saturation:1.055,lift:-.009,
+      highlightsOnly:true,
       warmR:1.012,warmG:1.0,warmB:0.980,
       /* 0.80→0.84(验收要求 bloom 阈值至少 .84)。
          阈值越低越多东西发光:0.80 时球场白线已经在吃泛光,
@@ -51,26 +52,33 @@
          开后期时最大连通块 28414,关掉后期只剩 3585 —— 差 8 倍。
          阈值已抬到 .84,白线本身进不来;这里再把强度压一档,
          让清漆高光"发光"但不"糊成一块白板"。 */
-      bloomThreshold:0.84,bloomStrength:0.22,
-      vignette:0.26,dof:0.39,dofNear:12,dofFar:39
+      bloomThreshold:.87,bloomStrength:.36,
+      vignette:0.23,dof:0.39,dofNear:12,dofFar:39
     },
     outdoor:{
+      exposure:1.00,highlightsOnly:false,
       contrast:1.06,saturation:1.03,lift:-0.002,
       warmR:1.0,warmG:1.0,warmB:1.0,
       bloomThreshold:0.84,bloomStrength:0.26,
       vignette:0.16,dof:0.39,dofNear:19,dofFar:59
     },
+    flowerCourt:{
+      exposure:1.00,contrast:1.075,saturation:1.035,lift:-.004,
+      warmR:1.005,warmG:1.0,warmB:.99,
+      bloomThreshold:.88,bloomStrength:.29,highlightsOnly:true,
+      vignette:.12,dof:.39,dofNear:19,dofFar:59
+    },
     rainforest:{
-      contrast:1.038,saturation:1.03,lift:.003,
-      warmR:1.021,warmG:1.003,warmB:.96,
-      bloomThreshold:.79,bloomStrength:.25,
+      exposure:1.015,contrast:1.065,saturation:1.025,lift:0,
+      warmR:1.018,warmG:1.002,warmB:.98,
+      bloomThreshold:.84,bloomStrength:.33,highlightsOnly:true,
       vignette:.13,dof:.42,dofNear:15,dofFar:49
     },
     lunarCrater:{
-      contrast:1.10,saturation:1.02,lift:-0.002,
-      warmR:1.004,warmG:1.002,warmB:1.006,
-      bloomThreshold:0.86,bloomStrength:0.20,
-      vignette:0.20,dof:0.42,dofNear:16,dofFar:52
+      exposure:1.00,contrast:1.12,saturation:1.015,lift:-.004,
+      warmR:1.005,warmG:1.0,warmB:1.008,
+      bloomThreshold:.90,bloomStrength:.31,highlightsOnly:true,
+      vignette:.15,dof:0.42,dofNear:16,dofFar:52
     },
     /* 真实球馆/转播观感。和 indoor 是**相反**的两个方向,不是强弱之分:
          indoor —— 舞台聚光:压暗角、拉对比,把主体从暗背景里抠出来。
@@ -79,7 +87,7 @@
                    看台和广告板重新有细节,接近转播机位看到的样子。
        哪个更好是审美选择,不是技术对错,所以两个都留着:?look=arena 切。 */
     arena:{
-      exposure:1.12,
+      exposure:1.12,highlightsOnly:false,
       /* contrast 1.04→1.14、lift 由正转负。原来为了"去舞台感"把对比压得太狠,
          结果是整幅发灰、主体也跟着糊 —— 那不是真实球馆,那是没调色的 RAW。
          真实转播画面的对比只比电影感略低一点,暗部依然要压得住。
@@ -137,16 +145,32 @@
 
   /* 5 抽样高斯(等价 9 抽样,靠线性采样合并),分横竖两遍 */
   const blurMat=new THREE.ShaderMaterial({
-    uniforms:{tDiffuse:{value:null},dir:{value:new THREE.Vector2()}},
+    uniforms:{tDiffuse:{value:null},dir:{value:new THREE.Vector2()},highlightCut:{value:0}},
     vertexShader:VERT,
     fragmentShader:`
-      uniform sampler2D tDiffuse;uniform vec2 dir;varying vec2 vUv;
+      uniform sampler2D tDiffuse;
+      uniform vec2 dir;
+      uniform float highlightCut;
+      varying vec2 vUv;
+      vec4 sampleBlur(vec2 uv){
+        vec4 sampleColor=texture2D(tDiffuse,uv);
+        if(highlightCut>0.0){
+          // Pack a display-space highlight mask beside the unfiltered color.
+          // The second blur pass carries both without another render target.
+          float peak=max(sampleColor.r,max(sampleColor.g,sampleColor.b));
+          float luminance=dot(sampleColor.rgb,vec3(.2126,.7152,.0722));
+          float brightness=mix(luminance,peak,.46);
+          sampleColor.a=smoothstep(highlightCut-.028,highlightCut+.085,brightness)
+            *clamp((brightness-highlightCut+.028)*4.5,0.0,1.0);
+        }
+        return sampleColor;
+      }
       void main(){
-        vec4 s=texture2D(tDiffuse,vUv)*0.227027;
-        s+=texture2D(tDiffuse,vUv+dir*1.3846154)*0.3162162;
-        s+=texture2D(tDiffuse,vUv-dir*1.3846154)*0.3162162;
-        s+=texture2D(tDiffuse,vUv+dir*3.2307692)*0.0702703;
-        s+=texture2D(tDiffuse,vUv-dir*3.2307692)*0.0702703;
+        vec4 s=sampleBlur(vUv)*0.227027;
+        s+=sampleBlur(vUv+dir*1.3846154)*0.3162162;
+        s+=sampleBlur(vUv-dir*1.3846154)*0.3162162;
+        s+=sampleBlur(vUv+dir*3.2307692)*0.0702703;
+        s+=sampleBlur(vUv-dir*3.2307692)*0.0702703;
         gl_FragColor=s;
       }`,
     depthTest:false,depthWrite:false
@@ -242,7 +266,7 @@
       useDepth:{value:0},camNear:{value:0.1},camFar:{value:120},
       exposure:{value:1},contrast:{value:1},saturation:{value:1},lift:{value:0},
       warm:{value:new THREE.Vector3(1,1,1)},
-      bloomThreshold:{value:.7},bloomStrength:{value:.35},
+      bloomThreshold:{value:.7},bloomStrength:{value:.35},highlightsOnly:{value:0},
       shadowKeep:{value:.32},toeEnd:{value:.26},
       vigStrength:{value:.3},vigInner:{value:.45},vigOuter:{value:1.1},aspect:{value:1},
       dofStrength:{value:.4},dofNear:{value:16},dofFar:{value:46},dofForeground:{value:0},dofNearCoverage:{value:0}
@@ -256,7 +280,7 @@
       uniform float useDepth,useVenueAir,airStart,airEnd,camNear,camFar;
       uniform float exposure,contrast,saturation,lift;
       uniform vec3 warm;
-      uniform float bloomThreshold,bloomStrength;
+      uniform float bloomThreshold,bloomStrength,highlightsOnly;
       uniform float shadowKeep,toeEnd;
       uniform float vigStrength,vigInner,vigOuter,aspect;
       uniform float dofStrength,dofNear,dofFar,dofForeground,dofNearCoverage;
@@ -277,7 +301,8 @@
           texture2D(tScene,vUv).g,
           texture2D(tScene,vUv-caOffset).b
         );
-        vec3 blur=texture2D(tBlur,vUv).rgb;
+        vec4 blurSample=texture2D(tBlur,vUv);
+        vec3 blur=blurSample.rgb;
 
         /* 背景柔化:按真实深度,不是按半径 —— 按半径糊会把边角的主角也糊掉 */
         float coc=0.0;
@@ -365,19 +390,24 @@
           }
         }
 
-        #ifdef DESKTOP_FILM
-        // Feather the threshold by luminance so colored lights retain their hue.
         float haloLum=luma(blur);
-        float knee=.09;
-        float transition=clamp(haloLum-bloomThreshold+knee,0.0,2.0*knee);
-        float bright=max(haloLum-bloomThreshold,transition*transition/(4.0*knee));
-        col+=blur*(bright/max(haloLum,.001))*bloomStrength;
-        // Broad local contrast only across midtones. Limit the gain at silhouettes.
+        if(highlightsOnly>.5){
+          col+=blur*blurSample.a*bloomStrength;
+        }else{
+          #ifdef DESKTOP_FILM
+          float knee=.09;
+          float transition=clamp(haloLum-bloomThreshold+knee,0.0,2.0*knee);
+          float bright=max(haloLum-bloomThreshold,transition*transition/(4.0*knee));
+          col+=blur*(bright/max(haloLum,.001))*bloomStrength;
+          #else
+          col+=max(blur-bloomThreshold,0.0)*bloomStrength;
+          #endif
+        }
+        #ifdef DESKTOP_FILM
+        // Broad local contrast across midtones, limited at silhouettes.
         float localLum=luma(col);
         float middle=smoothstep(.08,.32,localLum)*(1.0-smoothstep(.62,.90,localLum));
         col*=1.0+middle*clamp((localLum-haloLum)*.38,-.075,.085);
-        #else
-        col+=max(blur-bloomThreshold,0.0)*bloomStrength;
         #endif
         if(useVenueAir>0.5){
           // 4-tap tent filter prevents 4x4 block jaggedness along distant tree-to-sky depth discontinuities.
@@ -416,55 +446,52 @@
           float sun=smoothstep(.30,.88,lum);
           if(forestGrade>.5){
             // Rainforest CineStill Emerald-Amber LUT + subtle humid near-air integration.
-            float nearHaze=smoothstep(2.0,24.0,lin)*.065;
+            float nearHaze=smoothstep(6.0,28.0,lin)*.044;
             col=mix(col,vec3(.58,.58,.41),nearHaze);
             // Optical light-wrap: warm sunlit canopy/mist bleeds softly around dark foreground silhouettes (player/hoop).
             float wrapMask=clamp(luma(blur)-lum,0.0,1.0)*smoothstep(1.0,16.0,lin);
             col+=blur*vec3(.30,.25,.14)*wrapMask;
-            vec3 cooled=col*(1.0-.08*shade)+vec3(.006,.018,.014)*shade;
+            vec3 cooled=col*(1.0-.09*shade)+vec3(.004,.012,.009)*shade;
             vec3 midTint=cooled*mix(vec3(1.0),vec3(1.018,1.006,.932),mid*.64);
             vec3 warmed=midTint*mix(vec3(1.0),vec3(1.058,1.012,.912),sun);
             col=mix(warmed,warmed/(.90+.18*max(0.0,lum)),sun*.44);
           }else if(meadowGrade>.5){
             // Tian Shan Alpine Meadow Kodak-Natural LUT + in-court atmospheric light-wrap & aerial veiling glare.
-            float alpineHaze=smoothstep(1.4,32.0,lin)*.095;
+            float alpineHaze=smoothstep(6.0,38.0,lin)*.067;
             vec3 hazeTone=mix(vec3(.58,.65,.70),vec3(.84,.72,.56),meadowGold);
             col=mix(col,hazeTone,alpineHaze);
             // Optical light-wrap: bright sky & Tyndall mist wraps softly around player shoulders, ball rack & timber hoop.
             float wrapMask=clamp(luma(blur)-lum,0.0,1.0)*smoothstep(1.0,18.0,lin);
-            col+=blur*mix(vec3(.20,.22,.24),vec3(.32,.23,.13),meadowGold)*wrapMask;
+            col+=blur*mix(vec3(.12,.14,.18),vec3(.25,.17,.09),meadowGold)*wrapMask;
             vec3 shadowTint=mix(vec3(-.004,.005,.014),vec3(.008,.003,-.003),meadowGold);
             vec3 hiTint=mix(vec3(1.028,1.008,.962),vec3(1.075,1.005,.900),meadowGold);
             vec3 midWarm=mix(vec3(1.006,1.002,.982),vec3(1.040,1.002,.936),meadowGold);
             vec3 toned=col+shadowTint*shade;
             toned*=mix(vec3(1.0),midWarm,mid*.58);
             toned*=mix(vec3(1.0),hiTint,sun*.75);
-            // Soft filmic highlight roll-off + warm optical halation glow.
             col=mix(toned,toned/(.92+.15*max(0.0,lum)),sun*.38);
-            col+=max(blur-.56,0.0)*mix(vec3(.11,.10,.08),vec3(.18,.12,.06),meadowGold);
           }else if(lunarGrade>.5){
             // Apollo 70mm Hasselblad Ektachrome Neutral-Titanium & Earthshine LUT + Electrostatic Regolith Horizon Veil.
             float onSurface=1.0-step(camFar*.94,lin);
-            float lunarHaze=smoothstep(14.0,96.0,lin)*onSurface*.105;
+            float lunarHaze=smoothstep(24.0,110.0,lin)*onSurface*.043;
             col=mix(col,vec3(.52,.56,.63),lunarHaze);
             // Optical vacuum solar light-wrap: bright sunlit regolith & brushed titanium bleeds softly onto dark silhouettes.
             float wrapMask=clamp(luma(blur)-lum,0.0,1.0)*smoothstep(1.0,20.0,lin);
-            col+=blur*vec3(.22,.23,.26)*wrapMask;
+            col+=blur*vec3(.13,.16,.21)*wrapMask;
             // Subtle Earthshine shadow depth + neutral aerospace titanium midtones + smooth Apollo solar highlight shoulder (protects FP hands).
             vec3 earthShadow=col*(1.0-.04*shade)+vec3(.002,.006,.014)*shade;
             vec3 tiMid=earthShadow*mix(vec3(1.0),vec3(.998,1.000,1.006),mid*.55);
             vec3 solarHi=tiMid*mix(vec3(1.0),vec3(1.022,1.012,.992),sun*.68);
             col=mix(solarHi,solarHi/(.88+.24*max(0.0,lum)),sun*.52);
-            col+=max(blur-.64,0.0)*vec3(.07,.08,.10);
           }else{
             // NBA 2K Next-Gen Showtime Arena Broadcast LUT + Upper-Bowl Spotlight Haze & Hardwood Light-Wrap.
-            float arenaHaze=smoothstep(17.5,56.0,lin)*.072;
+            float arenaHaze=smoothstep(19.0,57.0,lin)*.045;
             col=mix(col,vec3(.19,.15,.27),arenaHaze);
             // Optical arena spotlight wrap around foreground player shoulders, ball & stanchion (never washing out court floor).
             float wrapMask=clamp(luma(blur)-lum,0.0,1.0)*smoothstep(1.2,16.5,lin)*(1.0-smoothstep(.42,.68,lum));
             col+=blur*vec3(.21,.17,.11)*wrapMask;
             // Royal-purple theatrical shadow depth + warm blonde-maple & broadcast skin midtones + anti-glare highlight roll-off.
-            vec3 bowlShadow=col+vec3(.004,-.001,.012)*shade;
+            vec3 bowlShadow=col+vec3(-.002,-.004,.004)*shade;
             vec3 showMid=bowlShadow*mix(vec3(1.0),vec3(1.016,1.002,.982),mid*.54);
             vec3 goldHi=showMid*mix(vec3(1.0),vec3(1.020,1.005,.972),sun*.58);
             col=mix(goldHi,goldHi/(.93+.13*max(0.0,lum)),sun*.32);
@@ -476,11 +503,11 @@
             float anamorphicStreak=exp(-abs(sunDelta.y)*14.0)*exp(-abs(sunDelta.x)*1.6);
             vec3 glareCol=forestGrade>.5?vec3(1.0,.82,.46):
               (lunarGrade>.5?vec3(.78,.89,1.0):mix(vec3(.95,.92,.82),vec3(1.0,.74,.38),meadowGold));
-            col+=glareCol*(radialGlow*.095+anamorphicStreak*(lunarGrade>.5?.085:.065))*sunScreen.z;
+            col+=glareCol*(radialGlow*.050+anamorphicStreak*(lunarGrade>.5?.073:.055))*sunScreen.z;
           }
           // Subtle 35mm monochrome micro-grain removes sterile digital CG cleanliness.
           float gHash=fract(sin(dot(gl_FragCoord.xy+vec2(gradeTime*43.1,gradeTime*19.7),vec2(12.9898,78.233)))*43758.5453);
-          float grainAmp=arenaGrade>.5?.013:.020;
+          float grainAmp=arenaGrade>.5?.010:.014;
           col+=(gHash-.5)*grainAmp*(.45+.55*mid);
         }
 
@@ -696,6 +723,7 @@
     u.saturation.value=FULL?P.saturation:1;u.lift.value=FULL?P.lift:0;
     u.warm.value.set(FULL?P.warmR:1,FULL?P.warmG:1,FULL?P.warmB:1);
     u.bloomThreshold.value=FULL?P.bloomThreshold:1;u.bloomStrength.value=FULL?P.bloomStrength:0;
+    u.highlightsOnly.value=FULL&&P.highlightsOnly?1:0;
     u.shadowKeep.value=P.shadowKeep;u.toeEnd.value=P.toeEnd;
     u.vigStrength.value=FULL?P.vignette:0;u.vigInner.value=P.vignetteInner;u.vigOuter.value=P.vignetteOuter;
     u.aspect.value=rtW/Math.max(1,rtH);
@@ -727,16 +755,18 @@
       const useAir=!!(atmosphere&&!atmosphere.fxDisabled&&rtScene.depthTexture&&(forest||(!COARSE&&!WEAK)));
       if(atmosphere)atmosphere.fallback.visible=!useAir&&!atmosphere.fxDisabled;
       if(!useAir&&rtAir){disposeRT(rtAir);rtAir=null;}
-      if(window.AIBACharacterShading?.syncSceneLight)window.AIBACharacterShading.syncSceneLight();
       renderer.setRenderTarget(rtScene);
       baseRender(sc,cam);
 
       if(FULL){
-        const bd=blurMat.uniforms.dir.value,bw=Math.max(2,rtW>>BLUR_SHIFT),bh=Math.max(2,rtH>>BLUR_SHIFT);
-        blurMat.uniforms.tDiffuse.value=rtScene.texture;
-        bd.set(P.blurSpread/bw,0);drawPass(blurMat,rtA);
-        blurMat.uniforms.tDiffuse.value=rtA.texture;
-        bd.set(0,P.blurSpread/bh);drawPass(blurMat,rtB);
+        const blur=blurMat.uniforms,bw=Math.max(2,rtW>>BLUR_SHIFT),bh=Math.max(2,rtH>>BLUR_SHIFT);
+        const stage=window.AIBAShow?.rimLight?.strength||0;
+        blur.highlightCut.value=P.highlightsOnly?Math.max(.05,P.bloomThreshold-.045*stage):0;
+        blur.tDiffuse.value=rtScene.texture;
+        blur.dir.value.set(P.blurSpread/bw,0);drawPass(blurMat,rtA);
+        blur.highlightCut.value=0;
+        blur.tDiffuse.value=rtA.texture;
+        blur.dir.value.set(0,P.blurSpread/bh);drawPass(blurMat,rtB);
       }
 
       const air=useAir?drawVenueAir(atmosphere):null;

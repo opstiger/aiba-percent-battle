@@ -11,6 +11,19 @@ const FLOOR_PHYS={
   envMapIntensity:0.38     // 克制球馆顶灯反射，保留丝滑漫反射质感
 };
 
+const MAPLE_FINISH={roughness:.34,clearcoat:.68,clearcoatRoughness:.24,envMapIntensity:.34};
+
+function applyArenaFloorFinish(mat){
+  const mapleMap=mat.clearcoatRoughnessMap&&mat.clearcoatRoughnessMap!==courtRoughTexture;
+  const finish=mat.normalMap||mapleMap?MAPLE_FINISH:FLOOR_PHYS;
+  mat.color.setHex(0xa69e90);
+  mat.metalness=FLOOR_PHYS.metalness;
+  mat.roughness=finish.roughness;
+  mat.clearcoat=finish.clearcoat;
+  mat.clearcoatRoughness=finish.clearcoatRoughness;
+  mat.envMapIntensity=finish.envMapIntensity;
+}
+
 function courtWoodRng(seed){let s=seed>>>0;return()=>{s=(Math.imul(s,1664525)+1013904223)>>>0;return s/4294967296;};}
 /* 室内枫木地板：参照 NBA 2K 湖人斯台普斯淡雅白枫木色调（偏浅米灰/亚麻白木，去黄腻），并加入球鞋擦痕与细微划痕。 */
 function paintHardwood(g,W,D,PXM){
@@ -635,11 +648,8 @@ function _applyMapleHdriPBR(floorMat){
       normTex.repeat.set(6,8);
       normTex.anisotropy=maxAniso;
       floorMat.normalMap=normTex;
-      floorMat.normalScale=new THREE.Vector2(0.38,0.38);
-      floorMat.roughness=0.26;
-      floorMat.clearcoat=0.88;
-      floorMat.clearcoatRoughness=0.14;
-      floorMat.envMapIntensity=0.46;
+      floorMat.normalScale.set(.38,.38);
+      if(currentScenePreset==="indoor")applyArenaFloorFinish(floorMat);
       floorMat.needsUpdate=true;
       window.AIBA_HDRI_STATUS=Object.assign(window.AIBA_HDRI_STATUS||{},{mapleNormal:true});
     },undefined,()=>{});
@@ -648,7 +658,7 @@ function _applyMapleHdriPBR(floorMat){
       roughTex.repeat.set(6,8);
       roughTex.anisotropy=maxAniso;
       floorMat.clearcoatRoughnessMap=roughTex;
-      floorMat.clearcoatRoughness=0.18;
+      if(currentScenePreset==="indoor")applyArenaFloorFinish(floorMat);
       floorMat.needsUpdate=true;
       window.AIBA_HDRI_STATUS=Object.assign(window.AIBA_HDRI_STATUS||{},{mapleRoughness:true});
     },undefined,()=>{});

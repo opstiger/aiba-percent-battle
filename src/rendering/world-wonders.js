@@ -479,6 +479,8 @@
     if(THREE.sRGBEncoding)regAlbedo.encoding=THREE.sRGBEncoding;
     const regBump=loadVenueTexture("assets/lunar/regolith_bump.jpg");
     regBump.wrapS=regBump.wrapT=THREE.RepeatWrapping;regBump.repeat.set(14,14);
+    const anisotropy=Math.min(s.mobile?4:8,renderer.capabilities.getMaxAnisotropy());
+    regAlbedo.anisotropy=regBump.anisotropy=anisotropy;
 
     const tGeo=new THREE.PlaneGeometry(230,230,96,96);tGeo.rotateX(-Math.PI/2);
     const tPos=tGeo.attributes.position,tCol=new Float32Array(tPos.count*3),c=new THREE.Color();
@@ -493,8 +495,15 @@
     tGeo.setAttribute("color",new THREE.BufferAttribute(tCol,3));
     tGeo.computeVertexNormals();
     const ground=new THREE.MeshStandardMaterial({
-      map:regAlbedo,bumpMap:regBump,bumpScale:.25,roughness:.96,metalness:0,vertexColors:true
+      map:regAlbedo,bumpMap:regBump,bumpScale:.46,roughness:.96,metalness:0,vertexColors:true
     });
+    ground.onBeforeCompile=shader=>{
+      // Keep the existing regolith grains visible in low-angle gameplay shots.
+      shader.fragmentShader=shader.fragmentShader.replace("#include <map_fragment>",`
+        #include <map_fragment>
+        diffuseColor.rgb=clamp(vec3(.158)+(diffuseColor.rgb-.158)*1.85,vec3(.045),vec3(.38));
+      `);
+    };
     const terrain=new THREE.Mesh(tGeo,ground);
     terrain.name="lunarTerrain";terrain.receiveShadow=true;s.root.add(terrain);
 
